@@ -14,7 +14,6 @@ license = "MIT/Apache-2.0"
 
 [features]
 default = ["v4"]
-ssl = ["tokio-tls", "native-tls"]
 rust-tls = ["rustls", "tokio-rustls", "webpki"]
 v3 = []
 v4 = []
@@ -31,8 +30,6 @@ byteorder = "1"
 fnv = "1.0"
 log = "0.4.1"
 lz4-compress = "=0.1.0"
-tokio-tls = { version = "0.3", optional = true }
-native-tls = { version = "0.2", optional = true }
 bb8 = "0.4"
 rand = "0.4.1"
 snap = "0.2.3"

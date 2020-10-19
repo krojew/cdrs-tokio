@@ -11,8 +11,6 @@
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `ssl` feature.
 
-#[cfg(feature = "ssl")]
-use native_tls::TlsConnector;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::{TlsConnector as RustlsConnector, client::TlsStream as RustlsStream};
 use std::io;
@@ -25,8 +23,6 @@ use std::net;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use async_trait::async_trait;
-#[cfg(feature = "ssl")]
-use tokio_tls::TlsStream;
 
 // TODO [v 2.x.x]: CDRSTransport: ... + BufReader + ButWriter + ...
 ///General CDRS transport trait. Both [`TranportTcp`][transportTcp]
@@ -181,99 +177,5 @@ impl CDRSTransport for TransportRustls {
 
     fn is_alive(&self) -> bool {
         self.inner.get_ref().0.peer_addr().is_ok()
-    }
-}
-
-/// ***********************************
-#[cfg(feature = "ssl")]
-pub struct TransportTls {
-    ssl: TlsStream<TcpStream>,
-    addr: String,
-}
-#[cfg(feature = "ssl")]
-impl TransportTls {
-    pub async fn new(addr: &str) -> io::Result<TransportTls> {
-        let a: Vec<&str> = addr.split(':').collect();
-        let socket = TcpStream::connect(addr).await?;
-        let builder = TlsConnector::builder();
-        let connector = builder.build().map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
-        let connector = tokio_tls::TlsConnector::from(connector);
-        connector
-            .connect(a[0], socket)
-            .await
-            .map_err(|error| io::Error::new(io::ErrorKind::Other, error))
-            .map(|sslsocket| TransportTls {
-                ssl: sslsocket,
-                addr: addr.to_string(),
-            })
-            // .and_then(|res| {
-            //     res.map(|n: TransportTls| n)
-            //         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-            // })
-    }
-}
-#[cfg(feature = "ssl")]
-impl AsyncRead for TransportTls {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        Pin::new(&mut self.ssl).poll_read(cx, buf)
-    }
-}
-#[cfg(feature = "ssl")]
-impl AsyncWrite for TransportTls {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, Error>> {
-        Pin::new(&mut self.ssl).poll_write(cx, buf)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(&mut self.ssl).poll_flush(cx)
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Pin::new(&mut self.ssl).poll_shutdown(cx)
-    }
-}
-
-#[cfg(feature = "ssl")]
-#[async_trait]
-impl CDRSTransport for TransportTls {
-    /// This method
-    /// creates absolutely new connection - it gets an address
-    /// of a peer from `TransportTls` and creates a new encrypted
-    /// connection with a new TCP stream under hood.
-    async fn try_clone(&self) -> io::Result<TransportTls> {
-        let ip = match self.addr.split(":").nth(0) {
-            Some(_ip) => _ip,
-            None => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Wrong addess string - IP is missed",
-                ));
-            }
-        };
-
-        let socket = TcpStream::connect(self.addr.as_str()).await?;
-        let builder = TlsConnector::builder();
-        let connector = builder.build().map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
-        let connector = tokio_tls::TlsConnector::from(connector);
-        connector
-            .connect(ip, socket)
-            .await
-            .map_err(|error| io::Error::new(io::ErrorKind::Other, error))
-            .map(|sslsocket| TransportTls {
-                ssl: sslsocket,
-                addr: self.addr.clone(),
-            })
-    }
-
-    async fn close(&mut self, _close: net::Shutdown) -> io::Result<()> {
-        self.ssl
-            .shutdown()
-            .await
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
-            .and_then(|_| Ok(()))
-    }
-
-    fn is_alive(&self) -> bool {
-        self.ssl.get_ref().peer_addr().is_ok()
     }
 }
