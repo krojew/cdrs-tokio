@@ -73,11 +73,11 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for RustlsConnec
         Ok(transport)
     }
 
-    async fn is_valid(&self, conn: Self::Connection) -> Result<Self::Connection, Self::Error> {
+    async fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
         let options_frame = Frame::new_req_options().into_cbytes();
         conn.lock().await.write(options_frame.as_slice()).await?;
 
-        parse_frame(&conn, &Compression::None {}).await.map(|_| conn)
+        parse_frame(&conn, &Compression::None {}).await.map(|_| ())
     }
 
     fn has_broken(&self, _conn: &mut Self::Connection) -> bool {

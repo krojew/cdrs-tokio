@@ -30,12 +30,12 @@ byteorder = "1"
 fnv = "1.0"
 log = "0.4.1"
 lz4-compress = "=0.1.0"
-bb8 = "0.4"
+bb8 = { git = "https://github.com/krojew/bb8", branch = "tokio-v03" }
 rand = "0.4.1"
 snap = "0.2.3"
 time = "0.2.16"
-tokio = { version = "0.2", features = ["tcp", "io-util", "dns", "sync", "macros"] }
-tokio-rustls = { version = "0.14", optional = true }
+tokio = { version = "0.3", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread"] }
+tokio-rustls = { version = "0.20", optional = true }
 uuid = "0.8.1"
 webpki = { version = "0.21", optional = true }
 

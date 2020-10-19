@@ -10,17 +10,17 @@
 //! * `TransportTls` is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `ssl` feature.
-
+#[cfg(feature = "rust-tls")]
+use std::sync::Arc;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::{TlsConnector as RustlsConnector, client::TlsStream as RustlsStream};
 use std::io;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncWriteExt, ReadBuf};
 use tokio::prelude::*;
 use std::task::Context;
 use tokio::macros::support::{Pin, Poll};
 use std::io::Error;
 use std::net;
-use std::sync::Arc;
 use tokio::net::TcpStream;
 use async_trait::async_trait;
 
@@ -75,7 +75,7 @@ impl TransportTcp {
 }
 
 impl AsyncRead for TransportTcp {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.tcp).poll_read(cx, buf)
     }
 }
@@ -140,7 +140,7 @@ impl TransportRustls {
 #[cfg(feature = "rust-tls")]
 impl AsyncRead for TransportRustls {
     #[inline]
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         Pin::new(&mut self.inner).poll_read(cx, buf)
     }
 }
