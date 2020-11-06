@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bb8::{Builder, ManageConnection};
+use bb8::{Builder, ManageConnection, PooledConnection};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
@@ -73,7 +73,7 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for RustlsConnec
         Ok(transport)
     }
 
-    async fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
+    async fn is_valid(&self, conn: &mut PooledConnection<'_, Self>) -> Result<(), Self::Error> {
         let options_frame = Frame::new_req_options().into_cbytes();
         conn.lock().await.write(options_frame.as_slice()).await?;
 

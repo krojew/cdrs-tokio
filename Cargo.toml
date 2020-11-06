@@ -30,7 +30,7 @@ byteorder = "1"
 fnv = "1.0"
 log = "0.4.1"
 lz4-compress = "=0.1.0"
-bb8 = { git = "https://github.com/krojew/bb8", branch = "tokio-v03" }
+bb8 = { git = "https://github.com/djc/bb8", branch = "tokio-0.3" }
 rand = "0.4.1"
 snap = "0.2.3"
 time = "0.2.16"
