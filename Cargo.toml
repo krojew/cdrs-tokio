@@ -1,15 +1,15 @@
 [package]
-name = "cdrs"
-version = "3.0.0-beta.2"
-authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>"]
+name = "cdrs-tokio"
+version = "1.0.0"
+authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 
-description = "Cassandra DB driver written in Rust"
-documentation = "https://docs.rs/cdrs"
-homepage = "https://github.com/AlexPikalov/cdrs"
-repository = "https://github.com/AlexPikalov/cdrs"
+description = "Async Cassandra DB driver written in Rust"
+documentation = "https://docs.rs/cdrs-tokio"
+homepage = "https://github.com/krojew/cdrs-tokio"
+repository = "https://github.com/krojew/cdrs-tokio"
 readme = "./README.md"
-keywords = ["cassandra", "driver", "client", "cassandradb", "DB"]
+keywords = ["cassandra", "driver", "client", "cassandradb", "DB", "async"]
 license = "MIT/Apache-2.0"
 
 [features]
@@ -48,7 +48,7 @@ default-features = false
 env_logger = "0.4.3"
 maplit = "1.0.0"
 regex = "0.2.5"
-cdrs_helpers_derive = { git = "https://github.com/krojew/cdrs-helpers-derive" }
+cdrs-tokio-helpers-derive = "1.0"
 
 [[example]]
 name = "dynamic_cluster"

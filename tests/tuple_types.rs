@@ -11,19 +11,19 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs::error::Result;
+use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cdrs::frame::IntoBytes;
+use cdrs_tokio::frame::IntoBytes;
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::blob::Blob;
+use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::tuple::Tuple;
+use cdrs_tokio::types::tuple::Tuple;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::value::{Bytes, Value};
+use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::{IntoRustByIndex, IntoRustByName};
+use cdrs_tokio::types::{IntoRustByIndex, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 use time::PrimitiveDateTime;
 #[cfg(feature = "e2e-tests")]

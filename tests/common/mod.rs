@@ -1,15 +1,15 @@
 #[cfg(feature = "e2e-tests")]
-use cdrs::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticator;
 #[cfg(feature = "e2e-tests")]
-use cdrs::cluster::session::{new as new_session, Session};
+use cdrs_tokio::cluster::session::{new as new_session, Session};
 #[cfg(feature = "e2e-tests")]
-use cdrs::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
 #[cfg(feature = "e2e-tests")]
-use cdrs::error::Result;
+use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cdrs::load_balancing::RoundRobin;
+use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
 use regex::Regex;
 

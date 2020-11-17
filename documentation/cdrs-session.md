@@ -3,8 +3,8 @@
 `Session` is a structure that holds as set pools of connections authorised by a Cluster. As well it provides data decompressing and load balancing mechanisms used for Cassandra frame exchange, or querying in other words.
 
 ```rust
-use cdrs::load_balancing::RoundRobin;
-use cdrs::cluster::session::{new as new_session};
+use cdrs_tokio::load_balancing::RoundRobin;
+use cdrs_tokio::cluster::session::{new as new_session};
 
 
 let load_balancing = RoundRobin::new();
@@ -26,11 +26,11 @@ Any structure that implements `LoadBalancingStrategy` trait can be used in `Sess
 
 CDRS provides few strategies out of the box so no additional development may not be needed:
 
-- `cdrs::load_balancing::Random` randomly picks up a node from a cluster.
+- `cdrs_tokio::load_balancing::Random` randomly picks up a node from a cluster.
 
-- `cdrs::load_balancing::RoundRobinSync` thread safe round robin balancing strategy.
+- `cdrs_tokio::load_balancing::RoundRobinSync` thread safe round robin balancing strategy.
 
-- `cdrs::load_balancing::RoundRobin` light weight round robin strategy that is not thread safe though. So it should be used in mono thread apps only.
+- `cdrs_tokio::load_balancing::RoundRobin` light weight round robin strategy that is not thread safe though. So it should be used in mono thread apps only.
 
 Along with that any custom load balancing strategy may be implemented and used with CDRS. The only requirement is the structure must implement `LoadBalancingStrategy` trait.
 
@@ -40,11 +40,11 @@ CQL binary protocol allows using LZ4 and Snappy data compression in order to red
 
 CDRS provides methods for creating `Session` with different compression contexts:
 
-- `cdrs::session::new(&cluster_config, load_balancer)` creates new `Session` that will be exchanging non-compressed frames with a Cluster.
+- `cdrs_tokio::session::new(&cluster_config, load_balancer)` creates new `Session` that will be exchanging non-compressed frames with a Cluster.
 
-- `cdrs::session::new_snappy(&cluster_config, load_balancer)` creates new `Session` that will be exchanging Snappy-compressed frames with a Cluster.
+- `cdrs_tokio::session::new_snappy(&cluster_config, load_balancer)` creates new `Session` that will be exchanging Snappy-compressed frames with a Cluster.
 
-- `cdrs::session::new_lz4(&cluster_config, load_balancer)` creates new `Session` that will be exchanging LZ4-compressed frames with a Cluster.
+- `cdrs_tokio::session::new_lz4(&cluster_config, load_balancer)` creates new `Session` that will be exchanging LZ4-compressed frames with a Cluster.
 
 Once `Session` is successfully created it can be used for communication with Cluster.
 
@@ -53,19 +53,19 @@ Once `Session` is successfully created it can be used for communication with Clu
 By default `Session` structure doesn't provide an API for making queries. Query functionality becomes enabled after importing one or few of following traits:
 
 ```rust
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 ```
 
 ```rust
-use cdrs::query::PrepareExecutor;
+use cdrs_tokio::query::PrepareExecutor;
 ```
 
 ```rust
-use cdrs::query::ExecExecutor;
+use cdrs_tokio::query::ExecExecutor;
 ```
 
 ```rust
-use cdrs::query::BatchExecutor;
+use cdrs_tokio::query::BatchExecutor;
 ```
 
 Detailed Query API and those traits overview please find in [making query](./making-query.md) section.

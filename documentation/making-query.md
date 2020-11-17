@@ -3,32 +3,32 @@
 By default `Session` structure doesn't provide an API for making queries. Query functionality bacomes enabled after importing one or few of following traits:
 
 ```rust
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 ```
 
 This trait provides an API for making plain queries and immediately receiving responses.
 
 ```rust
-use cdrs::query::PrepareExecutor;
+use cdrs_tokio::query::PrepareExecutor;
 ```
 
-This trait enables query preparation on the server. After query preparation it's enough to exectute query via `cdrs::query::ExecExecutor` API prviding a query ID returned by `cdrs::query::PrepareExecutor`
+This trait enables query preparation on the server. After query preparation it's enough to exectute query via `cdrs_tokio::query::ExecExecutor` API prviding a query ID returned by `cdrs_tokio::query::PrepareExecutor`
 
 ```rust
-use cdrs::query::ExecExecutor;
+use cdrs_tokio::query::ExecExecutor;
 ```
 
 This trait provides an API for query exectution. `PrepareExecutor` and `ExecExecutor` APIs are considered in [next sections](./preparing-and-executing-queries.md).
 
 ```rust
-use cdrs::query::BatchExecutor;
+use cdrs_tokio::query::BatchExecutor;
 ```
 
 `BatchExecutor` provides functionality for executing multiple queries in a single request to Cluster. For more details refer to [Batch Queries](./batching-multiple-queries.md) section.
 
 ### `CDRSSession` trait
 
-Each of traits enumered beyond provides just a piece of full query API. They can be used independently one from another though. However if the whole query functionality is needed in a programm `use cdrs::cluster::CDRSSession` should be considered instead.
+Each of traits enumered beyond provides just a piece of full query API. They can be used independently one from another though. However if the whole query functionality is needed in a programm `use cdrs_tokio::cluster::CDRSSession` should be considered instead.
 
 `CDRSSession` source code looks following
 
@@ -58,7 +58,7 @@ It includes all the functionality related to making queries.
 session.query("INSERT INTO my.numbers (my_int, my_bigint) VALUES (1, 2)").unwrap();
 ```
 
-`query` method receives a single argument which is a CQL query string. It returns `cdrs::error::Result` that in case of `SELECT` query can be mapped on corresponded Rust structure. See [CRUD example](../examples/crud_operations.rs) for details.
+`query` method receives a single argument which is a CQL query string. It returns `cdrs_tokio::error::Result` that in case of `SELECT` query can be mapped on corresponded Rust structure. See [CRUD example](../examples/crud_operations.rs) for details.
 
 The same query could be made leveraging something that is called Values. It allows to have generic query strings independent from actuall values.
 
@@ -75,11 +75,11 @@ session.query_with_values(insert_numbers_query, values).unwrap();
 
 Here we've provided a generic query string for inserting numbers into `my.numbers` table. This query string doesn't have actual values hardcoded so exactly the same query can be used for multiple insert operations. Such sort of query strings can be used for Prepare-and-Execute operations when a query string is sent just once during Prepare step and then Execution operation is performed each time new values should be inserted. For more detailes see [Preparing and Executing](./preparing-and-executing-queries.md) section.
 
-However the full controll over the query can be achieved via `cdrs::query::QueryParamsBuilder`:
+However the full controll over the query can be achieved via `cdrs_tokio::query::QueryParamsBuilder`:
 
 ```rust
-use cdrs::query::QueryParamsBuilder;
-use cdrs::consistency::Consistency;
+use cdrs_tokio::query::QueryParamsBuilder;
+use cdrs_tokio::consistency::Consistency;
 
 let query_params = QueryParamsBuilder::new()
   .consistency(Consistency::Any)

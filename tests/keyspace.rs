@@ -1,22 +1,20 @@
-extern crate cdrs;
-
 #[cfg(feature = "e2e-tests")]
 use std::collections::HashMap;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticator;
 #[cfg(feature = "e2e-tests")]
-use cdrs::cluster::session::new as new_session;
+use cdrs_tokio::cluster::session::new as new_session;
 #[cfg(feature = "e2e-tests")]
-use cdrs::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 #[cfg(feature = "e2e-tests")]
-use cdrs::load_balancing::RoundRobin;
+use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::map::Map;
+use cdrs_tokio::types::map::Map;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::{AsRust, ByName, IntoRustByName};
+use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]

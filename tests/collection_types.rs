@@ -14,17 +14,17 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::blob::Blob;
+use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::list::List;
+use cdrs_tokio::types::list::List;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::map::Map;
+use cdrs_tokio::types::map::Map;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::AsRust;
+use cdrs_tokio::types::AsRust;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::ByName;
+use cdrs_tokio::types::ByName;
 #[cfg(feature = "e2e-tests")]
 use uuid::Uuid;
 

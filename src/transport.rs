@@ -58,7 +58,7 @@ impl TransportTcp {
     /// # Examples
     ///
     /// ```no_run
-    /// use cdrs::transport::TransportTcp;
+    /// use cdrs_tokio::transport::TransportTcp;
     ///
     /// #[tokio::main]
     /// async fn main() {

@@ -83,7 +83,7 @@ impl Compression {
     /// # Examples
     ///
     /// ```
-    ///    use cdrs::compression::Compression;
+    ///    use cdrs_tokio::compression::Compression;
     ///
     ///   let snappy_compression = Compression::Snappy;
     ///   let bytes = String::from("Hello World").into_bytes().to_vec();
@@ -104,7 +104,7 @@ impl Compression {
     /// # Examples
     ///
     /// ```
-    ///    use cdrs::compression::Compression;
+    ///    use cdrs_tokio::compression::Compression;
     ///     let lz4_compression = Compression::Lz4;
     ///     let bytes = String::from("Hello World").into_bytes().to_vec();
     ///     let encoded = lz4_compression.encode(bytes.clone()).unwrap();

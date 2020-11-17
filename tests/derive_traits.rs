@@ -17,35 +17,35 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs::consistency::Consistency;
+use cdrs_tokio::consistency::Consistency;
 #[cfg(feature = "e2e-tests")]
-use cdrs::error::Result as CDRSResult;
+use cdrs_tokio::error::Result as CDRSResult;
 #[cfg(feature = "e2e-tests")]
-use cdrs::frame::IntoBytes;
+use cdrs_tokio::frame::IntoBytes;
 #[cfg(feature = "e2e-tests")]
-use cdrs::frame::{TryFromRow, TryFromUDT};
+use cdrs_tokio::frame::{TryFromRow, TryFromUDT};
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::QueryValues;
+use cdrs_tokio::query::QueryValues;
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::*;
+use cdrs_tokio::query::*;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::blob::Blob;
+use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::from_cdrs::FromCDRSByName;
+use cdrs_tokio::types::from_cdrs::FromCDRSByName;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::map::Map;
+use cdrs_tokio::types::map::Map;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::prelude::*;
+use cdrs_tokio::types::prelude::*;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::rows::Row;
+use cdrs_tokio::types::rows::Row;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::udt::UDT;
+use cdrs_tokio::types::udt::UDT;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::value::{Bytes, Value};
+use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::{AsRust, AsRustType, IntoRustByName};
+use cdrs_tokio::types::{AsRust, AsRustType, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 use cdrs_helpers_derive::*;
 #[cfg(feature = "e2e-tests")]

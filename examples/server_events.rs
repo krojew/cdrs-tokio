@@ -1,13 +1,11 @@
-extern crate cdrs;
-
 use std::iter::Iterator;
 
-use cdrs::authenticators::NoneAuthenticator;
-use cdrs::cluster::session::new as new_session;
-use cdrs::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
-use cdrs::compression::Compression;
-use cdrs::frame::events::{ChangeType, ServerEvent, SimpleServerEvent, Target};
-use cdrs::load_balancing::RoundRobin;
+use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::cluster::session::new as new_session;
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::compression::Compression;
+use cdrs_tokio::frame::events::{ChangeType, ServerEvent, SimpleServerEvent, Target};
+use cdrs_tokio::load_balancing::RoundRobin;
 
 const _ADDR: &'static str = "127.0.0.1:9042";
 

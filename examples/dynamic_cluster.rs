@@ -10,15 +10,15 @@ use std::io;
 use std::process::{Command, Output};
 use std::time::Duration;
 
-use cdrs::authenticators::NoneAuthenticator;
-use cdrs::cluster::session::{new_dynamic as new_session, Session};
-use cdrs::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
-use cdrs::load_balancing::RoundRobin;
-use cdrs::query::*;
+use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::cluster::session::{new_dynamic as new_session, Session};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
+use cdrs_tokio::load_balancing::RoundRobin;
+use cdrs_tokio::query::*;
 
-use cdrs::frame::IntoBytes;
-use cdrs::types::from_cdrs::FromCDRSByName;
-use cdrs::types::prelude::*;
+use cdrs_tokio::frame::IntoBytes;
+use cdrs_tokio::types::from_cdrs::FromCDRSByName;
+use cdrs_tokio::types::prelude::*;
 
 type CurrentSession = Session<RoundRobin<TcpConnectionPool<NoneAuthenticator>>>;
 

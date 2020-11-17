@@ -1,14 +1,10 @@
-# CDRS [![crates.io version](https://img.shields.io/crates/v/cdrs.svg)](https://crates.io/crates/cdrs) [![Build Status](https://travis-ci.org/AlexPikalov/cdrs.svg?branch=master)](https://travis-ci.org/AlexPikalov/cdrs) [![Build status](https://ci.appveyor.com/api/projects/status/sirj4flws6o0dvb7/branch/master?svg=true)](https://ci.appveyor.com/project/harrydevnull/cdrs/branch/master)
+# CDRS tokio [![crates.io version](https://img.shields.io/crates/v/cdrs-tokio.svg)](https://crates.io/crates/cdrs-tokio)
 
 <p align="center">
-  <img src="./cdrs-logo.png" alt="CDRS - Apache Cassandra driver"/>
+  <img src="./cdrs-logo.png" alt="CDRS tokio - async Apache Cassandra driver using tokio"/>
 </p>
 
 CDRS is Apache **C**assandra **d**river written in pure **R**u**s**t.
-
-💡Looking for an async version?
-  - async-std https://github.com/AlexPikalov/cdrs-async (API is not fully compatible with https://github.com/AlexPikalov/cdrs)
-  - tokio https://github.com/AlexPikalov/cdrs/tree/async-tokio
 
 ## Features
 
@@ -32,22 +28,18 @@ CDRS is Apache **C**assandra **d**river written in pure **R**u**s**t.
 
 ## Getting started
 
-Add CDRS to your `Cargo.toml` file as a dependency:
+Add CDRS tokio to your `Cargo.toml` file as a dependency:
 
 ```toml
-cdrs = { version = "2" }
+cdrs-tokio = "1.0"
 ```
 
-Then add it as an external crate to your `main.rs`:
-
 ```rust
-extern crate cdrs;
-
-use cdrs::authenticators::NoneAuthenticator;
-use cdrs::cluster::session::{new as new_session};
-use cdrs::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
-use cdrs::load_balancing::RoundRobin;
-use cdrs::query::*;
+use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::cluster::session::{new as new_session};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::load_balancing::RoundRobin;
+use cdrs_tokio::query::*;
 
 #[tokio::main]
 fn main() {

@@ -8,9 +8,9 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::IntoRustByName;
+use cdrs_tokio::types::IntoRustByName;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]

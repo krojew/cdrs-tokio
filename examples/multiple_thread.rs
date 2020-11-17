@@ -1,19 +1,17 @@
-#[macro_use]
-extern crate cdrs;
-#[macro_use]
-extern crate cdrs_helpers_derive;
-
 use std::sync::Arc;
 
-use cdrs::authenticators::NoneAuthenticator;
-use cdrs::cluster::session::{new as new_session, Session};
-use cdrs::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
-use cdrs::query::*;
+use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::cluster::session::{new as new_session, Session};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
+use cdrs_tokio::query::*;
+use cdrs_tokio::query_values;
 
-use cdrs::frame::IntoBytes;
-use cdrs::types::from_cdrs::FromCDRSByName;
-use cdrs::types::prelude::*;
-use cdrs::load_balancing::RoundRobin;
+use cdrs_tokio::frame::IntoBytes;
+use cdrs_tokio::types::from_cdrs::FromCDRSByName;
+use cdrs_tokio::types::prelude::*;
+use cdrs_tokio::load_balancing::RoundRobin;
+
+use cdrs_tokio_helpers_derive::*;
 
 type CurrentSession = Session<RoundRobin<TcpConnectionPool<NoneAuthenticator>>>;
 
