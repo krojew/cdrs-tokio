@@ -14,7 +14,7 @@ fn main() {
 }
 ```
 
-`ClusterTcpConfig` receives a vector of Cassandra nodes configurations. `NodeTcpConfigBuilder` is a builder that provides methods for configuring r2d2 pool of connections to a given node:
+`ClusterTcpConfig` receives a vector of Cassandra nodes configurations. `NodeTcpConfigBuilder` is a builder that provides methods for configuring bb8 pool of connections to a given node:
 
 ```rust
 let node_address = "127.0.0.1:9042";
@@ -29,7 +29,7 @@ let no_compression: CurrentSession =
   new_session(&cluster_config, RoundRobin::new()).expect("session should be created");
 ```
 
-All existing `NodeTcpConfigBuilder` methods have the same behaviour as ones from `r2d2::Builder`, so for more details please refer to [r2d2](https://docs.rs/r2d2/0.8.2/r2d2/struct.Builder.html) official documentation.
+All existing `NodeTcpConfigBuilder` methods have the same behaviour as ones from `bb8::Builder`, so for more details please refer to [r2d2](https://docs.rs/r2d2/0.8.2/r2d2/struct.Builder.html) official documentation.
 
 For each node configuration, `Authenticator` should be provided. `Authenticator` is a trait that the structure should implement so it can be used by CDRS session for authentication. Out of the box CDRS provides two types of authenticators:
 
@@ -51,5 +51,3 @@ To figure out how a custom `Authenticator` should be implemented refer to [src/a
 1. Cassandra cluster configuration https://docs.datastax.com/en/cassandra/3.0/cassandra/initialize/initTOC.html.
 
 2. ScyllaDB cluster configuration https://docs.scylladb.com/operating-scylla/ (see Cluster Management section).
-
-3. `r2d2::Builder` documentation https://docs.rs/r2d2/0.8.2/r2d2/struct.Builder.html.

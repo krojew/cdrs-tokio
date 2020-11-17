@@ -81,7 +81,7 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for TcpConnectio
     }
 
     fn has_broken(&self, _conn: &mut Self::Connection) -> bool {
-        // cannot synchronously determine broken connection, so return false as per r2d2 docs
+        // cannot synchronously determine broken connection, so return false as per bb8 docs
         false
     }
 }

@@ -54,7 +54,7 @@ fn main() {
 }
 ```
 
-This example configures a cluster consisting of a single node, and uses round robin load balancing and default `r2d2` values for connection pool.
+This example configures a cluster consisting of a single node, and uses round robin load balancing and default `bb8` values for connection pool.
 
 ## License
 

@@ -36,7 +36,7 @@ Each of traits enumered beyond provides just a piece of full query API. They can
 pub trait CDRSSession<
   'a,
   T: CDRSTransport + 'static,
-  M: r2d2::ManageConnection<Connection = cell::RefCell<T>, Error = error::Error>,
+  M: bb8::ManageConnection<Connection = cell::RefCell<T>, Error = error::Error>,
 >:
   GetCompressor<'static>
   + GetConnection<T, M>
