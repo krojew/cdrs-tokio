@@ -1,10 +1,10 @@
-use r2d2::{Builder, ManageConnection};
+use async_trait::async_trait;
+use bb8::{Builder, ManageConnection, PooledConnection};
+use tokio::io::AsyncWriteExt;
+use tokio::sync::Mutex;
 
 use std::net;
 use std::sync::Arc;
-use std::io::Write;
-use std::error::Error;
-use core::cell::RefCell;
 
 use crate::cluster::{startup, NodeRustlsConfig};
 use crate::authenticators::Authenticator;
@@ -12,15 +12,15 @@ use crate::cluster::ConnectionPool;
 use crate::compression::Compression;
 use crate::frame::parser::parse_frame;
 use crate::frame::{Frame, IntoBytes};
-use crate::transport::{CDRSTransport, TransportRustls};
+use crate::transport::TransportRustls;
 use crate::error;
 
 pub type RustlsConnectionPool<A> = ConnectionPool<RustlsConnectionsManager<A>>;
 
-/// `r2d2::Pool` of SSL-based CDRS connections.
+/// `bb8::Pool` of SSL-based CDRS connections.
 ///
 /// Used internally for SSL Session for holding connections to a specific Cassandra node.
-pub fn new_rustls_pool<A: Authenticator + Send + Sync + 'static>(node_config: NodeRustlsConfig<A>) -> error::Result<RustlsConnectionPool<A>> {
+pub async fn new_rustls_pool<A: Authenticator + Send + Sync + 'static>(node_config: NodeRustlsConfig<A>) -> error::Result<RustlsConnectionPool<A>> {
     let manager = RustlsConnectionsManager::new(
         node_config.addr,
         node_config.dns_name,
@@ -35,12 +35,13 @@ pub fn new_rustls_pool<A: Authenticator + Send + Sync + 'static>(node_config: No
         .idle_timeout(node_config.idle_timeout)
         .connection_timeout(node_config.connection_timeout)
         .build(manager)
-        .map_err(|err| error::Error::from(err.description()))?;
+        .await
+        .map_err(|err| error::Error::from(err.to_string()))?;
 
     Ok(RustlsConnectionPool::new(pool, node_config.addr))
 }
 
-/// `r2d2` connection manager.
+/// `bb8` connection manager.
 pub struct RustlsConnectionsManager<A> {
     addr: net::SocketAddr,
     dns_name: webpki::DNSName,
@@ -60,25 +61,26 @@ impl<A> RustlsConnectionsManager<A> {
     }
 }
 
+#[async_trait]
 impl<A: Authenticator + 'static + Send + Sync> ManageConnection for RustlsConnectionsManager<A> {
-    type Connection = RefCell<TransportRustls>;
+    type Connection = Mutex<TransportRustls>;
     type Error = error::Error;
 
-    fn connect(&self) -> Result<Self::Connection, Self::Error> {
-        let transport = RefCell::new(TransportRustls::new(self.addr, self.dns_name.clone(), self.config.clone())?);
-        startup(&transport, &self.auth)?;
+    async fn connect(&self) -> Result<Self::Connection, Self::Error> {
+        let transport = Mutex::new(TransportRustls::new(self.addr, self.dns_name.clone(), self.config.clone()).await?);
+        startup(&transport, &self.auth).await?;
 
         Ok(transport)
     }
 
-    fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
+    async fn is_valid(&self, conn: &mut PooledConnection<'_, Self>) -> Result<(), Self::Error> {
         let options_frame = Frame::new_req_options().into_cbytes();
-        conn.borrow_mut().write(options_frame.as_slice())?;
+        conn.lock().await.write(options_frame.as_slice()).await?;
 
-        parse_frame(conn, &Compression::None {}).map(|_| ())
+        parse_frame(&conn, &Compression::None {}).await.map(|_| ())
     }
 
-    fn has_broken(&self, conn: &mut Self::Connection) -> bool {
-        !conn.borrow().is_alive()
+    fn has_broken(&self, _conn: &mut Self::Connection) -> bool {
+        false
     }
 }

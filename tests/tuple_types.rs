@@ -11,19 +11,19 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs::error::Result;
+use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cdrs::frame::IntoBytes;
+use cdrs_tokio::frame::IntoBytes;
 #[cfg(feature = "e2e-tests")]
-use cdrs::query::QueryExecutor;
+use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::blob::Blob;
+use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::tuple::Tuple;
+use cdrs_tokio::types::tuple::Tuple;
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::value::{Bytes, Value};
+use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
-use cdrs::types::{IntoRustByIndex, IntoRustByName};
+use cdrs_tokio::types::{IntoRustByIndex, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 use time::PrimitiveDateTime;
 #[cfg(feature = "e2e-tests")]
@@ -32,12 +32,12 @@ use uuid::Uuid;
 #[cfg(feature = "e2e-tests")]
 use std::str::FromStr;
 
-#[test]
+#[tokio::test]
 #[cfg(feature = "e2e-tests")]
-fn simple_tuple() {
+async fn simple_tuple() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.simple_tuple \
                (my_tuple tuple<text, int> PRIMARY KEY)";
-    let session = setup(cql).expect("setup");
+    let session = setup(cql).await.expect("setup");
 
     #[derive(Debug, Clone, PartialEq)]
     struct MyTuple {
@@ -75,11 +75,15 @@ fn simple_tuple() {
 
     let cql = "INSERT INTO cdrs_test.simple_tuple \
                (my_tuple) VALUES (?)";
-    session.query_with_values(cql, values).expect("insert");
+    session
+        .query_with_values(cql, values)
+        .await
+        .expect("insert");
 
     let cql = "SELECT * FROM cdrs_test.simple_tuple";
     let rows = session
         .query(cql)
+        .await
         .expect("query")
         .get_body()
         .expect("get body")
@@ -94,13 +98,13 @@ fn simple_tuple() {
     }
 }
 
-#[test]
+#[tokio::test]
 #[cfg(feature = "e2e-tests")]
-fn nested_tuples() {
+async fn nested_tuples() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_nested_tuples \
                (my_key int PRIMARY KEY, \
                my_outer_tuple tuple<uuid, blob, tuple<text, int, timestamp>>)";
-    let session = setup(cql).expect("setup");
+    let session = setup(cql).await.expect("setup");
 
     #[derive(Debug, Clone, PartialEq)]
     struct MyInnerTuple {
@@ -174,7 +178,7 @@ fn nested_tuples() {
     let my_inner_tuple = MyInnerTuple {
         my_text: "my_text".to_string(),
         my_int: 1_000,
-        my_timestamp: PrimitiveDateTime::new(),
+        my_timestamp: PrimitiveDateTime::now(),
     };
     let my_outer_tuple = MyOuterTuple {
         my_uuid: my_uuid,
@@ -185,11 +189,15 @@ fn nested_tuples() {
 
     let cql = "INSERT INTO cdrs_test.test_nested_tuples \
                (my_key, my_outer_tuple) VALUES (?, ?)";
-    session.query_with_values(cql, values).expect("insert");
+    session
+        .query_with_values(cql, values)
+        .await
+        .expect("insert");
 
     let cql = "SELECT * FROM cdrs_test.test_nested_tuples";
     let rows = session
         .query(cql)
+        .await
         .expect("query")
         .get_body()
         .expect("get body")

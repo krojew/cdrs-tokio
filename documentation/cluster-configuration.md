@@ -5,8 +5,8 @@ Apache Cassandra is designed to be a scalable and higly available database. So m
 That's why CDRS driver was designed with multinode support in mind. In order to connect to Cassandra cluster via CDRS connection configuration should be provided:
 
 ```rust
-use cdrs::authenticators::NoneAuthenticator;
-use cdrs::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
+use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
 
 fn main() {
   let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
@@ -33,12 +33,12 @@ All existing `NodeTcpConfigBuilder` methods have the same behaviour as ones from
 
 For each node configuration, `Authenticator` should be provided. `Authenticator` is a trait that the structure should implement so it can be used by CDRS session for authentication. Out of the box CDRS provides two types of authenticators:
 
-- `cdrs::authenticators::NoneAuthenticator` that should be used if authentication is disabled by a node ([Cassandra authenticator](http://cassandra.apache.org/doc/latest/configuration/cassandra_config_file.html#authenticator) is set to `AllowAllAuthenticator`) on server.
+- `cdrs_tokio::authenticators::NoneAuthenticator` that should be used if authentication is disabled by a node ([Cassandra authenticator](http://cassandra.apache.org/doc/latest/configuration/cassandra_config_file.html#authenticator) is set to `AllowAllAuthenticator`) on server.
 
-- `cdrs::authenticators::PasswordAuthenticator` that should be used if authentication is enabled on the server and [authenticator](http://cassandra.apache.org/doc/latest/configuration/cassandra_config_file.html#authenticator) is `PasswordAuthenticator`.
+- `cdrs_tokio::authenticators::PasswordAuthenticator` that should be used if authentication is enabled on the server and [authenticator](http://cassandra.apache.org/doc/latest/configuration/cassandra_config_file.html#authenticator) is `PasswordAuthenticator`.
 
 ```rust
-use cdrs::authenticators::PasswordAuthenticator;
+use cdrs_tokio::authenticators::PasswordAuthenticator;
 let authenticator = PasswordAuthenticator::new("user", "pass");
 ```
 

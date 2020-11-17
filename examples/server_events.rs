@@ -1,22 +1,20 @@
-extern crate cdrs;
-
 use std::iter::Iterator;
-use std::thread;
 
-use cdrs::authenticators::NoneAuthenticator;
-use cdrs::cluster::session::new as new_session;
-use cdrs::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
-use cdrs::compression::Compression;
-use cdrs::frame::events::{ChangeType, ServerEvent, SimpleServerEvent, Target};
-use cdrs::load_balancing::RoundRobin;
+use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::cluster::session::new as new_session;
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::compression::Compression;
+use cdrs_tokio::frame::events::{ChangeType, ServerEvent, SimpleServerEvent, Target};
+use cdrs_tokio::load_balancing::RoundRobin;
 
 const _ADDR: &'static str = "127.0.0.1:9042";
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let no_compression = new_session(&cluster_config, lb).expect("session should be created");
+    let no_compression = new_session(&cluster_config, lb).await.expect("session should be created");
 
     let (listener, stream) = no_compression
         .listen(
@@ -24,9 +22,10 @@ fn main() {
             NoneAuthenticator {},
             vec![SimpleServerEvent::SchemaChange],
         )
+        .await
         .expect("listen error");
 
-    thread::spawn(move || listener.start(&Compression::None).unwrap());
+    tokio::spawn(listener.start(&Compression::None));
 
     let new_tables = stream
         // inspects all events in a stream

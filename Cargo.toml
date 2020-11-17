@@ -1,21 +1,20 @@
 [package]
-name = "cdrs"
-version = "2.3.3"
-authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>"]
+name = "cdrs-tokio"
+version = "1.0.0"
+authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 
-description = "Cassandra DB driver written in Rust"
-documentation = "https://docs.rs/cdrs"
-homepage = "https://github.com/AlexPikalov/cdrs"
-repository = "https://github.com/AlexPikalov/cdrs"
+description = "Async Cassandra DB driver written in Rust"
+documentation = "https://docs.rs/cdrs-tokio"
+homepage = "https://github.com/krojew/cdrs-tokio"
+repository = "https://github.com/krojew/cdrs-tokio"
 readme = "./README.md"
-keywords = ["cassandra", "driver", "client", "cassandradb", "DB"]
+keywords = ["cassandra", "driver", "client", "cassandradb", "DB", "async"]
 license = "MIT/Apache-2.0"
 
 [features]
 default = ["v4"]
-ssl = ["openssl"]
-rust-tls = ["rustls", "webpki"]
+rust-tls = ["rustls", "tokio-rustls", "webpki"]
 v3 = []
 v4 = []
 # enable v5 feature when it's actually implemented
@@ -26,19 +25,22 @@ e2e-tests = []
 unstable-dynamic-cluster = []
 
 [dependencies]
+async-trait = "0.1.24"
 byteorder = "1"
+fnv = "1.0"
 log = "0.4.1"
 lz4-compress = "=0.1.0"
-openssl = { version = "0.10", optional = true }
-r2d2 = "0.8.7"
+bb8 = "0.6"
 rand = "0.4.1"
 snap = "0.2.3"
 time = "0.2.16"
+tokio = { version = "0.3", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread"] }
+tokio-rustls = { version = "0.20", optional = true }
 uuid = "0.8.1"
 webpki = { version = "0.21", optional = true }
 
 [dependencies.rustls]
-version = "0.17"
+version = "0.18"
 optional = true
 default-features = false
 
@@ -46,7 +48,7 @@ default-features = false
 env_logger = "0.4.3"
 maplit = "1.0.0"
 regex = "0.2.5"
-cdrs_helpers_derive = "0.1.0"
+cdrs-tokio-helpers-derive = "1.0"
 
 [[example]]
 name = "dynamic_cluster"

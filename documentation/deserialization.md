@@ -2,7 +2,7 @@
 
 _TODO: provide more details and link to examples_
 
-In ordert to query information from Cassandra DB and transform results to Rust types an structures each row in a query result should be transformed leveraging one of following traits provided by CDRS `cdrs::types::{AsRustType, AsRust, IntoRustByName, ByName, IntoRustByIndex, ByIndex}`.
+In ordert to query information from Cassandra DB and transform results to Rust types an structures each row in a query result should be transformed leveraging one of following traits provided by CDRS `cdrs_tokio::types::{AsRustType, AsRust, IntoRustByName, ByName, IntoRustByIndex, ByIndex}`.
 
 - `AsRustType` may be used in order to transform such complex structures as Cassandra lists, sets, tuples. The Cassandra value in this case could non-set and null values.
 
