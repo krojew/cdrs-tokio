@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -70,6 +71,10 @@ into_rust_by_name!(Row, UDT);
 into_rust_by_name!(Row, Tuple);
 into_rust_by_name!(Row, PrimitiveDateTime);
 into_rust_by_name!(Row, Decimal);
+into_rust_by_name!(Row, NonZeroI8);
+into_rust_by_name!(Row, NonZeroI16);
+into_rust_by_name!(Row, NonZeroI32);
+into_rust_by_name!(Row, NonZeroI64);
 
 impl ByIndex for Row {}
 
@@ -90,3 +95,7 @@ into_rust_by_index!(Row, UDT);
 into_rust_by_index!(Row, Tuple);
 into_rust_by_index!(Row, PrimitiveDateTime);
 into_rust_by_index!(Row, Decimal);
+into_rust_by_index!(Row, NonZeroI8);
+into_rust_by_index!(Row, NonZeroI16);
+into_rust_by_index!(Row, NonZeroI32);
+into_rust_by_index!(Row, NonZeroI64);

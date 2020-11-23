@@ -1,4 +1,5 @@
 use std::net::IpAddr;
+use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -46,6 +47,10 @@ impl FromCDRS for UDT {}
 impl FromCDRS for Tuple {}
 impl FromCDRS for PrimitiveDateTime {}
 impl FromCDRS for Decimal {}
+impl FromCDRS for NonZeroI8 {}
+impl FromCDRS for NonZeroI16 {}
+impl FromCDRS for NonZeroI32 {}
+impl FromCDRS for NonZeroI64 {}
 
 pub trait FromCDRSByName {
     fn from_cdrs_by_name<T>(cdrs_type: &T, name: &str) -> CDRSResult<Option<Self>>
@@ -82,3 +87,7 @@ impl FromCDRSByName for UDT {}
 impl FromCDRSByName for Tuple {}
 impl FromCDRSByName for PrimitiveDateTime {}
 impl FromCDRSByName for Decimal {}
+impl FromCDRSByName for NonZeroI8 {}
+impl FromCDRSByName for NonZeroI16 {}
+impl FromCDRSByName for NonZeroI32 {}
+impl FromCDRSByName for NonZeroI64 {}

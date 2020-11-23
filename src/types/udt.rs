@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -55,3 +56,7 @@ into_rust_by_name!(UDT, UDT);
 into_rust_by_name!(UDT, Tuple);
 into_rust_by_name!(UDT, PrimitiveDateTime);
 into_rust_by_name!(UDT, Decimal);
+into_rust_by_name!(UDT, NonZeroI8);
+into_rust_by_name!(UDT, NonZeroI16);
+into_rust_by_name!(UDT, NonZeroI32);
+into_rust_by_name!(UDT, NonZeroI64);

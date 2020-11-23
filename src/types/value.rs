@@ -4,6 +4,7 @@ use std::convert::Into;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::net::IpAddr;
+use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
 
 use crate::frame::IntoBytes;
 use crate::time::PrimitiveDateTime;
@@ -159,6 +160,34 @@ impl Into<Bytes> for u32 {
 impl Into<Bytes> for u64 {
     fn into(self) -> Bytes {
         Bytes(to_u_big(self))
+    }
+}
+
+impl Into<Bytes> for NonZeroI8 {
+    #[inline]
+    fn into(self) -> Bytes {
+        self.get().into()
+    }
+}
+
+impl Into<Bytes> for NonZeroI16 {
+    #[inline]
+    fn into(self) -> Bytes {
+        self.get().into()
+    }
+}
+
+impl Into<Bytes> for NonZeroI32 {
+    #[inline]
+    fn into(self) -> Bytes {
+        self.get().into()
+    }
+}
+
+impl Into<Bytes> for NonZeroI64 {
+    #[inline]
+    fn into(self) -> Bytes {
+        self.get().into()
     }
 }
 

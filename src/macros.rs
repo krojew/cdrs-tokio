@@ -92,7 +92,7 @@ macro_rules! map_as_rust {
 }
 
 macro_rules! into_rust_by_name {
-    (Row, $($into_type:tt)+) => (
+    (Row, $($into_type:ident)+) => (
         impl IntoRustByName<$($into_type)+> for Row {
             fn get_by_name(&self, name: &str) -> Result<Option<$($into_type)+>> {
                 self.get_col_spec_by_name(name)
@@ -104,7 +104,7 @@ macro_rules! into_rust_by_name {
             }
         }
     );
-    (UDT, $($into_type:tt)+) => (
+    (UDT, $($into_type:ident)+) => (
         impl IntoRustByName<$($into_type)+> for UDT {
             fn get_by_name(&self, name: &str) -> Result<Option<$($into_type)+>> {
                 self.data.get(name)
@@ -120,7 +120,7 @@ macro_rules! into_rust_by_name {
 }
 
 macro_rules! into_rust_by_index {
-    (Tuple, $($into_type:tt)+) => (
+    (Tuple, $($into_type:ident)+) => (
         impl IntoRustByIndex<$($into_type)+> for Tuple {
             fn get_by_index(&self, index: usize) -> Result<Option<$($into_type)+>> {
                 self.data
@@ -134,7 +134,7 @@ macro_rules! into_rust_by_index {
             }
         }
     );
-    (Row, $($into_type:tt)+) => (
+    (Row, $($into_type:ident)+) => (
         impl IntoRustByIndex<$($into_type)+> for Row {
             fn get_by_index(&self, index: usize) -> Result<Option<$($into_type)+>> {
                 self.get_col_spec_by_index(index)
@@ -236,6 +236,52 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, i8) => {
         match $data_type_option.id {
             ColType::Tinyint => as_res_opt!($data_value, decode_tinyint),
+            _ => Err(Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into i8 (valid types: Tinyint).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, NonZeroI64) => {
+        match $data_type_option.id {
+            ColType::Bigint => as_res_opt!($data_value, decode_bigint).map(|value| value.and_then(NonZeroI64::new)),
+            ColType::Timestamp => as_res_opt!($data_value, decode_timestamp).map(|value| value.and_then(NonZeroI64::new)),
+            ColType::Time => as_res_opt!($data_value, decode_time).map(|value| value.and_then(NonZeroI64::new)),
+            ColType::Varint => as_res_opt!($data_value, decode_varint).map(|value| value.and_then(NonZeroI64::new)),
+            ColType::Counter => as_res_opt!($data_value, decode_bigint).map(|value| value.and_then(NonZeroI64::new)),
+            _ => Err(Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
+                 Counter).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, NonZeroI32) => {
+        match $data_type_option.id {
+            ColType::Int => as_res_opt!($data_value, decode_int).map(|value| value.and_then(NonZeroI32::new)),
+            ColType::Date => as_res_opt!($data_value, decode_date).map(|value| value.and_then(NonZeroI32::new)),
+            _ => Err(Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into i32 (valid types: Int, Date).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, NonZeroI16) => {
+        match $data_type_option.id {
+            ColType::Smallint => as_res_opt!($data_value, decode_smallint).map(|value| value.and_then(NonZeroI16::new)),
+            _ => Err(Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into i16 (valid types: Smallint).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, NonZeroI8) => {
+        match $data_type_option.id {
+            ColType::Tinyint => as_res_opt!($data_value, decode_tinyint).map(|value| value.and_then(NonZeroI8::new)),
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i8 (valid types: Tinyint).",
