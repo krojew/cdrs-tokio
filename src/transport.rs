@@ -36,6 +36,7 @@ pub trait CDRSTransport: Sized + AsyncRead + AsyncWriteExt + Send + Sync {
 }
 
 /// Default Tcp transport.
+#[derive(Debug)]
 pub struct TransportTcp {
     tcp: TcpStream,
     keyspace_holder: Arc<KeyspaceHolder>,

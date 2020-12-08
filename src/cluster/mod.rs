@@ -27,13 +27,27 @@ pub use crate::cluster::rustls_connection_pool::{
 pub use crate::cluster::tcp_connection_pool::{
     new_tcp_pool, startup, TcpConnectionPool, TcpConnectionsManager,
 };
-pub(crate) use generic_connection_pool::ConnectionPool;
+pub use generic_connection_pool::ConnectionPool;
+pub use crate::cluster::session::connect;
 
 use crate::compression::Compression;
 use crate::error;
 use crate::frame::{Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::transport::CDRSTransport;
+
+use core::fmt::Debug;
+use std::net::SocketAddr;
+
+/// Generic connection configuration trait that can be used to create user-supplied
+/// connection objects that can be used with the `session::connect()` function.
+#[async_trait]
+pub trait ConnectionConfig: Send + Sync {
+    type ConnectionManager: bb8::ManageConnection;
+    type Error: Debug + Send + 'static;
+
+    async fn connect(&self, addr: SocketAddr) -> Result<bb8::Pool<Self::ConnectionManager>, Self::Error>;
+}
 
 /// `GetConnection` trait provides a unified interface for Session to get a connection
 /// from a load balancer
