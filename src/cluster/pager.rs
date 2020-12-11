@@ -12,8 +12,9 @@ use crate::types::CBytes;
 
 pub struct SessionPager<
     'a,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    S: CDRSSession<T, M> + 'a,
+    E: error::FromCDRSError,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
+    S: CDRSSession<T, E, M> + 'a,
     T: CDRSTransport + Unpin + 'static,
 > {
     page_size: i32,
@@ -25,12 +26,13 @@ pub struct SessionPager<
 impl<
         'a,
         'b: 'a,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        S: CDRSSession<T, M>,
+        E: error::FromCDRSError,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
+        S: CDRSSession<T, E, M>,
         T: CDRSTransport + Unpin + 'static,
-    > SessionPager<'a, M, S, T>
+    > SessionPager<'a, E, M, S, T>
 {
-    pub fn new(session: &'b mut S, page_size: i32) -> SessionPager<'a, M, S, T> {
+    pub fn new(session: &'b mut S, page_size: i32) -> SessionPager<'a, E, M, S, T> {
         SessionPager {
             session,
             page_size,
@@ -43,7 +45,7 @@ impl<
         &'a mut self,
         query: Q,
         state: PagerState,
-    ) -> QueryPager<'a, Q, SessionPager<'a, M, S, T>>
+    ) -> QueryPager<'a, Q, SessionPager<'a, E, M, S, T>>
     where
         Q: ToString,
     {
@@ -55,7 +57,7 @@ impl<
         query: Q,
         state: PagerState,
         qp: QueryParams,
-    ) -> QueryPager<'a, Q, SessionPager<'a, M, S, T>>
+    ) -> QueryPager<'a, Q, SessionPager<'a, E, M, S, T>>
     where
         Q: ToString,
     {
@@ -68,7 +70,7 @@ impl<
         }
     }
 
-    pub fn query<Q>(&'a mut self, query: Q) -> QueryPager<'a, Q, SessionPager<'a, M, S, T>>
+    pub fn query<Q>(&'a mut self, query: Q) -> QueryPager<'a, Q, SessionPager<'a, E, M, S, T>>
     where
         Q: ToString,
     {
@@ -84,7 +86,7 @@ impl<
         &'a mut self,
         query: Q,
         qp: QueryParams,
-    ) -> QueryPager<'a, Q, SessionPager<'a, M, S, T>>
+    ) -> QueryPager<'a, Q, SessionPager<'a, E, M, S, T>>
     where
         Q: ToString,
     {
@@ -95,7 +97,7 @@ impl<
         &'a mut self,
         query: &'a PreparedQuery,
         state: PagerState,
-    ) -> ExecPager<'a, SessionPager<'a, M, S, T>> {
+    ) -> ExecPager<'a, SessionPager<'a, E, M, S, T>> {
         ExecPager {
             pager: self,
             pager_state: state,
@@ -106,7 +108,7 @@ impl<
     pub fn exec(
         &'a mut self,
         query: &'a PreparedQuery,
-    ) -> ExecPager<'a, SessionPager<'a, M, S, T>> {
+    ) -> ExecPager<'a, SessionPager<'a, E, M, S, T>> {
         self.exec_with_pager_state(query, PagerState::new())
     }
 }
@@ -123,9 +125,10 @@ impl<
         'a,
         Q: ToString,
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        S: CDRSSession<T, M> + Sync + Send,
-    > QueryPager<'a, Q, SessionPager<'a, M, S, T>>
+        E: error::FromCDRSError,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
+        S: CDRSSession<T, E, M> + Sync + Send,
+    > QueryPager<'a, Q, SessionPager<'a, E, M, S, T>>
 {
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
         let mut params = QueryParamsBuilder::new()
@@ -179,9 +182,10 @@ pub struct ExecPager<'a, P: 'a> {
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        S: CDRSSession<T, M> + Sync + Send,
-    > ExecPager<'a, SessionPager<'a, M, S, T>>
+        E: error::FromCDRSError,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
+        S: CDRSSession<T, E, M> + Sync + Send,
+    > ExecPager<'a, SessionPager<'a, E, M, S, T>>
 {
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
         let mut params = QueryParamsBuilder::new().page_size(self.pager.page_size);

@@ -54,7 +54,8 @@ pub trait ConnectionConfig: Send + Sync {
 #[async_trait]
 pub trait GetConnection<
     T: CDRSTransport + Send + Sync + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+    E: error::FromCDRSError,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
 >
 {
     /// Returns connection from a load balancer.
@@ -78,13 +79,14 @@ pub trait ResponseCache {
 /// machinery is needed and direct sub traits otherwise.
 pub trait CDRSSession<
     T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+    E: error::FromCDRSError,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
 >:
     GetCompressor
-    + GetConnection<T, M>
-    + QueryExecutor<T, M>
-    + PrepareExecutor<T, M>
-    + ExecExecutor<T, M>
-    + BatchExecutor<T, M>
+    + GetConnection<T, E, M>
+    + QueryExecutor<T, E, M>
+    + PrepareExecutor<T, E, M>
+    + ExecExecutor<T, E, M>
+    + BatchExecutor<T, E, M>
 {
 }

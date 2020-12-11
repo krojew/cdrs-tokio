@@ -51,13 +51,14 @@ impl<'a, LB> Session<LB> {
     /// for performing paged queries.
     pub fn paged<
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+        E: error::FromCDRSError,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
     >(
         &'a mut self,
         page_size: i32,
-    ) -> SessionPager<'a, M, Session<LB>, T>
+    ) -> SessionPager<'a, E, M, Session<LB>, T>
     where
-        Session<LB>: CDRSSession<T, M>,
+        Session<LB>: CDRSSession<T, E, M>,
     {
         SessionPager::new(self, page_size)
     }
@@ -66,9 +67,10 @@ impl<'a, LB> Session<LB> {
 #[async_trait]
 impl<
         T: CDRSTransport + Send + Sync + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+        E: error::FromCDRSError,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
         LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-    > GetConnection<T, M> for Session<LB>
+    > GetConnection<T, E, M> for Session<LB>
 {
     async fn get_connection(&self) -> Option<Arc<ConnectionPool<M>>> {
         if cfg!(feature = "unstable-dynamic-cluster") {
@@ -103,9 +105,10 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+        E: error::FromCDRSError,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
         LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-    > QueryExecutor<T, M> for Session<LB>
+    > QueryExecutor<T, E, M> for Session<LB>
 {
 }
 
@@ -113,9 +116,10 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
+        E: error::FromCDRSError,
         LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    > PrepareExecutor<T, M> for Session<LB>
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
+    > PrepareExecutor<T, E, M> for Session<LB>
 {
 }
 
@@ -123,9 +127,10 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
+        E: error::FromCDRSError,
         LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    > ExecExecutor<T, M> for Session<LB>
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
+    > ExecExecutor<T, E, M> for Session<LB>
 {
 }
 
@@ -133,17 +138,19 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
+        E: error::FromCDRSError,
         LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    > BatchExecutor<T, M> for Session<LB>
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
+    > BatchExecutor<T, E, M> for Session<LB>
 {
 }
 
 impl<
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+        E: error::FromCDRSError,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
         LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-    > CDRSSession<T, M> for Session<LB>
+    > CDRSSession<T, E, M> for Session<LB>
 {
 }
 
