@@ -381,11 +381,11 @@ pub struct CString {
 
 impl CString {
     pub fn new(string: String) -> CString {
-        CString { string: string }
+        CString { string }
     }
 
     /// Converts internal value into pointer of `str`.
-    pub fn as_str<'a>(&'a self) -> &'a str {
+    pub fn as_str(&self) -> &str {
         self.string.as_str()
     }
 
@@ -434,11 +434,11 @@ pub struct CStringLong {
 
 impl CStringLong {
     pub fn new(string: String) -> CStringLong {
-        CStringLong { string: string }
+        CStringLong { string }
     }
 
     /// Converts internal value into pointer of `str`.
-    pub fn as_str<'a>(&'a self) -> &'a str {
+    pub fn as_str(&self) -> &str {
         self.string.as_str()
     }
 
@@ -516,7 +516,7 @@ impl FromCursor for CStringList {
             list.push(CString::from_cursor(&mut cursor)?);
         }
 
-        Ok(CStringList { list: list })
+        Ok(CStringList { list })
     }
 }
 

@@ -28,7 +28,7 @@ impl QueryParamsBuilder {
         self
     }
 
-    /// Sets new flags.
+    // Sets new flags.
     builder_opt_field!(flags, Vec<QueryFlags>);
 
     /// Sets new values.
@@ -48,7 +48,7 @@ impl QueryParamsBuilder {
         self
     }
 
-    /// Sets new with_names parameter value.
+    // Sets new with_names parameter value.
     builder_opt_field!(with_names, bool);
 
     /// Sets new values.
@@ -75,10 +75,10 @@ impl QueryParamsBuilder {
         self
     }
 
-    /// Sets new serial_consistency value.
+    // Sets new serial_consistency value.
     builder_opt_field!(serial_consistency, Consistency);
 
-    /// Sets new timestamp value.
+    // Sets new timestamp value.
     builder_opt_field!(timestamp, i64);
 
     /// Finalizes query building process and returns query itself
