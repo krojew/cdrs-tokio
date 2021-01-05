@@ -31,7 +31,7 @@ CDRS is Apache **C**assandra **d**river written in pure **R**u**s**t.
 Add CDRS tokio to your `Cargo.toml` file as a dependency:
 
 ```toml
-cdrs-tokio = "1.0"
+cdrs-tokio = "desired version"
 ```
 
 ```rust
@@ -42,7 +42,7 @@ use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::query::*;
 
 #[tokio::main]
-fn main() {
+async fn main() {
   let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
   let cluster_config = ClusterTcpConfig(vec![node]);
   let no_compression =
