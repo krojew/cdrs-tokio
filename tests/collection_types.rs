@@ -1,13 +1,3 @@
-#[cfg(feature = "e2e-tests")]
-#[macro_use]
-extern crate cdrs;
-#[cfg(feature = "e2e-tests")]
-#[macro_use]
-extern crate maplit;
-extern crate regex;
-extern crate time;
-extern crate uuid;
-
 mod common;
 
 #[cfg(feature = "e2e-tests")]
@@ -15,6 +5,8 @@ use common::*;
 
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
@@ -25,6 +17,8 @@ use cdrs_tokio::types::map::Map;
 use cdrs_tokio::types::AsRust;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::ByName;
+#[cfg(feature = "e2e-tests")]
+use maplit::hashmap;
 #[cfg(feature = "e2e-tests")]
 use uuid::Uuid;
 

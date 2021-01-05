@@ -1,6 +1,6 @@
 use cdrs_tokio::authenticators::NoneAuthenticator;
 use cdrs_tokio::cluster::session::{new as new_session, Session};
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, PagerState, TcpConnectionPool, QueryPager, SessionPager, TcpConnectionsManager};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, PagerState, TcpConnectionPool};
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
@@ -44,7 +44,9 @@ async fn main() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let mut no_compression = new_session(&cluster_config, lb).await.expect("session should be created");
+    let mut no_compression = new_session(&cluster_config, lb)
+        .await
+        .expect("session should be created");
 
     create_keyspace(&mut no_compression).await;
     create_udt(&no_compression).await;
@@ -64,7 +66,10 @@ async fn main() {
 async fn create_keyspace(session: &mut CurrentSession) {
     let create_ks: &'static str = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
                                    'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
-    session.query(create_ks).await.expect("Keyspace creation error");
+    session
+        .query(create_ks)
+        .await
+        .expect("Keyspace creation error");
 }
 
 async fn create_udt(session: &CurrentSession) {
@@ -126,21 +131,29 @@ async fn paged_with_value(session: &mut CurrentSession) {
 
     for v in 1..=10 {
         session
-            .query_with_values("INSERT INTO test_ks.another_test_table (a, b, c, d, e) VALUES (?, ?, ?, ?, ?)",
-                               AnotherTestTable {
-                                   a: 1,
-                                   b: 1,
-                                   c: 2,
-                                   d: v,
-                                   e: v,
-                               }.into_query_values(),
-            ).await.unwrap();
+            .query_with_values(
+                "INSERT INTO test_ks.another_test_table (a, b, c, d, e) VALUES (?, ?, ?, ?, ?)",
+                AnotherTestTable {
+                    a: 1,
+                    b: 1,
+                    c: 2,
+                    d: v,
+                    e: v,
+                }
+                .into_query_values(),
+            )
+            .await
+            .unwrap();
     }
-
 
     let q = "SELECT * FROM test_ks.another_test_table where a = ? and b = 1 and c = ?";
     let mut pager = session.paged(3);
-    let mut query_pager = pager.query_with_param(q, QueryParamsBuilder::new().values(query_values!(1, 2)).finalize());
+    let mut query_pager = pager.query_with_param(
+        q,
+        QueryParamsBuilder::new()
+            .values(query_values!(1, 2))
+            .finalize(),
+    );
 
     // Oddly enough, this returns false the first time...
     assert!(!query_pager.has_more());
@@ -160,9 +173,12 @@ async fn paged_with_value(session: &mut CurrentSession) {
 async fn paged_with_values_list(session: &mut CurrentSession) {
     let q = "SELECT * FROM test_ks.my_test_table where key in ?";
     let mut pager = session.paged(2);
-    let mut query_pager = pager.query_with_param(q, QueryParamsBuilder::new()
-        .values(query_values!(vec![100, 101, 102, 103, 104]))
-        .finalize());
+    let mut query_pager = pager.query_with_param(
+        q,
+        QueryParamsBuilder::new()
+            .values(query_values!(vec![100, 101, 102, 103, 104]))
+            .finalize(),
+    );
 
     // Macro instead of a function or closure, since problem with lifetimes
     macro_rules! assert_amount_query_pager {

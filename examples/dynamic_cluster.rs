@@ -1,10 +1,3 @@
-#[macro_use]
-extern crate cdrs;
-#[macro_use]
-extern crate cdrs_helpers_derive;
-#[macro_use]
-extern crate maplit;
-
 use std::collections::HashMap;
 use std::io;
 use std::process::{Command, Output};
@@ -15,10 +8,15 @@ use cdrs_tokio::cluster::session::{new_dynamic as new_session, Session};
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::query::*;
+use cdrs_tokio::query_values;
 
 use cdrs_tokio::frame::IntoBytes;
 use cdrs_tokio::types::from_cdrs::FromCDRSByName;
 use cdrs_tokio::types::prelude::*;
+
+use cdrs_tokio_helpers_derive::*;
+
+use maplit::hashmap;
 
 type CurrentSession = Session<RoundRobin<TcpConnectionPool<NoneAuthenticator>>>;
 
@@ -93,9 +91,10 @@ async fn main() {
     // println!("> Starting cluster...");
     // start_cluster();
 
-    let mut no_compression: CurrentSession = new_session(&cluster_config, RoundRobin::new(), event_src)
-        .await
-        .expect("session should be created");
+    let mut no_compression: CurrentSession =
+        new_session(&cluster_config, RoundRobin::new(), event_src)
+            .await
+            .expect("session should be created");
 
     create_keyspace(&mut no_compression).await;
     create_udt(&mut no_compression).await;

@@ -1,10 +1,3 @@
-#[cfg(feature = "e2e-tests")]
-#[macro_use]
-extern crate cdrs;
-extern crate regex;
-extern crate time;
-extern crate uuid;
-
 mod common;
 
 #[cfg(feature = "e2e-tests")]
@@ -12,6 +5,8 @@ use common::*;
 
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
