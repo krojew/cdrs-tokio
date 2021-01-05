@@ -15,8 +15,7 @@ use std::sync::Arc;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::{TlsConnector as RustlsConnector, client::TlsStream as RustlsStream};
 use std::io;
-use tokio::io::{AsyncWriteExt, ReadBuf};
-use tokio::prelude::*;
+use tokio::io::{AsyncWriteExt, AsyncWrite, AsyncRead, ReadBuf};
 use std::task::Context;
 use tokio::macros::support::{Pin, Poll};
 use std::io::Error;
@@ -103,8 +102,8 @@ impl CDRSTransport for TransportTcp {
         })
     }
 
-    async fn close(&mut self, close: net::Shutdown) -> io::Result<()> {
-        self.tcp.shutdown(close)
+    async fn close(&mut self, _close: net::Shutdown) -> io::Result<()> {
+        self.tcp.shutdown().await
     }
 
     fn is_alive(&self) -> bool {
