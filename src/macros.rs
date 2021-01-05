@@ -92,7 +92,7 @@ macro_rules! map_as_rust {
 }
 
 macro_rules! into_rust_by_name {
-    (Row, $($into_type:ident)+) => (
+    (Row, $($into_type:tt)+) => (
         impl IntoRustByName<$($into_type)+> for Row {
             fn get_by_name(&self, name: &str) -> Result<Option<$($into_type)+>> {
                 self.get_col_spec_by_name(name)
@@ -104,7 +104,7 @@ macro_rules! into_rust_by_name {
             }
         }
     );
-    (UDT, $($into_type:ident)+) => (
+    (UDT, $($into_type:tt)+) => (
         impl IntoRustByName<$($into_type)+> for UDT {
             fn get_by_name(&self, name: &str) -> Result<Option<$($into_type)+>> {
                 self.data.get(name)
@@ -120,7 +120,7 @@ macro_rules! into_rust_by_name {
 }
 
 macro_rules! into_rust_by_index {
-    (Tuple, $($into_type:ident)+) => (
+    (Tuple, $($into_type:tt)+) => (
         impl IntoRustByIndex<$($into_type)+> for Tuple {
             fn get_by_index(&self, index: usize) -> Result<Option<$($into_type)+>> {
                 self.data
@@ -134,7 +134,7 @@ macro_rules! into_rust_by_index {
             }
         }
     );
-    (Row, $($into_type:ident)+) => (
+    (Row, $($into_type:tt)+) => (
         impl IntoRustByIndex<$($into_type)+> for Row {
             fn get_by_index(&self, index: usize) -> Result<Option<$($into_type)+>> {
                 self.get_col_spec_by_index(index)
@@ -423,6 +423,40 @@ macro_rules! as_rust_type {
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into Decimal (valid types: Decimal).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, NaiveDateTime) => {
+        match $data_type_option.id {
+            ColType::Timestamp => match $data_value.as_slice() {
+                Some(ref bytes) => decode_timestamp(bytes)
+                    .map(|ts| {
+                        NaiveDateTime::from_timestamp_opt(ts / 1000, (ts % 1000 * 1_000_000) as u32)
+                    })
+                    .map_err(Into::into),
+                None => Ok(None),
+            },
+            _ => Err(Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into NaiveDateTime (valid types: Timestamp).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, DateTime<Utc>) => {
+        match $data_type_option.id {
+            ColType::Timestamp => match $data_value.as_slice() {
+                Some(ref bytes) => decode_timestamp(bytes)
+                    .map(|ts| {
+                        Some(DateTime::from_utc(NaiveDateTime::from_timestamp_opt(ts / 1000, (ts % 1000 * 1_000_000) as u32)?, Utc))
+                    })
+                    .map_err(Into::into),
+                None => Ok(None),
+            },
+            _ => Err(Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into DateTime (valid types: Timestamp).",
                 $data_type_option.id
             ))),
         }

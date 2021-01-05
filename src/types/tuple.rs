@@ -1,4 +1,6 @@
 use std::net::IpAddr;
+
+use chrono::prelude::*;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -44,7 +46,7 @@ impl Hash for Tuple {
 }
 
 impl Tuple {
-    pub fn new<'a>(data: Vec<CBytes>, metadata: &'a CTuple) -> Tuple {
+    pub fn new(data: Vec<CBytes>, metadata: &CTuple) -> Tuple {
         let meta_iter = metadata.types.iter();
 
         let acc = Vec::with_capacity(metadata.types.len());
@@ -77,3 +79,6 @@ into_rust_by_index!(Tuple, UDT);
 into_rust_by_index!(Tuple, Tuple);
 into_rust_by_index!(Tuple, PrimitiveDateTime);
 into_rust_by_index!(Tuple, Decimal);
+into_rust_by_index!(Tuple, NaiveDateTime);
+into_rust_by_index!(Tuple, DateTime<Utc>);
+

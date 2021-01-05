@@ -1,5 +1,7 @@
 use std::net::IpAddr;
 use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
+
+use chrono::prelude::*;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -51,6 +53,8 @@ impl FromCDRS for NonZeroI8 {}
 impl FromCDRS for NonZeroI16 {}
 impl FromCDRS for NonZeroI32 {}
 impl FromCDRS for NonZeroI64 {}
+impl FromCDRS for NaiveDateTime {}
+impl<Tz: TimeZone> FromCDRS for DateTime<Tz> {}
 
 pub trait FromCDRSByName {
     fn from_cdrs_by_name<T>(cdrs_type: &T, name: &str) -> CDRSResult<Option<Self>>
@@ -91,3 +95,5 @@ impl FromCDRSByName for NonZeroI8 {}
 impl FromCDRSByName for NonZeroI16 {}
 impl FromCDRSByName for NonZeroI32 {}
 impl FromCDRSByName for NonZeroI64 {}
+impl FromCDRSByName for NaiveDateTime {}
+impl<Tz: TimeZone> FromCDRSByName for DateTime<Tz> {}

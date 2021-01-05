@@ -6,9 +6,11 @@ use std::hash::Hash;
 use std::net::IpAddr;
 use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
 
+use chrono::prelude::*;
+use uuid::Uuid;
+
 use crate::frame::IntoBytes;
 use crate::time::PrimitiveDateTime;
-use uuid::Uuid;
 
 use super::blob::Blob;
 use super::decimal::Decimal;
@@ -244,6 +246,18 @@ impl Into<Bytes> for Blob {
 impl Into<Bytes> for Decimal {
     fn into(self) -> Bytes {
         Bytes(self.into_cbytes())
+    }
+}
+
+impl Into<Bytes> for NaiveDateTime {
+    fn into(self) -> Bytes {
+        self.timestamp_millis().into()
+    }
+}
+
+impl Into<Bytes> for DateTime<Utc> {
+    fn into(self) -> Bytes {
+        self.timestamp_millis().into()
     }
 }
 

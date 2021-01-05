@@ -113,7 +113,7 @@ pub fn decode_inet(bytes: &[u8]) -> Result<net::IpAddr, io::Error> {
 }
 
 // Decodes Cassandra `timestamp` data (bytes) into Rust's `Result<i64, io::Error>`
-// `i32` represets a millisecond-precision
+// `i32` represents a millisecond-precision
 //  offset from the unix epoch (00:00:00, January 1st, 1970).  Negative values
 //  represent a negative offset from the epoch.
 pub fn decode_timestamp(bytes: &[u8]) -> Result<i64, io::Error> {

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
+
+use chrono::prelude::*;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -20,7 +22,7 @@ pub struct UDT {
 }
 
 impl UDT {
-    pub fn new<'a>(data: Vec<CBytes>, metadata: &'a CUdt) -> UDT {
+    pub fn new(data: Vec<CBytes>, metadata: &CUdt) -> UDT {
         let meta_iter = metadata.descriptions.iter();
 
         let acc: HashMap<String, (ColTypeOption, CBytes)> =
@@ -60,3 +62,5 @@ into_rust_by_name!(UDT, NonZeroI8);
 into_rust_by_name!(UDT, NonZeroI16);
 into_rust_by_name!(UDT, NonZeroI32);
 into_rust_by_name!(UDT, NonZeroI64);
+into_rust_by_name!(UDT, NaiveDateTime);
+into_rust_by_name!(UDT, DateTime<Utc>);
