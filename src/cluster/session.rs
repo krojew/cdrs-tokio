@@ -7,6 +7,8 @@ use tokio::{io::AsyncWriteExt, sync::Mutex};
 
 #[cfg(feature = "unstable-dynamic-cluster")]
 use crate::cluster::NodeTcpConfig;
+#[cfg(feature = "rust-tls")]
+use crate::cluster::{new_rustls_pool, ClusterRustlsConfig, RustlsConnectionPool};
 use crate::cluster::{new_tcp_pool, startup, CDRSSession, ClusterTcpConfig, ConnectionPool, GetCompressor, GetConnection, TcpConnectionPool, ResponseCache};
 use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
@@ -159,6 +161,73 @@ impl <LB> ResponseCache for Session<LB> where LB: Send {
     }
 }
 
+#[cfg(feature = "rust-tls")]
+async fn connect_tls_static<A, LB>(
+    node_configs: &ClusterRustlsConfig<A>,
+    mut load_balancing: LB,
+    compression: Compression,
+) -> error::Result<Session<LB>>
+    where
+        A: Authenticator + 'static + Sized,
+        LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+{
+    let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
+
+    for node_config in &node_configs.0 {
+        let node_connection_pool = new_rustls_pool(node_config.clone()).await?;
+        nodes.push(Arc::new(node_connection_pool));
+    }
+
+    load_balancing.init(nodes);
+
+    Ok(Session {
+        load_balancing: Mutex::new(load_balancing),
+        event_stream: None,
+        responses: Mutex::new(FnvHashMap::default()),
+        compression,
+    })
+}
+
+#[cfg(all(feature = "rust-tls", feature = "unstable-dynamic-cluster"))]
+async fn connect_tls_dynamic<A, LB>(
+    node_configs: &ClusterRustlsConfig<A>,
+    mut load_balancing: LB,
+    compression: Compression,
+    event_src: NodeTcpConfig<'_, A>,
+) -> error::Result<Session<LB>>
+    where
+        A: Authenticator + 'static + Sized,
+        LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+{
+    let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
+
+    for node_config in &node_configs.0 {
+        let node_connection_pool = new_rustls_pool(node_config.clone()).await?;
+        nodes.push(Arc::new(node_connection_pool));
+    }
+
+    load_balancing.init(nodes);
+
+    let mut session = Session {
+        load_balancing: Mutex::new(load_balancing),
+        event_stream: None,
+        responses: Mutex::new(FnvHashMap::default()),
+        compression,
+    };
+
+    let (listener, event_stream) = session.listen_non_blocking(
+        event_src.addr,
+        event_src.authenticator,
+        vec![SimpleServerEvent::StatusChange],
+    ).await?;
+
+    tokio::spawn(listener.start(&Compression::None));
+
+    session.event_stream = Some(Mutex::new(event_stream));
+
+    Ok(session)
+}
+
 async fn connect_static<A, LB>(
     node_configs: &ClusterTcpConfig<'_, A>,
     mut load_balancing: LB,
@@ -230,8 +299,8 @@ where
 /// As a parameter it takes:
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
-pub async fn new<'a, A, LB>(
-    node_configs: &ClusterTcpConfig<'a, A>,
+pub async fn new<A, LB>(
+    node_configs: &ClusterTcpConfig<'_, A>,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
@@ -266,8 +335,8 @@ where
 /// As a parameter it takes:
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
-pub async fn new_snappy<'a, A, LB>(
-    node_configs: &ClusterTcpConfig<'a, A>,
+pub async fn new_snappy<A, LB>(
+    node_configs: &ClusterTcpConfig<'_, A>,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
@@ -302,8 +371,8 @@ where
 /// As a parameter it takes:
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
-pub async fn new_lz4<'a, A, LB>(
-    node_configs: &ClusterTcpConfig<'a, A>,
+pub async fn new_lz4<A, LB>(
+    node_configs: &ClusterTcpConfig<'_, A>,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
@@ -322,7 +391,7 @@ where
 /// * node address where to listen events
 #[cfg(feature = "unstable-dynamic-cluster")]
 pub async fn new_lz4_dynamic<'a, A, LB>(
-    node_configs: &ClusterTcpConfig<'a, A>,
+    node_configs: &ClusterTcpConfig<'_, A>,
     load_balancing: LB,
     event_src: NodeTcpConfig<'a, A>,
 ) -> error::Result<Session<LB>>
@@ -331,6 +400,117 @@ where
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     connect_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
+}
+
+/// Creates new TLS session that will perform queries without any compression. `Compression` type
+/// can be changed at any time.
+/// As a parameter it takes:
+/// * cluster config
+/// * load balancing strategy (cannot be changed during `Session` life time).
+#[cfg(feature = "rust-tls")]
+pub async fn new_tls<A, LB>(
+    node_configs: &ClusterRustlsConfig<A>,
+    load_balancing: LB,
+) -> error::Result<Session<LB>>
+where
+    A: Authenticator + 'static + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+{
+    connect_tls_static(node_configs, load_balancing, Compression::None).await
+}
+
+/// Creates new TLS session that will perform queries without any compression. `Compression` type
+/// can be changed at any time. Once received topology change event, it will adjust an inner load
+/// balancer.
+/// As a parameter it takes:
+/// * cluster config
+/// * load balancing strategy (cannot be changed during `Session` life time).
+/// * node address where to listen events
+#[cfg(all(feature = "rust-tls", feature = "unstable-dynamic-cluster"))]
+pub async fn new_tls_dynamic<A, LB>(
+    node_configs: &ClusterRustlsConfig<A>,
+    load_balancing: LB,
+    event_src: NodeTcpConfig<'_, A>,
+) -> error::Result<Session<LB>>
+where
+    A: Authenticator + 'static + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+{
+    connect_tls_dynamic(node_configs, load_balancing, Compression::None, event_src).await
+}
+
+/// Creates new TLS session that will perform queries with Snappy compression. `Compression` type
+/// can be changed at any time.
+/// As a parameter it takes:
+/// * cluster config
+/// * load balancing strategy (cannot be changed during `Session` life time).
+#[cfg(feature = "rust-tls")]
+pub async fn new_snappy_tls<A, LB>(
+    node_configs: &ClusterRustlsConfig<A>,
+    load_balancing: LB,
+) -> error::Result<Session<LB>>
+where
+    A: Authenticator + 'static + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+{
+    connect_tls_static(node_configs, load_balancing, Compression::Snappy).await
+}
+
+/// Creates new TLS session that will perform queries with Snappy compression. `Compression` type
+/// can be changed at any time. Once received topology change event, it will adjust an inner load
+/// balancer.
+/// As a parameter it takes:
+/// * cluster config
+/// * load balancing strategy (cannot be changed during `Session` life time).
+/// * node address where to listen events
+#[cfg(all(feature = "rust-tls", feature = "unstable-dynamic-cluster"))]
+pub async fn new_snappy_tls_dynamic<A, LB>(
+    node_configs: &ClusterRustlsConfig<A>,
+    load_balancing: LB,
+    event_src: NodeTcpConfig<'_, A>,
+) -> error::Result<Session<LB>>
+where
+    A: Authenticator + 'static + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+{
+    connect_tls_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
+}
+
+/// Creates new TLS session that will perform queries with LZ4 compression. `Compression` type
+/// can be changed at any time.
+/// As a parameter it takes:
+/// * cluster config
+/// * load balancing strategy (cannot be changed during `Session` life time).
+#[cfg(feature = "rust-tls")]
+pub async fn new_lz4_tls<A, LB>(
+    node_configs: &ClusterRustlsConfig<A>,
+    load_balancing: LB,
+) -> error::Result<Session<LB>>
+where
+    A: Authenticator + 'static + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+{
+    connect_tls_static(node_configs, load_balancing, Compression::Lz4).await
+}
+
+/// Creates new TLS session that will perform queries with LZ4 compression. `Compression` type
+/// can be changed at any time. Once received topology change event, it will adjust an inner load
+/// balancer.
+/// As a parameter it takes:
+/// * cluster config
+/// * load balancing strategy (cannot be changed during `Session` life time).
+/// * node address where to listen events
+#[cfg(all(feature = "rust-tls", feature = "unstable-dynamic-cluster"))]
+pub async fn new_lz4_tls_dynamic<A, LB>(
+    node_configs: &ClusterRustlsConfig<A>,
+    load_balancing: LB,
+    event_src: NodeTcpConfig<'_, A>,
+) -> error::Result<Session<LB>>
+where
+    A: Authenticator + 'static + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+{
+    connect_tls_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
 }
 
 impl<'a, L> Session<L> {
