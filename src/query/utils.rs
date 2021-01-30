@@ -39,22 +39,18 @@ where
         .await
         .map_err(|error| error::Error::from(error.to_string()))?;
 
-    let write_res = pool
+    pool
         .lock()
         .await
-        .write(frame_bytes.as_slice())
+        .write_all(frame_bytes.as_slice())
         .await
-        .map_err(error::Error::from);
+        .map_err(error::Error::from)?;
 
-    let result = write_res.map(|_| pool);
-    match result {
-        Ok(ref pool) => loop {
-            let frame = from_connection(pool, compression).await?;
-            if let Some(frame) = sender.match_or_cache_response(stream_id, frame).await {
-                return Ok(frame);
-            }
-        },
-        Err(error) => return Err(error)
+    loop {
+        let frame = from_connection(&pool, compression).await?;
+        if let Some(frame) = sender.match_or_cache_response(stream_id, frame).await {
+            return Ok(frame);
+        }
     }
 }
 
