@@ -5,19 +5,17 @@ use tokio::sync::Mutex;
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
 use crate::frame::{Frame, IntoBytes};
-use crate::query::{QueryParams, QueryParamsBuilder, QueryValues};
+use crate::query::{QueryParams, QueryParamsBuilder, QueryValues, PreparedQuery, PrepareExecutor};
 use crate::transport::CDRSTransport;
-use crate::types::CBytesShort;
 
 use super::utils::{prepare_flags, send_frame};
-
-pub type PreparedQuery = CBytesShort;
+use std::ops::Deref;
 
 #[async_trait]
 pub trait ExecExecutor<
     T: CDRSTransport + Unpin + 'static,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
->: GetConnection<T, M> + GetCompressor<'static> + ResponseCache + Sync
+>: GetConnection<T, M> + GetCompressor<'static> + PrepareExecutor<T, M> + ResponseCache + Sync
 {
     async fn exec_with_params_tw(
         &self,
@@ -30,9 +28,21 @@ pub trait ExecExecutor<
         Self: Sized,
     {
         let flags = prepare_flags(with_tracing, with_warnings);
-        let options_frame = Frame::new_req_execute(prepared, query_parameters, flags);
+        let options_frame = Frame::new_req_execute(prepared.id.read().expect("Cannot read prepared query id!").deref(), &query_parameters, flags);
 
-        send_frame(self, options_frame.into_cbytes(), options_frame.stream).await
+        let mut result = send_frame(self, options_frame.into_cbytes(), options_frame.stream).await;
+        if let Err(error::Error::Server(error)) = &result {
+            // if query is unprepared
+            if error.error_code == 0x2500 {
+                if let Ok(new) = self.prepare_raw(&prepared.query).await {
+                    *prepared.id.write().expect("Cannot write prepared query id!") = new.id.clone();
+                    let flags = prepare_flags(with_tracing, with_warnings);
+                    let options_frame = Frame::new_req_execute(&new.id, &query_parameters, flags);
+                    result = send_frame(self, options_frame.into_cbytes(), options_frame.stream).await;
+                }
+            }
+        }
+        result
     }
 
     async fn exec_with_params(

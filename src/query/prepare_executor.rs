@@ -1,3 +1,5 @@
+use std::sync::RwLock;
+
 use async_trait::async_trait;
 use bb8;
 use tokio::sync::Mutex;
@@ -7,11 +9,9 @@ use crate::error;
 use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::{Frame, IntoBytes};
 use crate::transport::CDRSTransport;
-use crate::types::CBytesShort;
+use crate::query::PreparedQuery;
 
 use super::utils::{prepare_flags, send_frame};
-
-pub type PreparedQuery = CBytesShort;
 
 #[async_trait]
 pub trait PrepareExecutor<
@@ -68,8 +68,9 @@ pub trait PrepareExecutor<
     where
         Self: Sized,
     {
+        let s = query.to_string();
         self.prepare_raw_tw(query, with_tracing, with_warnings).await
-            .map(|x| x.id)
+            .map(|x| PreparedQuery { id: RwLock::new(x.id), query: s })
     }
 
     /// It prepares query without additional tracing information and warnings.
