@@ -35,7 +35,7 @@ bb8 = "0.7"
 rand = "0.8"
 snap = "1.0"
 time = "0.2.16"
-tokio = { version = "1.0", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread"] }
+tokio = { version = "1.1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread"] }
 tokio-rustls = { version = "0.22", optional = true }
 uuid = "0.8.1"
 webpki = { version = "0.21", optional = true }
