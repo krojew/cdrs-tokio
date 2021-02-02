@@ -32,8 +32,8 @@ fnv = "1.0"
 log = "0.4.1"
 lz4-compress = "=0.1.0"
 bb8 = "0.7"
-rand = "0.4.1"
-snap = "0.2.3"
+rand = "0.8"
+snap = "1.0"
 time = "0.2.16"
 tokio = { version = "1.0", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread"] }
 tokio-rustls = { version = "0.22", optional = true }
@@ -46,9 +46,9 @@ optional = true
 default-features = false
 
 [dev-dependencies]
-env_logger = "0.4.3"
+env_logger = "0.8"
 maplit = "1.0.0"
-regex = "0.2.5"
+regex = "1.4"
 cdrs-tokio-helpers-derive = "1.1"
 
 [[example]]

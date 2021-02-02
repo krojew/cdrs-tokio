@@ -15,7 +15,7 @@ use std::io;
 use std::result;
 
 use lz4_compress as lz4;
-use snap;
+use snap::raw::{Encoder, Decoder};
 
 type Result<T> = result::Result<T, CompressionError>;
 
@@ -131,14 +131,14 @@ impl Compression {
     }
 
     fn encode_snappy(bytes: Vec<u8>) -> Result<Vec<u8>> {
-        let mut encoder = snap::Encoder::new();
+        let mut encoder = Encoder::new();
         encoder
             .compress_vec(bytes.as_slice())
             .map_err(CompressionError::Snappy)
     }
 
     fn decode_snappy(bytes: Vec<u8>) -> Result<Vec<u8>> {
-        let mut decoder = snap::Decoder::new();
+        let mut decoder = Decoder::new();
         decoder
             .decompress_vec(bytes.as_slice())
             .map_err(CompressionError::Snappy)
