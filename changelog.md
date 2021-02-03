@@ -1,3 +1,17 @@
+## 2.1.0
+
+### Fixed
+
+* Recreation of forgotten prepared statements. 
+
+### New
+
+* `rustls` sessions constructors.
+
+### Changed
+
+* Updated `tokio` to 1.1.
+
 ## 2.0.0
 
 ### New

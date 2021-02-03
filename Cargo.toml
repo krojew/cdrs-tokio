@@ -1,6 +1,6 @@
 [package]
 name = "cdrs-tokio"
-version = "2.0.0"
+version = "2.1.0"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 
