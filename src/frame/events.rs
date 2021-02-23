@@ -76,7 +76,7 @@ impl PartialEq<ServerEvent> for SimpleServerEvent {
     }
 }
 
-/// Full server event that contains all details about a concreate change.
+/// Full server event that contains all details about a concrete change.
 #[derive(Debug)]
 pub enum ServerEvent {
     /// Events related to change in the cluster topology
@@ -124,8 +124,8 @@ impl FromCursor for TopologyChange {
         let addr = CInet::from_cursor(&mut cursor)?;
 
         Ok(TopologyChange {
-            change_type: change_type,
-            addr: addr,
+            change_type,
+            addr,
         })
     }
 }
@@ -159,8 +159,8 @@ impl FromCursor for StatusChange {
         let addr = CInet::from_cursor(&mut cursor)?;
 
         Ok(StatusChange {
-            change_type: change_type,
-            addr: addr,
+            change_type,
+            addr,
         })
     }
 }
@@ -196,9 +196,9 @@ impl FromCursor for SchemaChange {
         let options = ChangeSchemeOptions::from_cursor_and_target(&mut cursor, &target)?;
 
         Ok(SchemaChange {
-            change_type: change_type,
-            target: target,
-            options: options,
+            change_type,
+            target,
+            options,
         })
     }
 }

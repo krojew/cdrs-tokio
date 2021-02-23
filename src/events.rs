@@ -32,10 +32,10 @@ pub type SchemaChange = FrameSchemaChange;
 pub fn new_listener<X>(transport: X) -> (Listener<X>, EventStream) {
     let (tx, rx) = channel();
     let listener = Listener {
-        transport: transport,
-        tx: tx,
+        transport,
+        tx,
     };
-    let stream = EventStream { rx: rx };
+    let stream = EventStream { rx };
     (listener, stream)
 }
 

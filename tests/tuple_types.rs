@@ -26,6 +26,8 @@ use uuid::Uuid;
 
 #[cfg(feature = "e2e-tests")]
 use std::str::FromStr;
+#[cfg(feature = "e2e-tests")]
+use std::time::SystemTime;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
@@ -44,10 +46,7 @@ async fn simple_tuple() {
         pub fn try_from(tuple: Tuple) -> Result<MyTuple> {
             let my_text: String = tuple.get_r_by_index(0)?;
             let my_int: i32 = tuple.get_r_by_index(1)?;
-            Ok(MyTuple {
-                my_text: my_text,
-                my_int: my_int,
-            })
+            Ok(MyTuple { my_text, my_int })
         }
     }
 
@@ -114,9 +113,9 @@ async fn nested_tuples() {
             let my_int: i32 = tuple.get_r_by_index(1)?;
             let my_timestamp: PrimitiveDateTime = tuple.get_r_by_index(2)?;
             Ok(MyInnerTuple {
-                my_text: my_text,
-                my_int: my_int,
-                my_timestamp: my_timestamp,
+                my_text,
+                my_int,
+                my_timestamp,
             })
         }
     }
@@ -148,9 +147,9 @@ async fn nested_tuples() {
             let my_inner_tuple: Tuple = tuple.get_r_by_index(2)?;
             let my_inner_tuple = MyInnerTuple::try_from(my_inner_tuple).expect("from tuple");
             Ok(MyOuterTuple {
-                my_uuid: my_uuid,
+                my_uuid,
                 my_blob: my_blob.into_vec(),
-                my_inner_tuple: my_inner_tuple,
+                my_inner_tuple,
             })
         }
     }
@@ -173,12 +172,12 @@ async fn nested_tuples() {
     let my_inner_tuple = MyInnerTuple {
         my_text: "my_text".to_string(),
         my_int: 1_000,
-        my_timestamp: PrimitiveDateTime::now(),
+        my_timestamp: SystemTime::now().into(),
     };
     let my_outer_tuple = MyOuterTuple {
-        my_uuid: my_uuid,
-        my_blob: my_blob,
-        my_inner_tuple: my_inner_tuple,
+        my_uuid,
+        my_blob,
+        my_inner_tuple,
     };
     let values = query_values!(0i32, my_outer_tuple.clone());
 

@@ -7,7 +7,7 @@ use crate::types::rows::Row;
 use crate::types::*;
 
 /// `ResultKind` is enum which represents types of result.
-#[derive(Debug)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash)]
 pub enum ResultKind {
     /// Void result.
     Void,
@@ -59,7 +59,7 @@ impl FromCursor for ResultKind {
 /// option wraps related body type.
 #[derive(Debug)]
 pub enum ResResultBody {
-    /// Void response body. It's an empty stuct.
+    /// Void response body. It's an empty struct.
     Void(BodyResResultVoid),
     /// Rows response body. It represents a body of response which contains rows.
     Rows(BodyResResultRows),
@@ -167,7 +167,7 @@ impl BodyResResultSetKeyspace {
     /// Factory function that takes body value and
     /// returns new instance of `BodyResResultSetKeyspace`.
     pub fn new(body: CString) -> BodyResResultSetKeyspace {
-        BodyResResultSetKeyspace { body: body }
+        BodyResResultSetKeyspace { body }
     }
 }
 
@@ -215,9 +215,9 @@ impl FromCursor for BodyResResultRows {
             BodyResResultRows::get_rows_content(&mut cursor, rows_count, metadata.columns_count);
 
         Ok(BodyResResultRows {
-            metadata: metadata,
-            rows_count: rows_count,
-            rows_content: rows_content,
+            metadata,
+            rows_count,
+            rows_content,
         })
     }
 }
@@ -262,11 +262,11 @@ impl FromCursor for RowsMetadata {
         let col_specs = ColSpec::parse_colspecs(&mut cursor, columns_count, has_global_table_space);
 
         Ok(RowsMetadata {
-            flags: flags,
-            columns_count: columns_count,
-            paging_state: paging_state,
-            global_table_space: global_table_space,
-            col_specs: col_specs,
+            flags,
+            columns_count,
+            paging_state,
+            global_table_space,
+            col_specs,
         })
     }
 }
@@ -380,10 +380,10 @@ impl ColSpec {
                 let col_type = ColTypeOption::from_cursor(&mut cursor).unwrap();
 
                 ColSpec {
-                    ksname: ksname,
-                    tablename: tablename,
-                    name: name,
-                    col_type: col_type,
+                    ksname,
+                    tablename,
+                    name,
+                    col_type,
                 }
             })
             .collect()
@@ -506,8 +506,8 @@ impl FromCursor for ColTypeOption {
         };
 
         Ok(ColTypeOption {
-            id: id,
-            value: value,
+            id,
+            value,
         })
     }
 }
@@ -549,9 +549,9 @@ impl FromCursor for CUdt {
         }
 
         Ok(CUdt {
-            ks: ks,
-            udt_name: udt_name,
-            descriptions: descriptions,
+            ks,
+            udt_name,
+            descriptions,
         })
     }
 }
@@ -573,7 +573,7 @@ impl FromCursor for CTuple {
             types.push(col_type);
         }
 
-        Ok(CTuple { types: types })
+        Ok(CTuple { types })
     }
 }
 
@@ -596,9 +596,9 @@ impl FromCursor for BodyResResultPrepared {
         let result_metadata = RowsMetadata::from_cursor(&mut cursor)?;
 
         Ok(BodyResResultPrepared {
-            id: id,
-            metadata: metadata,
-            result_metadata: result_metadata,
+            id,
+            metadata,
+            result_metadata,
         })
     }
 }
@@ -651,12 +651,12 @@ impl FromCursor for PreparedMetadata {
         let col_specs = ColSpec::parse_colspecs(&mut cursor, columns_count, has_global_table_space);
 
         Ok(PreparedMetadata {
-            flags: flags,
-            columns_count: columns_count,
-            pk_count: pk_count,
-            pk_indexes: pk_indexes,
+            flags,
+            columns_count,
+            pk_count,
+            pk_indexes,
             global_table_spec: global_table_space,
-            col_specs: col_specs,
+            col_specs,
         })
     }
 }

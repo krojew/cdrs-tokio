@@ -84,13 +84,13 @@ pub async fn parse_frame<T>(cursor_cell: &Mutex<T>, compressor: &Compression) ->
     std::io::Read::read_to_end(&mut body_cursor, &mut body)?;
 
     let frame = Frame {
-        version: version,
-        flags: flags,
-        opcode: opcode,
-        stream: stream,
-        body: body,
-        tracing_id: tracing_id,
-        warnings: warnings,
+        version,
+        flags,
+        opcode,
+        stream,
+        body,
+        tracing_id,
+        warnings,
     };
 
     convert_frame_into_result(frame)

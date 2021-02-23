@@ -9,7 +9,7 @@ use tokio::{io::AsyncWriteExt, sync::Mutex};
 use crate::cluster::NodeTcpConfig;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::{new_rustls_pool, ClusterRustlsConfig, RustlsConnectionPool};
-use crate::cluster::{new_tcp_pool, startup, CDRSSession, ClusterTcpConfig, ConnectionPool, GetCompressor, GetConnection, TcpConnectionPool, ResponseCache};
+use crate::cluster::{new_tcp_pool, startup, CDRSSession, ClusterTcpConfig, ConnectionPool, GetCompressor, GetConnection, TcpConnectionPool, ResponseCache, KeyspaceHolder};
 use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::transport::{CDRSTransport, TransportTcp};
@@ -22,6 +22,7 @@ use crate::frame::events::{ServerEvent, SimpleServerEvent, StatusChange, StatusC
 use crate::frame::parser::parse_frame;
 use crate::frame::{Frame, IntoBytes, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
+use std::ops::Deref;
 
 /// CDRS session that holds one pool of authorized connecitons per node.
 /// `compression` field contains data compressor that will be used
@@ -522,9 +523,10 @@ impl<'a, L> Session<L> {
         events: Vec<SimpleServerEvent>,
     ) -> error::Result<(Listener<Mutex<TransportTcp>>, EventStream)> {
         let compression = self.get_compressor();
-        let transport = TransportTcp::new(&node).await.map(Mutex::new)?;
+        let keyspace_holder = Arc::new(KeyspaceHolder::default());
+        let transport = TransportTcp::new(&node, keyspace_holder.clone()).await.map(Mutex::new)?;
 
-        startup(&transport, &authenticator).await?;
+        startup(&transport, &authenticator, keyspace_holder.deref()).await?;
 
         let query_frame = Frame::new_req_register(events).into_cbytes();
         transport.lock().await.write(query_frame.as_slice()).await?;

@@ -12,6 +12,7 @@ pub mod session;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_pool;
 mod tcp_connection_pool;
+mod keyspace_holder;
 
 #[cfg(feature = "rust-tls")]
 pub use crate::cluster::config_rustls::{ClusterRustlsConfig, NodeRustlsConfig, NodeRustlsConfigBuilder};
@@ -24,6 +25,7 @@ pub use crate::cluster::rustls_connection_pool::{
 pub use crate::cluster::tcp_connection_pool::{
     new_tcp_pool, startup, TcpConnectionPool, TcpConnectionsManager,
 };
+pub use crate::cluster::keyspace_holder::KeyspaceHolder;
 pub(crate) use generic_connection_pool::ConnectionPool;
 
 use crate::compression::Compression;

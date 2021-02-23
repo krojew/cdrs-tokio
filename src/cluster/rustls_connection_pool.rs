@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use std::net;
 use std::sync::Arc;
 
-use crate::cluster::{startup, NodeRustlsConfig};
+use crate::cluster::{startup, NodeRustlsConfig, KeyspaceHolder};
 use crate::authenticators::Authenticator;
 use crate::cluster::ConnectionPool;
 use crate::compression::Compression;
@@ -14,6 +14,7 @@ use crate::frame::parser::parse_frame;
 use crate::frame::{Frame, IntoBytes};
 use crate::transport::TransportRustls;
 use crate::error;
+use std::ops::Deref;
 
 pub type RustlsConnectionPool<A> = ConnectionPool<RustlsConnectionsManager<A>>;
 
@@ -47,6 +48,7 @@ pub struct RustlsConnectionsManager<A> {
     dns_name: webpki::DNSName,
     config: Arc<rustls::ClientConfig>,
     auth: A,
+    keyspace_holder: Arc<KeyspaceHolder>,
 }
 
 impl<A> RustlsConnectionsManager<A> {
@@ -57,6 +59,7 @@ impl<A> RustlsConnectionsManager<A> {
             dns_name,
             config,
             auth,
+            keyspace_holder: Default::default(),
         }
     }
 }
@@ -67,8 +70,8 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for RustlsConnec
     type Error = error::Error;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
-        let transport = Mutex::new(TransportRustls::new(self.addr, self.dns_name.clone(), self.config.clone()).await?);
-        startup(&transport, &self.auth).await?;
+        let transport = Mutex::new(TransportRustls::new(self.addr, self.dns_name.clone(), self.config.clone(), self.keyspace_holder.clone()).await?);
+        startup(&transport, &self.auth, self.keyspace_holder.deref()).await?;
 
         Ok(transport)
     }

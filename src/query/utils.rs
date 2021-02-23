@@ -3,8 +3,10 @@ use tokio::sync::Mutex;
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
 use crate::frame::parser::from_connection;
-use crate::frame::{Flag, Frame, StreamId};
+use crate::frame::{Flag, Frame, StreamId, Opcode, FromBytes};
 use crate::transport::CDRSTransport;
+use crate::frame::frame_result::ResultKind;
+use crate::types::INT_LEN;
 
 pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
     let mut flags = vec![];
@@ -49,6 +51,19 @@ where
     loop {
         let frame = from_connection(&pool, compression).await?;
         if let Some(frame) = sender.match_or_cache_response(stream_id, frame).await {
+            // in case we get a SetKeyspace result, we need to store current keyspace
+            // checks are done manually for speed
+            if frame.opcode == Opcode::Result {
+                let result_kind = ResultKind::from_bytes(&frame.body[..INT_LEN])?;
+                if result_kind == ResultKind::SetKeyspace {
+                    let response_body = frame.get_body()?;
+                    let set_keyspace = response_body.into_set_keyspace().expect("SetKeyspace not found with SetKeyspace opcode!");
+
+                    let transport = pool.lock().await;
+                    transport.set_current_keyspace(set_keyspace.body.as_str()).await;
+                }
+            }
+
             return Ok(frame);
         }
     }

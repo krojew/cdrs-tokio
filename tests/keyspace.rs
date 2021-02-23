@@ -172,7 +172,7 @@ async fn use_keyspace() {
         .into_set_keyspace()
         .expect("set keyspace")
         .body;
-    assert_eq!(keyspace_used.as_str(), "use_ks_test", "wrong kespace used");
+    assert_eq!(keyspace_used.as_str(), "use_ks_test", "wrong keyspace used");
 }
 
 #[tokio::test]

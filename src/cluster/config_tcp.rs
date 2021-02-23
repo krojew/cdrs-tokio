@@ -35,7 +35,7 @@ impl<'a, A: Authenticator + Sized> NodeTcpConfigBuilder<'a, A> {
     /// `NodeTcpConfigBuilder` constructor function. It receivesthread::spawn(move || {
     /// * node socket address as a string
     /// * authenticator
-    pub fn new<'b>(addr: &'b str, authenticator: A) -> NodeTcpConfigBuilder<'b, A> {
+    pub fn new(addr: &str, authenticator: A) -> NodeTcpConfigBuilder<A> {
         NodeTcpConfigBuilder {
             addr,
             authenticator,

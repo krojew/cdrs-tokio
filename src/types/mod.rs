@@ -156,7 +156,7 @@ pub fn i_to_n_bytes(int: i64, n: usize) -> Vec<u8> {
     try_i_to_n_bytes(int, n).unwrap()
 }
 
-/// Tryies to decode bytes array into `u64`.
+/// Tries to decode bytes array into `u64`.
 pub fn try_from_bytes(bytes: &[u8]) -> Result<u64, io::Error> {
     let l = bytes.len();
     let mut c = Cursor::new(bytes);

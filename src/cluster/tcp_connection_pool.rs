@@ -4,15 +4,18 @@ use std::io;
 use std::net::ToSocketAddrs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
+use std::sync::Arc;
 
 use crate::authenticators::Authenticator;
 use crate::cluster::ConnectionPool;
 use crate::cluster::NodeTcpConfig;
+use crate::cluster::KeyspaceHolder;
 use crate::compression::Compression;
 use crate::error;
 use crate::frame::parser::parse_frame;
 use crate::frame::{Frame, IntoBytes, Opcode};
 use crate::transport::{CDRSTransport, TransportTcp};
+use std::ops::Deref;
 
 /// Shortcut for `bb8::Pool` type of TCP-based CDRS connections.
 pub type TcpConnectionPool<A> = ConnectionPool<TcpConnectionsManager<A>>;
@@ -50,6 +53,7 @@ pub async fn new_tcp_pool<'a, A: Authenticator + Send + Sync + 'static>(
 pub struct TcpConnectionsManager<A> {
     addr: String,
     auth: A,
+    keyspace_holder: Arc<KeyspaceHolder>,
 }
 
 impl<A> TcpConnectionsManager<A> {
@@ -57,6 +61,7 @@ impl<A> TcpConnectionsManager<A> {
         TcpConnectionsManager {
             addr: addr.to_string(),
             auth,
+            keyspace_holder: Default::default(),
         }
     }
 }
@@ -67,8 +72,8 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for TcpConnectio
     type Error = error::Error;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
-        let transport = Mutex::new(TransportTcp::new(&self.addr).await?);
-        startup(&transport, &self.auth).await?;
+        let transport = Mutex::new(TransportTcp::new(&self.addr, self.keyspace_holder.clone()).await?);
+        startup(&transport, &self.auth, self.keyspace_holder.deref()).await?;
 
         Ok(transport)
     }
@@ -86,9 +91,10 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for TcpConnectio
     }
 }
 
-pub async fn startup<'b, T: CDRSTransport + Unpin + 'static, A: Authenticator + 'static + Sized>(
+pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'static + Sized>(
     transport: &Mutex<T>,
-    session_authenticator: &'b A,
+    session_authenticator: &A,
+    keyspace_holder: &KeyspaceHolder,
 ) -> error::Result<()> {
     let ref mut compression = Compression::None;
     let startup_frame = Frame::new_req_startup(compression.as_str()).into_cbytes();
@@ -104,7 +110,7 @@ pub async fn startup<'b, T: CDRSTransport + Unpin + 'static, A: Authenticator + 
     if start_response.opcode == Opcode::Authenticate {
         let body = start_response.get_body()?;
         let authenticator = body.get_authenticator().expect(
-            "Cassandra Server did communicate that it neededs
+            "Cassandra Server did communicate that it needed
                 authentication but the auth schema was missing in the body response",
         );
 
@@ -146,6 +152,23 @@ pub async fn startup<'b, T: CDRSTransport + Unpin + 'static, A: Authenticator + 
                 .as_slice(),
         ).await?;
         parse_frame(transport, compression).await?;
+
+        if let Some(current_keyspace) = keyspace_holder.current_keyspace().await {
+            let use_frame = Frame::new_req_query(
+                format!("USE {}", current_keyspace),
+                Default::default(),
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Default::default(),
+            );
+
+            transport.lock().await.write(use_frame.into_cbytes().as_slice()).await?;
+            parse_frame(transport, compression).await?;
+        }
 
         return Ok(());
     }

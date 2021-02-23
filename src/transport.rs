@@ -1,7 +1,7 @@
 //!This module contains a declaration of `CDRSTransport` trait which should be implemented
-//!for particular transport in order to be able using it as a trasport of CDRS client.
+//!for particular transport in order to be able using it as a transport of CDRS client.
 //!
-//!Curently CDRS provides to concrete transports which implement `CDRSTranpsport` trait. There
+//!Currently CDRS provides to concrete transports which implement `CDRSTranpsport` trait. There
 //! are:
 //!
 //! * [`TransportTcp`][tTcp] is default TCP transport which is usually used to establish
@@ -9,8 +9,7 @@
 //!
 //! * `TransportTls` is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
-//!with `ssl` feature.
-#[cfg(feature = "rust-tls")]
+//!with `rust-tls` feature.
 use std::sync::Arc;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::{TlsConnector as RustlsConnector, client::TlsStream as RustlsStream};
@@ -23,7 +22,9 @@ use std::net;
 use tokio::net::TcpStream;
 use async_trait::async_trait;
 
-// TODO [v 2.x.x]: CDRSTransport: ... + BufReader + ButWriter + ...
+use crate::cluster::KeyspaceHolder;
+
+// TODO [v x.x.x]: CDRSTransport: ... + BufReader + ButWriter + ...
 ///General CDRS transport trait. Both [`TranportTcp`][transportTcp]
 ///and [`TransportTls`][transportTls] has their own implementations of this trait. Generaly
 ///speaking it extends/includes `io::Read` and `io::Write` traits and should be thread safe.
@@ -43,12 +44,16 @@ pub trait CDRSTransport: Sized + AsyncRead + AsyncWriteExt + Send + Sync {
 
     /// Method that checks that transport is alive
     fn is_alive(&self) -> bool;
+
+    /// Sets last USEd keyspace for further connections from the same pool
+    async fn set_current_keyspace(&self, keyspace: &str);
 }
 
 /// Default Tcp transport.
 pub struct TransportTcp {
     tcp: TcpStream,
     addr: String,
+    keyspace_holder: Arc<KeyspaceHolder>,
 }
 
 impl TransportTcp {
@@ -62,13 +67,14 @@ impl TransportTcp {
     /// #[tokio::main]
     /// async fn main() {
     ///     let addr = "127.0.0.1:9042";
-    ///     let tcp_transport = TransportTcp::new(addr).await.unwrap();
+    ///     let tcp_transport = TransportTcp::new(addr, Default::default()).await.unwrap();
     /// }
     /// ```
-    pub async fn new(addr: &str) -> io::Result<TransportTcp> {
+    pub async fn new(addr: &str, keyspace_holder: Arc<KeyspaceHolder>) -> io::Result<TransportTcp> {
         TcpStream::connect(addr).await.map(|socket| TransportTcp {
             tcp: socket,
             addr: addr.to_string(),
+            keyspace_holder,
         })
     }
 }
@@ -99,6 +105,7 @@ impl CDRSTransport for TransportTcp {
         TcpStream::connect(self.addr.as_str()).await.map(|socket| TransportTcp {
             tcp: socket,
             addr: self.addr.clone(),
+            keyspace_holder: self.keyspace_holder.clone(),
         })
     }
 
@@ -109,6 +116,10 @@ impl CDRSTransport for TransportTcp {
     fn is_alive(&self) -> bool {
         self.tcp.peer_addr().is_ok()
     }
+
+    async fn set_current_keyspace(&self, keyspace: &str) {
+        self.keyspace_holder.set_current_keyspace(keyspace).await;
+    }
 }
 
 #[cfg(feature = "rust-tls")]
@@ -117,12 +128,13 @@ pub struct TransportRustls {
     config: Arc<rustls::ClientConfig>,
     addr: net::SocketAddr,
     dns_name: webpki::DNSName,
+    keyspace_holder: Arc<KeyspaceHolder>,
 }
 
 #[cfg(feature = "rust-tls")]
 impl TransportRustls {
     ///Creates new instance with provided configuration
-    pub async fn new(addr: net::SocketAddr, dns_name: webpki::DNSName, config: Arc<rustls::ClientConfig>) -> io::Result<Self> {
+    pub async fn new(addr: net::SocketAddr, dns_name: webpki::DNSName, config: Arc<rustls::ClientConfig>, keyspace_holder: Arc<KeyspaceHolder>) -> io::Result<Self> {
         let stream = TcpStream::connect(addr).await?;
         let connector = RustlsConnector::from(config.clone());
         let stream = connector.connect(dns_name.as_ref(), stream).await?;
@@ -132,6 +144,7 @@ impl TransportRustls {
             config,
             addr,
             dns_name,
+            keyspace_holder,
         })
     }
 }
@@ -167,7 +180,7 @@ impl AsyncWrite for TransportRustls {
 impl CDRSTransport for TransportRustls {
     #[inline]
     async fn try_clone(&self) -> io::Result<Self> {
-        Self::new(self.addr, self.dns_name.clone(), self.config.clone()).await
+        Self::new(self.addr, self.dns_name.clone(), self.config.clone(), self.keyspace_holder.clone()).await
     }
 
     async fn close(&mut self, _close: net::Shutdown) -> io::Result<()> {
@@ -176,5 +189,9 @@ impl CDRSTransport for TransportRustls {
 
     fn is_alive(&self) -> bool {
         self.inner.get_ref().0.peer_addr().is_ok()
+    }
+
+    async fn set_current_keyspace(&self, keyspace: &str) {
+        self.keyspace_holder.set_current_keyspace(keyspace).await;
     }
 }
