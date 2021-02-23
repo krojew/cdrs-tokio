@@ -39,6 +39,20 @@ static STREAM_ID: AtomicI16 = AtomicI16::new(0);
 
 pub type StreamId = i16;
 
+fn get_next_stream_id() -> StreamId {
+    loop {
+        let stream = STREAM_ID.fetch_add(1, Ordering::SeqCst);
+        if stream < 0 {
+            match STREAM_ID.compare_exchange_weak(stream, 0, Ordering::SeqCst, Ordering::Relaxed) {
+                Ok(_) => return 0,
+                Err(_) => continue,
+            }
+        }
+
+        return stream;
+    }
+}
+
 #[derive(Debug)]
 pub struct Frame {
     pub version: Version,
@@ -59,12 +73,7 @@ impl Frame {
         tracing_id: Option<Uuid>,
         warnings: Vec<String>,
     ) -> Self {
-        let mut stream = STREAM_ID.fetch_add(1, Ordering::SeqCst);
-        if stream < 0 {
-            STREAM_ID.store(0, Ordering::SeqCst);
-            stream = STREAM_ID.load(Ordering::SeqCst);
-        }
-
+        let stream = get_next_stream_id();
         Frame {
             version,
             flags,
