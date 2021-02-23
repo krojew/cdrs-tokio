@@ -29,7 +29,9 @@ pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSessi
     let node = NodeTcpConfigBuilder::new(ADDR, NoneAuthenticator {}).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(&cluster_config, lb).await.expect("session should be created");
+    let session = new_session(&cluster_config, lb)
+        .await
+        .expect("session should be created");
     let re_table_name = Regex::new(r"CREATE TABLE IF NOT EXISTS (\w+\.\w+)").unwrap();
 
     let create_keyspace_query = "CREATE KEYSPACE IF NOT EXISTS cdrs_test WITH \

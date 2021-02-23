@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
+use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 
 use chrono::prelude::*;
 use time::PrimitiveDateTime;

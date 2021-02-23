@@ -9,7 +9,10 @@ use tokio::{io::AsyncWriteExt, sync::Mutex};
 use crate::cluster::NodeTcpConfig;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::{new_rustls_pool, ClusterRustlsConfig, RustlsConnectionPool};
-use crate::cluster::{new_tcp_pool, startup, CDRSSession, ClusterTcpConfig, ConnectionPool, GetCompressor, GetConnection, TcpConnectionPool, ResponseCache, KeyspaceHolder};
+use crate::cluster::{
+    new_tcp_pool, startup, CDRSSession, ClusterTcpConfig, ConnectionPool, GetCompressor,
+    GetConnection, KeyspaceHolder, ResponseCache, TcpConnectionPool,
+};
 use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::transport::{CDRSTransport, TransportTcp};
@@ -92,10 +95,7 @@ impl<
             }
         }
 
-        self.load_balancing
-            .lock()
-            .await
-            .next()
+        self.load_balancing.lock().await.next()
     }
 }
 
@@ -149,7 +149,10 @@ impl<
 }
 
 #[async_trait]
-impl <LB> ResponseCache for Session<LB> where LB: Send {
+impl<LB> ResponseCache for Session<LB>
+where
+    LB: Send,
+{
     async fn match_or_cache_response(&self, stream_id: i16, frame: Frame) -> Option<Frame> {
         if frame.stream == stream_id {
             return Some(frame);
@@ -168,9 +171,9 @@ async fn connect_tls_static<A, LB>(
     mut load_balancing: LB,
     compression: Compression,
 ) -> error::Result<Session<LB>>
-    where
-        A: Authenticator + 'static + Sized,
-        LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+where
+    A: Authenticator + 'static + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
 
@@ -196,9 +199,9 @@ async fn connect_tls_dynamic<A, LB>(
     compression: Compression,
     event_src: NodeTcpConfig<'_, A>,
 ) -> error::Result<Session<LB>>
-    where
-        A: Authenticator + 'static + Sized,
-        LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+where
+    A: Authenticator + 'static + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
 
@@ -216,11 +219,13 @@ async fn connect_tls_dynamic<A, LB>(
         compression,
     };
 
-    let (listener, event_stream) = session.listen_non_blocking(
-        event_src.addr,
-        event_src.authenticator,
-        vec![SimpleServerEvent::StatusChange],
-    ).await?;
+    let (listener, event_stream) = session
+        .listen_non_blocking(
+            event_src.addr,
+            event_src.authenticator,
+            vec![SimpleServerEvent::StatusChange],
+        )
+        .await?;
 
     tokio::spawn(listener.start(&Compression::None));
 
@@ -282,11 +287,13 @@ where
         compression,
     };
 
-    let (listener, event_stream) = session.listen_non_blocking(
-        event_src.addr,
-        event_src.authenticator,
-        vec![SimpleServerEvent::StatusChange],
-    ).await?;
+    let (listener, event_stream) = session
+        .listen_non_blocking(
+            event_src.addr,
+            event_src.authenticator,
+            vec![SimpleServerEvent::StatusChange],
+        )
+        .await?;
 
     tokio::spawn(listener.start(&Compression::None));
 
@@ -524,7 +531,9 @@ impl<'a, L> Session<L> {
     ) -> error::Result<(Listener<Mutex<TransportTcp>>, EventStream)> {
         let compression = self.get_compressor();
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
-        let transport = TransportTcp::new(&node, keyspace_holder.clone()).await.map(Mutex::new)?;
+        let transport = TransportTcp::new(&node, keyspace_holder.clone())
+            .await
+            .map(Mutex::new)?;
 
         startup(&transport, &authenticator, keyspace_holder.deref()).await?;
 

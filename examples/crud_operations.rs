@@ -25,8 +25,9 @@ async fn main() {
     let auth = StaticPasswordAuthenticator::new(&user, &password);
     let node = NodeTcpConfigBuilder::new("localhost:9042", auth).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
-    let mut no_compression: CurrentSession =
-        new_session(&cluster_config, RoundRobin::new()).await.expect("session should be created");
+    let mut no_compression: CurrentSession = new_session(&cluster_config, RoundRobin::new())
+        .await
+        .expect("session should be created");
 
     create_keyspace(&mut no_compression).await;
     create_udt(&mut no_compression).await;
@@ -59,7 +60,10 @@ struct User {
 async fn create_keyspace(session: &mut CurrentSession) {
     let create_ks: &'static str = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
                                    'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
-    session.query(create_ks).await.expect("Keyspace creation error");
+    session
+        .query(create_ks)
+        .await
+        .expect("Keyspace creation error");
 }
 
 async fn create_udt(session: &mut CurrentSession) {

@@ -27,8 +27,7 @@ macro_rules! query_values {
 
 macro_rules! builder_opt_field {
     ($field:ident, $field_type:ty) => {
-        pub fn $field(mut self,
-                          $field: $field_type) -> Self {
+        pub fn $field(mut self, $field: $field_type) -> Self {
             self.$field = Some($field);
             self
         }
@@ -245,11 +244,20 @@ macro_rules! as_rust_type {
     };
     ($data_type_option:ident, $data_value:ident, NonZeroI64) => {
         match $data_type_option.id {
-            ColType::Bigint => as_res_opt!($data_value, decode_bigint).map(|value| value.and_then(NonZeroI64::new)),
-            ColType::Timestamp => as_res_opt!($data_value, decode_timestamp).map(|value| value.and_then(NonZeroI64::new)),
-            ColType::Time => as_res_opt!($data_value, decode_time).map(|value| value.and_then(NonZeroI64::new)),
-            ColType::Varint => as_res_opt!($data_value, decode_varint).map(|value| value.and_then(NonZeroI64::new)),
-            ColType::Counter => as_res_opt!($data_value, decode_bigint).map(|value| value.and_then(NonZeroI64::new)),
+            ColType::Bigint => {
+                as_res_opt!($data_value, decode_bigint).map(|value| value.and_then(NonZeroI64::new))
+            }
+            ColType::Timestamp => as_res_opt!($data_value, decode_timestamp)
+                .map(|value| value.and_then(NonZeroI64::new)),
+            ColType::Time => {
+                as_res_opt!($data_value, decode_time).map(|value| value.and_then(NonZeroI64::new))
+            }
+            ColType::Varint => {
+                as_res_opt!($data_value, decode_varint).map(|value| value.and_then(NonZeroI64::new))
+            }
+            ColType::Counter => {
+                as_res_opt!($data_value, decode_bigint).map(|value| value.and_then(NonZeroI64::new))
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
@@ -260,8 +268,12 @@ macro_rules! as_rust_type {
     };
     ($data_type_option:ident, $data_value:ident, NonZeroI32) => {
         match $data_type_option.id {
-            ColType::Int => as_res_opt!($data_value, decode_int).map(|value| value.and_then(NonZeroI32::new)),
-            ColType::Date => as_res_opt!($data_value, decode_date).map(|value| value.and_then(NonZeroI32::new)),
+            ColType::Int => {
+                as_res_opt!($data_value, decode_int).map(|value| value.and_then(NonZeroI32::new))
+            }
+            ColType::Date => {
+                as_res_opt!($data_value, decode_date).map(|value| value.and_then(NonZeroI32::new))
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i32 (valid types: Int, Date).",
@@ -271,7 +283,8 @@ macro_rules! as_rust_type {
     };
     ($data_type_option:ident, $data_value:ident, NonZeroI16) => {
         match $data_type_option.id {
-            ColType::Smallint => as_res_opt!($data_value, decode_smallint).map(|value| value.and_then(NonZeroI16::new)),
+            ColType::Smallint => as_res_opt!($data_value, decode_smallint)
+                .map(|value| value.and_then(NonZeroI16::new)),
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i16 (valid types: Smallint).",
@@ -281,7 +294,9 @@ macro_rules! as_rust_type {
     };
     ($data_type_option:ident, $data_value:ident, NonZeroI8) => {
         match $data_type_option.id {
-            ColType::Tinyint => as_res_opt!($data_value, decode_tinyint).map(|value| value.and_then(NonZeroI8::new)),
+            ColType::Tinyint => {
+                as_res_opt!($data_value, decode_tinyint).map(|value| value.and_then(NonZeroI8::new))
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i8 (valid types: Tinyint).",
@@ -400,8 +415,9 @@ macro_rules! as_rust_type {
             ColType::Timestamp => match $data_value.as_slice() {
                 Some(ref bytes) => decode_timestamp(bytes)
                     .map(|ts| {
-                        let unix_epoch = time::date!(1970-01-01).midnight();
-                        let tm = unix_epoch + time::Duration::new(ts / 1_000, (ts % 1_000 * 1_000_000) as i32);
+                        let unix_epoch = time::date!(1970 - 01 - 01).midnight();
+                        let tm = unix_epoch
+                            + time::Duration::new(ts / 1_000, (ts % 1_000 * 1_000_000) as i32);
                         Some(tm)
                     })
                     .map_err(Into::into),
@@ -449,7 +465,13 @@ macro_rules! as_rust_type {
             ColType::Timestamp => match $data_value.as_slice() {
                 Some(ref bytes) => decode_timestamp(bytes)
                     .map(|ts| {
-                        Some(DateTime::from_utc(NaiveDateTime::from_timestamp_opt(ts / 1000, (ts % 1000 * 1_000_000) as u32)?, Utc))
+                        Some(DateTime::from_utc(
+                            NaiveDateTime::from_timestamp_opt(
+                                ts / 1000,
+                                (ts % 1000 * 1_000_000) as u32,
+                            )?,
+                            Utc,
+                        ))
                     })
                     .map_err(Into::into),
                 None => Ok(None),

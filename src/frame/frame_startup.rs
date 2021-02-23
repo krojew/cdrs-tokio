@@ -58,7 +58,14 @@ impl Frame {
         let opcode = Opcode::Startup;
         let body = BodyReqStartup::new(compression);
 
-        Frame::new(version, vec![flag], opcode, body.into_cbytes(),  None, vec![])
+        Frame::new(
+            version,
+            vec![flag],
+            opcode,
+            body.into_cbytes(),
+            None,
+            vec![],
+        )
     }
 }
 

@@ -1,6 +1,6 @@
+use async_trait::async_trait;
 use bb8;
 use tokio::sync::Mutex;
-use async_trait::async_trait;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
@@ -59,7 +59,8 @@ pub trait QueryExecutor<
         Self: Sized,
     {
         let query_params = QueryParamsBuilder::new().finalize();
-        self.query_with_params_tw(query, query_params, with_tracing, with_warnings).await
+        self.query_with_params_tw(query, query_params, with_tracing, with_warnings)
+            .await
     }
 
     /// Executes a query with bounded values (either with or without names).
@@ -88,7 +89,8 @@ pub trait QueryExecutor<
     {
         let query_params_builder = QueryParamsBuilder::new();
         let query_params = query_params_builder.values(values.into()).finalize();
-        self.query_with_params_tw(query, query_params, with_tracing, with_warnings).await
+        self.query_with_params_tw(query, query_params, with_tracing, with_warnings)
+            .await
     }
 
     /// Executes a query with query params without warnings and tracing.
@@ -100,6 +102,7 @@ pub trait QueryExecutor<
     where
         Self: Sized,
     {
-        self.query_with_params_tw(query, query_params, false, false).await
+        self.query_with_params_tw(query, query_params, false, false)
+            .await
     }
 }

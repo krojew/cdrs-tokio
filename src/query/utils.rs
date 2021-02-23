@@ -2,10 +2,10 @@ use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
-use crate::frame::parser::from_connection;
-use crate::frame::{Flag, Frame, StreamId, Opcode, FromBytes};
-use crate::transport::CDRSTransport;
 use crate::frame::frame_result::ResultKind;
+use crate::frame::parser::from_connection;
+use crate::frame::{Flag, Frame, FromBytes, Opcode, StreamId};
+use crate::transport::CDRSTransport;
 use crate::types::INT_LEN;
 
 pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
@@ -22,7 +22,11 @@ pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
     flags
 }
 
-pub async fn send_frame<S, T, M>(sender: &S, frame_bytes: Vec<u8>, stream_id: StreamId) -> error::Result<Frame>
+pub async fn send_frame<S, T, M>(
+    sender: &S,
+    frame_bytes: Vec<u8>,
+    stream_id: StreamId,
+) -> error::Result<Frame>
 where
     S: GetConnection<T, M> + GetCompressor<'static> + ResponseCache + Sized,
     T: CDRSTransport + Unpin + 'static,
@@ -41,8 +45,7 @@ where
         .await
         .map_err(|error| error::Error::from(error.to_string()))?;
 
-    pool
-        .lock()
+    pool.lock()
         .await
         .write_all(frame_bytes.as_slice())
         .await
@@ -57,10 +60,14 @@ where
                 let result_kind = ResultKind::from_bytes(&frame.body[..INT_LEN])?;
                 if result_kind == ResultKind::SetKeyspace {
                     let response_body = frame.get_body()?;
-                    let set_keyspace = response_body.into_set_keyspace().expect("SetKeyspace not found with SetKeyspace opcode!");
+                    let set_keyspace = response_body
+                        .into_set_keyspace()
+                        .expect("SetKeyspace not found with SetKeyspace opcode!");
 
                     let transport = pool.lock().await;
-                    transport.set_current_keyspace(set_keyspace.body.as_str()).await;
+                    transport
+                        .set_current_keyspace(set_keyspace.body.as_str())
+                        .await;
                 }
             }
 

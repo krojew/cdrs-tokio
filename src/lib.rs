@@ -7,8 +7,8 @@ pub mod macros;
 
 #[macro_use]
 extern crate log;
-extern crate lz4_compress;
 extern crate bb8;
+extern crate lz4_compress;
 extern crate rand;
 extern crate time;
 extern crate uuid;

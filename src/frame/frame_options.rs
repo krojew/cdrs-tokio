@@ -20,7 +20,14 @@ impl Frame {
         let opcode = Opcode::Options;
         let body: BodyReqOptions = Default::default();
 
-        Frame::new(version, vec![flag], opcode, body.into_cbytes(), None, vec![])
+        Frame::new(
+            version,
+            vec![flag],
+            opcode,
+            body.into_cbytes(),
+            None,
+            vec![],
+        )
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::consistency::Consistency;
 use crate::error::{Error as CError, Result as CResult};
 use crate::frame::frame_batch::{BatchQuery, BatchQuerySubj, BatchType, BodyReqBatch};
-use crate::query::{QueryFlags, QueryValues, PreparedQuery};
+use crate::query::{PreparedQuery, QueryFlags, QueryValues};
 use crate::types::CStringLong;
 
 pub type QueryBatch = BodyReqBatch;

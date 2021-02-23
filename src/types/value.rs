@@ -4,7 +4,7 @@ use std::convert::Into;
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::net::IpAddr;
-use std::num::{NonZeroI16, NonZeroI8, NonZeroI32, NonZeroI64};
+use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 
 use chrono::prelude::*;
 use uuid::Uuid;
@@ -232,7 +232,8 @@ impl Into<Bytes> for f64 {
 
 impl Into<Bytes> for PrimitiveDateTime {
     fn into(self) -> Bytes {
-        let ts: i64 = self.assume_utc().unix_timestamp() * 1_000 + self.nanosecond() as i64 / 1_000_000;
+        let ts: i64 =
+            self.assume_utc().unix_timestamp() * 1_000 + self.nanosecond() as i64 / 1_000_000;
         Bytes(to_bigint(ts))
     }
 }

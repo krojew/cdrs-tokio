@@ -14,7 +14,9 @@ async fn main() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let no_compression = new_session(&cluster_config, lb).await.expect("session should be created");
+    let no_compression = new_session(&cluster_config, lb)
+        .await
+        .expect("session should be created");
 
     let (listener, stream) = no_compression
         .listen(

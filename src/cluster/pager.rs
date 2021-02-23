@@ -1,6 +1,6 @@
 use bb8;
-use tokio::sync::Mutex;
 use std::marker::PhantomData;
+use tokio::sync::Mutex;
 
 use crate::cluster::CDRSSession;
 use crate::consistency::Consistency;

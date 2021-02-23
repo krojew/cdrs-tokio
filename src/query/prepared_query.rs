@@ -11,7 +11,12 @@ pub struct PreparedQuery {
 impl Clone for PreparedQuery {
     fn clone(&self) -> Self {
         PreparedQuery {
-            id: RwLock::new(self.id.read().expect("Cannot read prepared query id!").clone()),
+            id: RwLock::new(
+                self.id
+                    .read()
+                    .expect("Cannot read prepared query id!")
+                    .clone(),
+            ),
             query: self.query.clone(),
         }
     }

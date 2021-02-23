@@ -1,6 +1,6 @@
-use tokio::sync::Mutex;
 use std::iter::Iterator;
 use std::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::Mutex;
 
 use crate::compression::Compression;
 use crate::error;
@@ -31,10 +31,7 @@ pub type SchemaChange = FrameSchemaChange;
 /// It is similar to `Receiver::iter`.
 pub fn new_listener<X>(transport: X) -> (Listener<X>, EventStream) {
     let (tx, rx) = channel();
-    let listener = Listener {
-        transport,
-        tx,
-    };
+    let listener = Listener { transport, tx };
     let stream = EventStream { rx };
     (listener, stream)
 }

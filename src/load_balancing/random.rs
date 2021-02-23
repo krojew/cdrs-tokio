@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use rand;
+use std::sync::Arc;
 
 use super::LoadBalancingStrategy;
 
@@ -27,7 +27,10 @@ impl<N> From<Vec<Arc<N>>> for Random<N> {
     }
 }
 
-impl<N> LoadBalancingStrategy<N> for Random<N> where N: Sync {
+impl<N> LoadBalancingStrategy<N> for Random<N>
+where
+    N: Sync,
+{
     fn init(&mut self, cluster: Vec<Arc<N>>) {
         self.cluster = cluster;
     }
@@ -38,7 +41,9 @@ impl<N> LoadBalancingStrategy<N> for Random<N> where N: Sync {
         if len == 0 {
             return None;
         }
-        self.cluster.get(Self::rnd_idx((0, len))).map(|node| node.clone())
+        self.cluster
+            .get(Self::rnd_idx((0, len)))
+            .map(|node| node.clone())
     }
 
     fn remove_node<F>(&mut self, mut filter: F)
@@ -58,7 +63,12 @@ mod tests {
     #[test]
     fn next_random() {
         let nodes = vec!["a", "b", "c", "d", "e", "f", "g"];
-        let load_balancer = Random::from(nodes.iter().map(|value| Arc::new(*value)).collect::<Vec<Arc<&str>>>());
+        let load_balancer = Random::from(
+            nodes
+                .iter()
+                .map(|value| Arc::new(*value))
+                .collect::<Vec<Arc<&str>>>(),
+        );
         for _ in 0..100 {
             let s = load_balancer.next();
             assert!(s.is_some());
@@ -68,7 +78,12 @@ mod tests {
     #[test]
     fn remove_from_random() {
         let nodes = vec!["a"];
-        let mut load_balancer = Random::from(nodes.iter().map(|value| Arc::new(*value)).collect::<Vec<Arc<&str>>>());
+        let mut load_balancer = Random::from(
+            nodes
+                .iter()
+                .map(|value| Arc::new(*value))
+                .collect::<Vec<Arc<&str>>>(),
+        );
 
         let s = load_balancer.next();
         assert!(s.is_some());

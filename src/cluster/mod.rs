@@ -1,22 +1,25 @@
-use bb8;
 use async_trait::async_trait;
-use tokio::sync::Mutex;
+use bb8;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 #[cfg(feature = "rust-tls")]
 mod config_rustls;
 mod config_tcp;
 mod generic_connection_pool;
+mod keyspace_holder;
 mod pager;
-pub mod session;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_pool;
+pub mod session;
 mod tcp_connection_pool;
-mod keyspace_holder;
 
 #[cfg(feature = "rust-tls")]
-pub use crate::cluster::config_rustls::{ClusterRustlsConfig, NodeRustlsConfig, NodeRustlsConfigBuilder};
+pub use crate::cluster::config_rustls::{
+    ClusterRustlsConfig, NodeRustlsConfig, NodeRustlsConfigBuilder,
+};
 pub use crate::cluster::config_tcp::{ClusterTcpConfig, NodeTcpConfig, NodeTcpConfigBuilder};
+pub use crate::cluster::keyspace_holder::KeyspaceHolder;
 pub use crate::cluster::pager::{PagerState, QueryPager, SessionPager};
 #[cfg(feature = "rust-tls")]
 pub use crate::cluster::rustls_connection_pool::{
@@ -25,14 +28,13 @@ pub use crate::cluster::rustls_connection_pool::{
 pub use crate::cluster::tcp_connection_pool::{
     new_tcp_pool, startup, TcpConnectionPool, TcpConnectionsManager,
 };
-pub use crate::cluster::keyspace_holder::KeyspaceHolder;
 pub(crate) use generic_connection_pool::ConnectionPool;
 
 use crate::compression::Compression;
 use crate::error;
+use crate::frame::{Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::transport::CDRSTransport;
-use crate::frame::{Frame, StreamId};
 
 /// `GetConnection` trait provides a unified interface for Session to get a connection
 /// from a load balancer

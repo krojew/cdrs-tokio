@@ -31,7 +31,9 @@ async fn main() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let mut no_compression = new_session(&cluster_config, lb).await.expect("session should be created");
+    let mut no_compression = new_session(&cluster_config, lb)
+        .await
+        .expect("session should be created");
 
     create_keyspace(&mut no_compression).await;
     create_table(&mut no_compression).await;
@@ -54,7 +56,10 @@ async fn main() {
 async fn create_keyspace(session: &mut CurrentSession) {
     let create_ks: &'static str = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
                                    'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
-    session.query(create_ks).await.expect("Keyspace creation error");
+    session
+        .query(create_ks)
+        .await
+        .expect("Keyspace creation error");
 }
 
 async fn create_table(session: &mut CurrentSession) {
@@ -84,5 +89,8 @@ async fn batch_few_queries(session: &mut CurrentSession, query: &str) {
         .finalize()
         .expect("batch builder");
 
-    session.batch_with_params(batch).await.expect("batch query error");
+    session
+        .batch_with_params(batch)
+        .await
+        .expect("batch query error");
 }

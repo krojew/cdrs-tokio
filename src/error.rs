@@ -56,7 +56,7 @@ impl error::Error for Error {
             Error::UUIDParse(ref e) => Some(e),
             Error::FromUtf8(ref e) => Some(e),
             Error::Compression(ref e) => Some(e),
-            _ => None
+            _ => None,
         }
     }
 }

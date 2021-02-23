@@ -28,7 +28,14 @@ impl Frame {
         let opcode = Opcode::AuthResponse;
         let body = BodyReqAuthResponse::new(token_bytes);
 
-        Frame::new(version, vec![flag], opcode, body.into_cbytes(), None, vec![])
+        Frame::new(
+            version,
+            vec![flag],
+            opcode,
+            body.into_cbytes(),
+            None,
+            vec![],
+        )
     }
 }
 

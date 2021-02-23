@@ -8,8 +8,8 @@ use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
 use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::{Frame, IntoBytes};
-use crate::transport::CDRSTransport;
 use crate::query::PreparedQuery;
+use crate::transport::CDRSTransport;
 
 use super::utils::{prepare_flags, send_frame};
 
@@ -48,7 +48,10 @@ pub trait PrepareExecutor<
 
     /// It prepares query without additional tracing information and warnings.
     /// Return the raw prepared query result.
-    async fn prepare_raw<Q: ToString + Sync + Send>(&self, query: Q) -> error::Result<BodyResResultPrepared>
+    async fn prepare_raw<Q: ToString + Sync + Send>(
+        &self,
+        query: Q,
+    ) -> error::Result<BodyResResultPrepared>
     where
         Self: Sized,
     {
@@ -69,8 +72,12 @@ pub trait PrepareExecutor<
         Self: Sized,
     {
         let s = query.to_string();
-        self.prepare_raw_tw(query, with_tracing, with_warnings).await
-            .map(|x| PreparedQuery { id: RwLock::new(x.id), query: s })
+        self.prepare_raw_tw(query, with_tracing, with_warnings)
+            .await
+            .map(|x| PreparedQuery {
+                id: RwLock::new(x.id),
+                query: s,
+            })
     }
 
     /// It prepares query without additional tracing information and warnings.

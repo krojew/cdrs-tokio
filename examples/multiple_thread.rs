@@ -7,9 +7,9 @@ use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
 
 use cdrs_tokio::frame::IntoBytes;
+use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::types::from_cdrs::FromCDRSByName;
 use cdrs_tokio::types::prelude::*;
-use cdrs_tokio::load_balancing::RoundRobin;
 
 use cdrs_tokio_helpers_derive::*;
 
@@ -20,15 +20,19 @@ async fn main() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let no_compression: Arc<CurrentSession> =
-        Arc::new(new_session(&cluster_config, lb).await.expect("session should be created"));
+    let no_compression: Arc<CurrentSession> = Arc::new(
+        new_session(&cluster_config, lb)
+            .await
+            .expect("session should be created"),
+    );
 
     create_keyspace(no_compression.clone()).await;
     create_table(no_compression.clone()).await;
 
     for i in 0..20 {
         let thread_session = no_compression.clone();
-        tokio::spawn(insert_struct(thread_session, i)).await
+        tokio::spawn(insert_struct(thread_session, i))
+            .await
             .expect("thread error");
     }
 
@@ -54,7 +58,10 @@ struct User {
 async fn create_keyspace(session: Arc<CurrentSession>) {
     let create_ks: &'static str = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
                                    'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
-    session.query(create_ks).await.expect("Keyspace creation error");
+    session
+        .query(create_ks)
+        .await
+        .expect("Keyspace creation error");
 }
 
 async fn create_table(session: Arc<CurrentSession>) {

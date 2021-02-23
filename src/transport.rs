@@ -10,17 +10,17 @@
 //! * `TransportTls` is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
-use std::sync::Arc;
-#[cfg(feature = "rust-tls")]
-use tokio_rustls::{TlsConnector as RustlsConnector, client::TlsStream as RustlsStream};
+use async_trait::async_trait;
 use std::io;
-use tokio::io::{AsyncWriteExt, AsyncWrite, AsyncRead, ReadBuf};
-use std::task::Context;
-use tokio::macros::support::{Pin, Poll};
 use std::io::Error;
 use std::net;
+use std::sync::Arc;
+use std::task::Context;
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::macros::support::{Pin, Poll};
 use tokio::net::TcpStream;
-use async_trait::async_trait;
+#[cfg(feature = "rust-tls")]
+use tokio_rustls::{client::TlsStream as RustlsStream, TlsConnector as RustlsConnector};
 
 use crate::cluster::KeyspaceHolder;
 
@@ -80,13 +80,21 @@ impl TransportTcp {
 }
 
 impl AsyncRead for TransportTcp {
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         Pin::new(&mut self.tcp).poll_read(cx, buf)
     }
 }
 
 impl AsyncWrite for TransportTcp {
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, Error>> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, Error>> {
         Pin::new(&mut self.tcp).poll_write(cx, buf)
     }
 
@@ -102,11 +110,13 @@ impl AsyncWrite for TransportTcp {
 #[async_trait]
 impl CDRSTransport for TransportTcp {
     async fn try_clone(&self) -> io::Result<TransportTcp> {
-        TcpStream::connect(self.addr.as_str()).await.map(|socket| TransportTcp {
-            tcp: socket,
-            addr: self.addr.clone(),
-            keyspace_holder: self.keyspace_holder.clone(),
-        })
+        TcpStream::connect(self.addr.as_str())
+            .await
+            .map(|socket| TransportTcp {
+                tcp: socket,
+                addr: self.addr.clone(),
+                keyspace_holder: self.keyspace_holder.clone(),
+            })
     }
 
     async fn close(&mut self, _close: net::Shutdown) -> io::Result<()> {
@@ -134,7 +144,12 @@ pub struct TransportRustls {
 #[cfg(feature = "rust-tls")]
 impl TransportRustls {
     ///Creates new instance with provided configuration
-    pub async fn new(addr: net::SocketAddr, dns_name: webpki::DNSName, config: Arc<rustls::ClientConfig>, keyspace_holder: Arc<KeyspaceHolder>) -> io::Result<Self> {
+    pub async fn new(
+        addr: net::SocketAddr,
+        dns_name: webpki::DNSName,
+        config: Arc<rustls::ClientConfig>,
+        keyspace_holder: Arc<KeyspaceHolder>,
+    ) -> io::Result<Self> {
         let stream = TcpStream::connect(addr).await?;
         let connector = RustlsConnector::from(config.clone());
         let stream = connector.connect(dns_name.as_ref(), stream).await?;
@@ -152,7 +167,11 @@ impl TransportRustls {
 #[cfg(feature = "rust-tls")]
 impl AsyncRead for TransportRustls {
     #[inline]
-    fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
         Pin::new(&mut self.inner).poll_read(cx, buf)
     }
 }
@@ -160,7 +179,11 @@ impl AsyncRead for TransportRustls {
 #[cfg(feature = "rust-tls")]
 impl AsyncWrite for TransportRustls {
     #[inline]
-    fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<Result<usize, Error>> {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, Error>> {
         Pin::new(&mut self.inner).poll_write(cx, buf)
     }
 
@@ -180,7 +203,13 @@ impl AsyncWrite for TransportRustls {
 impl CDRSTransport for TransportRustls {
     #[inline]
     async fn try_clone(&self) -> io::Result<Self> {
-        Self::new(self.addr, self.dns_name.clone(), self.config.clone(), self.keyspace_holder.clone()).await
+        Self::new(
+            self.addr,
+            self.dns_name.clone(),
+            self.config.clone(),
+            self.keyspace_holder.clone(),
+        )
+        .await
     }
 
     async fn close(&mut self, _close: net::Shutdown) -> io::Result<()> {

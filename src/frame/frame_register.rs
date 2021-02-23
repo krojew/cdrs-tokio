@@ -30,6 +30,13 @@ impl Frame {
         let opcode = Opcode::Register;
         let register_body = BodyReqRegister { events: events };
 
-        Frame::new(version, vec![flag], opcode, register_body.into_cbytes(), None, vec![])
+        Frame::new(
+            version,
+            vec![flag],
+            opcode,
+            register_body.into_cbytes(),
+            None,
+            vec![],
+        )
     }
 }

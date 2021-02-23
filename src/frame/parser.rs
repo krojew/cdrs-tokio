@@ -11,7 +11,7 @@ use crate::frame::frame_response::ResponseBody;
 use crate::frame::FromCursor;
 use crate::transport::CDRSTransport;
 use crate::types::data_serialization_types::decode_timeuuid;
-use crate::types::{from_bytes, CStringList, UUID_LEN, from_i16_bytes};
+use crate::types::{from_bytes, from_i16_bytes, CStringList, UUID_LEN};
 
 pub async fn from_connection<M, T>(
     conn: &bb8::PooledConnection<'_, M>,
@@ -24,7 +24,13 @@ where
     parse_frame(conn.deref(), compressor).await
 }
 
-pub async fn parse_frame<T>(cursor_cell: &Mutex<T>, compressor: &Compression) -> error::Result<Frame> where T: AsyncRead + Unpin {
+pub async fn parse_frame<T>(
+    cursor_cell: &Mutex<T>,
+    compressor: &Compression,
+) -> error::Result<Frame>
+where
+    T: AsyncRead + Unpin,
+{
     let mut version_bytes = [0; Version::BYTE_LENGTH];
     let mut flag_bytes = [0; Flag::BYTE_LENGTH];
     let mut opcode_bytes = [0; Opcode::BYTE_LENGTH];

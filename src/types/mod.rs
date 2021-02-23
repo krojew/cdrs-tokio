@@ -557,7 +557,7 @@ impl CBytes {
     pub fn is_empty(&self) -> bool {
         match &self.bytes {
             None => true,
-            Some(bytes) => bytes.is_empty()
+            Some(bytes) => bytes.is_empty(),
         }
     }
 }

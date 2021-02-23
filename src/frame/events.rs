@@ -123,10 +123,7 @@ impl FromCursor for TopologyChange {
         let change_type = TopologyChangeType::from_cursor(&mut cursor)?;
         let addr = CInet::from_cursor(&mut cursor)?;
 
-        Ok(TopologyChange {
-            change_type,
-            addr,
-        })
+        Ok(TopologyChange { change_type, addr })
     }
 }
 
@@ -158,10 +155,7 @@ impl FromCursor for StatusChange {
         let change_type = StatusChangeType::from_cursor(&mut cursor)?;
         let addr = CInet::from_cursor(&mut cursor)?;
 
-        Ok(StatusChange {
-            change_type,
-            addr,
-        })
+        Ok(StatusChange { change_type, addr })
     }
 }
 

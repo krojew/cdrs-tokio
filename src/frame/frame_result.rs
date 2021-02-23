@@ -505,10 +505,7 @@ impl FromCursor for ColTypeOption {
             _ => None,
         };
 
-        Ok(ColTypeOption {
-            id,
-            value,
-        })
+        Ok(ColTypeOption { id, value })
     }
 }
 

@@ -1,6 +1,6 @@
 use core::time::Duration;
-use std::sync::Arc;
 use std::net;
+use std::sync::Arc;
 
 use crate::authenticators::Authenticator;
 
@@ -41,7 +41,12 @@ impl<A: Authenticator + Sized> NodeRustlsConfigBuilder<A> {
     /// `NodeRustlsConfigBuilder` constructor function. It receives
     /// * node socket address
     /// * authenticator
-    pub fn new(addr: net::SocketAddr, dns_name: webpki::DNSName, authenticator: A, config: Arc<rustls::ClientConfig>) -> Self {
+    pub fn new(
+        addr: net::SocketAddr,
+        dns_name: webpki::DNSName,
+        authenticator: A,
+        config: Arc<rustls::ClientConfig>,
+    ) -> Self {
         NodeRustlsConfigBuilder {
             addr,
             dns_name,

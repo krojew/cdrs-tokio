@@ -2,14 +2,14 @@ use async_trait::async_trait;
 use bb8::{Builder, ManageConnection, PooledConnection};
 use std::io;
 use std::net::ToSocketAddrs;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
-use std::sync::Arc;
 
 use crate::authenticators::Authenticator;
 use crate::cluster::ConnectionPool;
-use crate::cluster::NodeTcpConfig;
 use crate::cluster::KeyspaceHolder;
+use crate::cluster::NodeTcpConfig;
 use crate::compression::Compression;
 use crate::error;
 use crate::frame::parser::parse_frame;
@@ -72,7 +72,8 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for TcpConnectio
     type Error = error::Error;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
-        let transport = Mutex::new(TransportTcp::new(&self.addr, self.keyspace_holder.clone()).await?);
+        let transport =
+            Mutex::new(TransportTcp::new(&self.addr, self.keyspace_holder.clone()).await?);
         startup(&transport, &self.auth, self.keyspace_holder.deref()).await?;
 
         Ok(transport)
@@ -99,7 +100,11 @@ pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'sta
     let ref mut compression = Compression::None;
     let startup_frame = Frame::new_req_startup(compression.as_str()).into_cbytes();
 
-    transport.lock().await.write(startup_frame.as_slice()).await?;
+    transport
+        .lock()
+        .await
+        .write(startup_frame.as_slice())
+        .await?;
 
     let start_response = parse_frame(transport, compression).await?;
 
@@ -146,11 +151,15 @@ pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'sta
         }
 
         let auth_token_bytes = session_authenticator.get_auth_token();
-        transport.lock().await.write(
-            Frame::new_req_auth_response(auth_token_bytes)
-                .into_cbytes()
-                .as_slice(),
-        ).await?;
+        transport
+            .lock()
+            .await
+            .write(
+                Frame::new_req_auth_response(auth_token_bytes)
+                    .into_cbytes()
+                    .as_slice(),
+            )
+            .await?;
         parse_frame(transport, compression).await?;
 
         if let Some(current_keyspace) = keyspace_holder.current_keyspace().await {
@@ -166,7 +175,11 @@ pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'sta
                 Default::default(),
             );
 
-            transport.lock().await.write(use_frame.into_cbytes().as_slice()).await?;
+            transport
+                .lock()
+                .await
+                .write(use_frame.into_cbytes().as_slice())
+                .await?;
             parse_frame(transport, compression).await?;
         }
 

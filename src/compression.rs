@@ -15,7 +15,7 @@ use std::io;
 use std::result;
 
 use lz4_compress as lz4;
-use snap::raw::{Encoder, Decoder};
+use snap::raw::{Decoder, Encoder};
 
 type Result<T> = result::Result<T, CompressionError>;
 
@@ -46,7 +46,7 @@ impl Error for CompressionError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match *self {
             CompressionError::Snappy(ref err) => Some(err),
-            CompressionError::Lz4(ref err) => Some(err)
+            CompressionError::Lz4(ref err) => Some(err),
         }
     }
 }

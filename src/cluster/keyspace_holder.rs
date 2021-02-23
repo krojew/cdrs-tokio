@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 /// connections in the pool.
 #[derive(Default, Debug)]
 pub struct KeyspaceHolder {
-    current_keyspace: Mutex<Option<String>>
+    current_keyspace: Mutex<Option<String>>,
 }
 
 impl KeyspaceHolder {

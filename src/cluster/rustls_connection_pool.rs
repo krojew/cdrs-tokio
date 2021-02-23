@@ -6,14 +6,14 @@ use tokio::sync::Mutex;
 use std::net;
 use std::sync::Arc;
 
-use crate::cluster::{startup, NodeRustlsConfig, KeyspaceHolder};
 use crate::authenticators::Authenticator;
 use crate::cluster::ConnectionPool;
+use crate::cluster::{startup, KeyspaceHolder, NodeRustlsConfig};
 use crate::compression::Compression;
+use crate::error;
 use crate::frame::parser::parse_frame;
 use crate::frame::{Frame, IntoBytes};
 use crate::transport::TransportRustls;
-use crate::error;
 use std::ops::Deref;
 
 pub type RustlsConnectionPool<A> = ConnectionPool<RustlsConnectionsManager<A>>;
@@ -21,7 +21,9 @@ pub type RustlsConnectionPool<A> = ConnectionPool<RustlsConnectionsManager<A>>;
 /// `bb8::Pool` of SSL-based CDRS connections.
 ///
 /// Used internally for SSL Session for holding connections to a specific Cassandra node.
-pub async fn new_rustls_pool<A: Authenticator + Send + Sync + 'static>(node_config: NodeRustlsConfig<A>) -> error::Result<RustlsConnectionPool<A>> {
+pub async fn new_rustls_pool<A: Authenticator + Send + Sync + 'static>(
+    node_config: NodeRustlsConfig<A>,
+) -> error::Result<RustlsConnectionPool<A>> {
     let manager = RustlsConnectionsManager::new(
         node_config.addr,
         node_config.dns_name,
@@ -53,7 +55,12 @@ pub struct RustlsConnectionsManager<A> {
 
 impl<A> RustlsConnectionsManager<A> {
     #[inline]
-    pub fn new(addr: net::SocketAddr, dns_name: webpki::DNSName, config: Arc<rustls::ClientConfig>, auth: A) -> Self {
+    pub fn new(
+        addr: net::SocketAddr,
+        dns_name: webpki::DNSName,
+        config: Arc<rustls::ClientConfig>,
+        auth: A,
+    ) -> Self {
         Self {
             addr,
             dns_name,
@@ -70,7 +77,15 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for RustlsConnec
     type Error = error::Error;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
-        let transport = Mutex::new(TransportRustls::new(self.addr, self.dns_name.clone(), self.config.clone(), self.keyspace_holder.clone()).await?);
+        let transport = Mutex::new(
+            TransportRustls::new(
+                self.addr,
+                self.dns_name.clone(),
+                self.config.clone(),
+                self.keyspace_holder.clone(),
+            )
+            .await?,
+        );
         startup(&transport, &self.auth, self.keyspace_holder.deref()).await?;
 
         Ok(transport)

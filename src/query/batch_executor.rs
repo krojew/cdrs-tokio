@@ -1,6 +1,6 @@
+use async_trait::async_trait;
 use bb8;
 use tokio::sync::Mutex;
-use async_trait::async_trait;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
@@ -30,7 +30,7 @@ pub trait BatchExecutor<
 
         let query_frame = Frame::new_req_batch(batch, flags);
 
-        send_frame(self, query_frame.into_cbytes(), query_frame.stream ).await
+        send_frame(self, query_frame.into_cbytes(), query_frame.stream).await
     }
 
     async fn batch_with_params(&self, batch: QueryBatch) -> error::Result<Frame>
