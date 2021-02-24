@@ -172,7 +172,7 @@ async fn connect_tls_static<A, LB>(
     compression: Compression,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
@@ -200,7 +200,7 @@ async fn connect_tls_dynamic<A, LB>(
     event_src: NodeTcpConfig<'_, A>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
@@ -240,7 +240,7 @@ async fn connect_static<A, LB>(
     compression: Compression,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     let mut nodes: Vec<Arc<TcpConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
@@ -268,7 +268,7 @@ async fn connect_dynamic<'a, A, LB>(
     event_src: NodeTcpConfig<'a, A>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     let mut nodes: Vec<Arc<TcpConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
@@ -312,7 +312,7 @@ pub async fn new<A, LB>(
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     connect_static(node_configs, load_balancing, Compression::None).await
@@ -332,7 +332,7 @@ pub async fn new_dynamic<'a, A, LB>(
     event_src: NodeTcpConfig<'a, A>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     connect_dynamic(node_configs, load_balancing, Compression::None, event_src).await
@@ -348,7 +348,7 @@ pub async fn new_snappy<A, LB>(
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     connect_static(node_configs, load_balancing, Compression::Snappy).await
@@ -368,7 +368,7 @@ pub async fn new_snappy_dynamic<'a, A, LB>(
     event_src: NodeTcpConfig<'a, A>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     connect_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
@@ -384,7 +384,7 @@ pub async fn new_lz4<A, LB>(
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     connect_static(node_configs, load_balancing, Compression::Lz4).await
@@ -404,7 +404,7 @@ pub async fn new_lz4_dynamic<'a, A, LB>(
     event_src: NodeTcpConfig<'a, A>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
 {
     connect_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
@@ -421,7 +421,7 @@ pub async fn new_tls<A, LB>(
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     connect_tls_static(node_configs, load_balancing, Compression::None).await
@@ -441,7 +441,7 @@ pub async fn new_tls_dynamic<A, LB>(
     event_src: NodeTcpConfig<'_, A>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::None, event_src).await
@@ -458,7 +458,7 @@ pub async fn new_snappy_tls<A, LB>(
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     connect_tls_static(node_configs, load_balancing, Compression::Snappy).await
@@ -478,7 +478,7 @@ pub async fn new_snappy_tls_dynamic<A, LB>(
     event_src: NodeTcpConfig<'_, A>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
@@ -495,7 +495,7 @@ pub async fn new_lz4_tls<A, LB>(
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     connect_tls_static(node_configs, load_balancing, Compression::Lz4).await
@@ -515,7 +515,7 @@ pub async fn new_lz4_tls_dynamic<A, LB>(
     event_src: NodeTcpConfig<'_, A>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Sized,
+    A: Authenticator + 'static + Clone + Send + Sync,
     LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await

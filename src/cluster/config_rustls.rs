@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::authenticators::Authenticator;
 
 /// Cluster configuration that holds per node SSL configs
-pub struct ClusterRustlsConfig<A: Authenticator + Sized>(pub Vec<NodeRustlsConfig<A>>);
+pub struct ClusterRustlsConfig<A: Authenticator + Clone>(pub Vec<NodeRustlsConfig<A>>);
 
 /// Single node SSL connection config.
 #[derive(Clone)]

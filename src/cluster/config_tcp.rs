@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::authenticators::Authenticator;
 
 /// Cluster configuration that holds per node TCP configs
-pub struct ClusterTcpConfig<'a, A: Authenticator + Sized>(pub Vec<NodeTcpConfig<'a, A>>);
+pub struct ClusterTcpConfig<'a, A: Authenticator + Clone>(pub Vec<NodeTcpConfig<'a, A>>);
 
 /// Single node TCP connection config.
 #[derive(Clone)]

@@ -1,6 +1,6 @@
 use crate::types::CBytes;
 
-pub trait Authenticator: Clone + Send + Sync {
+pub trait Authenticator {
     fn get_auth_token(&self) -> CBytes;
     fn get_cassandra_name(&self) -> Option<&str>;
 }
