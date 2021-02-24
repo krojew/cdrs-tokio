@@ -259,7 +259,7 @@ async fn blob() {
         ("c".to_owned(), b"ccccc".to_vec().into()),
         ("d".to_owned(), b"ddddd".to_vec().into()),
     ]
-    .into_iter()
+    .iter()
     .map(|x| x.clone())
     .collect();
 
