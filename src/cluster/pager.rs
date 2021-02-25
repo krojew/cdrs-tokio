@@ -13,7 +13,7 @@ use crate::types::CBytes;
 
 pub struct SessionPager<
     'a,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
     S: CDRSSession<'static, T, M> + 'a,
     T: CDRSTransport + Unpin + 'static,
 > {
@@ -26,7 +26,7 @@ pub struct SessionPager<
 impl<
         'a,
         'b: 'a,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
         S: CDRSSession<'static, T, M>,
         T: CDRSTransport + Unpin + 'static,
     > SessionPager<'a, M, S, T>
@@ -124,7 +124,7 @@ impl<
         'a,
         Q: ToString,
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
         S: CDRSSession<'static, T, M> + Sync + Send,
     > QueryPager<'a, Q, SessionPager<'a, M, S, T>>
 {
@@ -180,7 +180,7 @@ pub struct ExecPager<'a, P: 'a> {
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
         S: CDRSSession<'static, T, M> + Sync + Send,
     > ExecPager<'a, SessionPager<'a, M, S, T>>
 {

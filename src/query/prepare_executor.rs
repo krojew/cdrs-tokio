@@ -16,7 +16,7 @@ use super::utils::{prepare_flags, send_frame};
 #[async_trait]
 pub trait PrepareExecutor<
     T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 >: GetConnection<T, M> + GetCompressor<'static> + ResponseCache + Sync
 {
     /// It prepares a query for execution, along with query itself the

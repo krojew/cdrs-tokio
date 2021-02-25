@@ -28,9 +28,9 @@ pub async fn send_frame<S, T, M>(
     stream_id: StreamId,
 ) -> error::Result<Frame>
 where
-    S: GetConnection<T, M> + GetCompressor<'static> + ResponseCache + Sized,
+    S: GetConnection<T, M> + GetCompressor<'static> + ResponseCache,
     T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 {
     let ref compression = sender.get_compressor();
 

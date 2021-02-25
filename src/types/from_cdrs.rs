@@ -18,7 +18,7 @@ pub trait FromCDRS {
     fn from_cdrs<T>(cdrs_type: T) -> CDRSResult<Option<Self>>
     where
         Self: Sized,
-        T: AsRustType<Self> + Sized,
+        T: AsRustType<Self>,
     {
         cdrs_type.as_rust_type()
     }
@@ -26,7 +26,7 @@ pub trait FromCDRS {
     fn from_cdrs_r<T>(cdrs_type: T) -> CDRSResult<Self>
     where
         Self: Sized,
-        T: AsRustType<Self> + Sized,
+        T: AsRustType<Self>,
     {
         cdrs_type.as_r_type()
     }
@@ -60,7 +60,7 @@ pub trait FromCDRSByName {
     fn from_cdrs_by_name<T>(cdrs_type: &T, name: &str) -> CDRSResult<Option<Self>>
     where
         Self: Sized,
-        T: ByName + IntoRustByName<Self> + Sized,
+        T: ByName + IntoRustByName<Self>,
     {
         cdrs_type.by_name(name)
     }
@@ -68,7 +68,7 @@ pub trait FromCDRSByName {
     fn from_cdrs_r<T>(cdrs_type: &T, name: &str) -> CDRSResult<Self>
     where
         Self: Sized,
-        T: ByName + IntoRustByName<Self> + Sized + ::std::fmt::Debug,
+        T: ByName + IntoRustByName<Self> + ::std::fmt::Debug,
     {
         cdrs_type.r_by_name(name)
     }

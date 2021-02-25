@@ -14,7 +14,7 @@ use super::utils::{prepare_flags, send_frame};
 #[async_trait]
 pub trait BatchExecutor<
     T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 >: GetConnection<T, M> + GetCompressor<'static> + ResponseCache + Sync
 {
     async fn batch_with_params_tw(

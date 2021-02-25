@@ -66,8 +66,8 @@ impl<'a, LB: Sized> Session<LB> {
 #[async_trait]
 impl<
         T: CDRSTransport + Send + Sync + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Sized + Send + Sync,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
     > GetConnection<T, M> for Session<LB>
 {
     async fn get_connection(&self) -> Option<Arc<ConnectionPool<M>>> {
@@ -103,8 +103,8 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Sized + Send + Sync,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
     > QueryExecutor<T, M> for Session<LB>
 {
 }
@@ -113,8 +113,8 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Sized + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
     > PrepareExecutor<T, M> for Session<LB>
 {
 }
@@ -123,8 +123,8 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Sized + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
     > ExecExecutor<T, M> for Session<LB>
 {
 }
@@ -133,8 +133,8 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Sized + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
     > BatchExecutor<T, M> for Session<LB>
 {
 }
@@ -142,8 +142,8 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Sized + Send + Sync,
+        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
     > CDRSSession<'a, T, M> for Session<LB>
 {
 }
@@ -173,7 +173,7 @@ async fn connect_tls_static<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
 {
     let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
 
@@ -201,7 +201,7 @@ async fn connect_tls_dynamic<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
 {
     let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
 
@@ -241,7 +241,7 @@ async fn connect_static<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
 {
     let mut nodes: Vec<Arc<TcpConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
 
@@ -269,7 +269,7 @@ async fn connect_dynamic<'a, A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
 {
     let mut nodes: Vec<Arc<TcpConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
 
@@ -313,7 +313,7 @@ pub async fn new<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
 {
     connect_static(node_configs, load_balancing, Compression::None).await
 }
@@ -333,7 +333,7 @@ pub async fn new_dynamic<'a, A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
 {
     connect_dynamic(node_configs, load_balancing, Compression::None, event_src).await
 }
@@ -349,7 +349,7 @@ pub async fn new_snappy<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
 {
     connect_static(node_configs, load_balancing, Compression::Snappy).await
 }
@@ -369,7 +369,7 @@ pub async fn new_snappy_dynamic<'a, A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
 {
     connect_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
 }
@@ -385,7 +385,7 @@ pub async fn new_lz4<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
 {
     connect_static(node_configs, load_balancing, Compression::Lz4).await
 }
@@ -405,7 +405,7 @@ pub async fn new_lz4_dynamic<'a, A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
 {
     connect_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
 }
@@ -422,7 +422,7 @@ pub async fn new_tls<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
 {
     connect_tls_static(node_configs, load_balancing, Compression::None).await
 }
@@ -442,7 +442,7 @@ pub async fn new_tls_dynamic<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::None, event_src).await
 }
@@ -459,7 +459,7 @@ pub async fn new_snappy_tls<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
 {
     connect_tls_static(node_configs, load_balancing, Compression::Snappy).await
 }
@@ -479,7 +479,7 @@ pub async fn new_snappy_tls_dynamic<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
 }
@@ -496,7 +496,7 @@ pub async fn new_lz4_tls<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
 {
     connect_tls_static(node_configs, load_balancing, Compression::Lz4).await
 }
@@ -516,14 +516,14 @@ pub async fn new_lz4_tls_dynamic<A, LB>(
 ) -> error::Result<Session<LB>>
 where
     A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>> + Sized,
+    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
 }
 
 impl<'a, L> Session<L> {
     /// Returns new event listener.
-    pub async fn listen<A: Authenticator + 'static + Sized>(
+    pub async fn listen<A: Authenticator + 'static>(
         &self,
         node: &str,
         authenticator: A,
@@ -544,7 +544,7 @@ impl<'a, L> Session<L> {
         Ok(new_listener(transport))
     }
 
-    pub async fn listen_non_blocking<A: Authenticator + 'static + Sized>(
+    pub async fn listen_non_blocking<A: Authenticator + 'static>(
         &self,
         node: &str,
         authenticator: A,

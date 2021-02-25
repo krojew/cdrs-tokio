@@ -13,7 +13,7 @@ use super::utils::{prepare_flags, send_frame};
 #[async_trait]
 pub trait QueryExecutor<
     T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 >: GetConnection<T, M> + GetCompressor<'static> + ResponseCache + Sync
 {
     async fn query_with_params_tw<Q: ToString + Send>(

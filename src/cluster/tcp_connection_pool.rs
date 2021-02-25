@@ -92,7 +92,7 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for TcpConnectio
     }
 }
 
-pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'static + Sized>(
+pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'static>(
     transport: &Mutex<T>,
     session_authenticator: &A,
     keyspace_holder: &KeyspaceHolder,

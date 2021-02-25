@@ -19,7 +19,7 @@ pub async fn from_connection<M, T>(
 ) -> error::Result<Frame>
 where
     T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error> + Sized,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 {
     parse_frame(conn.deref(), compressor).await
 }
