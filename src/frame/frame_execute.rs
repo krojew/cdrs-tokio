@@ -7,7 +7,7 @@ use crate::types::*;
 pub struct BodyReqExecute<'a> {
     /// Id of prepared query
     id: &'a CBytesShort,
-    /// Query paramaters which have the same meaning as one for `query`
+    /// Query parameters which have the same meaning as one for `query`
     /// TODO: clarify if it is QueryParams or its shortened variant
     query_parameters: &'a QueryParams,
 }

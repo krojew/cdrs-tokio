@@ -17,7 +17,7 @@ use super::utils::{prepare_flags, send_frame};
 pub trait PrepareExecutor<
     T: CDRSTransport + Unpin + 'static,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
->: GetConnection<T, M> + GetCompressor<'static> + ResponseCache + Sync
+>: GetConnection<T, M> + GetCompressor + ResponseCache + Sync
 {
     /// It prepares a query for execution, along with query itself the
     /// method takes `with_tracing` and `with_warnings` flags to get

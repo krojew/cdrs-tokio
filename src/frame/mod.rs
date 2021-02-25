@@ -117,7 +117,7 @@ impl Frame {
     }
 }
 
-impl<'a> IntoBytes for Frame {
+impl IntoBytes for Frame {
     fn into_cbytes(&self) -> Vec<u8> {
         let mut v = vec![];
 

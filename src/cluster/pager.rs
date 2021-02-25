@@ -14,7 +14,7 @@ use crate::types::CBytes;
 pub struct SessionPager<
     'a,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    S: CDRSSession<'static, T, M> + 'a,
+    S: CDRSSession<T, M> + 'a,
     T: CDRSTransport + Unpin + 'static,
 > {
     page_size: i32,
@@ -27,7 +27,7 @@ impl<
         'a,
         'b: 'a,
         M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        S: CDRSSession<'static, T, M>,
+        S: CDRSSession<T, M>,
         T: CDRSTransport + Unpin + 'static,
     > SessionPager<'a, M, S, T>
 {
@@ -125,7 +125,7 @@ impl<
         Q: ToString,
         T: CDRSTransport + Unpin + 'static,
         M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        S: CDRSSession<'static, T, M> + Sync + Send,
+        S: CDRSSession<T, M> + Sync + Send,
     > QueryPager<'a, Q, SessionPager<'a, M, S, T>>
 {
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
@@ -181,7 +181,7 @@ impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
         M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        S: CDRSSession<'static, T, M> + Sync + Send,
+        S: CDRSSession<T, M> + Sync + Send,
     > ExecPager<'a, SessionPager<'a, M, S, T>>
 {
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {

@@ -120,7 +120,7 @@ impl ResponseBody {
         }
     }
 
-    pub fn get_authenticator<'a>(&'a self) -> Option<&'a str> {
+    pub fn get_authenticator(&self) -> Option<&str> {
         match *self {
             ResponseBody::Authenticate(ref auth) => Some(auth.data.as_str()),
             _ => None,

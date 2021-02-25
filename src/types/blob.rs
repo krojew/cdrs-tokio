@@ -9,7 +9,7 @@ impl Blob {
     }
 
     /// Returns a mutable reference to an underlying slice of bytes.
-    pub fn as_mut_slice<'a>(&'a mut self) -> &'a [u8] {
+    pub fn as_mut_slice(&mut self) -> &[u8] {
         self.0.as_mut_slice()
     }
 

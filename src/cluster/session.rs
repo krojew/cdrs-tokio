@@ -39,7 +39,7 @@ pub struct Session<LB> {
     pub compression: Compression,
 }
 
-impl<'a, LB> GetCompressor<'a> for Session<LB> {
+impl<LB> GetCompressor for Session<LB> {
     /// Returns compression that current session has.
     fn get_compressor(&self) -> Compression {
         self.compression.clone()
@@ -57,7 +57,7 @@ impl<'a, LB: Sized> Session<LB> {
         page_size: i32,
     ) -> SessionPager<'a, M, Session<LB>, T>
     where
-        Session<LB>: CDRSSession<'static, T, M>,
+        Session<LB>: CDRSSession<T, M>,
     {
         return SessionPager::new(self, page_size);
     }
@@ -140,11 +140,10 @@ impl<
 }
 
 impl<
-        'a,
         T: CDRSTransport + Unpin + 'static,
         M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
         LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-    > CDRSSession<'a, T, M> for Session<LB>
+    > CDRSSession<T, M> for Session<LB>
 {
 }
 

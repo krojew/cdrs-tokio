@@ -13,7 +13,7 @@ pub struct BodyReqStartup<'a> {
 }
 
 impl<'a> BodyReqStartup<'a> {
-    pub fn new<'b>(compression: Option<&'b str>) -> BodyReqStartup<'b> {
+    pub fn new(compression: Option<&str>) -> BodyReqStartup {
         let mut map = HashMap::new();
         map.insert(CQL_VERSION, CQL_VERSION_VAL);
         if let Some(c) = compression {

@@ -28,7 +28,7 @@ pub async fn send_frame<S, T, M>(
     stream_id: StreamId,
 ) -> error::Result<Frame>
 where
-    S: GetConnection<T, M> + GetCompressor<'static> + ResponseCache,
+    S: GetConnection<T, M> + GetCompressor + ResponseCache,
     T: CDRSTransport + Unpin + 'static,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 {

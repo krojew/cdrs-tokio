@@ -14,7 +14,7 @@ use super::utils::{prepare_flags, send_frame};
 pub trait QueryExecutor<
     T: CDRSTransport + Unpin + 'static,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
->: GetConnection<T, M> + GetCompressor<'static> + ResponseCache + Sync
+>: GetConnection<T, M> + GetCompressor + ResponseCache + Sync
 {
     async fn query_with_params_tw<Q: ToString + Send>(
         &self,

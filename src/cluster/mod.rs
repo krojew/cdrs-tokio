@@ -50,7 +50,7 @@ pub trait GetConnection<
 
 /// `GetCompressor` trait provides a unified interface for Session to get a compressor
 /// for further decompressing received data.
-pub trait GetCompressor<'a> {
+pub trait GetCompressor {
     /// Returns actual compressor.
     fn get_compressor(&self) -> Compression;
 }
@@ -64,11 +64,10 @@ pub trait ResponseCache {
 /// `CDRSSession` trait wrap ups whole query functionality. Use it only if whole query
 /// machinery is needed and direct sub traits otherwise.
 pub trait CDRSSession<
-    'a,
     T: CDRSTransport + Unpin + 'static,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 >:
-    GetCompressor<'static>
+    GetCompressor
     + GetConnection<T, M>
     + QueryExecutor<T, M>
     + PrepareExecutor<T, M>

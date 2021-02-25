@@ -15,8 +15,7 @@ use std::ops::Deref;
 pub trait ExecExecutor<
     T: CDRSTransport + Unpin + 'static,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
->:
-    GetConnection<T, M> + GetCompressor<'static> + PrepareExecutor<T, M> + ResponseCache + Sync
+>: GetConnection<T, M> + GetCompressor + PrepareExecutor<T, M> + ResponseCache + Sync
 {
     async fn exec_with_params_tw(
         &self,
