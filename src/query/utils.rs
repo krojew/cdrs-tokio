@@ -22,7 +22,7 @@ pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
     flags
 }
 
-pub async fn send_frame<S, T, M>(
+pub async fn send_frame<S: ?Sized, T, M>(
     sender: &S,
     frame_bytes: Vec<u8>,
     stream_id: StreamId,

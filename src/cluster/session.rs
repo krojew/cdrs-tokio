@@ -46,7 +46,7 @@ impl<LB> GetCompressor for Session<LB> {
     }
 }
 
-impl<'a, LB: Sized> Session<LB> {
+impl<'a, LB> Session<LB> {
     /// Basing on current session returns new `SessionPager` that can be used
     /// for performing paged queries.
     pub fn paged<

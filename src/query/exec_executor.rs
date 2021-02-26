@@ -23,10 +23,7 @@ pub trait ExecExecutor<
         query_parameters: QueryParams,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         let flags = prepare_flags(with_tracing, with_warnings);
         let options_frame = Frame::new_req_execute(
             prepared
@@ -61,10 +58,7 @@ pub trait ExecExecutor<
         &self,
         prepared: &PreparedQuery,
         query_parameters: QueryParams,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         self.exec_with_params_tw(prepared, query_parameters, false, false)
             .await
     }
@@ -75,10 +69,7 @@ pub trait ExecExecutor<
         values: V,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         let query_params_builder = QueryParamsBuilder::new();
         let query_params = query_params_builder.values(values.into()).finalize();
         self.exec_with_params_tw(prepared, query_params, with_tracing, with_warnings)
@@ -89,10 +80,7 @@ pub trait ExecExecutor<
         &self,
         prepared: &PreparedQuery,
         values: V,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         self.exec_with_values_tw(prepared, values, false, false)
             .await
     }
@@ -102,10 +90,7 @@ pub trait ExecExecutor<
         prepared: &PreparedQuery,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         let query_params = QueryParamsBuilder::new().finalize();
         self.exec_with_params_tw(prepared, query_params, with_tracing, with_warnings)
             .await
@@ -113,7 +98,7 @@ pub trait ExecExecutor<
 
     async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Frame>
     where
-        Self: Sized + Sync,
+        Self: Sync,
     {
         self.exec_tw(prepared, false, false).await
     }

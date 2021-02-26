@@ -28,10 +28,7 @@ pub trait PrepareExecutor<
         query: Q,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<BodyResResultPrepared>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<BodyResResultPrepared> {
         let flags = prepare_flags(with_tracing, with_warnings);
 
         let query_frame = Frame::new_req_prepare(query.to_string(), flags);
@@ -51,10 +48,7 @@ pub trait PrepareExecutor<
     async fn prepare_raw<Q: ToString + Sync + Send>(
         &self,
         query: Q,
-    ) -> error::Result<BodyResResultPrepared>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<BodyResResultPrepared> {
         self.prepare_raw_tw(query, false, false).await
     }
 
@@ -67,10 +61,7 @@ pub trait PrepareExecutor<
         query: Q,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<PreparedQuery>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<PreparedQuery> {
         let s = query.to_string();
         self.prepare_raw_tw(query, with_tracing, with_warnings)
             .await
@@ -84,7 +75,7 @@ pub trait PrepareExecutor<
     /// Return the prepared query ID.
     async fn prepare<Q: ToString + Sync + Send>(&self, query: Q) -> error::Result<PreparedQuery>
     where
-        Self: Sized + Sync,
+        Self: Sync,
     {
         self.prepare_tw(query, false, false).await
     }

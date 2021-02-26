@@ -22,10 +22,7 @@ pub trait QueryExecutor<
         query_params: QueryParams,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         let query = Query {
             query: query.to_string(),
             params: query_params,
@@ -40,10 +37,7 @@ pub trait QueryExecutor<
 
     /// Executes a query with default parameters:
     /// * TDB
-    async fn query<Q: ToString + Send>(&self, query: Q) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    async fn query<Q: ToString + Send>(&self, query: Q) -> error::Result<Frame> {
         self.query_tw(query, false, false).await
     }
 
@@ -54,10 +48,7 @@ pub trait QueryExecutor<
         query: Q,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         let query_params = QueryParamsBuilder::new().finalize();
         self.query_with_params_tw(query, query_params, with_tracing, with_warnings)
             .await
@@ -68,10 +59,7 @@ pub trait QueryExecutor<
         &self,
         query: Q,
         values: V,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         self.query_with_values_tw(query, values, false, false).await
     }
 
@@ -83,10 +71,7 @@ pub trait QueryExecutor<
         values: V,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         let query_params_builder = QueryParamsBuilder::new();
         let query_params = query_params_builder.values(values.into()).finalize();
         self.query_with_params_tw(query, query_params, with_tracing, with_warnings)
@@ -98,10 +83,7 @@ pub trait QueryExecutor<
         &self,
         query: Q,
         query_params: QueryParams,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         self.query_with_params_tw(query, query_params, false, false)
             .await
     }

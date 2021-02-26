@@ -22,10 +22,7 @@ pub trait BatchExecutor<
         batch: QueryBatch,
         with_tracing: bool,
         with_warnings: bool,
-    ) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    ) -> error::Result<Frame> {
         let flags = prepare_flags(with_tracing, with_warnings);
 
         let query_frame = Frame::new_req_batch(batch, flags);
@@ -33,10 +30,7 @@ pub trait BatchExecutor<
         send_frame(self, query_frame.into_cbytes(), query_frame.stream).await
     }
 
-    async fn batch_with_params(&self, batch: QueryBatch) -> error::Result<Frame>
-    where
-        Self: Sized,
-    {
+    async fn batch_with_params(&self, batch: QueryBatch) -> error::Result<Frame> {
         self.batch_with_params_tw(batch, false, false).await
     }
 }
