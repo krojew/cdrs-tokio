@@ -20,6 +20,7 @@ const ADDR: &'static str = "localhost:9042";
 type CurrentSession = Session<RoundRobin<TcpConnectionPool<NoneAuthenticator>>>;
 
 #[cfg(feature = "e2e-tests")]
+#[allow(dead_code)]
 pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
     setup_multiple(&[create_table_cql]).await
 }

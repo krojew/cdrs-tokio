@@ -88,8 +88,8 @@ async fn main() {
     let event_src = NodeTcpConfigBuilder::new("127.0.0.1:9042", auth.clone()).build();
     let cluster_config = ClusterTcpConfig(vec![node_a, node_b]);
 
-    // println!("> Starting cluster...");
-    // start_cluster();
+    println!("> Starting cluster...");
+    start_cluster();
 
     let mut no_compression: CurrentSession =
         new_session(&cluster_config, RoundRobin::new(), event_src)
@@ -101,7 +101,7 @@ async fn main() {
     create_table(&mut no_compression).await;
 
     println!("> Stopping node b...");
-    remove_container_b(());
+    let _ = remove_container_b(());
     println!("> waiting 30 secs...");
     ::std::thread::sleep(Duration::from_millis(30_000));
     println!("> stopped");

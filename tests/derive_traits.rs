@@ -6,8 +6,6 @@ use common::*;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::consistency::Consistency;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::error::Result as CDRSResult;
-#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::frame::IntoBytes;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::frame::{TryFromRow, TryFromUDT};
@@ -24,17 +22,7 @@ use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::from_cdrs::FromCDRSByName;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::map::Map;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::prelude::*;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::rows::Row;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::udt::UDT;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::value::{Bytes, Value};
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::{AsRust, AsRustType, IntoRustByName};
+use cdrs_tokio::types::AsRustType;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio_helpers_derive::*;
 #[cfg(feature = "e2e-tests")]
