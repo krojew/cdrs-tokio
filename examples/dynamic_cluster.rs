@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::io;
 use std::process::{Command, Output};
+use std::sync::Arc;
 use std::time::Duration;
 
 use cdrs_tokio::authenticators::NoneAuthenticator;
@@ -18,7 +19,7 @@ use cdrs_tokio_helpers_derive::*;
 
 use maplit::hashmap;
 
-type CurrentSession = Session<RoundRobin<TcpConnectionPool<NoneAuthenticator>>>;
+type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 
 fn start_node_a<A>(_: A) -> io::Result<Output> {
     Command::new("docker")
@@ -82,7 +83,7 @@ fn start_cluster() {
 
 #[tokio::main]
 async fn main() {
-    let auth = NoneAuthenticator {};
+    let auth = Arc::new(NoneAuthenticator {});
     let node_a = NodeTcpConfigBuilder::new("127.0.0.1:9042", auth.clone()).build();
     let node_b = NodeTcpConfigBuilder::new("127.0.0.1:9043", auth.clone()).build();
     let event_src = NodeTcpConfigBuilder::new("127.0.0.1:9042", auth.clone()).build();

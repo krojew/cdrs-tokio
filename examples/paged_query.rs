@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cdrs_tokio::authenticators::NoneAuthenticator;
 use cdrs_tokio::cluster::session::{new as new_session, Session};
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, PagerState, TcpConnectionPool};
@@ -11,7 +13,7 @@ use cdrs_tokio::types::prelude::*;
 
 use cdrs_tokio_helpers_derive::*;
 
-type CurrentSession = Session<RoundRobin<TcpConnectionPool<NoneAuthenticator>>>;
+type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 
 #[derive(Clone, Debug, IntoCDRSValue, TryFromRow, PartialEq)]
 struct RowStruct {
@@ -41,7 +43,7 @@ impl AnotherTestTable {
 
 #[tokio::main]
 async fn main() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let mut no_compression = new_session(&cluster_config, lb)

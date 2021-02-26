@@ -13,11 +13,11 @@ use cdrs_tokio::types::prelude::*;
 
 use cdrs_tokio_helpers_derive::*;
 
-type CurrentSession = Session<RoundRobin<TcpConnectionPool<NoneAuthenticator>>>;
+type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 
 #[tokio::main]
 async fn main() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let no_compression: Arc<CurrentSession> = Arc::new(

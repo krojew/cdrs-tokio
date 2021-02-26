@@ -16,14 +16,12 @@ use crate::frame::{AsBytes, Frame};
 use crate::transport::TransportRustls;
 use std::ops::Deref;
 
-pub type RustlsConnectionPool<A> = ConnectionPool<RustlsConnectionsManager<A>>;
+pub type RustlsConnectionPool = ConnectionPool<RustlsConnectionsManager>;
 
 /// `bb8::Pool` of SSL-based CDRS connections.
 ///
 /// Used internally for SSL Session for holding connections to a specific Cassandra node.
-pub async fn new_rustls_pool<A: Authenticator + Send + Sync + 'static>(
-    node_config: NodeRustlsConfig<A>,
-) -> error::Result<RustlsConnectionPool<A>> {
+pub async fn new_rustls_pool(node_config: NodeRustlsConfig) -> error::Result<RustlsConnectionPool> {
     let manager = RustlsConnectionsManager::new(
         node_config.addr,
         node_config.dns_name,
@@ -45,21 +43,21 @@ pub async fn new_rustls_pool<A: Authenticator + Send + Sync + 'static>(
 }
 
 /// `bb8` connection manager.
-pub struct RustlsConnectionsManager<A> {
+pub struct RustlsConnectionsManager {
     addr: net::SocketAddr,
     dns_name: webpki::DNSName,
     config: Arc<rustls::ClientConfig>,
-    auth: A,
+    auth: Arc<dyn Authenticator + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
 }
 
-impl<A> RustlsConnectionsManager<A> {
+impl RustlsConnectionsManager {
     #[inline]
     pub fn new(
         addr: net::SocketAddr,
         dns_name: webpki::DNSName,
         config: Arc<rustls::ClientConfig>,
-        auth: A,
+        auth: Arc<dyn Authenticator + Send + Sync>,
     ) -> Self {
         Self {
             addr,
@@ -72,7 +70,7 @@ impl<A> RustlsConnectionsManager<A> {
 }
 
 #[async_trait]
-impl<A: Authenticator + 'static + Send + Sync> ManageConnection for RustlsConnectionsManager<A> {
+impl ManageConnection for RustlsConnectionsManager {
     type Connection = Mutex<TransportRustls>;
     type Error = error::Error;
 
@@ -86,7 +84,7 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for RustlsConnec
             )
             .await?,
         );
-        startup(&transport, &self.auth, self.keyspace_holder.deref()).await?;
+        startup(&transport, self.auth.deref(), self.keyspace_holder.deref()).await?;
 
         Ok(transport)
     }

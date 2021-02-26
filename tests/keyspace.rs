@@ -1,5 +1,7 @@
 #[cfg(feature = "e2e-tests")]
 use std::collections::HashMap;
+#[cfg(feature = "e2e-tests")]
+use std::sync::Arc;
 
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::authenticators::NoneAuthenticator;
@@ -19,7 +21,7 @@ use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn create_keyspace() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let session = new_session(&cluster_config, lb)
@@ -87,7 +89,7 @@ async fn create_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn alter_keyspace() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let session = new_session(&cluster_config, lb)
@@ -146,7 +148,7 @@ async fn alter_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn use_keyspace() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let session = new_session(&cluster_config, lb)
@@ -178,7 +180,7 @@ async fn use_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn drop_keyspace() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let session = new_session(&cluster_config, lb)

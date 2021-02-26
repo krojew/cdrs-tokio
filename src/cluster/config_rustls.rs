@@ -5,14 +5,14 @@ use std::sync::Arc;
 use crate::authenticators::Authenticator;
 
 /// Cluster configuration that holds per node SSL configs
-pub struct ClusterRustlsConfig<A: Authenticator + Clone>(pub Vec<NodeRustlsConfig<A>>);
+pub struct ClusterRustlsConfig(pub Vec<NodeRustlsConfig>);
 
 /// Single node SSL connection config.
 #[derive(Clone)]
-pub struct NodeRustlsConfig<A> {
+pub struct NodeRustlsConfig {
     pub addr: net::SocketAddr,
     pub dns_name: webpki::DNSName,
-    pub authenticator: A,
+    pub authenticator: Arc<dyn Authenticator + Send + Sync>,
     pub max_size: u32,
     pub min_idle: Option<u32>,
     pub max_lifetime: Option<Duration>,
@@ -22,10 +22,10 @@ pub struct NodeRustlsConfig<A> {
 }
 
 /// Builder structure that helps to configure SSL connection for node.
-pub struct NodeRustlsConfigBuilder<A> {
+pub struct NodeRustlsConfigBuilder {
     addr: net::SocketAddr,
     dns_name: webpki::DNSName,
-    authenticator: A,
+    authenticator: Arc<dyn Authenticator + Send + Sync>,
     max_size: Option<u32>,
     min_idle: Option<u32>,
     max_lifetime: Option<Duration>,
@@ -34,17 +34,14 @@ pub struct NodeRustlsConfigBuilder<A> {
     config: Arc<rustls::ClientConfig>,
 }
 
-impl<A: Authenticator> NodeRustlsConfigBuilder<A> {
+impl NodeRustlsConfigBuilder {
     const DEFAULT_MAX_SIZE: u32 = 10;
     const DEFAULT_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
-    /// `NodeRustlsConfigBuilder` constructor function. It receives
-    /// * node socket address
-    /// * authenticator
     pub fn new(
         addr: net::SocketAddr,
         dns_name: webpki::DNSName,
-        authenticator: A,
+        authenticator: Arc<dyn Authenticator + Send + Sync>,
         config: Arc<rustls::ClientConfig>,
     ) -> Self {
         NodeRustlsConfigBuilder {
@@ -101,13 +98,13 @@ impl<A: Authenticator> NodeRustlsConfigBuilder<A> {
     }
 
     /// Sets new authenticator.
-    pub fn authenticator(mut self, authenticator: A) -> Self {
+    pub fn authenticator(mut self, authenticator: Arc<dyn Authenticator + Send + Sync>) -> Self {
         self.authenticator = authenticator;
         self
     }
 
     /// Finalizes building process and returns `NodeRustlsConfig`
-    pub fn build(self) -> NodeRustlsConfig<A> {
+    pub fn build(self) -> NodeRustlsConfig {
         NodeRustlsConfig {
             addr: self.addr,
             dns_name: self.dns_name,

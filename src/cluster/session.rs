@@ -165,16 +165,15 @@ where
 }
 
 #[cfg(feature = "rust-tls")]
-async fn connect_tls_static<A, LB>(
-    node_configs: &ClusterRustlsConfig<A>,
+async fn connect_tls_static<LB>(
+    node_configs: &ClusterRustlsConfig,
     mut load_balancing: LB,
     compression: Compression,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
+    LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
-    let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
+    let mut nodes: Vec<Arc<RustlsConnectionPool>> = Vec::with_capacity(node_configs.0.len());
 
     for node_config in &node_configs.0 {
         let node_connection_pool = new_rustls_pool(node_config.clone()).await?;
@@ -192,17 +191,16 @@ where
 }
 
 #[cfg(all(feature = "rust-tls", feature = "unstable-dynamic-cluster"))]
-async fn connect_tls_dynamic<A, LB>(
-    node_configs: &ClusterRustlsConfig<A>,
+async fn connect_tls_dynamic<LB>(
+    node_configs: &ClusterRustlsConfig,
     mut load_balancing: LB,
     compression: Compression,
-    event_src: NodeTcpConfig<'_, A>,
+    event_src: NodeTcpConfig<'_>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
+    LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
-    let mut nodes: Vec<Arc<RustlsConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
+    let mut nodes: Vec<Arc<RustlsConnectionPool>> = Vec::with_capacity(node_configs.0.len());
 
     for node_config in &node_configs.0 {
         let node_connection_pool = new_rustls_pool(node_config.clone()).await?;
@@ -221,7 +219,7 @@ where
     let (listener, event_stream) = session
         .listen_non_blocking(
             event_src.addr,
-            event_src.authenticator,
+            event_src.authenticator.deref(),
             vec![SimpleServerEvent::StatusChange],
         )
         .await?;
@@ -233,16 +231,15 @@ where
     Ok(session)
 }
 
-async fn connect_static<A, LB>(
-    node_configs: &ClusterTcpConfig<'_, A>,
+async fn connect_static<LB>(
+    node_configs: &ClusterTcpConfig<'_>,
     mut load_balancing: LB,
     compression: Compression,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
+    LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
-    let mut nodes: Vec<Arc<TcpConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
+    let mut nodes: Vec<Arc<TcpConnectionPool>> = Vec::with_capacity(node_configs.0.len());
 
     for node_config in &node_configs.0 {
         let node_connection_pool = new_tcp_pool(node_config.clone()).await?;
@@ -260,17 +257,16 @@ where
 }
 
 #[cfg(feature = "unstable-dynamic-cluster")]
-async fn connect_dynamic<'a, A, LB>(
-    node_configs: &ClusterTcpConfig<'a, A>,
+async fn connect_dynamic<'a, LB>(
+    node_configs: &ClusterTcpConfig<'a>,
     mut load_balancing: LB,
     compression: Compression,
-    event_src: NodeTcpConfig<'a, A>,
+    event_src: NodeTcpConfig<'a>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
+    LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
-    let mut nodes: Vec<Arc<TcpConnectionPool<A>>> = Vec::with_capacity(node_configs.0.len());
+    let mut nodes: Vec<Arc<TcpConnectionPool>> = Vec::with_capacity(node_configs.0.len());
 
     for node_config in &node_configs.0 {
         let node_connection_pool = new_tcp_pool(node_config.clone()).await?;
@@ -289,7 +285,7 @@ where
     let (listener, event_stream) = session
         .listen_non_blocking(
             event_src.addr,
-            event_src.authenticator,
+            event_src.authenticator.deref(),
             vec![SimpleServerEvent::StatusChange],
         )
         .await?;
@@ -306,13 +302,12 @@ where
 /// As a parameter it takes:
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
-pub async fn new<A, LB>(
-    node_configs: &ClusterTcpConfig<'_, A>,
+pub async fn new<LB>(
+    node_configs: &ClusterTcpConfig<'_>,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
+    LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
     connect_static(node_configs, load_balancing, Compression::None).await
 }
@@ -325,14 +320,13 @@ where
 /// * load balancing strategy (cannot be changed during `Session` life time).
 /// * node address where to listen events
 #[cfg(feature = "unstable-dynamic-cluster")]
-pub async fn new_dynamic<'a, A, LB>(
-    node_configs: &ClusterTcpConfig<'a, A>,
+pub async fn new_dynamic<'a, LB>(
+    node_configs: &ClusterTcpConfig<'a>,
     load_balancing: LB,
-    event_src: NodeTcpConfig<'a, A>,
+    event_src: NodeTcpConfig<'a>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
+    LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
     connect_dynamic(node_configs, load_balancing, Compression::None, event_src).await
 }
@@ -342,13 +336,12 @@ where
 /// As a parameter it takes:
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
-pub async fn new_snappy<A, LB>(
-    node_configs: &ClusterTcpConfig<'_, A>,
+pub async fn new_snappy<LB>(
+    node_configs: &ClusterTcpConfig<'_>,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
+    LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
     connect_static(node_configs, load_balancing, Compression::Snappy).await
 }
@@ -361,14 +354,13 @@ where
 /// * load balancing strategy (cannot be changed during `Session` life time).
 /// * node address where to listen events
 #[cfg(feature = "unstable-dynamic-cluster")]
-pub async fn new_snappy_dynamic<'a, A, LB>(
-    node_configs: &ClusterTcpConfig<'a, A>,
+pub async fn new_snappy_dynamic<'a, LB>(
+    node_configs: &ClusterTcpConfig<'a>,
     load_balancing: LB,
-    event_src: NodeTcpConfig<'a, A>,
+    event_src: NodeTcpConfig<'a>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
+    LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
     connect_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
 }
@@ -378,13 +370,12 @@ where
 /// As a parameter it takes:
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
-pub async fn new_lz4<A, LB>(
-    node_configs: &ClusterTcpConfig<'_, A>,
+pub async fn new_lz4<LB>(
+    node_configs: &ClusterTcpConfig<'_>,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
+    LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
     connect_static(node_configs, load_balancing, Compression::Lz4).await
 }
@@ -397,14 +388,13 @@ where
 /// * load balancing strategy (cannot be changed during `Session` life time).
 /// * node address where to listen events
 #[cfg(feature = "unstable-dynamic-cluster")]
-pub async fn new_lz4_dynamic<'a, A, LB>(
-    node_configs: &ClusterTcpConfig<'_, A>,
+pub async fn new_lz4_dynamic<'a, LB>(
+    node_configs: &ClusterTcpConfig<'_>,
     load_balancing: LB,
-    event_src: NodeTcpConfig<'a, A>,
+    event_src: NodeTcpConfig<'a>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<TcpConnectionPool<A>>,
+    LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
     connect_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
 }
@@ -415,13 +405,12 @@ where
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
 #[cfg(feature = "rust-tls")]
-pub async fn new_tls<A, LB>(
-    node_configs: &ClusterRustlsConfig<A>,
+pub async fn new_tls<LB>(
+    node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
+    LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
     connect_tls_static(node_configs, load_balancing, Compression::None).await
 }
@@ -434,14 +423,13 @@ where
 /// * load balancing strategy (cannot be changed during `Session` life time).
 /// * node address where to listen events
 #[cfg(all(feature = "rust-tls", feature = "unstable-dynamic-cluster"))]
-pub async fn new_tls_dynamic<A, LB>(
-    node_configs: &ClusterRustlsConfig<A>,
+pub async fn new_tls_dynamic<LB>(
+    node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
-    event_src: NodeTcpConfig<'_, A>,
+    event_src: NodeTcpConfig<'_>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
+    LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::None, event_src).await
 }
@@ -452,13 +440,12 @@ where
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
 #[cfg(feature = "rust-tls")]
-pub async fn new_snappy_tls<A, LB>(
-    node_configs: &ClusterRustlsConfig<A>,
+pub async fn new_snappy_tls<LB>(
+    node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
+    LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
     connect_tls_static(node_configs, load_balancing, Compression::Snappy).await
 }
@@ -471,14 +458,13 @@ where
 /// * load balancing strategy (cannot be changed during `Session` life time).
 /// * node address where to listen events
 #[cfg(all(feature = "rust-tls", feature = "unstable-dynamic-cluster"))]
-pub async fn new_snappy_tls_dynamic<A, LB>(
-    node_configs: &ClusterRustlsConfig<A>,
+pub async fn new_snappy_tls_dynamic<LB>(
+    node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
-    event_src: NodeTcpConfig<'_, A>,
+    event_src: NodeTcpConfig<'_>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
+    LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
 }
@@ -489,13 +475,12 @@ where
 /// * cluster config
 /// * load balancing strategy (cannot be changed during `Session` life time).
 #[cfg(feature = "rust-tls")]
-pub async fn new_lz4_tls<A, LB>(
-    node_configs: &ClusterRustlsConfig<A>,
+pub async fn new_lz4_tls<LB>(
+    node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
+    LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
     connect_tls_static(node_configs, load_balancing, Compression::Lz4).await
 }
@@ -508,24 +493,23 @@ where
 /// * load balancing strategy (cannot be changed during `Session` life time).
 /// * node address where to listen events
 #[cfg(all(feature = "rust-tls", feature = "unstable-dynamic-cluster"))]
-pub async fn new_lz4_tls_dynamic<A, LB>(
-    node_configs: &ClusterRustlsConfig<A>,
+pub async fn new_lz4_tls_dynamic<LB>(
+    node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
-    event_src: NodeTcpConfig<'_, A>,
+    event_src: NodeTcpConfig<'_>,
 ) -> error::Result<Session<LB>>
 where
-    A: Authenticator + 'static + Clone + Send + Sync,
-    LB: LoadBalancingStrategy<RustlsConnectionPool<A>>,
+    LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
     connect_tls_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
 }
 
 impl<'a, L> Session<L> {
     /// Returns new event listener.
-    pub async fn listen<A: Authenticator + 'static>(
+    pub async fn listen<A: Authenticator + Send + Sync + ?Sized + 'static>(
         &self,
         node: &str,
-        authenticator: A,
+        authenticator: &A,
         events: Vec<SimpleServerEvent>,
     ) -> error::Result<(Listener<Mutex<TransportTcp>>, EventStream)> {
         let compression = self.get_compressor();
@@ -534,7 +518,7 @@ impl<'a, L> Session<L> {
             .await
             .map(Mutex::new)?;
 
-        startup(&transport, &authenticator, keyspace_holder.deref()).await?;
+        startup(&transport, authenticator, keyspace_holder.deref()).await?;
 
         let query_frame = Frame::new_req_register(events).as_bytes();
         transport.lock().await.write(query_frame.as_slice()).await?;
@@ -543,10 +527,10 @@ impl<'a, L> Session<L> {
         Ok(new_listener(transport))
     }
 
-    pub async fn listen_non_blocking<A: Authenticator + 'static>(
+    pub async fn listen_non_blocking<A: Authenticator + Send + Sync + ?Sized + 'static>(
         &self,
         node: &str,
-        authenticator: A,
+        authenticator: &A,
         events: Vec<SimpleServerEvent>,
     ) -> error::Result<(Listener<Mutex<TransportTcp>>, EventStreamNonBlocking)> {
         self.listen(node, authenticator, events).await.map(|l| {

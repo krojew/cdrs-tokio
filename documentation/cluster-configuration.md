@@ -9,7 +9,7 @@ use cdrs_tokio::authenticators::NoneAuthenticator;
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
 
 fn main() {
-  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
   let cluster_config = ClusterTcpConfig(vec![node]);
 }
 ```

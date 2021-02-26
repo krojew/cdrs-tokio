@@ -1,4 +1,5 @@
 use std::iter::Iterator;
+use std::sync::Arc;
 
 use cdrs_tokio::authenticators::NoneAuthenticator;
 use cdrs_tokio::cluster::session::new as new_session;
@@ -11,7 +12,7 @@ const _ADDR: &'static str = "127.0.0.1:9042";
 
 #[tokio::main]
 async fn main() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let no_compression = new_session(&cluster_config, lb)
@@ -21,7 +22,7 @@ async fn main() {
     let (listener, stream) = no_compression
         .listen(
             "127.0.0.1:9042",
-            NoneAuthenticator {},
+            &NoneAuthenticator {},
             vec![SimpleServerEvent::SchemaChange],
         )
         .await

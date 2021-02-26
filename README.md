@@ -43,7 +43,7 @@ use cdrs_tokio::query::*;
 
 #[tokio::main]
 async fn main() {
-  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", NoneAuthenticator {}).build();
+  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
   let cluster_config = ClusterTcpConfig(vec![node]);
   let no_compression =
     new_session(&cluster_config, RoundRobin::new()).await.expect("session should be created");

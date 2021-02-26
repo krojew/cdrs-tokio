@@ -1,4 +1,7 @@
 #[cfg(feature = "e2e-tests")]
+use std::sync::Arc;
+
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::authenticators::NoneAuthenticator;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::{new as new_session, Session};
@@ -17,7 +20,7 @@ use regex::Regex;
 const ADDR: &'static str = "localhost:9042";
 
 #[cfg(feature = "e2e-tests")]
-type CurrentSession = Session<RoundRobin<TcpConnectionPool<NoneAuthenticator>>>;
+type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 
 #[cfg(feature = "e2e-tests")]
 #[allow(dead_code)]
@@ -27,7 +30,7 @@ pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
 
 #[cfg(feature = "e2e-tests")]
 pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSession> {
-    let node = NodeTcpConfigBuilder::new(ADDR, NoneAuthenticator {}).build();
+    let node = NodeTcpConfigBuilder::new(ADDR, Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let session = new_session(&cluster_config, lb)

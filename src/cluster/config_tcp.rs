@@ -1,15 +1,16 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::authenticators::Authenticator;
 
 /// Cluster configuration that holds per node TCP configs
-pub struct ClusterTcpConfig<'a, A: Authenticator + Clone>(pub Vec<NodeTcpConfig<'a, A>>);
+pub struct ClusterTcpConfig<'a>(pub Vec<NodeTcpConfig<'a>>);
 
 /// Single node TCP connection config.
 #[derive(Clone)]
-pub struct NodeTcpConfig<'a, A> {
+pub struct NodeTcpConfig<'a> {
     pub addr: &'a str,
-    pub authenticator: A,
+    pub authenticator: Arc<dyn Authenticator + Send + Sync>,
     pub max_size: u32,
     pub min_idle: Option<u32>,
     pub max_lifetime: Option<Duration>,
@@ -18,9 +19,9 @@ pub struct NodeTcpConfig<'a, A> {
 }
 
 /// Builder structure that helps to configure TCP connection for node.
-pub struct NodeTcpConfigBuilder<'a, A> {
+pub struct NodeTcpConfigBuilder<'a> {
     addr: &'a str,
-    authenticator: A,
+    authenticator: Arc<dyn Authenticator + Send + Sync>,
     max_size: Option<u32>,
     min_idle: Option<u32>,
     max_lifetime: Option<Duration>,
@@ -28,14 +29,14 @@ pub struct NodeTcpConfigBuilder<'a, A> {
     connection_timeout: Option<Duration>,
 }
 
-impl<'a, A: Authenticator> NodeTcpConfigBuilder<'a, A> {
+impl<'a> NodeTcpConfigBuilder<'a> {
     const DEFAULT_MAX_SIZE: u32 = 10;
     const DEFAULT_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
-    /// `NodeTcpConfigBuilder` constructor function. It receivesthread::spawn(move || {
-    /// * node socket address as a string
-    /// * authenticator
-    pub fn new(addr: &str, authenticator: A) -> NodeTcpConfigBuilder<A> {
+    pub fn new(
+        addr: &str,
+        authenticator: Arc<dyn Authenticator + Send + Sync>,
+    ) -> NodeTcpConfigBuilder {
         NodeTcpConfigBuilder {
             addr,
             authenticator,
@@ -88,13 +89,13 @@ impl<'a, A: Authenticator> NodeTcpConfigBuilder<'a, A> {
     }
 
     /// Sets new authenticator.
-    pub fn authenticator(mut self, authenticator: A) -> Self {
+    pub fn authenticator(mut self, authenticator: Arc<dyn Authenticator + Send + Sync>) -> Self {
         self.authenticator = authenticator;
         self
     }
 
     /// Finalizes building process and returns `NodeSslConfig`
-    pub fn build(self) -> NodeTcpConfig<'a, A> {
+    pub fn build(self) -> NodeTcpConfig<'a> {
         NodeTcpConfig {
             addr: self.addr,
             authenticator: self.authenticator,

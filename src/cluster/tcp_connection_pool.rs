@@ -18,14 +18,12 @@ use crate::transport::{CDRSTransport, TransportTcp};
 use std::ops::Deref;
 
 /// Shortcut for `bb8::Pool` type of TCP-based CDRS connections.
-pub type TcpConnectionPool<A> = ConnectionPool<TcpConnectionsManager<A>>;
+pub type TcpConnectionPool = ConnectionPool<TcpConnectionsManager>;
 
 /// `bb8::Pool` of TCP-based CDRS connections.
 ///
 /// Used internally for TCP Session for holding connections to a specific Cassandra node.
-pub async fn new_tcp_pool<A: Authenticator + Send + Sync + 'static>(
-    node_config: NodeTcpConfig<'_, A>,
-) -> error::Result<TcpConnectionPool<A>> {
+pub async fn new_tcp_pool(node_config: NodeTcpConfig<'_>) -> error::Result<TcpConnectionPool> {
     let manager =
         TcpConnectionsManager::new(node_config.addr.to_string(), node_config.authenticator);
 
@@ -49,15 +47,14 @@ pub async fn new_tcp_pool<A: Authenticator + Send + Sync + 'static>(
 }
 
 /// `bb8` connection manager.
-#[derive(Debug)]
-pub struct TcpConnectionsManager<A> {
+pub struct TcpConnectionsManager {
     addr: String,
-    auth: A,
+    auth: Arc<dyn Authenticator + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
 }
 
-impl<A> TcpConnectionsManager<A> {
-    pub fn new<S: ToString>(addr: S, auth: A) -> Self {
+impl TcpConnectionsManager {
+    pub fn new<S: ToString>(addr: S, auth: Arc<dyn Authenticator + Send + Sync>) -> Self {
         TcpConnectionsManager {
             addr: addr.to_string(),
             auth,
@@ -67,14 +64,14 @@ impl<A> TcpConnectionsManager<A> {
 }
 
 #[async_trait]
-impl<A: Authenticator + 'static + Send + Sync> ManageConnection for TcpConnectionsManager<A> {
+impl ManageConnection for TcpConnectionsManager {
     type Connection = Mutex<TransportTcp>;
     type Error = error::Error;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
         let transport =
             Mutex::new(TransportTcp::new(&self.addr, self.keyspace_holder.clone()).await?);
-        startup(&transport, &self.auth, self.keyspace_holder.deref()).await?;
+        startup(&transport, self.auth.deref(), self.keyspace_holder.deref()).await?;
 
         Ok(transport)
     }
@@ -92,7 +89,10 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for TcpConnectio
     }
 }
 
-pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'static>(
+pub async fn startup<
+    T: CDRSTransport + Unpin + 'static,
+    A: Authenticator + Send + Sync + ?Sized + 'static,
+>(
     transport: &Mutex<T>,
     session_authenticator: &A,
     keyspace_holder: &KeyspaceHolder,
