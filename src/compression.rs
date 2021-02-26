@@ -22,7 +22,7 @@ type Result<T> = result::Result<T, CompressionError>;
 pub const LZ4: &'static str = "lz4";
 pub const SNAPPY: &'static str = "snappy";
 
-/// It's an error which may occure during encoding or deconding
+/// It's an error which may occur during encoding or decoding
 /// frame body. As there are only two types of compressors it
 /// contains two related enum options.
 #[derive(Debug)]
@@ -51,22 +51,7 @@ impl Error for CompressionError {
     }
 }
 
-/// Compressor trait that defines functionality
-/// which should be provided by typical compressor.
-pub trait Compressor {
-    /// Encodes given bytes and returns `Result` that contains either
-    /// encoded data or an error which occures during the transformation.
-    fn encode(&self, bytes: Vec<u8>) -> Result<Vec<u8>>;
-    /// Encodes given encoded data and returns `Result` that contains either
-    /// encoded bytes or an error which occures during the transformation.
-    fn decode(&self, bytes: Vec<u8>) -> Result<Vec<u8>>;
-    /// Returns a string which is a name of a compressor. This name should be
-    /// exactly the same as one which returns a server in a response to
-    /// `Options` request.
-    fn into_string(&self) -> Option<String>;
-}
-
-/// Enum which represents a type of compression. Only non-startup frame's body can be compressen.
+/// Enum which represents a type of compression. Only non-startup frame's body can be compressed.
 #[derive(Debug, PartialEq, Clone, Copy, Eq, Ord, PartialOrd)]
 pub enum Compression {
     /// [lz4](https://code.google.com/p/lz4/) compression
