@@ -132,7 +132,7 @@ pub fn try_to_n_bytes(int: u64, n: usize) -> io::Result<Vec<u8>> {
 ///
 /// # Panics
 ///
-/// It panics if given unisigned integer could not be converted in an array of n bytes
+/// It panics if given unsigned integer could not be converted in an array of n bytes
 pub fn to_n_bytes(int: u64, n: usize) -> Vec<u8> {
     try_to_n_bytes(int, n).unwrap()
 }
@@ -163,7 +163,7 @@ pub fn try_from_bytes(bytes: &[u8]) -> Result<u64, io::Error> {
     c.read_uint::<BigEndian>(l)
 }
 
-/// Tryies to decode bytes array into `u16`.
+/// Tries to decode bytes array into `u16`.
 pub fn try_u16_from_bytes(bytes: &[u8]) -> Result<u16, io::Error> {
     let mut c = Cursor::new(bytes);
     c.read_u16::<BigEndian>()
@@ -249,7 +249,7 @@ pub fn to_short(int: i16) -> Vec<u8> {
     bytes
 }
 
-/// Convers integer into Cassandra's [int]
+/// Converts integer into Cassandra's [int]
 ///
 /// # Panics
 ///
@@ -262,7 +262,7 @@ pub fn to_int(int: i32) -> Vec<u8> {
     bytes
 }
 
-/// Convers integer into Cassandra's [int]
+/// Converts integer into Cassandra's [int]
 ///
 /// # Panics
 ///
@@ -322,7 +322,7 @@ pub fn to_u_short(int: u16) -> Vec<u8> {
     bytes
 }
 
-/// Convers integer into Cassandra's [int]
+/// Converts integer into Cassandra's [int]
 ///
 /// # Panics
 ///
@@ -335,7 +335,7 @@ pub fn to_u(int: u32) -> Vec<u8> {
     bytes
 }
 
-/// Convers integer into Cassandra's `int`
+/// Converts integer into Cassandra's `int`
 ///
 /// # Panics
 ///
@@ -417,8 +417,9 @@ impl FromCursor for CString {
     /// from_cursor gets Cursor who's position is set such that it should be a start of a [string].
     /// It reads required number of bytes and returns a String
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CString> {
-        let len_bytes = cursor_next_value(&mut cursor, SHORT_LEN as u64)?;
-        let len: u64 = try_from_bytes(len_bytes.as_slice())?;
+        let mut buff = [0; SHORT_LEN];
+        let len_bytes = cursor_fill_value(&mut cursor, &mut buff)?;
+        let len: u64 = try_from_bytes(len_bytes)?;
         let body_bytes = cursor_next_value(&mut cursor, len)?;
 
         String::from_utf8(body_bytes)
@@ -465,8 +466,9 @@ impl FromCursor for CStringLong {
     /// from_cursor gets Cursor who's position is set such that it should be a start of a [string].
     /// It reads required number of bytes and returns a String
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CStringLong> {
-        let len_bytes = cursor_next_value(&mut cursor, INT_LEN as u64)?;
-        let len: u64 = try_from_bytes(len_bytes.as_slice())?;
+        let mut buff = [0; INT_LEN];
+        let len_bytes = cursor_fill_value(&mut cursor, &mut buff)?;
+        let len: u64 = try_from_bytes(len_bytes)?;
         let body_bytes = cursor_next_value(&mut cursor, len)?;
 
         String::from_utf8(body_bytes)
@@ -645,8 +647,9 @@ pub type CInt = i32;
 
 impl FromCursor for CInt {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CInt> {
-        let bytes = cursor_next_value(&mut cursor, INT_LEN as u64)?;
-        try_i32_from_bytes(bytes.as_slice()).map_err(Into::into)
+        let mut buff = [0; INT_LEN];
+        let bytes = cursor_fill_value(&mut cursor, &mut buff)?;
+        try_i32_from_bytes(bytes).map_err(Into::into)
     }
 }
 
@@ -655,8 +658,9 @@ pub type CIntShort = i16;
 
 impl FromCursor for CIntShort {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CIntShort> {
-        let bytes = cursor_next_value(&mut cursor, SHORT_LEN as u64)?;
-        try_i16_from_bytes(bytes.as_slice()).map_err(Into::into)
+        let mut buff = [0; SHORT_LEN];
+        let bytes = cursor_fill_value(&mut cursor, &mut buff)?;
+        try_i16_from_bytes(bytes).map_err(Into::into)
     }
 }
 
@@ -664,14 +668,15 @@ impl FromCursor for CIntShort {
 impl FromBytes for Vec<u8> {
     fn from_bytes(bytes: &[u8]) -> CDRSResult<Vec<u8>> {
         let mut cursor = Cursor::new(bytes);
-        let len_bytes = cursor_next_value(&mut cursor, SHORT_LEN as u64)?;
-        let len: u64 = try_from_bytes(len_bytes.as_slice())?;
+        let mut buff = [0; SHORT_LEN];
+        let len_bytes = cursor_fill_value(&mut cursor, &mut buff)?;
+        let len: u64 = try_from_bytes(len_bytes)?;
 
         cursor_next_value(&mut cursor, len).map_err(Into::into)
     }
 }
 
-/// The structure wich represets Cassandra [inet]
+/// The structure which represents Cassandra [inet]
 /// (https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L222).
 #[derive(Debug)]
 pub struct CInet {
@@ -680,7 +685,7 @@ pub struct CInet {
 
 impl FromCursor for CInet {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CInet> {
-        let n = cursor_next_value(&mut cursor, 1)?[0];
+        let n = cursor_fill_value(&mut cursor, &mut [0])?[0];
         let ip = decode_inet(cursor_next_value(&mut cursor, n as u64)?.as_slice())?;
         let port = CInt::from_cursor(&mut cursor)?;
         let socket_addr = SocketAddr::new(ip, port as u16);
@@ -698,6 +703,16 @@ pub fn cursor_next_value(cursor: &mut Cursor<&[u8]>, len: u64) -> CDRSResult<Vec
     }
     cursor.read_exact(&mut buff)?;
     cursor.set_position(current_position + len);
+    Ok(buff)
+}
+
+pub fn cursor_fill_value<'a>(
+    cursor: &mut Cursor<&[u8]>,
+    buff: &'a mut [u8],
+) -> CDRSResult<&'a [u8]> {
+    let current_position = cursor.position();
+    cursor.read_exact(buff)?;
+    cursor.set_position(current_position + buff.len() as u64);
     Ok(buff)
 }
 

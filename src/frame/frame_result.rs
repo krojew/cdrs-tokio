@@ -50,8 +50,7 @@ impl FromBytes for ResultKind {
 
 impl FromCursor for ResultKind {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<ResultKind> {
-        cursor_next_value(&mut cursor, INT_LEN as u64)
-            .and_then(|bytes| ResultKind::from_bytes(bytes.as_slice()))
+        cursor_fill_value(&mut cursor, &mut [0; INT_LEN]).and_then(ResultKind::from_bytes)
     }
 }
 
@@ -458,8 +457,8 @@ impl FromBytes for ColType {
 
 impl FromCursor for ColType {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<ColType> {
-        cursor_next_value(&mut cursor, SHORT_LEN as u64)
-            .and_then(|bytes| ColType::from_bytes(bytes.as_slice()))
+        cursor_fill_value(&mut cursor, &mut [0; SHORT_LEN])
+            .and_then(ColType::from_bytes)
             .map_err(Into::into)
     }
 }
@@ -537,7 +536,7 @@ impl FromCursor for CUdt {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<CUdt> {
         let ks = CString::from_cursor(&mut cursor)?;
         let udt_name = CString::from_cursor(&mut cursor)?;
-        let n = try_from_bytes(cursor_next_value(&mut cursor, SHORT_LEN as u64)?.as_slice())?;
+        let n = try_from_bytes(cursor_fill_value(&mut cursor, &mut [0; SHORT_LEN])?)?;
         let mut descriptions = Vec::with_capacity(n as usize);
         for _ in 0..n {
             let name = CString::from_cursor(&mut cursor)?;
@@ -563,7 +562,7 @@ pub struct CTuple {
 
 impl FromCursor for CTuple {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<CTuple> {
-        let n = try_from_bytes(cursor_next_value(&mut cursor, SHORT_LEN as u64)?.as_slice())?;
+        let n = try_from_bytes(cursor_fill_value(&mut cursor, &mut [0; SHORT_LEN])?)?;
         let mut types = Vec::with_capacity(n as usize);
         for _ in 0..n {
             let col_type = ColTypeOption::from_cursor(&mut cursor)?;
@@ -623,9 +622,9 @@ impl FromCursor for PreparedMetadata {
         };
         let pk_index_results: Vec<Option<i16>> = (0..pk_count)
             .map(|_| {
-                cursor_next_value(&mut cursor, SHORT_LEN as u64)
+                cursor_fill_value(&mut cursor, &mut [0; SHORT_LEN])
                     .ok()
-                    .and_then(|b| try_i16_from_bytes(b.as_slice()).ok())
+                    .and_then(|b| try_i16_from_bytes(b).ok())
             })
             .collect();
 

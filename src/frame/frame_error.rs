@@ -37,9 +37,9 @@ impl FromCursor for CDRSError {
         let additional_info = AdditionalErrorInfo::from_cursor_with_code(&mut cursor, error_code)?;
 
         Ok(CDRSError {
-            error_code: error_code,
-            message: message,
-            additional_info: additional_info,
+            error_code,
+            message,
+            additional_info,
         })
     }
 }
@@ -164,9 +164,9 @@ impl FromCursor for UnavailableError {
         let alive = CInt::from_cursor(&mut cursor)?;
 
         Ok(UnavailableError {
-            cl: cl,
-            required: required,
-            alive: alive,
+            cl,
+            required,
+            alive,
         })
     }
 }
@@ -192,10 +192,10 @@ impl FromCursor for WriteTimeoutError {
         let write_type = WriteType::from_cursor(&mut cursor)?;
 
         Ok(WriteTimeoutError {
-            cl: cl,
-            received: received,
-            blockfor: blockfor,
-            write_type: write_type,
+            cl,
+            received,
+            blockfor,
+            write_type,
         })
     }
 }
@@ -224,13 +224,13 @@ impl FromCursor for ReadTimeoutError {
         let cl = Consistency::from_cursor(&mut cursor)?;
         let received = CInt::from_cursor(&mut cursor)?;
         let blockfor = CInt::from_cursor(&mut cursor)?;
-        let data_present = try_from_bytes(cursor_next_value(&mut cursor, 1)?.as_slice())? as u8;
+        let data_present = try_from_bytes(cursor_fill_value(&mut cursor, &mut [0])?)? as u8;
 
         Ok(ReadTimeoutError {
-            cl: cl,
-            received: received,
-            blockfor: blockfor,
-            data_present: data_present,
+            cl,
+            received,
+            blockfor,
+            data_present,
         })
     }
 }
@@ -250,7 +250,7 @@ pub struct ReadFailureError {
 }
 
 impl ReadFailureError {
-    /// Shows if replica has resonded to a query.
+    /// Shows if replica has responded to a query.
     pub fn replica_has_responded(&self) -> bool {
         self.data_present != 0
     }
@@ -262,14 +262,14 @@ impl FromCursor for ReadFailureError {
         let received = CInt::from_cursor(&mut cursor)?;
         let blockfor = CInt::from_cursor(&mut cursor)?;
         let num_failures = CInt::from_cursor(&mut cursor)?;
-        let data_present = try_from_bytes(cursor_next_value(&mut cursor, 1)?.as_slice())? as u8;
+        let data_present = try_from_bytes(cursor_fill_value(&mut cursor, &mut [0])?)? as u8;
 
         Ok(ReadFailureError {
-            cl: cl,
-            received: received,
-            blockfor: blockfor,
-            num_failures: num_failures,
-            data_present: data_present,
+            cl,
+            received,
+            blockfor,
+            num_failures,
+            data_present,
         })
     }
 }
@@ -292,9 +292,9 @@ impl FromCursor for FunctionFailureError {
         let arg_types = CStringList::from_cursor(&mut cursor)?;
 
         Ok(FunctionFailureError {
-            keyspace: keyspace,
-            function: function,
-            arg_types: arg_types,
+            keyspace,
+            function,
+            arg_types,
         })
     }
 }
@@ -324,11 +324,11 @@ impl FromCursor for WriteFailureError {
         let write_type = WriteType::from_cursor(&mut cursor)?;
 
         Ok(WriteFailureError {
-            cl: cl,
-            received: received,
-            blockfor: blockfor,
-            num_failures: num_failures,
-            write_type: write_type,
+            cl,
+            received,
+            blockfor,
+            num_failures,
+            write_type,
         })
     }
 }
@@ -347,7 +347,7 @@ pub enum WriteType {
     UnloggedBatch,
     /// The write was a counter write (batched or not)
     Counter,
-    /// The failure occured during the write to the batch log when a (logged) batch
+    /// The failure occurred during the write to the batch log when a (logged) batch
     /// write was requested.
     BatchLog,
 }
@@ -381,10 +381,7 @@ impl FromCursor for AlreadyExistsError {
         let ks = CString::from_cursor(&mut cursor)?;
         let table = CString::from_cursor(&mut cursor)?;
 
-        Ok(AlreadyExistsError {
-            ks: ks,
-            table: table,
-        })
+        Ok(AlreadyExistsError { ks, table })
     }
 }
 
@@ -402,6 +399,6 @@ impl FromCursor for UnpreparedError {
     fn from_cursor(mut cursor: &mut io::Cursor<&[u8]>) -> error::Result<UnpreparedError> {
         let id = CBytesShort::from_cursor(&mut cursor)?;
 
-        Ok(UnpreparedError { id: id })
+        Ok(UnpreparedError { id })
     }
 }
