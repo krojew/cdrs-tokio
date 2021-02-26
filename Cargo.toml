@@ -30,12 +30,12 @@ byteorder = "1"
 chrono = "0.4"
 fnv = "1.0"
 log = "0.4.1"
-lz4-compress = "=0.1.0"
+lz4-compress = "0.1"
 bb8 = "0.7"
 rand = "0.8"
 snap = "1.0"
 time = "0.2.16"
-tokio = { version = "1.1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread"] }
+tokio = { version = "1.2", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread"] }
 tokio-rustls = { version = "0.22", optional = true }
 uuid = "0.8.1"
 webpki = { version = "0.21", optional = true }

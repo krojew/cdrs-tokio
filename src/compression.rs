@@ -151,7 +151,8 @@ impl Compression {
     fn decode_lz4(bytes: Vec<u8>) -> Result<Vec<u8>> {
         // skip first 4 bytes in accordance to
         // https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L805
-        lz4::decompress(&bytes[4..]).map_err(CompressionError::Lz4)
+        lz4::decompress(&bytes[4..])
+            .map_err(|error| CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error)))
     }
 }
 
