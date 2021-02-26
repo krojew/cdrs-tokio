@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
 use crate::frame::frame_result::BodyResResultPrepared;
-use crate::frame::{Frame, IntoBytes};
+use crate::frame::{AsBytes, Frame};
 use crate::query::PreparedQuery;
 use crate::transport::CDRSTransport;
 
@@ -33,7 +33,7 @@ pub trait PrepareExecutor<
 
         let query_frame = Frame::new_req_prepare(query.to_string(), flags);
 
-        send_frame(self, query_frame.into_cbytes(), query_frame.stream)
+        send_frame(self, query_frame.as_bytes(), query_frame.stream)
             .await
             .and_then(|response| response.get_body())
             .and_then(|body| {

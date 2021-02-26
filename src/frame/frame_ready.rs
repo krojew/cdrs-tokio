@@ -1,6 +1,6 @@
 use std::convert::From;
 
-use crate::frame::IntoBytes;
+use crate::frame::AsBytes;
 
 #[derive(Debug, PartialEq, Default)]
 pub struct BodyResReady;
@@ -11,8 +11,8 @@ impl From<Vec<u8>> for BodyResReady {
     }
 }
 
-impl IntoBytes for BodyResReady {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for BodyResReady {
+    fn as_bytes(&self) -> Vec<u8> {
         vec![]
     }
 }
@@ -20,7 +20,7 @@ impl IntoBytes for BodyResReady {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::IntoBytes;
+    use crate::frame::traits::AsBytes;
 
     #[test]
     fn body_res_ready_new() {
@@ -31,7 +31,7 @@ mod tests {
     #[test]
     fn body_res_ready_into_cbytes() {
         let body = BodyResReady {};
-        assert_eq!(body.into_cbytes(), vec![] as Vec<u8>);
+        assert_eq!(body.as_bytes(), vec![] as Vec<u8>);
     }
 
     #[test]

@@ -16,9 +16,9 @@ impl BodyReqPrepare {
     }
 }
 
-impl IntoBytes for BodyReqPrepare {
-    fn into_cbytes(&self) -> Vec<u8> {
-        self.query.into_cbytes()
+impl AsBytes for BodyReqPrepare {
+    fn as_bytes(&self) -> Vec<u8> {
+        self.query.as_bytes()
     }
 }
 
@@ -29,6 +29,6 @@ impl Frame {
         let opcode = Opcode::Prepare;
         let body = BodyReqPrepare::new(query);
 
-        Frame::new(version, flags, opcode, body.into_cbytes(), None, vec![])
+        Frame::new(version, flags, opcode, body.as_bytes(), None, vec![])
     }
 }

@@ -117,8 +117,8 @@ impl Frame {
     }
 }
 
-impl IntoBytes for Frame {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for Frame {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut v = vec![];
 
         let version_bytes = self.version.as_byte();

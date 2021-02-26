@@ -12,7 +12,7 @@ use crate::cluster::{startup, KeyspaceHolder, NodeRustlsConfig};
 use crate::compression::Compression;
 use crate::error;
 use crate::frame::parser::parse_frame;
-use crate::frame::{Frame, IntoBytes};
+use crate::frame::{AsBytes, Frame};
 use crate::transport::TransportRustls;
 use std::ops::Deref;
 
@@ -92,7 +92,7 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for RustlsConnec
     }
 
     async fn is_valid(&self, conn: &mut PooledConnection<'_, Self>) -> Result<(), Self::Error> {
-        let options_frame = Frame::new_req_options().into_cbytes();
+        let options_frame = Frame::new_req_options().as_bytes();
         conn.lock().await.write(options_frame.as_slice()).await?;
 
         parse_frame(&conn, &Compression::None {}).await.map(|_| ())

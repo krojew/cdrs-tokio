@@ -6,7 +6,7 @@ use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionP
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
 
-use cdrs_tokio::frame::IntoBytes;
+use cdrs_tokio::frame::AsBytes;
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::types::from_cdrs::FromCDRSByName;
 use cdrs_tokio::types::prelude::*;

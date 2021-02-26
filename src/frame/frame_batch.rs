@@ -17,8 +17,8 @@ pub struct BodyReqBatch {
     pub timestamp: Option<i64>,
 }
 
-impl IntoBytes for BodyReqBatch {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for BodyReqBatch {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
         bytes.push(self.batch_type.as_byte());
@@ -26,11 +26,11 @@ impl IntoBytes for BodyReqBatch {
         bytes.extend_from_slice(to_short(self.queries.len() as i16).as_slice());
 
         bytes = self.queries.iter().fold(bytes, |mut _bytes, q| {
-            _bytes.extend_from_slice(q.into_cbytes().as_slice());
+            _bytes.extend_from_slice(q.as_bytes().as_slice());
             _bytes
         });
 
-        bytes.extend_from_slice(self.consistency.into_cbytes().as_slice());
+        bytes.extend_from_slice(self.consistency.as_bytes().as_slice());
 
         let flag_byte = self
             .query_flags
@@ -39,7 +39,7 @@ impl IntoBytes for BodyReqBatch {
         bytes.push(flag_byte);
 
         if let Some(ref serial_consistency) = self.serial_consistency {
-            bytes.extend_from_slice(serial_consistency.into_cbytes().as_slice());
+            bytes.extend_from_slice(serial_consistency.as_bytes().as_slice());
         }
 
         if let Some(ref timestamp) = self.timestamp {
@@ -109,8 +109,8 @@ pub enum BatchQuerySubj {
     QueryString(CStringLong),
 }
 
-impl IntoBytes for BatchQuery {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for BatchQuery {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
         // kind
@@ -125,18 +125,18 @@ impl IntoBytes for BatchQuery {
                 bytes.extend_from_slice(
                     s.id.read()
                         .expect("Cannot read prepared query id!")
-                        .into_cbytes()
+                        .as_bytes()
                         .as_slice(),
                 );
             }
             BatchQuerySubj::QueryString(ref s) => {
-                bytes.extend_from_slice(s.into_cbytes().as_slice());
+                bytes.extend_from_slice(s.as_bytes().as_slice());
             }
         }
 
         bytes.extend_from_slice(to_short(self.values.len() as i16).as_slice());
 
-        bytes.extend_from_slice(self.values.into_cbytes().as_slice());
+        bytes.extend_from_slice(self.values.as_bytes().as_slice());
 
         bytes
     }
@@ -148,6 +148,6 @@ impl Frame {
         let version = Version::Request;
         let opcode = Opcode::Batch;
 
-        Frame::new(version, flags, opcode, query.into_cbytes(), None, vec![])
+        Frame::new(version, flags, opcode, query.as_bytes(), None, vec![])
     }
 }

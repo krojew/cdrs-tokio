@@ -1,5 +1,5 @@
 use super::{to_int, to_varint};
-use crate::frame::traits::IntoBytes;
+use crate::frame::traits::AsBytes;
 
 /// Cassandra Decimal type
 #[derive(Debug, Clone, PartialEq)]
@@ -19,8 +19,8 @@ impl Decimal {
     }
 }
 
-impl IntoBytes for Decimal {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for Decimal {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut bytes: Vec<u8> = vec![];
         bytes.extend(to_int(self.scale as i32));
         bytes.extend(to_varint(self.unscaled));
@@ -88,20 +88,20 @@ mod test {
     #[test]
     fn into_cbytes_test() {
         assert_eq!(
-            Decimal::new(129, 0).into_cbytes(),
+            Decimal::new(129, 0).as_bytes(),
             vec![0, 0, 0, 0, 0x00, 0x81]
         );
 
         assert_eq!(
-            Decimal::new(-129, 0).into_cbytes(),
+            Decimal::new(-129, 0).as_bytes(),
             vec![0, 0, 0, 0, 0xFF, 0x7F]
         );
 
         let expected: Vec<u8> = vec![0, 0, 0, 1, 0x00, 0x81];
-        assert_eq!(Decimal::new(129, 1).into_cbytes(), expected);
+        assert_eq!(Decimal::new(129, 1).as_bytes(), expected);
 
         let expected: Vec<u8> = vec![0, 0, 0, 1, 0xFF, 0x7F];
-        assert_eq!(Decimal::new(-129, 1).into_cbytes(), expected);
+        assert_eq!(Decimal::new(-129, 1).as_bytes(), expected);
     }
 
     #[test]

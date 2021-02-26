@@ -23,7 +23,7 @@ use crate::compression::Compression;
 use crate::events::{new_listener, EventStream, EventStreamNonBlocking, Listener};
 use crate::frame::events::{ServerEvent, SimpleServerEvent, StatusChange, StatusChangeType};
 use crate::frame::parser::parse_frame;
-use crate::frame::{Frame, IntoBytes, StreamId};
+use crate::frame::{AsBytes, Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use std::ops::Deref;
 
@@ -536,7 +536,7 @@ impl<'a, L> Session<L> {
 
         startup(&transport, &authenticator, keyspace_holder.deref()).await?;
 
-        let query_frame = Frame::new_req_register(events).into_cbytes();
+        let query_frame = Frame::new_req_register(events).as_bytes();
         transport.lock().await.write(query_frame.as_slice()).await?;
         parse_frame(&transport, &compression).await?;
 

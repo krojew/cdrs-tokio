@@ -29,8 +29,8 @@ impl<'a> BodyReqStartup<'a> {
     }
 }
 
-impl<'a> IntoBytes for BodyReqStartup<'a> {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl<'a> AsBytes for BodyReqStartup<'a> {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut v = vec![];
         // push number of key-value pairs
         v.extend_from_slice(&self.num().as_slice());
@@ -58,14 +58,7 @@ impl Frame {
         let opcode = Opcode::Startup;
         let body = BodyReqStartup::new(compression);
 
-        Frame::new(
-            version,
-            vec![flag],
-            opcode,
-            body.into_cbytes(),
-            None,
-            vec![],
-        )
+        Frame::new(version, vec![flag], opcode, body.as_bytes(), None, vec![])
     }
 }
 

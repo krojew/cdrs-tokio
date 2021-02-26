@@ -5,7 +5,7 @@ use std::default::Default;
 use std::io;
 
 use crate::error;
-use crate::frame::{FromBytes, FromCursor, IntoBytes};
+use crate::frame::{AsBytes, FromBytes, FromCursor};
 use crate::types::*;
 
 /// `Consistency` is an enum which represents Cassandra's consistency levels.
@@ -80,8 +80,8 @@ impl Default for Consistency {
     }
 }
 
-impl IntoBytes for Consistency {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for Consistency {
+    fn as_bytes(&self) -> Vec<u8> {
         match *self {
             Consistency::Any => to_short(0x0000),
             Consistency::One => to_short(0x0001),
@@ -148,23 +148,23 @@ impl FromCursor for Consistency {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::{FromBytes, FromCursor, IntoBytes};
+    use crate::frame::traits::{AsBytes, FromBytes, FromCursor};
     use std::io::Cursor;
 
     #[test]
     fn test_consistency_into_cbytes() {
-        assert_eq!(Consistency::Any.into_cbytes(), &[0, 0]);
-        assert_eq!(Consistency::One.into_cbytes(), &[0, 1]);
-        assert_eq!(Consistency::Two.into_cbytes(), &[0, 2]);
-        assert_eq!(Consistency::Three.into_cbytes(), &[0, 3]);
-        assert_eq!(Consistency::Quorum.into_cbytes(), &[0, 4]);
-        assert_eq!(Consistency::All.into_cbytes(), &[0, 5]);
-        assert_eq!(Consistency::LocalQuorum.into_cbytes(), &[0, 6]);
-        assert_eq!(Consistency::EachQuorum.into_cbytes(), &[0, 7]);
-        assert_eq!(Consistency::Serial.into_cbytes(), &[0, 8]);
-        assert_eq!(Consistency::LocalSerial.into_cbytes(), &[0, 9]);
-        assert_eq!(Consistency::LocalOne.into_cbytes(), &[0, 10]);
-        assert_eq!(Consistency::Unknown.into_cbytes(), &[0, 99]);
+        assert_eq!(Consistency::Any.as_bytes(), &[0, 0]);
+        assert_eq!(Consistency::One.as_bytes(), &[0, 1]);
+        assert_eq!(Consistency::Two.as_bytes(), &[0, 2]);
+        assert_eq!(Consistency::Three.as_bytes(), &[0, 3]);
+        assert_eq!(Consistency::Quorum.as_bytes(), &[0, 4]);
+        assert_eq!(Consistency::All.as_bytes(), &[0, 5]);
+        assert_eq!(Consistency::LocalQuorum.as_bytes(), &[0, 6]);
+        assert_eq!(Consistency::EachQuorum.as_bytes(), &[0, 7]);
+        assert_eq!(Consistency::Serial.as_bytes(), &[0, 8]);
+        assert_eq!(Consistency::LocalSerial.as_bytes(), &[0, 9]);
+        assert_eq!(Consistency::LocalOne.as_bytes(), &[0, 10]);
+        assert_eq!(Consistency::Unknown.as_bytes(), &[0, 99]);
     }
 
     #[test]

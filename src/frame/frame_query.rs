@@ -63,11 +63,11 @@ impl BodyReqQuery {
     }
 }
 
-impl IntoBytes for BodyReqQuery {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for BodyReqQuery {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = vec![];
-        v.extend_from_slice(self.query.clone().into_cbytes().as_slice());
-        v.extend_from_slice(self.query_params.into_cbytes().as_slice());
+        v.extend_from_slice(self.query.clone().as_bytes().as_slice());
+        v.extend_from_slice(self.query_params.as_bytes().as_slice());
         v
     }
 }
@@ -100,7 +100,7 @@ impl Frame {
             timestamp,
         );
 
-        Frame::new(version, flags, opcode, body.into_cbytes(), None, vec![])
+        Frame::new(version, flags, opcode, body.as_bytes(), None, vec![])
     }
 
     /// **Note:** This function should be used internally for building query request frames.

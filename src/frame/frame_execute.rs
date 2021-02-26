@@ -22,11 +22,11 @@ impl<'a> BodyReqExecute<'a> {
     }
 }
 
-impl<'a> IntoBytes for BodyReqExecute<'a> {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl<'a> AsBytes for BodyReqExecute<'a> {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = vec![];
-        v.extend_from_slice(self.id.into_cbytes().as_slice());
-        v.extend_from_slice(self.query_parameters.into_cbytes().as_slice());
+        v.extend_from_slice(self.id.as_bytes().as_slice());
+        v.extend_from_slice(self.query_parameters.as_bytes().as_slice());
         v
     }
 }
@@ -46,6 +46,6 @@ impl Frame {
         );
         let body = BodyReqExecute::new(id, query_parameters);
 
-        Frame::new(version, flags, opcode, body.into_cbytes(), None, vec![])
+        Frame::new(version, flags, opcode, body.as_bytes(), None, vec![])
     }
 }

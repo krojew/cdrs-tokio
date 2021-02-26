@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
-use crate::frame::{Frame, IntoBytes};
+use crate::frame::{AsBytes, Frame};
 use crate::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
 use crate::transport::CDRSTransport;
 
@@ -32,7 +32,7 @@ pub trait QueryExecutor<
 
         let query_frame = Frame::new_query(query, flags);
 
-        send_frame(self, query_frame.into_cbytes(), query_frame.stream).await
+        send_frame(self, query_frame.as_bytes(), query_frame.stream).await
     }
 
     /// Executes a query with default parameters:

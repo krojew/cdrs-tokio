@@ -6,7 +6,7 @@ use common::*;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::consistency::Consistency;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::frame::IntoBytes;
+use cdrs_tokio::frame::AsBytes;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::frame::{TryFromRow, TryFromUDT};
 #[cfg(feature = "e2e-tests")]

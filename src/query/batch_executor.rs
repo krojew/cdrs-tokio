@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
-use crate::frame::traits::IntoBytes;
+use crate::frame::traits::AsBytes;
 use crate::frame::Frame;
 use crate::query::batch_query_builder::QueryBatch;
 use crate::transport::CDRSTransport;
@@ -27,7 +27,7 @@ pub trait BatchExecutor<
 
         let query_frame = Frame::new_req_batch(batch, flags);
 
-        send_frame(self, query_frame.into_cbytes(), query_frame.stream).await
+        send_frame(self, query_frame.as_bytes(), query_frame.stream).await
     }
 
     async fn batch_with_params(&self, batch: QueryBatch) -> error::Result<Frame> {

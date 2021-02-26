@@ -9,7 +9,7 @@ use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 use chrono::prelude::*;
 use uuid::Uuid;
 
-use crate::frame::IntoBytes;
+use crate::frame::AsBytes;
 use crate::time::PrimitiveDateTime;
 
 use super::blob::Blob;
@@ -24,8 +24,8 @@ pub enum ValueType {
     NotSet,
 }
 
-impl IntoBytes for ValueType {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for ValueType {
+    fn as_bytes(&self) -> Vec<u8> {
         match *self {
             ValueType::Normal(n) => to_int(n),
             ValueType::Null => i_to_n_bytes(-1, INT_LEN),
@@ -72,10 +72,10 @@ impl Value {
     }
 }
 
-impl IntoBytes for Value {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for Value {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(INT_LEN + self.body.len());
-        v.extend_from_slice(self.value_type.into_cbytes().as_slice());
+        v.extend_from_slice(self.value_type.as_bytes().as_slice());
         v.extend_from_slice(self.body.as_slice());
         v
     }
@@ -246,7 +246,7 @@ impl Into<Bytes> for Blob {
 
 impl Into<Bytes> for Decimal {
     fn into(self) -> Bytes {
-        Bytes(self.into_cbytes())
+        Bytes(self.as_bytes())
     }
 }
 
@@ -268,7 +268,7 @@ impl<T: Into<Bytes> + Clone + Debug> From<Vec<T>> for Bytes {
         bytes.extend_from_slice(to_int(vec.len() as i32).as_slice());
         bytes = vec.iter().fold(bytes, |mut acc, v| {
             let b: Bytes = v.clone().into();
-            acc.extend_from_slice(Value::new_normal(b).into_cbytes().as_slice());
+            acc.extend_from_slice(Value::new_normal(b).as_bytes().as_slice());
             acc
         });
         Bytes(bytes)
@@ -286,8 +286,8 @@ where
         bytes = map.iter().fold(bytes, |mut acc, (k, v)| {
             let key_bytes: Bytes = k.clone().into();
             let val_bytes: Bytes = v.clone().into();
-            acc.extend_from_slice(Value::new_normal(key_bytes).into_cbytes().as_slice());
-            acc.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            acc.extend_from_slice(Value::new_normal(key_bytes).as_bytes().as_slice());
+            acc.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             acc
         });
         Bytes(bytes)
@@ -298,19 +298,19 @@ where
 mod tests {
 
     use super::*;
-    use crate::frame::traits::IntoBytes;
+    use crate::frame::traits::AsBytes;
 
     #[test]
     fn test_value_type_into_cbytes() {
         // normal value types
         let normal_type = ValueType::Normal(1);
-        assert_eq!(normal_type.into_cbytes(), vec![0, 0, 0, 1]);
+        assert_eq!(normal_type.as_bytes(), vec![0, 0, 0, 1]);
         // null value types
         let null_type = ValueType::Null;
-        assert_eq!(null_type.into_cbytes(), vec![255, 255, 255, 255]);
+        assert_eq!(null_type.as_bytes(), vec![255, 255, 255, 255]);
         // not set value types
         let not_set = ValueType::NotSet;
-        assert_eq!(not_set.into_cbytes(), vec![255, 255, 255, 254])
+        assert_eq!(not_set.as_bytes(), vec![255, 255, 255, 254])
     }
 
     #[test]
@@ -363,6 +363,6 @@ mod tests {
     #[test]
     fn test_value_into_cbytes() {
         let value = Value::new_normal(1 as u8);
-        assert_eq!(value.into_cbytes(), vec![0, 0, 0, 1, 1]);
+        assert_eq!(value.as_bytes(), vec![0, 0, 0, 1, 1]);
     }
 }

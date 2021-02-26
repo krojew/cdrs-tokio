@@ -3,10 +3,10 @@ use std::io::Cursor;
 use crate::error;
 use crate::query;
 
-/// `IntoBytes` should be used to convert a structure into array of bytes.
-pub trait IntoBytes {
+/// `AsBytes` should be used to convert a structure into array of bytes.
+pub trait AsBytes {
     /// It should convert a struct into an array of bytes.
-    fn into_cbytes(&self) -> Vec<u8>;
+    fn as_bytes(&self) -> Vec<u8>;
 }
 
 /// `FromBytes` should be used to parse an array of bytes into a structure.
@@ -17,7 +17,7 @@ pub trait FromBytes {
         Self: Sized;
 }
 
-/// `AsBytes` should be used to convert a value into a single byte.
+/// `AsByte` should be used to convert a value into a single byte.
 pub trait AsByte {
     /// It should represent a struct as a single byte.
     fn as_byte(&self) -> u8;

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use crate::frame::IntoBytes;
+use crate::frame::AsBytes;
 use crate::types::value::Value;
 use crate::types::CString;
 
@@ -32,15 +32,15 @@ impl QueryValues {
     }
 
     fn named_value_into_bytes_fold(mut bytes: Vec<u8>, vals: (&String, &Value)) -> Vec<u8> {
-        let mut name_bytes = CString::new(vals.0.clone()).into_cbytes();
-        let mut vals_bytes = vals.1.into_cbytes();
+        let mut name_bytes = CString::new(vals.0.clone()).as_bytes();
+        let mut vals_bytes = vals.1.as_bytes();
         bytes.append(&mut name_bytes);
         bytes.append(&mut vals_bytes);
         bytes
     }
 
     fn value_into_bytes_fold(mut bytes: Vec<u8>, val: &Value) -> Vec<u8> {
-        let mut val_bytes = val.into_cbytes();
+        let mut val_bytes = val.as_bytes();
         bytes.append(&mut val_bytes);
         bytes
     }
@@ -76,8 +76,8 @@ impl<S: ToString + Hash + Eq, V: Into<Value> + Clone> From<HashMap<S, V>> for Qu
     }
 }
 
-impl IntoBytes for QueryValues {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for QueryValues {
+    fn as_bytes(&self) -> Vec<u8> {
         let bytes: Vec<u8> = vec![];
         match *self {
             QueryValues::SimpleValues(ref v) => {

@@ -13,7 +13,7 @@ use crate::cluster::NodeTcpConfig;
 use crate::compression::Compression;
 use crate::error;
 use crate::frame::parser::parse_frame;
-use crate::frame::{Frame, IntoBytes, Opcode};
+use crate::frame::{AsBytes, Frame, Opcode};
 use crate::transport::{CDRSTransport, TransportTcp};
 use std::ops::Deref;
 
@@ -80,7 +80,7 @@ impl<A: Authenticator + 'static + Send + Sync> ManageConnection for TcpConnectio
     }
 
     async fn is_valid(&self, conn: &mut PooledConnection<'_, Self>) -> Result<(), Self::Error> {
-        let options_frame = Frame::new_req_options().into_cbytes();
+        let options_frame = Frame::new_req_options().as_bytes();
         conn.lock().await.write(options_frame.as_slice()).await?;
 
         parse_frame(&conn, &Compression::None {}).await.map(|_| ())
@@ -98,7 +98,7 @@ pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'sta
     keyspace_holder: &KeyspaceHolder,
 ) -> error::Result<()> {
     let ref mut compression = Compression::None;
-    let startup_frame = Frame::new_req_startup(compression.as_str()).into_cbytes();
+    let startup_frame = Frame::new_req_startup(compression.as_str()).as_bytes();
 
     transport
         .lock()
@@ -156,7 +156,7 @@ pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'sta
             .await
             .write(
                 Frame::new_req_auth_response(auth_token_bytes)
-                    .into_cbytes()
+                    .as_bytes()
                     .as_slice(),
             )
             .await?;
@@ -178,7 +178,7 @@ pub async fn startup<T: CDRSTransport + Unpin + 'static, A: Authenticator + 'sta
             transport
                 .lock()
                 .await
-                .write(use_frame.into_cbytes().as_slice())
+                .write(use_frame.as_bytes().as_slice())
                 .await?;
             parse_frame(transport, compression).await?;
         }

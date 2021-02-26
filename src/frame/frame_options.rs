@@ -4,8 +4,8 @@ use crate::frame::*;
 #[derive(Debug, Default)]
 pub struct BodyReqOptions;
 
-impl IntoBytes for BodyReqOptions {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for BodyReqOptions {
+    fn as_bytes(&self) -> Vec<u8> {
         vec![]
     }
 }
@@ -20,14 +20,7 @@ impl Frame {
         let opcode = Opcode::Options;
         let body: BodyReqOptions = Default::default();
 
-        Frame::new(
-            version,
-            vec![flag],
-            opcode,
-            body.into_cbytes(),
-            None,
-            vec![],
-        )
+        Frame::new(version, vec![flag], opcode, body.as_bytes(), None, vec![])
     }
 }
 

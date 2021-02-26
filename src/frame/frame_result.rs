@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use crate::error;
 use crate::frame::events::SchemaChange;
-use crate::frame::{FromBytes, FromCursor, IntoBytes};
+use crate::frame::{AsBytes, FromBytes, FromCursor};
 use crate::types::rows::Row;
 use crate::types::*;
 
@@ -21,8 +21,8 @@ pub enum ResultKind {
     SchemaChange,
 }
 
-impl IntoBytes for ResultKind {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for ResultKind {
+    fn as_bytes(&self) -> Vec<u8> {
         match *self {
             ResultKind::Void => to_int(0x0001),
             ResultKind::Rows => to_int(0x0002),
@@ -314,8 +314,8 @@ impl RowsMetadataFlag {
     }
 }
 
-impl IntoBytes for RowsMetadataFlag {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for RowsMetadataFlag {
+    fn as_bytes(&self) -> Vec<u8> {
         match *self {
             RowsMetadataFlag::GlobalTableSpace => to_int(GLOBAL_TABLE_SPACE),
             RowsMetadataFlag::HasMorePages => to_int(HAS_MORE_PAGES),

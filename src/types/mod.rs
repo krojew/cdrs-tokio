@@ -4,7 +4,7 @@ use std::io::{Cursor, Read};
 use std::net::SocketAddr;
 
 use crate::error::{column_is_empty_err, Error as CDRSError, Result as CDRSResult};
-use crate::frame::traits::{FromBytes, FromCursor, IntoBytes};
+use crate::frame::traits::{AsBytes, FromBytes, FromCursor};
 use crate::types::data_serialization_types::decode_inet;
 use byteorder::{BigEndian, ByteOrder, ReadBytesExt, WriteBytesExt};
 
@@ -402,9 +402,9 @@ impl CString {
 
 // Implementation for Rust std types
 // Use extended Rust string as Cassandra [string]
-impl IntoBytes for CString {
+impl AsBytes for CString {
     /// Converts into Cassandra byte representation of [string]
-    fn into_cbytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = vec![];
         let l = self.string.len() as i16;
         v.extend_from_slice(to_short(l).as_slice());
@@ -450,9 +450,9 @@ impl CStringLong {
 
 // Implementation for Rust std types
 // Use extended Rust string as Cassandra [string]
-impl IntoBytes for CStringLong {
+impl AsBytes for CStringLong {
     /// Converts into Cassandra byte representation of [string]
-    fn into_cbytes(&self) -> Vec<u8> {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = vec![];
         let l = self.string.len() as i32;
         v.extend_from_slice(to_int(l).as_slice());
@@ -489,15 +489,15 @@ impl CStringList {
     }
 }
 
-impl IntoBytes for CStringList {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for CStringList {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![];
 
         let l = to_short(self.list.len() as i16);
         bytes.extend_from_slice(l.as_slice());
 
         bytes = self.list.iter().fold(bytes, |mut _bytes, cstring| {
-            _bytes.extend_from_slice(cstring.into_cbytes().as_slice());
+            _bytes.extend_from_slice(cstring.as_bytes().as_slice());
             _bytes
         });
 
@@ -577,8 +577,8 @@ impl FromCursor for CBytes {
 }
 
 // Use extended Rust Vec<u8> as Cassandra [bytes]
-impl IntoBytes for CBytes {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for CBytes {
+    fn as_bytes(&self) -> Vec<u8> {
         match self.bytes {
             Some(ref b) => {
                 let mut v: Vec<u8> = vec![];
@@ -625,8 +625,8 @@ impl FromCursor for CBytesShort {
 }
 
 // Use extended Rust Vec<u8> as Cassandra [bytes]
-impl IntoBytes for CBytesShort {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for CBytesShort {
+    fn as_bytes(&self) -> Vec<u8> {
         match self.bytes {
             Some(ref b) => {
                 let mut v: Vec<u8> = vec![];
@@ -704,7 +704,7 @@ pub fn cursor_next_value(cursor: &mut Cursor<&[u8]>, len: u64) -> CDRSResult<Vec
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::{FromCursor, IntoBytes};
+    use crate::frame::traits::{AsBytes, FromCursor};
     use std::io::Cursor;
     use std::mem::transmute;
 
@@ -736,7 +736,7 @@ mod tests {
         let foo = "foo".to_string();
         let cstring = CString::new(foo);
 
-        assert_eq!(cstring.into_cbytes(), &[0, 3, 102, 111, 111]);
+        assert_eq!(cstring.as_bytes(), &[0, 3, 102, 111, 111]);
     }
 
     #[test]
@@ -775,7 +775,7 @@ mod tests {
         let foo = "foo".to_string();
         let cstring = CStringLong::new(foo);
 
-        assert_eq!(cstring.into_cbytes(), &[0, 0, 0, 3, 102, 111, 111]);
+        assert_eq!(cstring.as_bytes(), &[0, 0, 0, 3, 102, 111, 111]);
     }
 
     #[test]
@@ -824,7 +824,7 @@ mod tests {
     fn test_cbytes_into_cbytes() {
         let bytes_vec = vec![1, 2, 3];
         let cbytes = CBytes::new(bytes_vec);
-        assert_eq!(cbytes.into_cbytes(), vec![0, 0, 0, 3, 1, 2, 3]);
+        assert_eq!(cbytes.as_bytes(), vec![0, 0, 0, 3, 1, 2, 3]);
     }
 
     // CBytesShort
@@ -852,7 +852,7 @@ mod tests {
     fn test_cbytesshort_into_cbytes() {
         let bytes_vec: Vec<u8> = vec![1, 2, 3];
         let cbytes = CBytesShort::new(bytes_vec);
-        assert_eq!(cbytes.into_cbytes(), vec![0, 3, 1, 2, 3]);
+        assert_eq!(cbytes.as_bytes(), vec![0, 3, 1, 2, 3]);
     }
 
     // CInt

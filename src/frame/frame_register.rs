@@ -7,8 +7,8 @@ pub struct BodyReqRegister {
     pub events: Vec<SimpleServerEvent>,
 }
 
-impl IntoBytes for BodyReqRegister {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for BodyReqRegister {
+    fn as_bytes(&self) -> Vec<u8> {
         let events_string_list = CStringList {
             list: self
                 .events
@@ -16,7 +16,7 @@ impl IntoBytes for BodyReqRegister {
                 .map(|event| CString::new(event.as_string()))
                 .collect(),
         };
-        events_string_list.into_cbytes()
+        events_string_list.as_bytes()
     }
 }
 
@@ -34,7 +34,7 @@ impl Frame {
             version,
             vec![flag],
             opcode,
-            register_body.into_cbytes(),
+            register_body.as_bytes(),
             None,
             vec![],
         )

@@ -12,9 +12,9 @@ impl BodyReqAuthResponse {
     }
 }
 
-impl IntoBytes for BodyReqAuthResponse {
-    fn into_cbytes(&self) -> Vec<u8> {
-        self.data.into_cbytes()
+impl AsBytes for BodyReqAuthResponse {
+    fn as_bytes(&self) -> Vec<u8> {
+        self.data.as_bytes()
     }
 }
 
@@ -28,28 +28,21 @@ impl Frame {
         let opcode = Opcode::AuthResponse;
         let body = BodyReqAuthResponse::new(token_bytes);
 
-        Frame::new(
-            version,
-            vec![flag],
-            opcode,
-            body.into_cbytes(),
-            None,
-            vec![],
-        )
+        Frame::new(version, vec![flag], opcode, body.as_bytes(), None, vec![])
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::IntoBytes;
+    use crate::frame::traits::AsBytes;
     use crate::types::CBytes;
 
     #[test]
     fn body_req_auth_response() {
         let bytes = CBytes::new(vec![1, 2, 3]);
         let body = BodyReqAuthResponse::new(bytes);
-        assert_eq!(body.into_cbytes(), vec![0, 0, 0, 3, 1, 2, 3]);
+        assert_eq!(body.as_bytes(), vec![0, 0, 0, 3, 1, 2, 3]);
     }
 
     #[test]

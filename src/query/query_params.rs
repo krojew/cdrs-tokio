@@ -1,6 +1,6 @@
 use crate::consistency::Consistency;
 use crate::frame::AsByte;
-use crate::frame::IntoBytes;
+use crate::frame::AsBytes;
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
 use crate::types::{to_bigint, to_int, to_short, CBytes};
@@ -67,16 +67,16 @@ impl QueryParams {
     }
 }
 
-impl IntoBytes for QueryParams {
-    fn into_cbytes(&self) -> Vec<u8> {
+impl AsBytes for QueryParams {
+    fn as_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = vec![];
 
-        v.extend_from_slice(self.consistency.into_cbytes().as_slice());
+        v.extend_from_slice(self.consistency.as_bytes().as_slice());
         v.push(self.flags_as_byte());
         if QueryFlags::has_value(self.flags_as_byte()) {
             if let Some(ref values) = self.values {
                 v.extend_from_slice(to_short(values.len() as i16).as_slice());
-                v.extend_from_slice(values.into_cbytes().as_slice());
+                v.extend_from_slice(values.as_bytes().as_slice());
             }
         }
         if QueryFlags::has_page_size(self.flags_as_byte()) && self.page_size.is_some() {
@@ -100,7 +100,7 @@ impl IntoBytes for QueryParams {
                     // unwrap is safe as we've checked that
                     // self.paging_state.is_some()
                     .unwrap()
-                    .into_cbytes()
+                    .as_bytes()
                     .as_slice(),
             );
         }
@@ -114,7 +114,7 @@ impl IntoBytes for QueryParams {
                     // unwrap is safe as we've checked that
                     // self.serial_consistency.is_some()
                     .unwrap()
-                    .into_cbytes()
+                    .as_bytes()
                     .as_slice(),
             );
         }

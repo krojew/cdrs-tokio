@@ -6,7 +6,7 @@ use common::*;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::frame::IntoBytes;
+use cdrs_tokio::frame::AsBytes;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
@@ -54,9 +54,9 @@ async fn simple_tuple() {
         fn into(self) -> Bytes {
             let mut bytes = Vec::new();
             let val_bytes: Bytes = self.my_text.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             let val_bytes: Bytes = self.my_int.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
     }
@@ -124,11 +124,11 @@ async fn nested_tuples() {
         fn into(self) -> Bytes {
             let mut bytes = Vec::new();
             let val_bytes: Bytes = self.my_text.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             let val_bytes: Bytes = self.my_int.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             let val_bytes: Bytes = self.my_timestamp.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
     }
@@ -158,11 +158,11 @@ async fn nested_tuples() {
         fn into(self) -> Bytes {
             let mut bytes = Vec::new();
             let val_bytes: Bytes = self.my_uuid.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             let val_bytes: Bytes = Bytes::new(self.my_blob);
-            bytes.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             let val_bytes: Bytes = self.my_inner_tuple.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).into_cbytes().as_slice());
+            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
     }
