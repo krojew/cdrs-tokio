@@ -1,6 +1,6 @@
 [package]
 name = "cdrs-tokio"
-version = "2.1.0"
+version = "3.0.0"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 
@@ -49,7 +49,7 @@ default-features = false
 env_logger = "0.8"
 maplit = "1.0.0"
 regex = "1.4"
-cdrs-tokio-helpers-derive = { git = "https://github.com/krojew/cdrs-tokio-helpers-derive" }
+cdrs-tokio-helpers-derive = "2.0"
 
 [[example]]
 name = "dynamic_cluster"

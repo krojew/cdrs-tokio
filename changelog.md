@@ -1,3 +1,19 @@
+## 3.0.0
+
+### Fixed
+
+* Remembering `USE`d keyspaces across connections.
+* Race condition on query id overflow.
+
+### Changed
+
+* Removed deprecated `PasswordAuthenticator`.
+* Removed unused `Compressor` trait.
+* Large API cleanup.
+* Renamed `IntoBytes` to `AsBytes`.
+* `Authenticator` can now be created at runtime - removed static type parameter.
+* Removed unneeded memory allocations when parsing data.
+
 ## 2.1.0
 
 ### Fixed
