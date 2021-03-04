@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
@@ -13,9 +12,7 @@ use super::utils::{prepare_flags, send_frame};
 #[async_trait]
 pub trait BatchExecutor<
     T: CDRSTransport + Unpin + 'static,
-    E: error::FromCDRSError,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
->: GetConnection<T, E, M> + GetCompressor + ResponseCache + Sync
+>: GetConnection<T> + GetCompressor + ResponseCache + Sync
 {
     async fn batch_with_params_tw(
         &self,

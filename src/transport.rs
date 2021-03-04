@@ -12,18 +12,19 @@
 //!with `rust-tls` feature.
 use async_trait::async_trait;
 use std::io;
-use std::io::Error;
 use std::sync::Arc;
 use std::task::Context;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
+use tokio::{io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf}, sync::Mutex};
 use tokio::macros::support::{Pin, Poll};
 use tokio::net::TcpStream;
+use crate::{Error, cluster::{KeyspaceHolder, TcpConnectionsManager}, error::FromCDRSError};
+
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::{client::TlsStream as RustlsStream, TlsConnector as RustlsConnector};
 #[cfg(feature = "rust-tls")]
 use std::net;
-
-use crate::cluster::KeyspaceHolder;
+#[cfg(feature = "rust-tls")]
+use crate::cluster::RustlsConnectionsManager;
 
 // TODO [v x.x.x]: CDRSTransport: ... + BufReader + ButWriter + ...
 ///General CDRS transport trait. Both [`TransportTcp`]
@@ -31,6 +32,9 @@ use crate::cluster::KeyspaceHolder;
 ///speaking it extends/includes `io::Read` and `io::Write` traits and should be thread safe.
 #[async_trait]
 pub trait CDRSTransport: Sized + AsyncRead + AsyncWriteExt + Send + Sync {
+    type Error: FromCDRSError;
+    type Manager: bb8::ManageConnection<Connection = Mutex<Self>, Error = Self::Error>;
+
     /// Sets last USEd keyspace for further connections from the same pool
     async fn set_current_keyspace(&self, keyspace: &str);
 }
@@ -79,21 +83,24 @@ impl AsyncWrite for TransportTcp {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize, Error>> {
+    ) -> Poll<Result<usize, io::Error>> {
         Pin::new(&mut self.tcp).poll_write(cx, buf)
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.tcp).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.tcp).poll_shutdown(cx)
     }
 }
 
 #[async_trait]
 impl CDRSTransport for TransportTcp {
+    type Error = Error;
+    type Manager = TcpConnectionsManager;
+
     async fn set_current_keyspace(&self, keyspace: &str) {
         self.keyspace_holder.set_current_keyspace(keyspace).await;
     }
@@ -144,17 +151,17 @@ impl AsyncWrite for TransportRustls {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize, Error>> {
+    ) -> Poll<Result<usize, io::Error>> {
         Pin::new(&mut self.inner).poll_write(cx, buf)
     }
 
     #[inline]
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.inner).poll_flush(cx)
     }
 
     #[inline]
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
@@ -162,6 +169,9 @@ impl AsyncWrite for TransportRustls {
 #[cfg(feature = "rust-tls")]
 #[async_trait]
 impl CDRSTransport for TransportRustls {
+    type Error = Error;
+    type Manager = RustlsConnectionsManager;
+
     async fn set_current_keyspace(&self, keyspace: &str) {
         self.keyspace_holder.set_current_keyspace(keyspace).await;
     }

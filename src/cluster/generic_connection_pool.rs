@@ -1,16 +1,18 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+use crate::transport::CDRSTransport;
+
 /// Generic pool connection that is able to return an
 /// `bb8::Pool` as well as an IP address of a node.
 #[derive(Debug)]
-pub struct ConnectionPool<M: bb8::ManageConnection> {
-    pool: Arc<bb8::Pool<M>>,
+pub struct ConnectionPool<T: CDRSTransport> {
+    pool: Arc<bb8::Pool<T::Manager>>,
     addr: SocketAddr,
 }
 
-impl<M: bb8::ManageConnection> ConnectionPool<M> {
-    pub fn new(pool: bb8::Pool<M>, addr: SocketAddr) -> Self {
+impl<T: CDRSTransport> ConnectionPool<T> {
+    pub fn new(pool: bb8::Pool<T::Manager>, addr: SocketAddr) -> Self {
         ConnectionPool {
             pool: Arc::new(pool),
             addr,
@@ -18,7 +20,7 @@ impl<M: bb8::ManageConnection> ConnectionPool<M> {
     }
 
     /// Returns reference to underlying `bb8::Pool`.
-    pub fn get_pool(&self) -> Arc<bb8::Pool<M>> {
+    pub fn get_pool(&self) -> Arc<bb8::Pool<T::Manager>> {
         self.pool.clone()
     }
 

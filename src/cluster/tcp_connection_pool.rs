@@ -18,7 +18,7 @@ use crate::transport::{CDRSTransport, TransportTcp};
 use std::ops::Deref;
 
 /// Shortcut for `bb8::Pool` type of TCP-based CDRS connections.
-pub type TcpConnectionPool = ConnectionPool<TcpConnectionsManager>;
+pub type TcpConnectionPool = ConnectionPool<TransportTcp>;
 
 /// `bb8::Pool` of TCP-based CDRS connections.
 ///

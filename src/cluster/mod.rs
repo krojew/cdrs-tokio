@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[cfg(feature = "rust-tls")]
 mod config_rustls;
@@ -31,7 +30,6 @@ pub use generic_connection_pool::ConnectionPool;
 pub use crate::cluster::session::connect;
 
 use crate::compression::Compression;
-use crate::error;
 use crate::frame::{Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::transport::CDRSTransport;
@@ -43,10 +41,11 @@ use std::net::SocketAddr;
 /// connection objects that can be used with the `session::connect()` function.
 #[async_trait]
 pub trait ConnectionConfig: Send + Sync {
-    type ConnectionManager: bb8::ManageConnection;
+    type Transport: CDRSTransport + Send + Sync;
     type Error: Debug + Send + 'static;
+    type Manager: bb8::ManageConnection<Connection = Self::Transport, Error = Self::Error>;
 
-    async fn connect(&self, addr: SocketAddr) -> Result<bb8::Pool<Self::ConnectionManager>, Self::Error>;
+    async fn connect(&self, addr: SocketAddr) -> Result<bb8::Pool<Self::Manager>, Self::Error>;
 }
 
 /// `GetConnection` trait provides a unified interface for Session to get a connection
@@ -54,12 +53,10 @@ pub trait ConnectionConfig: Send + Sync {
 #[async_trait]
 pub trait GetConnection<
     T: CDRSTransport + Send + Sync + 'static,
-    E: error::FromCDRSError,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
 >
 {
     /// Returns connection from a load balancer.
-    async fn get_connection(&self) -> Option<Arc<ConnectionPool<M>>>;
+    async fn get_connection(&self) -> Option<Arc<ConnectionPool<T>>>;
 }
 
 /// `GetCompressor` trait provides a unified interface for Session to get a compressor
@@ -79,14 +76,12 @@ pub trait ResponseCache {
 /// machinery is needed and direct sub traits otherwise.
 pub trait CDRSSession<
     T: CDRSTransport + Unpin + 'static,
-    E: error::FromCDRSError,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
 >:
     GetCompressor
-    + GetConnection<T, E, M>
-    + QueryExecutor<T, E, M>
-    + PrepareExecutor<T, E, M>
-    + ExecExecutor<T, E, M>
-    + BatchExecutor<T, E, M>
+    + GetConnection<T>
+    + QueryExecutor<T>
+    + PrepareExecutor<T>
+    + ExecExecutor<T>
+    + BatchExecutor<T>
 {
 }

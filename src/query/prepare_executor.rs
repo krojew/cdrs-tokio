@@ -1,7 +1,6 @@
 use std::sync::RwLock;
 
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
@@ -15,9 +14,7 @@ use super::utils::{prepare_flags, send_frame};
 #[async_trait]
 pub trait PrepareExecutor<
     T: CDRSTransport + Unpin + 'static,
-    E: error::FromCDRSError,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
->: GetConnection<T, E, M> + GetCompressor + ResponseCache + Sync
+>: GetConnection<T> + GetCompressor + ResponseCache + Sync
 {
     /// It prepares a query for execution, along with query itself the
     /// method takes `with_tracing` and `with_warnings` flags to get
