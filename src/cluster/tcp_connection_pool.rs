@@ -23,7 +23,7 @@ pub type TcpConnectionPool = ConnectionPool<TcpConnectionsManager>;
 /// `bb8::Pool` of TCP-based CDRS connections.
 ///
 /// Used internally for TCP Session for holding connections to a specific Cassandra node.
-pub async fn new_tcp_pool(node_config: NodeTcpConfig<'_>) -> error::Result<TcpConnectionPool> {
+pub async fn new_tcp_pool(node_config: NodeTcpConfig) -> error::Result<TcpConnectionPool> {
     let manager =
         TcpConnectionsManager::new(node_config.addr.to_string(), node_config.authenticator);
 

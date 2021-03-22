@@ -4,12 +4,12 @@ use std::time::Duration;
 use crate::authenticators::Authenticator;
 
 /// Cluster configuration that holds per node TCP configs
-pub struct ClusterTcpConfig<'a>(pub Vec<NodeTcpConfig<'a>>);
+pub struct ClusterTcpConfig(pub Vec<NodeTcpConfig>);
 
 /// Single node TCP connection config.
 #[derive(Clone)]
-pub struct NodeTcpConfig<'a> {
-    pub addr: &'a str,
+pub struct NodeTcpConfig {
+    pub addr: String,
     pub authenticator: Arc<dyn Authenticator + Send + Sync>,
     pub max_size: u32,
     pub min_idle: Option<u32>,
@@ -19,8 +19,8 @@ pub struct NodeTcpConfig<'a> {
 }
 
 /// Builder structure that helps to configure TCP connection for node.
-pub struct NodeTcpConfigBuilder<'a> {
-    addr: &'a str,
+pub struct NodeTcpConfigBuilder {
+    addr: String,
     authenticator: Arc<dyn Authenticator + Send + Sync>,
     max_size: Option<u32>,
     min_idle: Option<u32>,
@@ -29,16 +29,16 @@ pub struct NodeTcpConfigBuilder<'a> {
     connection_timeout: Option<Duration>,
 }
 
-impl<'a> NodeTcpConfigBuilder<'a> {
+impl NodeTcpConfigBuilder {
     const DEFAULT_MAX_SIZE: u32 = 10;
     const DEFAULT_CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
-    pub fn new(
-        addr: &str,
+    pub fn new<S: ToString>(
+        addr: S,
         authenticator: Arc<dyn Authenticator + Send + Sync>,
     ) -> NodeTcpConfigBuilder {
         NodeTcpConfigBuilder {
-            addr,
+            addr: addr.to_string(),
             authenticator,
             max_size: None,
             min_idle: None,
@@ -95,7 +95,7 @@ impl<'a> NodeTcpConfigBuilder<'a> {
     }
 
     /// Finalizes building process and returns `NodeSslConfig`
-    pub fn build(self) -> NodeTcpConfig<'a> {
+    pub fn build(self) -> NodeTcpConfig {
         NodeTcpConfig {
             addr: self.addr,
             authenticator: self.authenticator,
