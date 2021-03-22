@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use bb8;
-use fnv::FnvHashMap;
+use fxhash::FxHashMap;
 use std::iter::Iterator;
+use std::ops::Deref;
 use std::sync::Arc;
 use tokio::{io::AsyncWriteExt, sync::Mutex};
 
@@ -25,7 +26,6 @@ use crate::frame::events::{ServerEvent, SimpleServerEvent, StatusChange, StatusC
 use crate::frame::parser::parse_frame;
 use crate::frame::{AsBytes, Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
-use std::ops::Deref;
 
 /// CDRS session that holds one pool of authorized connecitons per node.
 /// `compression` field contains data compressor that will be used
@@ -34,7 +34,7 @@ use std::ops::Deref;
 pub struct Session<LB> {
     load_balancing: Mutex<LB>,
     event_stream: Option<Mutex<EventStreamNonBlocking>>,
-    responses: Mutex<FnvHashMap<StreamId, Frame>>,
+    responses: Mutex<FxHashMap<StreamId, Frame>>,
     #[allow(dead_code)]
     pub compression: Compression,
 }
@@ -185,7 +185,7 @@ where
     Ok(Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Mutex::new(FnvHashMap::default()),
+        responses: Default::default(),
         compression,
     })
 }
@@ -212,7 +212,7 @@ where
     let mut session = Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Mutex::new(FnvHashMap::default()),
+        responses: Default::default(),
         compression,
     };
 
@@ -251,7 +251,7 @@ where
     Ok(Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Mutex::new(FnvHashMap::default()),
+        responses: Default::default(),
         compression,
     })
 }
@@ -278,7 +278,7 @@ where
     let mut session = Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Mutex::new(FnvHashMap::default()),
+        responses: Default::default(),
         compression,
     };
 
