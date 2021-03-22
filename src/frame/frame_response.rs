@@ -85,10 +85,7 @@ impl ResponseBody {
 
     pub fn as_cols(&self) -> Option<&BodyResResultRows> {
         match *self {
-            ResponseBody::Result(ref res) => match res {
-                &ResResultBody::Rows(ref rows) => Some(rows),
-                _ => None,
-            },
+            ResponseBody::Result(ResResultBody::Rows(ref rows)) => Some(rows),
             _ => None,
         }
     }

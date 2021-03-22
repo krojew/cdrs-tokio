@@ -1,3 +1,5 @@
+use float_eq::*;
+
 use super::{to_int, to_varint};
 use crate::frame::traits::AsBytes;
 
@@ -56,7 +58,7 @@ impl From<f32> for Decimal {
         loop {
             let unscaled = f * (10i64.pow(scale) as f32);
 
-            if unscaled == unscaled.trunc() {
+            if float_eq!(unscaled, unscaled.trunc(), abs <= f32::EPSILON) {
                 return Decimal::new(unscaled as i64, scale);
             }
 
@@ -72,7 +74,7 @@ impl From<f64> for Decimal {
         loop {
             let unscaled = f * (10i64.pow(scale) as f64);
 
-            if unscaled == unscaled.trunc() {
+            if float_eq!(unscaled, unscaled.trunc(), abs <= f64::EPSILON) {
                 return Decimal::new(unscaled as i64, scale);
             }
 
@@ -106,15 +108,15 @@ mod test {
 
     #[test]
     fn from_f32() {
-        assert_eq!(Decimal::from(12300001 as f32), Decimal::new(12300001, 0));
-        assert_eq!(Decimal::from(1230000.1 as f32), Decimal::new(12300001, 1));
-        assert_eq!(Decimal::from(0.12300001 as f32), Decimal::new(12300001, 8));
+        assert_eq!(Decimal::from(12300001_f32), Decimal::new(12300001, 0));
+        assert_eq!(Decimal::from(1230000.1_f32), Decimal::new(12300001, 1));
+        assert_eq!(Decimal::from(0.12300001_f32), Decimal::new(12300001, 8));
     }
 
     #[test]
     fn from_f64() {
         assert_eq!(
-            Decimal::from(1230000000000001i64 as f64),
+            Decimal::from(1230000000000001_f64),
             Decimal::new(1230000000000001i64, 0)
         );
         assert_eq!(

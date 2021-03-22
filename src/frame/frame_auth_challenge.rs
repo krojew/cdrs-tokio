@@ -12,7 +12,7 @@ pub struct BodyResAuthChallenge {
 
 impl FromCursor for BodyResAuthChallenge {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResAuthChallenge> {
-        CBytes::from_cursor(&mut cursor).map(|data| BodyResAuthChallenge { data: data })
+        CBytes::from_cursor(&mut cursor).map(|data| BodyResAuthChallenge { data })
     }
 }
 

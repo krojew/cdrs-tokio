@@ -97,7 +97,7 @@ macro_rules! into_rust_by_name {
                 self.get_col_spec_by_name(name)
                     .ok_or(column_is_empty_err(name))
                     .and_then(|(col_spec, cbytes)| {
-                        let ref col_type = col_spec.col_type;
+                        let col_type = &col_spec.col_type;
                         as_rust_type!(col_type, cbytes, $($into_type)+)
                     })
             }
@@ -139,7 +139,7 @@ macro_rules! into_rust_by_index {
                 self.get_col_spec_by_index(index)
                     .ok_or(column_is_empty_err(index))
                     .and_then(|(col_spec, cbytes)| {
-                        let ref col_type = col_spec.col_type;
+                        let col_type = &col_spec.col_type;
                         as_rust_type!(col_type, cbytes, $($into_type)+)
                     })
             }
@@ -150,7 +150,7 @@ macro_rules! into_rust_by_index {
 macro_rules! as_res_opt {
     ($data_value:ident, $deserialize:expr) => {
         match $data_value.as_plain() {
-            Some(ref bytes) => ($deserialize)(bytes).map(|v| Some(v)).map_err(Into::into),
+            Some(ref bytes) => ($deserialize)(bytes).map(Some).map_err(Into::into),
             None => Ok(None),
         }
     };
@@ -433,7 +433,7 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, Decimal) => {
         match $data_type_option.id {
             ColType::Decimal => match $data_value.as_slice() {
-                Some(ref bytes) => decode_decimal(bytes).map(|d| Some(d)).map_err(Into::into),
+                Some(ref bytes) => decode_decimal(bytes).map(Some).map_err(Into::into),
                 None => Ok(None),
             },
             _ => Err(Error::General(format!(

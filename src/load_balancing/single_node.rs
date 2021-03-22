@@ -8,13 +8,19 @@ pub struct SingleNode<N> {
 
 impl<N> SingleNode<N> {
     pub fn new() -> Self {
+        Default::default()
+    }
+}
+
+impl<N> Default for SingleNode<N> {
+    fn default() -> Self {
         SingleNode { cluster: vec![] }
     }
 }
 
 impl<N> From<Vec<Arc<N>>> for SingleNode<N> {
     fn from(cluster: Vec<Arc<N>>) -> SingleNode<N> {
-        SingleNode { cluster: cluster }
+        SingleNode { cluster }
     }
 }
 
@@ -28,7 +34,7 @@ where
 
     /// Returns first node from a cluster
     fn next(&self) -> Option<Arc<N>> {
-        self.cluster.get(0).map(|node| node.clone())
+        self.cluster.get(0).cloned()
     }
 }
 

@@ -32,12 +32,12 @@ where
     T: CDRSTransport + Unpin + 'static,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 {
-    let ref compression = sender.get_compressor();
+    let compression = sender.get_compressor();
 
     let transport = sender
         .get_connection()
         .await
-        .ok_or(error::Error::from("Unable to get transport"))?
+        .ok_or_else(|| error::Error::from("Unable to get transport"))?
         .get_pool();
 
     let pool = transport

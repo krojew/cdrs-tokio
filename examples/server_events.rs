@@ -28,7 +28,7 @@ async fn main() {
         .await
         .expect("listen error");
 
-    tokio::spawn(listener.start(&Compression::None));
+    tokio::spawn(listener.start(Compression::None));
 
     let new_tables = stream
         // inspects all events in a stream

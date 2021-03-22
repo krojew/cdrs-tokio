@@ -19,8 +19,8 @@ use snap::raw::{Decoder, Encoder};
 
 type Result<T> = result::Result<T, CompressionError>;
 
-pub const LZ4: &'static str = "lz4";
-pub const SNAPPY: &'static str = "snappy";
+pub const LZ4: &str = "lz4";
+pub const SNAPPY: &str = "snappy";
 
 /// It's an error which may occur during encoding or decoding
 /// frame body. As there are only two types of compressors it
@@ -78,7 +78,7 @@ impl Compression {
     /// ```
     pub fn encode(&self, bytes: Vec<u8>) -> Result<Vec<u8>> {
         match *self {
-            Compression::Lz4 => Compression::encode_lz4(bytes),
+            Compression::Lz4 => Ok(Compression::encode_lz4(bytes)),
             Compression::Snappy => Compression::encode_snappy(bytes),
             Compression::None => Ok(bytes),
         }
@@ -129,8 +129,8 @@ impl Compression {
             .map_err(CompressionError::Snappy)
     }
 
-    fn encode_lz4(bytes: Vec<u8>) -> Result<Vec<u8>> {
-        Ok(lz4::compress(bytes.as_slice()))
+    fn encode_lz4(bytes: Vec<u8>) -> Vec<u8> {
+        lz4::compress(bytes.as_slice())
     }
 
     fn decode_lz4(bytes: Vec<u8>) -> Result<Vec<u8>> {
@@ -189,7 +189,7 @@ mod tests {
         let snappy_compression = Compression::Snappy;
         let bytes = String::from("Hello World").into_bytes().to_vec();
         snappy_compression
-            .encode(bytes.clone())
+            .encode(bytes)
             .expect("Should work without exceptions");
     }
 
@@ -206,7 +206,7 @@ mod tests {
         let snappy_compression = Compression::Lz4;
         let bytes = String::from("Hello World").into_bytes().to_vec();
         snappy_compression
-            .encode(bytes.clone())
+            .encode(bytes)
             .expect("Should work without exceptions");
     }
 
@@ -226,7 +226,7 @@ mod tests {
         let none_compression = Compression::None;
         let bytes = String::from("Hello World").into_bytes().to_vec();
         none_compression
-            .encode(bytes.clone())
+            .encode(bytes)
             .expect("Should work without exceptions");
     }
 
@@ -242,7 +242,7 @@ mod tests {
     fn test_compression_encode_lz4_with_invalid_input() {
         let lz4_compression = Compression::Lz4;
         let bytes: Vec<u8> = vec![0x7f, 0x7f, 0x7f, 0x7f, 0x7f];
-        let encoded = lz4_compression.encode(bytes.clone()).unwrap();
+        let encoded = lz4_compression.encode(bytes).unwrap();
         let decode = lz4_compression.decode(encoded);
         assert_eq!(decode.is_err(), true);
     }

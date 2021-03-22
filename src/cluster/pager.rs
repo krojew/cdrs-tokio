@@ -1,4 +1,3 @@
-use bb8;
 use std::marker::PhantomData;
 use tokio::sync::Mutex;
 
@@ -150,14 +149,14 @@ impl<
 
         let metadata_res: error::Result<RowsMetadata> = body
             .as_rows_metadata()
-            .ok_or("Pager query should yield a vector of rows".into());
+            .ok_or_else(|| "Pager query should yield a vector of rows".into());
         let metadata = metadata_res?;
 
         self.pager_state.has_more_pages =
-            Some(RowsMetadataFlag::has_has_more_pages(metadata.flags.clone()));
-        self.pager_state.cursor = metadata.paging_state.clone();
+            Some(RowsMetadataFlag::has_has_more_pages(metadata.flags));
+        self.pager_state.cursor = metadata.paging_state;
         body.into_rows()
-            .ok_or("Pager query should yield a vector of rows".into())
+            .ok_or_else(|| "Pager query should yield a vector of rows".into())
     }
 
     pub fn has_more(&self) -> bool {
@@ -199,14 +198,14 @@ impl<
 
         let metadata_res: error::Result<RowsMetadata> = body
             .as_rows_metadata()
-            .ok_or("Pager query should yield a vector of rows".into());
+            .ok_or_else(|| "Pager query should yield a vector of rows".into());
         let metadata = metadata_res?;
 
         self.pager_state.has_more_pages =
-            Some(RowsMetadataFlag::has_has_more_pages(metadata.flags.clone()));
-        self.pager_state.cursor = metadata.paging_state.clone();
+            Some(RowsMetadataFlag::has_has_more_pages(metadata.flags));
+        self.pager_state.cursor = metadata.paging_state;
         body.into_rows()
-            .ok_or("Pager query should yield a vector of rows".into())
+            .ok_or_else(|| "Pager query should yield a vector of rows".into())
     }
 
     pub fn has_more(&self) -> bool {
@@ -220,7 +219,7 @@ impl<
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Default)]
 pub struct PagerState {
     cursor: Option<CBytes>,
     has_more_pages: Option<bool>,
@@ -228,10 +227,7 @@ pub struct PagerState {
 
 impl PagerState {
     pub fn new() -> Self {
-        PagerState {
-            cursor: None,
-            has_more_pages: None,
-        }
+        Default::default()
     }
 
     pub fn with_cursor(cursor: CBytes) -> Self {

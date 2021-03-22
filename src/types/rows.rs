@@ -41,8 +41,8 @@ impl Row {
             .iter()
             .position(|spec| spec.name.as_str() == name)
             .map(|i| {
-                let ref col_spec = self.metadata.col_specs[i];
-                let ref data = self.row_content[i];
+                let col_spec = &self.metadata.col_specs[i];
+                let data = &self.row_content[i];
                 (col_spec, data)
             })
     }

@@ -24,7 +24,7 @@ impl Map {
     pub fn new(data: Vec<(CBytes, CBytes)>, meta: ColTypeOption) -> Map {
         Map {
             metadata: meta,
-            data: data,
+            data,
         }
     }
 }

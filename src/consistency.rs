@@ -52,7 +52,7 @@ pub enum Consistency {
     /// cannot be reached on that data center.
     EachQuorum,
     /// Achieves linearizable consistency for lightweight transactions by preventing unconditional
-    /// updates.	You cannot configure this level as a normal consistency level,
+    /// updates. You cannot configure this level as a normal consistency level,
     /// configured at the driver level using the consistency level field.
     /// You configure this level using the serial consistency field
     /// as part of the native protocol operation. See failure scenarios.

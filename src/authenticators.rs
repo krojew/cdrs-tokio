@@ -54,12 +54,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_static_password_authenticator_trait_impl() {
-        let authenticator = StaticPasswordAuthenticator::new("a", "a");
-        let _ = authenticator_tester(Box::new(authenticator));
-    }
-
-    #[test]
     fn test_static_password_authenticator_new() {
         StaticPasswordAuthenticator::new("foo", "bar");
     }
@@ -79,6 +73,4 @@ mod tests {
         assert_eq!(auth.get_cassandra_name(), None);
         assert_eq!(auth.get_auth_token().into_plain().unwrap(), vec![0]);
     }
-
-    fn authenticator_tester<A: Authenticator>(_authenticator: Box<A>) {}
 }

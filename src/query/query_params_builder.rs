@@ -37,7 +37,7 @@ impl QueryParamsBuilder {
         let with_names = values.with_names();
         self.with_names = Some(with_names);
         self.values = Some(values);
-        self.flags = self.flags.or(Some(vec![])).map(|mut flags| {
+        self.flags = self.flags.or_else(|| Some(vec![])).map(|mut flags| {
             flags.push(QueryFlags::Value);
             if with_names {
                 flags.push(QueryFlags::WithNamesForValues);
@@ -55,7 +55,7 @@ impl QueryParamsBuilder {
     /// Sets new query consistency
     pub fn page_size(mut self, size: i32) -> Self {
         self.page_size = Some(size);
-        self.flags = self.flags.or(Some(vec![])).map(|mut flags| {
+        self.flags = self.flags.or_else(|| Some(vec![])).map(|mut flags| {
             flags.push(QueryFlags::PageSize);
             flags
         });
@@ -67,7 +67,7 @@ impl QueryParamsBuilder {
     /// Sets new query consistency
     pub fn paging_state(mut self, state: CBytes) -> Self {
         self.paging_state = Some(state);
-        self.flags = self.flags.or(Some(vec![])).map(|mut flags| {
+        self.flags = self.flags.or_else(|| Some(vec![])).map(|mut flags| {
             flags.push(QueryFlags::WithPagingState);
             flags
         });
@@ -85,7 +85,7 @@ impl QueryParamsBuilder {
     pub fn finalize(self) -> QueryParams {
         QueryParams {
             consistency: self.consistency,
-            flags: self.flags.unwrap_or(vec![]),
+            flags: self.flags.unwrap_or_default(),
             values: self.values,
             with_names: self.with_names,
             page_size: self.page_size,

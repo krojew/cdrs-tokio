@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use crate::frame::*;
 use crate::types::to_short;
 
-const CQL_VERSION: &'static str = "CQL_VERSION";
-const CQL_VERSION_VAL: &'static str = "3.0.0";
-const COMPRESSION: &'static str = "COMPRESSION";
+const CQL_VERSION: &str = "CQL_VERSION";
+const CQL_VERSION_VAL: &str = "3.0.0";
+const COMPRESSION: &str = "COMPRESSION";
 
 #[derive(Debug)]
 pub struct BodyReqStartup<'a> {
@@ -19,7 +19,7 @@ impl<'a> BodyReqStartup<'a> {
         if let Some(c) = compression {
             map.insert(COMPRESSION, c);
         }
-        BodyReqStartup { map: map }
+        BodyReqStartup { map }
     }
 
     // should be [u8; 2]

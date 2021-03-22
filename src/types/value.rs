@@ -17,7 +17,7 @@ use super::decimal::Decimal;
 use super::*;
 
 /// Types of Cassandra value: normal value (bits), null value and not-set value
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Copy, Ord, PartialOrd, Eq, Hash)]
 pub enum ValueType {
     Normal(i32),
     Null,
@@ -329,14 +329,14 @@ mod tests {
     fn test_new_normal_value_all_types() {
         let _ = Value::new_normal("hello");
         let _ = Value::new_normal("hello".to_string());
-        let _ = Value::new_normal(1 as u8);
-        let _ = Value::new_normal(1 as u16);
-        let _ = Value::new_normal(1 as u32);
-        let _ = Value::new_normal(1 as u64);
-        let _ = Value::new_normal(1 as i8);
-        let _ = Value::new_normal(1 as i16);
-        let _ = Value::new_normal(1 as i32);
-        let _ = Value::new_normal(1 as i64);
+        let _ = Value::new_normal(1_u8);
+        let _ = Value::new_normal(1_u16);
+        let _ = Value::new_normal(1_u32);
+        let _ = Value::new_normal(1_u64);
+        let _ = Value::new_normal(1_i8);
+        let _ = Value::new_normal(1_i16);
+        let _ = Value::new_normal(1_i32);
+        let _ = Value::new_normal(1_i64);
         let _ = Value::new_normal(true);
     }
 
@@ -344,25 +344,19 @@ mod tests {
     fn test_new_null_value() {
         let null_value = Value::new_null();
         assert_eq!(null_value.body, vec![]);
-        match null_value.value_type {
-            ValueType::Null => assert!(true),
-            _ => unreachable!(),
-        }
+        assert_eq!(null_value.value_type, ValueType::Null);
     }
 
     #[test]
     fn test_new_not_set_value() {
         let not_set_value = Value::new_not_set();
         assert_eq!(not_set_value.body, vec![]);
-        match not_set_value.value_type {
-            ValueType::NotSet => assert!(true),
-            _ => unreachable!(),
-        }
+        assert_eq!(not_set_value.value_type, ValueType::NotSet);
     }
 
     #[test]
     fn test_value_into_cbytes() {
-        let value = Value::new_normal(1 as u8);
+        let value = Value::new_normal(1_u8);
         assert_eq!(value.as_bytes(), vec![0, 0, 0, 1, 1]);
     }
 }

@@ -13,7 +13,7 @@ impl FromCursor for BodyResEvent {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResEvent> {
         let event = ServerEvent::from_cursor(&mut cursor)?;
 
-        Ok(BodyResEvent { event: event })
+        Ok(BodyResEvent { event })
     }
 }
 

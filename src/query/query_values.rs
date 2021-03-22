@@ -15,20 +15,22 @@ pub enum QueryValues {
 }
 
 impl QueryValues {
-    /// It returns `true` if query values is with names and `false` otherwise.
+    /// Returns `true` if query values is with names and `false` otherwise.
     pub fn with_names(&self) -> bool {
-        match *self {
-            QueryValues::SimpleValues(_) => false,
-            _ => true,
-        }
+        !matches!(*self, QueryValues::SimpleValues(_))
     }
 
-    /// It return number of values.
+    /// Returns the number of values.
     pub fn len(&self) -> usize {
         match *self {
             QueryValues::SimpleValues(ref v) => v.len(),
             QueryValues::NamedValues(ref m) => m.len(),
         }
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     fn named_value_into_bytes_fold(mut bytes: Vec<u8>, vals: (&String, &Value)) -> Vec<u8> {

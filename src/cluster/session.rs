@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use bb8;
 use fxhash::FxHashMap;
 use std::iter::Iterator;
 use std::ops::Deref;
@@ -42,7 +41,7 @@ pub struct Session<LB> {
 impl<LB> GetCompressor for Session<LB> {
     /// Returns compression that current session has.
     fn get_compressor(&self) -> Compression {
-        self.compression.clone()
+        self.compression
     }
 }
 
@@ -59,7 +58,7 @@ impl<'a, LB> Session<LB> {
     where
         Session<LB>: CDRSSession<T, M>,
     {
-        return SessionPager::new(self, page_size);
+        SessionPager::new(self, page_size)
     }
 }
 
@@ -224,7 +223,7 @@ where
         )
         .await?;
 
-    tokio::spawn(listener.start(&Compression::None));
+    tokio::spawn(listener.start(Compression::None));
 
     session.event_stream = Some(Mutex::new(event_stream));
 
@@ -290,7 +289,7 @@ where
         )
         .await?;
 
-    tokio::spawn(listener.start(&Compression::None));
+    tokio::spawn(listener.start(Compression::None));
 
     session.event_stream = Some(Mutex::new(event_stream));
 
@@ -522,7 +521,7 @@ impl<L> Session<L> {
 
         let query_frame = Frame::new_req_register(events).as_bytes();
         transport.lock().await.write(query_frame.as_slice()).await?;
-        parse_frame(&transport, &compression).await?;
+        parse_frame(&transport, compression).await?;
 
         Ok(new_listener(transport))
     }

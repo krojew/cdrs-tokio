@@ -45,7 +45,7 @@ pub trait AsRustType<T> {
 
     fn as_r_type(&self) -> CDRSResult<T> {
         self.as_rust_type()
-            .and_then(|op| op.ok_or(CDRSError::from("Value is null or non-set")))
+            .and_then(|op| op.ok_or_else(|| CDRSError::from("Value is null or non-set")))
     }
 }
 
@@ -62,7 +62,7 @@ pub trait AsRust {
         Self: AsRustType<T>,
     {
         self.as_rust()
-            .and_then(|op| op.ok_or("Value is null or non-set".into()))
+            .and_then(|op| op.ok_or_else(|| "Value is null or non-set".into()))
     }
 }
 
@@ -72,7 +72,7 @@ pub trait IntoRustByName<R> {
 
     fn get_r_by_name(&self, name: &str) -> CDRSResult<R> {
         self.get_by_name(name)
-            .and_then(|op| op.ok_or(column_is_empty_err(name)))
+            .and_then(|op| op.ok_or_else(|| column_is_empty_err(name)))
     }
 }
 
@@ -89,7 +89,7 @@ pub trait ByName {
         Self: IntoRustByName<R>,
     {
         self.by_name(name)
-            .and_then(|op| op.ok_or(column_is_empty_err(name)))
+            .and_then(|op| op.ok_or_else(|| column_is_empty_err(name)))
     }
 }
 
@@ -99,7 +99,7 @@ pub trait IntoRustByIndex<R> {
 
     fn get_r_by_index(&self, index: usize) -> CDRSResult<R> {
         self.get_by_index(index)
-            .and_then(|op| op.ok_or(column_is_empty_err(index)))
+            .and_then(|op| op.ok_or_else(|| column_is_empty_err(index)))
     }
 }
 
@@ -116,7 +116,7 @@ pub trait ByIndex {
         Self: IntoRustByIndex<R>,
     {
         self.by_index(index)
-            .and_then(|op| op.ok_or(column_is_empty_err(index)))
+            .and_then(|op| op.ok_or_else(|| column_is_empty_err(index)))
     }
 }
 
@@ -726,30 +726,30 @@ mod tests {
     // CString
     #[test]
     fn test_cstring_new() {
-        let foo = "foo".to_string();
-        let _ = CString::new(foo);
+        let value = "foo".to_string();
+        let _ = CString::new(value);
     }
 
     #[test]
     fn test_cstring_as_str() {
-        let foo = "foo".to_string();
-        let cstring = CString::new(foo);
+        let value = "foo".to_string();
+        let cstring = CString::new(value);
 
         assert_eq!(cstring.as_str(), "foo");
     }
 
     #[test]
     fn test_cstring_into_plain() {
-        let foo = "foo".to_string();
-        let cstring = CString::new(foo);
+        let value = "foo".to_string();
+        let cstring = CString::new(value);
 
         assert_eq!(cstring.into_plain(), "foo".to_string());
     }
 
     #[test]
     fn test_cstring_into_cbytes() {
-        let foo = "foo".to_string();
-        let cstring = CString::new(foo);
+        let value = "foo".to_string();
+        let cstring = CString::new(value);
 
         assert_eq!(cstring.as_bytes(), &[0, 3, 102, 111, 111]);
     }
@@ -765,30 +765,30 @@ mod tests {
     // CStringLong
     #[test]
     fn test_cstringlong_new() {
-        let foo = "foo".to_string();
-        let _ = CStringLong::new(foo);
+        let value = "foo".to_string();
+        let _ = CStringLong::new(value);
     }
 
     #[test]
     fn test_cstringlong_as_str() {
-        let foo = "foo".to_string();
-        let cstring = CStringLong::new(foo);
+        let value = "foo".to_string();
+        let cstring = CStringLong::new(value);
 
         assert_eq!(cstring.as_str(), "foo");
     }
 
     #[test]
     fn test_cstringlong_into_plain() {
-        let foo = "foo".to_string();
-        let cstring = CStringLong::new(foo);
+        let value = "foo".to_string();
+        let cstring = CStringLong::new(value);
 
         assert_eq!(cstring.into_plain(), "foo".to_string());
     }
 
     #[test]
     fn test_cstringlong_into_cbytes() {
-        let foo = "foo".to_string();
-        let cstring = CStringLong::new(foo);
+        let value = "foo".to_string();
+        let cstring = CStringLong::new(value);
 
         assert_eq!(cstring.as_bytes(), &[0, 0, 0, 3, 102, 111, 111]);
     }

@@ -15,8 +15,8 @@ pub struct BatchQueryBuilder {
     timestamp: Option<i64>,
 }
 
-impl BatchQueryBuilder {
-    pub fn new() -> BatchQueryBuilder {
+impl Default for BatchQueryBuilder {
+    fn default() -> Self {
         BatchQueryBuilder {
             batch_type: BatchType::Logged,
             queries: vec![],
@@ -24,6 +24,12 @@ impl BatchQueryBuilder {
             serial_consistency: None,
             timestamp: None,
         }
+    }
+}
+
+impl BatchQueryBuilder {
+    pub fn new() -> BatchQueryBuilder {
+        Default::default()
     }
 
     pub fn batch_type(mut self, batch_type: BatchType) -> Self {

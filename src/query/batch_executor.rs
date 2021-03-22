@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use bb8;
 use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};

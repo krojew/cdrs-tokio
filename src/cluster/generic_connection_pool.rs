@@ -1,8 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use bb8;
-
 /// Generic pool connection that is able to return an
 /// `bb8::Pool` as well as an IP address of a node.
 #[derive(Debug)]

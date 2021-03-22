@@ -21,10 +21,7 @@ pub struct List {
 
 impl List {
     pub fn new(data: Vec<CBytes>, metadata: ColTypeOption) -> List {
-        List {
-            metadata: metadata,
-            data: data,
-        }
+        List { metadata, data }
     }
 
     fn map<T, F>(&self, f: F) -> Vec<T>

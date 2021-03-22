@@ -1,4 +1,3 @@
-use rand;
 use std::sync::Arc;
 
 use super::LoadBalancingStrategy;
@@ -41,9 +40,7 @@ where
         if len == 0 {
             return None;
         }
-        self.cluster
-            .get(Self::rnd_idx((0, len)))
-            .map(|node| node.clone())
+        self.cluster.get(Self::rnd_idx((0, len))).cloned()
     }
 
     fn remove_node<F>(&mut self, mut filter: F)

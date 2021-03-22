@@ -16,6 +16,7 @@ pub struct BodyReqQuery {
 
 impl BodyReqQuery {
     // Fabric function that produces Query request body.
+    #[allow(clippy::too_many_arguments)]
     fn new(
         query: String,
         consistency: Consistency,
@@ -76,6 +77,7 @@ impl AsBytes for BodyReqQuery {
 
 impl Frame {
     /// **Note:** This function should be used internally for building query request frames.
+    #[allow(clippy::too_many_arguments)]
     pub fn new_req_query(
         query: String,
         consistency: Consistency,

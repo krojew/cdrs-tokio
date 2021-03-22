@@ -6,29 +6,29 @@ use crate::frame::traits::FromCursor;
 use crate::types::{CInet, CString, CStringList};
 
 // Event types
-const TOPOLOGY_CHANGE: &'static str = "TOPOLOGY_CHANGE";
-const STATUS_CHANGE: &'static str = "STATUS_CHANGE";
-const SCHEMA_CHANGE: &'static str = "SCHEMA_CHANGE";
+const TOPOLOGY_CHANGE: &str = "TOPOLOGY_CHANGE";
+const STATUS_CHANGE: &str = "STATUS_CHANGE";
+const SCHEMA_CHANGE: &str = "SCHEMA_CHANGE";
 
-// Topologe changes
-const NEW_NODE: &'static str = "NEW_NODE";
-const REMOVED_NODE: &'static str = "REMOVED_NODE";
+// Topology changes
+const NEW_NODE: &str = "NEW_NODE";
+const REMOVED_NODE: &str = "REMOVED_NODE";
 
 // Status changes
-const UP: &'static str = "UP";
-const DOWN: &'static str = "DOWN";
+const UP: &str = "UP";
+const DOWN: &str = "DOWN";
 
 // Schema changes
-const CREATED: &'static str = "CREATED";
-const UPDATED: &'static str = "UPDATED";
-const DROPPED: &'static str = "DROPPED";
+const CREATED: &str = "CREATED";
+const UPDATED: &str = "UPDATED";
+const DROPPED: &str = "DROPPED";
 
 // Schema change targets
-const KEYSPACE: &'static str = "KEYSPACE";
-const TABLE: &'static str = "TABLE";
-const TYPE: &'static str = "TYPE";
-const FUNCTION: &'static str = "FUNCTION";
-const AGGREGATE: &'static str = "AGGREGATE";
+const KEYSPACE: &str = "KEYSPACE";
+const TABLE: &str = "TABLE";
+const TYPE: &str = "TYPE";
+const FUNCTION: &str = "FUNCTION";
+const AGGREGATE: &str = "AGGREGATE";
 
 /// Simplified `ServerEvent` that does not contain details
 /// about a concrete change. It may be useful for subscription

@@ -28,7 +28,7 @@ impl Frame {
         let version = Version::Request;
         let flag = Flag::Ignore;
         let opcode = Opcode::Register;
-        let register_body = BodyReqRegister { events: events };
+        let register_body = BodyReqRegister { events };
 
         Frame::new(
             version,

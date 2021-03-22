@@ -1,7 +1,6 @@
 use std::sync::RwLock;
 
 use async_trait::async_trait;
-use bb8;
 use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
@@ -36,10 +35,9 @@ pub trait PrepareExecutor<
         send_frame(self, query_frame.as_bytes(), query_frame.stream)
             .await
             .and_then(|response| response.get_body())
-            .and_then(|body| {
-                Ok(body
-                    .into_prepared()
-                    .expect("CDRS BUG: cannot convert frame into prepared"))
+            .map(|body| {
+                body.into_prepared()
+                    .expect("CDRS BUG: cannot convert frame into prepared")
             })
     }
 

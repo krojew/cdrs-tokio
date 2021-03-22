@@ -138,7 +138,7 @@ impl AsBytes for Frame {
 }
 
 /// Frame's version
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
 pub enum Version {
     Request,
     Response,
@@ -184,8 +184,8 @@ impl Version {
 impl AsByte for Version {
     fn as_byte(&self) -> u8 {
         match self {
-            &Version::Request => Version::request_version(),
-            &Version::Response => Version::response_version(),
+            Version::Request => Version::request_version(),
+            Version::Response => Version::response_version(),
         }
     }
 }
@@ -263,8 +263,8 @@ impl Flag {
         found_flags
     }
 
-    /// The method converts a serie of `Flag`-s into a single byte.
-    pub fn many_to_cbytes(flags: &Vec<Flag>) -> u8 {
+    /// The method converts a series of `Flag`-s into a single byte.
+    pub fn many_to_cbytes(flags: &[Flag]) -> u8 {
         flags
             .iter()
             .fold(Flag::Ignore.as_byte(), |acc, f| acc | f.as_byte())
@@ -294,12 +294,12 @@ impl Flag {
 impl AsByte for Flag {
     fn as_byte(&self) -> u8 {
         match self {
-            &Flag::Compression => 0x01,
-            &Flag::Tracing => 0x02,
-            &Flag::CustomPayload => 0x04,
-            &Flag::Warning => 0x08,
-            &Flag::Ignore => 0x00,
-            // assuming that ingoring value whould be other than [0x01, 0x02, 0x04, 0x08]
+            Flag::Compression => 0x01,
+            Flag::Tracing => 0x02,
+            Flag::CustomPayload => 0x04,
+            Flag::Warning => 0x08,
+            Flag::Ignore => 0x00,
+            // assuming that ingoing value would be other than [0x01, 0x02, 0x04, 0x08]
         }
     }
 }
@@ -344,22 +344,22 @@ impl Opcode {
 impl AsByte for Opcode {
     fn as_byte(&self) -> u8 {
         match self {
-            &Opcode::Error => 0x00,
-            &Opcode::Startup => 0x01,
-            &Opcode::Ready => 0x02,
-            &Opcode::Authenticate => 0x03,
-            &Opcode::Options => 0x05,
-            &Opcode::Supported => 0x06,
-            &Opcode::Query => 0x07,
-            &Opcode::Result => 0x08,
-            &Opcode::Prepare => 0x09,
-            &Opcode::Execute => 0x0A,
-            &Opcode::Register => 0x0B,
-            &Opcode::Event => 0x0C,
-            &Opcode::Batch => 0x0D,
-            &Opcode::AuthChallenge => 0x0E,
-            &Opcode::AuthResponse => 0x0F,
-            &Opcode::AuthSuccess => 0x10,
+            Opcode::Error => 0x00,
+            Opcode::Startup => 0x01,
+            Opcode::Ready => 0x02,
+            Opcode::Authenticate => 0x03,
+            Opcode::Options => 0x05,
+            Opcode::Supported => 0x06,
+            Opcode::Query => 0x07,
+            Opcode::Result => 0x08,
+            Opcode::Prepare => 0x09,
+            Opcode::Execute => 0x0A,
+            Opcode::Register => 0x0B,
+            Opcode::Event => 0x0C,
+            Opcode::Batch => 0x0D,
+            Opcode::AuthChallenge => 0x0E,
+            Opcode::AuthResponse => 0x0F,
+            Opcode::AuthSuccess => 0x10,
         }
     }
 }
@@ -431,13 +431,13 @@ mod tests {
 
     #[test]
     fn test_flag_from() {
-        assert_eq!(Flag::from(0x01 as u8), Flag::Compression);
-        assert_eq!(Flag::from(0x02 as u8), Flag::Tracing);
-        assert_eq!(Flag::from(0x04 as u8), Flag::CustomPayload);
-        assert_eq!(Flag::from(0x08 as u8), Flag::Warning);
+        assert_eq!(Flag::from(0x01_u8), Flag::Compression);
+        assert_eq!(Flag::from(0x02_u8), Flag::Tracing);
+        assert_eq!(Flag::from(0x04_u8), Flag::CustomPayload);
+        assert_eq!(Flag::from(0x08_u8), Flag::Warning);
         // rest should be interpreted as Ignore
-        assert_eq!(Flag::from(0x10 as u8), Flag::Ignore);
-        assert_eq!(Flag::from(0x31 as u8), Flag::Ignore);
+        assert_eq!(Flag::from(0x10_u8), Flag::Ignore);
+        assert_eq!(Flag::from(0x31_u8), Flag::Ignore);
     }
 
     #[test]

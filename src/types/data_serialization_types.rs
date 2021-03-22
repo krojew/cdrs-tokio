@@ -7,7 +7,6 @@ use super::decimal::Decimal;
 use super::*;
 use crate::error;
 use crate::frame::FromCursor;
-use uuid;
 
 // https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L813
 
@@ -32,9 +31,9 @@ pub fn decode_bigint(bytes: &[u8]) -> Result<i64, io::Error> {
 }
 
 // Decodes Cassandra `blob` data (bytes) into Rust's `Result<Vec<u8>, io::Error>`
-pub fn decode_blob(bytes: &Vec<u8>) -> Result<Blob, io::Error> {
+pub fn decode_blob(bytes: &[u8]) -> Result<Blob, io::Error> {
     // in fact we just pass it through.
-    Ok(bytes.clone().into())
+    Ok(bytes.into())
 }
 
 // Decodes Cassandra `boolean` data (bytes) into Rust's `Result<i32, io::Error>`
@@ -84,6 +83,7 @@ pub fn decode_float(bytes: &[u8]) -> Result<f32, io::Error> {
 }
 
 // Decodes Cassandra `inet` data (bytes) into Rust's `Result<net::IpAddr, io::Error>`
+#[allow(clippy::many_single_char_names)]
 pub fn decode_inet(bytes: &[u8]) -> Result<net::IpAddr, io::Error> {
     match bytes.len() {
         // v4
@@ -226,6 +226,7 @@ mod tests {
     use super::super::super::error::*;
     use super::super::super::frame::frame_result::*;
     use super::*;
+    use float_eq::*;
     use std::net::IpAddr;
 
     #[test]
@@ -251,7 +252,7 @@ mod tests {
     #[test]
     fn decode_blob_test() {
         assert_eq!(
-            decode_blob(&vec![0, 0, 0, 3]).unwrap().into_vec(),
+            decode_blob(&[0, 0, 0, 3]).unwrap().into_vec(),
             vec![0, 0, 0, 3]
         );
     }
@@ -276,13 +277,21 @@ mod tests {
     #[test]
     fn decode_double_test() {
         let bytes = to_float_big(0.3);
-        assert_eq!(decode_double(bytes.as_slice()).unwrap(), 0.3);
+        assert_float_eq!(
+            decode_double(bytes.as_slice()).unwrap(),
+            0.3,
+            abs <= f64::EPSILON
+        );
     }
 
     #[test]
     fn decode_float_test() {
         let bytes = to_float(0.3);
-        assert_eq!(decode_float(bytes.as_slice()).unwrap(), 0.3);
+        assert_float_eq!(
+            decode_float(bytes.as_slice()).unwrap(),
+            0.3,
+            abs <= f32::EPSILON
+        );
     }
 
     #[test]
@@ -533,8 +542,12 @@ mod tests {
         let type_double = DataType {
             id: ColType::Double,
         };
-        let data = CBytes::new(to_float_big(0.1 as f64));
-        assert_eq!(as_rust_type!(type_double, data, f64).unwrap().unwrap(), 0.1);
+        let data = CBytes::new(to_float_big(0.1_f64));
+        assert_float_eq!(
+            as_rust_type!(type_double, data, f64).unwrap().unwrap(),
+            0.1,
+            abs <= f64::EPSILON
+        );
         let wrong_type = DataType { id: ColType::Map };
         assert!(as_rust_type!(wrong_type, data, f64).is_err());
     }
@@ -543,9 +556,13 @@ mod tests {
     fn as_rust_f32_test() {
         // let type_decimal = DataType { id: ColType::Decimal };
         let type_float = DataType { id: ColType::Float };
-        let data = CBytes::new(to_float(0.1 as f32));
+        let data = CBytes::new(to_float(0.1_f32));
         // assert_eq!(as_rust_type!(type_decimal, data, f32).unwrap(), 100.0);
-        assert_eq!(as_rust_type!(type_float, data, f32).unwrap().unwrap(), 0.1);
+        assert_float_eq!(
+            as_rust_type!(type_float, data, f32).unwrap().unwrap(),
+            0.1,
+            abs <= f32::EPSILON
+        );
         let wrong_type = DataType { id: ColType::Map };
         assert!(as_rust_type!(wrong_type, data, f32).is_err());
     }

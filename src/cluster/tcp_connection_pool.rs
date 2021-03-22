@@ -80,7 +80,7 @@ impl ManageConnection for TcpConnectionsManager {
         let options_frame = Frame::new_req_options().as_bytes();
         conn.lock().await.write(options_frame.as_slice()).await?;
 
-        parse_frame(&conn, &Compression::None {}).await.map(|_| ())
+        parse_frame(&conn, Compression::None).await.map(|_| ())
     }
 
     fn has_broken(&self, _conn: &mut Self::Connection) -> bool {
@@ -97,7 +97,7 @@ pub async fn startup<
     session_authenticator: &A,
     keyspace_holder: &KeyspaceHolder,
 ) -> error::Result<()> {
-    let ref mut compression = Compression::None;
+    let compression = Compression::None;
     let startup_frame = Frame::new_req_startup(compression.as_str()).as_bytes();
 
     transport
@@ -128,9 +128,7 @@ pub async fn startup<
 
         let auth_check = session_authenticator
             .get_cassandra_name()
-            .ok_or(error::Error::General(
-                "No authenticator was provided".to_string(),
-            ))
+            .ok_or_else(|| error::Error::General("No authenticator was provided".to_string()))
             .map(|auth| {
                 if authenticator != auth {
                     let io_err = io::Error::new(

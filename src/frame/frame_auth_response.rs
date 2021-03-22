@@ -8,7 +8,7 @@ pub struct BodyReqAuthResponse {
 
 impl BodyReqAuthResponse {
     pub fn new(data: CBytes) -> BodyReqAuthResponse {
-        BodyReqAuthResponse { data: data }
+        BodyReqAuthResponse { data }
     }
 }
 

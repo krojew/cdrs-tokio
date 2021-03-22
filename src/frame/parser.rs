@@ -1,4 +1,3 @@
-use bb8;
 use std::io::Cursor;
 use std::ops::Deref;
 use tokio::io::{AsyncRead, AsyncReadExt};
@@ -15,7 +14,7 @@ use crate::types::{from_bytes, from_i16_bytes, CStringList, UUID_LEN};
 
 pub async fn from_connection<M, T>(
     conn: &bb8::PooledConnection<'_, M>,
-    compressor: &Compression,
+    compressor: Compression,
 ) -> error::Result<Frame>
 where
     T: CDRSTransport + Unpin + 'static,
@@ -24,10 +23,7 @@ where
     parse_frame(conn.deref(), compressor).await
 }
 
-pub async fn parse_frame<T>(
-    cursor_cell: &Mutex<T>,
-    compressor: &Compression,
-) -> error::Result<Frame>
+pub async fn parse_frame<T>(cursor_cell: &Mutex<T>, compressor: Compression) -> error::Result<Frame>
 where
     T: AsyncRead + Unpin,
 {

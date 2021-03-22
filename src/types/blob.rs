@@ -1,5 +1,6 @@
 /// Special type that represents Cassandra blob type.
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[repr(transparent)]
 pub struct Blob(Vec<u8>);
 
 impl Blob {
@@ -22,5 +23,11 @@ impl Blob {
 impl From<Vec<u8>> for Blob {
     fn from(vec: Vec<u8>) -> Self {
         Blob::new(vec)
+    }
+}
+
+impl From<&[u8]> for Blob {
+    fn from(value: &[u8]) -> Self {
+        Blob::new(value.to_vec())
     }
 }
