@@ -19,7 +19,7 @@ pub use crate::cluster::config_rustls::{
 };
 pub use crate::cluster::config_tcp::{ClusterTcpConfig, NodeTcpConfig, NodeTcpConfigBuilder};
 pub use crate::cluster::keyspace_holder::KeyspaceHolder;
-pub use crate::cluster::pager::{PagerState, QueryPager, SessionPager};
+pub use crate::cluster::pager::{ExecPager, PagerState, QueryPager, SessionPager};
 #[cfg(feature = "rust-tls")]
 pub use crate::cluster::rustls_connection_pool::{
     new_rustls_pool, RustlsConnectionPool, RustlsConnectionsManager,
