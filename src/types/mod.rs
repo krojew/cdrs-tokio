@@ -236,7 +236,7 @@ pub fn from_i16_bytes(bytes: &[u8]) -> i16 {
     try_i16_from_bytes(bytes).unwrap()
 }
 
-/// Converts number i16 into Cassandra's [short].
+/// Converts number i16 into Cassandra's short.
 ///
 /// # Panics
 ///
@@ -249,7 +249,7 @@ pub fn to_short(int: i16) -> Vec<u8> {
     bytes
 }
 
-/// Converts integer into Cassandra's [int]
+/// Converts integer into Cassandra's int
 ///
 /// # Panics
 ///
@@ -262,7 +262,7 @@ pub fn to_int(int: i32) -> Vec<u8> {
     bytes
 }
 
-/// Converts integer into Cassandra's [int]
+/// Converts integer into Cassandra's int
 ///
 /// # Panics
 ///
@@ -275,7 +275,7 @@ pub fn to_bigint(int: i64) -> Vec<u8> {
     bytes
 }
 
-/// Converts integer into Cassandra's [varint].
+/// Converts integer into Cassandra's varint.
 pub fn to_varint(int: i64) -> Vec<u8> {
     if int == 0 {
         return vec![0];
@@ -322,7 +322,7 @@ pub fn to_u_short(int: u16) -> Vec<u8> {
     bytes
 }
 
-/// Converts integer into Cassandra's [int]
+/// Converts integer into Cassandra's int
 ///
 /// # Panics
 ///
@@ -403,7 +403,7 @@ impl CString {
 // Implementation for Rust std types
 // Use extended Rust string as Cassandra [string]
 impl AsBytes for CString {
-    /// Converts into Cassandra byte representation of [string]
+    /// Converts into Cassandra byte representation of string
     fn as_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = vec![];
         let l = self.string.len() as i16;
@@ -414,7 +414,7 @@ impl AsBytes for CString {
 }
 
 impl FromCursor for CString {
-    /// from_cursor gets Cursor who's position is set such that it should be a start of a [string].
+    /// from_cursor gets Cursor who's position is set such that it should be a start of a string.
     /// It reads required number of bytes and returns a String
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CString> {
         let mut buff = [0; SHORT_LEN];
@@ -452,7 +452,7 @@ impl CStringLong {
 // Implementation for Rust std types
 // Use extended Rust string as Cassandra [string]
 impl AsBytes for CStringLong {
-    /// Converts into Cassandra byte representation of [string]
+    /// Converts into Cassandra byte representation of string
     fn as_bytes(&self) -> Vec<u8> {
         let mut v: Vec<u8> = vec![];
         let l = self.string.len() as i32;
@@ -463,7 +463,7 @@ impl AsBytes for CStringLong {
 }
 
 impl FromCursor for CStringLong {
-    /// from_cursor gets Cursor who's position is set such that it should be a start of a [string].
+    /// from_cursor gets Cursor who's position is set such that it should be a start of a string.
     /// It reads required number of bytes and returns a String
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CStringLong> {
         let mut buff = [0; INT_LEN];
@@ -565,7 +565,7 @@ impl CBytes {
 }
 
 impl FromCursor for CBytes {
-    /// from_cursor gets Cursor who's position is set such that it should be a start of a [bytes].
+    /// from_cursor gets Cursor who's position is set such that it should be a start of bytes.
     /// It reads required number of bytes and returns a CBytes
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CBytes> {
         let len = CInt::from_cursor(&mut cursor)?;
@@ -611,7 +611,7 @@ impl CBytesShort {
 }
 
 impl FromCursor for CBytesShort {
-    /// from_cursor gets Cursor who's position is set such that it should be a start of a [bytes].
+    /// from_cursor gets Cursor who's position is set such that it should be a start of bytes.
     /// It reads required number of bytes and returns a CBytes
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CBytesShort> {
         let len = CIntShort::from_cursor(&mut cursor)?;
@@ -676,7 +676,7 @@ impl FromBytes for Vec<u8> {
     }
 }
 
-/// The structure which represents Cassandra [inet]
+/// The structure which represents Cassandra inet
 /// (https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L222).
 #[derive(Debug)]
 pub struct CInet {

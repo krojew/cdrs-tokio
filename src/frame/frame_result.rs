@@ -339,10 +339,10 @@ impl FromBytes for RowsMetadataFlag {
 /// Single column specification.
 #[derive(Debug, Clone)]
 pub struct ColSpec {
-    /// The initial <ksname> is a [string] and is only present
+    /// The initial <ksname> is a string and is only present
     /// if the Global_tables_spec flag is NOT set
     pub ksname: Option<CString>,
-    /// The initial <tablename> is a [string] and is present
+    /// The initial <tablename> is a string and is present
     /// if the Global_tables_spec flag is NOT set
     pub tablename: Option<CString>,
     /// Column name

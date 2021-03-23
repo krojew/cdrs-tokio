@@ -4,10 +4,10 @@
 //!Currently CDRS provides to concrete transports which implement `CDRSTranpsport` trait. There
 //! are:
 //!
-//! * [`TransportTcp`][tTcp] is default TCP transport which is usually used to establish
+//! * [`TransportTcp`] is default TCP transport which is usually used to establish
 //!connection and exchange frames.
 //!
-//! * `TransportTls` is a transport which is used to establish SSL encrypted connection
+//! * [`TransportRustls`] is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
 use async_trait::async_trait;
@@ -25,11 +25,9 @@ use tokio_rustls::{client::TlsStream as RustlsStream, TlsConnector as RustlsConn
 use crate::cluster::KeyspaceHolder;
 
 // TODO [v x.x.x]: CDRSTransport: ... + BufReader + ButWriter + ...
-///General CDRS transport trait. Both [`TranportTcp`][transportTcp]
-///and [`TransportTls`][transportTls] has their own implementations of this trait. Generaly
+///General CDRS transport trait. Both [`TransportTcp`]
+///and [`TransportRustls`] has their own implementations of this trait. Generaly
 ///speaking it extends/includes `io::Read` and `io::Write` traits and should be thread safe.
-///[transportTcp]:struct.TransportTcp.html
-///[transportTls]:struct.TransportTls.html
 #[async_trait]
 pub trait CDRSTransport: Sized + AsyncRead + AsyncWriteExt + Send + Sync {
     /// Creates a new independently owned handle to the underlying socket.
