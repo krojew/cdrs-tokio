@@ -82,8 +82,8 @@ async fn insert_row(session: &mut CurrentSession, row: RowStruct, prepared_query
 
 async fn batch_few_queries(session: &mut CurrentSession, query: &str) {
     let prepared_query = session.prepare(query).await.expect("Prepare query error");
-    let row_1 = RowStruct { key: 1001 as i32 };
-    let row_2 = RowStruct { key: 2001 as i32 };
+    let row_1 = RowStruct { key: 1001 };
+    let row_2 = RowStruct { key: 2001 };
 
     let batch = BatchQueryBuilder::new()
         .add_query_prepared(prepared_query, row_1.into_query_values())

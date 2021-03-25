@@ -428,6 +428,7 @@ mod schema_change_target_test {
     use std::io::Cursor;
 
     #[test]
+    #[allow(clippy::many_single_char_names)]
     fn from_cursor() {
         let a = &[0, 8, 75, 69, 89, 83, 80, 65, 67, 69];
         let mut keyspace: Cursor<&[u8]> = Cursor::new(a);
