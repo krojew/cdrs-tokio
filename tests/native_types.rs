@@ -21,6 +21,8 @@ use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 use uuid::Uuid;
 
 #[cfg(feature = "e2e-tests")]
+use float_eq::*;
+#[cfg(feature = "e2e-tests")]
 use std::collections::HashMap;
 #[cfg(feature = "e2e-tests")]
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -238,8 +240,8 @@ async fn float() {
         let my_double_row: f64 = row.get_r_by_name("my_double").expect("my_double");
         let my_decimal_row_a: Decimal = row.get_r_by_name("my_decimal_a").expect("my_decimal_a");
         let my_decimal_row_b: Decimal = row.get_r_by_name("my_decimal_b").expect("my_decimal_b");
-        assert_eq!(my_float_row, my_float);
-        assert_eq!(my_double_row, my_double);
+        assert_float_eq!(my_float_row, my_float, abs <= f32::EPSILON);
+        assert_float_eq!(my_double_row, my_double, abs <= f64::EPSILON);
         assert_eq!(my_decimal_row_a, Decimal::new(12001, 2));
         assert_eq!(my_decimal_row_b, Decimal::from(my_decimal_b));
     }
@@ -260,7 +262,7 @@ async fn blob() {
         ("d".to_owned(), b"ddddd".to_vec().into()),
     ]
     .iter()
-    .map(|x| x.clone())
+    .cloned()
     .collect();
 
     let val_map: HashMap<String, Bytes> = my_map
