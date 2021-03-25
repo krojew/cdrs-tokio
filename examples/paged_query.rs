@@ -162,13 +162,18 @@ async fn paged_with_value(session: &mut CurrentSession) {
 
     let rows = query_pager.next().await.expect("pager next");
     assert_eq!(3, rows.len());
+    assert!(query_pager.has_more());
+
     let rows = query_pager.next().await.expect("pager next");
     assert_eq!(3, rows.len());
+    assert!(query_pager.has_more());
+
     let rows = query_pager.next().await.expect("pager next");
     assert_eq!(3, rows.len());
+    assert!(query_pager.has_more());
+
     let rows = query_pager.next().await.expect("pager next");
     assert_eq!(1, rows.len());
-
     assert!(!query_pager.has_more());
 }
 

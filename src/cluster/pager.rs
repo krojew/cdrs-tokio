@@ -113,7 +113,7 @@ impl<
 
 pub struct QueryPager<'a, Q: ToString, P: 'a> {
     pager: &'a mut P,
-    pager_state: PagerState,
+    pub pager_state: PagerState,
     query: Q,
     qv: Option<QueryValues>,
     consistency: Consistency,
@@ -138,15 +138,14 @@ impl<
         if let Some(cursor) = &self.pager_state.cursor {
             params = params.paging_state(cursor.clone());
         }
-        let query = self.query.to_string();
 
+        let query = self.query.to_string();
         let body = self
             .pager
             .session
             .query_with_params(query, params.finalize())
             .await
             .and_then(|frame| frame.get_body())?;
-
         let metadata_res: error::Result<RowsMetadata> = body
             .as_rows_metadata()
             .ok_or_else(|| "Pager query should yield a vector of rows".into());
@@ -155,6 +154,7 @@ impl<
         self.pager_state.has_more_pages =
             Some(RowsMetadataFlag::has_has_more_pages(metadata.flags));
         self.pager_state.cursor = metadata.paging_state;
+
         body.into_rows()
             .ok_or_else(|| "Pager query should yield a vector of rows".into())
     }

@@ -23,6 +23,7 @@ e2e-tests = []
 # enables dynamic cluster adjustments basing on status
 # changes server events
 unstable-dynamic-cluster = []
+cdrs_orm = ["serde"]
 
 [dependencies]
 async-trait = "0.1.24"
@@ -40,6 +41,7 @@ tokio = { version = "1.3", features = ["net", "io-util", "rt", "sync", "macros",
 tokio-rustls = { version = "0.22", optional = true }
 uuid = "0.8.1"
 webpki = { version = "0.21", optional = true }
+serde = { version = "1", optional = true }
 
 [dependencies.rustls]
 version = "0.19"
