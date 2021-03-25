@@ -105,97 +105,108 @@ impl Bytes {
     }
 }
 
-impl Into<Bytes> for String {
-    fn into(self) -> Bytes {
-        Bytes(self.into_bytes())
-    }
-}
-
-impl<'a> Into<Bytes> for &'a str {
-    fn into(self) -> Bytes {
-        Bytes(self.as_bytes().to_vec())
-    }
-}
-
-impl Into<Bytes> for i8 {
-    fn into(self) -> Bytes {
-        Bytes(vec![self as u8])
-    }
-}
-
-impl Into<Bytes> for i16 {
-    fn into(self) -> Bytes {
-        Bytes(to_short(self))
-    }
-}
-
-impl Into<Bytes> for i32 {
-    fn into(self) -> Bytes {
-        Bytes(to_int(self))
-    }
-}
-
-impl Into<Bytes> for i64 {
-    fn into(self) -> Bytes {
-        Bytes(to_bigint(self))
-    }
-}
-
-impl Into<Bytes> for u8 {
-    fn into(self) -> Bytes {
-        Bytes(vec![self])
-    }
-}
-
-impl Into<Bytes> for u16 {
-    fn into(self) -> Bytes {
-        Bytes(to_u_short(self))
-    }
-}
-
-impl Into<Bytes> for u32 {
-    fn into(self) -> Bytes {
-        Bytes(to_u(self))
-    }
-}
-
-impl Into<Bytes> for u64 {
-    fn into(self) -> Bytes {
-        Bytes(to_u_big(self))
-    }
-}
-
-impl Into<Bytes> for NonZeroI8 {
+impl From<String> for Bytes {
     #[inline]
-    fn into(self) -> Bytes {
-        self.get().into()
+    fn from(value: String) -> Self {
+        Bytes(value.into_bytes())
     }
 }
 
-impl Into<Bytes> for NonZeroI16 {
+impl From<&str> for Bytes {
     #[inline]
-    fn into(self) -> Bytes {
-        self.get().into()
+    fn from(value: &str) -> Self {
+        Bytes(value.as_bytes().to_vec())
     }
 }
 
-impl Into<Bytes> for NonZeroI32 {
+impl From<i8> for Bytes {
     #[inline]
-    fn into(self) -> Bytes {
-        self.get().into()
+    fn from(value: i8) -> Self {
+        Bytes(vec![value as u8])
     }
 }
 
-impl Into<Bytes> for NonZeroI64 {
+impl From<i16> for Bytes {
     #[inline]
-    fn into(self) -> Bytes {
-        self.get().into()
+    fn from(value: i16) -> Self {
+        Bytes(to_short(value))
     }
 }
 
-impl Into<Bytes> for bool {
-    fn into(self) -> Bytes {
-        if self {
+impl From<i32> for Bytes {
+    #[inline]
+    fn from(value: i32) -> Self {
+        Bytes(to_int(value))
+    }
+}
+
+impl From<i64> for Bytes {
+    #[inline]
+    fn from(value: i64) -> Self {
+        Bytes(to_bigint(value))
+    }
+}
+
+impl From<u8> for Bytes {
+    #[inline]
+    fn from(value: u8) -> Self {
+        Bytes(vec![value])
+    }
+}
+
+impl From<u16> for Bytes {
+    #[inline]
+    fn from(value: u16) -> Self {
+        Bytes(to_u_short(value))
+    }
+}
+
+impl From<u32> for Bytes {
+    #[inline]
+    fn from(value: u32) -> Self {
+        Bytes(to_u(value))
+    }
+}
+
+impl From<u64> for Bytes {
+    #[inline]
+    fn from(value: u64) -> Self {
+        Bytes(to_u_big(value))
+    }
+}
+
+impl From<NonZeroI8> for Bytes {
+    #[inline]
+    fn from(value: NonZeroI8) -> Self {
+        value.get().into()
+    }
+}
+
+impl From<NonZeroI16> for Bytes {
+    #[inline]
+    fn from(value: NonZeroI16) -> Self {
+        value.get().into()
+    }
+}
+
+impl From<NonZeroI32> for Bytes {
+    #[inline]
+    fn from(value: NonZeroI32) -> Self {
+        value.get().into()
+    }
+}
+
+impl From<NonZeroI64> for Bytes {
+    #[inline]
+    fn from(value: NonZeroI64) -> Self {
+        value.get().into()
+    }
+}
+
+impl From<bool> for Bytes {
+    #[inline]
+    fn from(value: bool) -> Self {
+        if value {
             Bytes(vec![1])
         } else {
             Bytes(vec![0])
@@ -203,62 +214,71 @@ impl Into<Bytes> for bool {
     }
 }
 
-impl Into<Bytes> for Uuid {
-    fn into(self) -> Bytes {
-        Bytes(self.as_bytes().to_vec())
+impl From<Uuid> for Bytes {
+    #[inline]
+    fn from(value: Uuid) -> Self {
+        Bytes(value.as_bytes().to_vec())
     }
 }
 
-impl Into<Bytes> for IpAddr {
-    fn into(self) -> Bytes {
-        match self {
+impl From<IpAddr> for Bytes {
+    #[inline]
+    fn from(value: IpAddr) -> Self {
+        match value {
             IpAddr::V4(ip) => Bytes(ip.octets().to_vec()),
             IpAddr::V6(ip) => Bytes(ip.octets().to_vec()),
         }
     }
 }
 
-impl Into<Bytes> for f32 {
-    fn into(self) -> Bytes {
-        Bytes(to_float(self))
+impl From<f32> for Bytes {
+    #[inline]
+    fn from(value: f32) -> Self {
+        Bytes(to_float(value))
     }
 }
 
-impl Into<Bytes> for f64 {
-    fn into(self) -> Bytes {
-        Bytes(to_float_big(self))
+impl From<f64> for Bytes {
+    #[inline]
+    fn from(value: f64) -> Self {
+        Bytes(to_float_big(value))
     }
 }
 
-impl Into<Bytes> for PrimitiveDateTime {
-    fn into(self) -> Bytes {
+impl From<PrimitiveDateTime> for Bytes {
+    #[inline]
+    fn from(value: PrimitiveDateTime) -> Self {
         let ts: i64 =
-            self.assume_utc().unix_timestamp() * 1_000 + self.nanosecond() as i64 / 1_000_000;
+            value.assume_utc().unix_timestamp() * 1_000 + value.nanosecond() as i64 / 1_000_000;
         Bytes(to_bigint(ts))
     }
 }
 
-impl Into<Bytes> for Blob {
-    fn into(self) -> Bytes {
-        Bytes(self.into_vec())
+impl From<Blob> for Bytes {
+    #[inline]
+    fn from(value: Blob) -> Self {
+        Bytes(value.into_vec())
     }
 }
 
-impl Into<Bytes> for Decimal {
-    fn into(self) -> Bytes {
-        Bytes(self.as_bytes())
+impl From<Decimal> for Bytes {
+    #[inline]
+    fn from(value: Decimal) -> Self {
+        Bytes(value.as_bytes())
     }
 }
 
-impl Into<Bytes> for NaiveDateTime {
-    fn into(self) -> Bytes {
-        self.timestamp_millis().into()
+impl From<NaiveDateTime> for Bytes {
+    #[inline]
+    fn from(value: NaiveDateTime) -> Self {
+        value.timestamp_millis().into()
     }
 }
 
-impl Into<Bytes> for DateTime<Utc> {
-    fn into(self) -> Bytes {
-        self.timestamp_millis().into()
+impl From<DateTime<Utc>> for Bytes {
+    #[inline]
+    fn from(value: DateTime<Utc>) -> Self {
+        value.timestamp_millis().into()
     }
 }
 

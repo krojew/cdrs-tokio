@@ -45,7 +45,7 @@ async fn simple_udt() {
     impl MyUdt {
         pub fn try_from(udt: UDT) -> Result<MyUdt> {
             let my_text: String = udt.get_r_by_name("my_text")?;
-            Ok(MyUdt { my_text: my_text })
+            Ok(MyUdt { my_text })
         }
     }
 
@@ -108,7 +108,7 @@ async fn nested_udt() {
     impl MyInnerUdt {
         pub fn try_from(udt: UDT) -> Result<MyInnerUdt> {
             let my_text: String = udt.get_r_by_name("my_text")?;
-            Ok(MyInnerUdt { my_text: my_text })
+            Ok(MyInnerUdt { my_text })
         }
     }
 
@@ -130,9 +130,7 @@ async fn nested_udt() {
         pub fn try_from(udt: UDT) -> Result<MyOuterUdt> {
             let my_inner_udt: UDT = udt.get_r_by_name("my_inner_udt")?;
             let my_inner_udt = MyInnerUdt::try_from(my_inner_udt).expect("from udt");
-            Ok(MyOuterUdt {
-                my_inner_udt: my_inner_udt,
-            })
+            Ok(MyOuterUdt { my_inner_udt })
         }
     }
 
@@ -148,9 +146,7 @@ async fn nested_udt() {
     let my_inner_udt = MyInnerUdt {
         my_text: "my_text".to_string(),
     };
-    let my_outer_udt = MyOuterUdt {
-        my_inner_udt: my_inner_udt,
-    };
+    let my_outer_udt = MyOuterUdt { my_inner_udt };
     let values = query_values!(0i32, my_outer_udt.clone());
 
     let cql = "INSERT INTO cdrs_test.test_nested_udt \
@@ -220,8 +216,8 @@ async fn alter_udt_add() {
             let my_text: String = udt.get_r_by_name("my_text")?;
             let my_timestamp: Option<PrimitiveDateTime> = udt.get_by_name("my_timestamp")?;
             Ok(MyUdtB {
-                my_text: my_text,
-                my_timestamp: my_timestamp,
+                my_text,
+                my_timestamp,
             })
         }
     }

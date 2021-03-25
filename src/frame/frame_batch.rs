@@ -19,9 +19,7 @@ pub struct BodyReqBatch {
 
 impl AsBytes for BodyReqBatch {
     fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![];
-
-        bytes.push(self.batch_type.as_byte());
+        let mut bytes = vec![self.batch_type.as_byte()];
 
         bytes.extend_from_slice(to_short(self.queries.len() as i16).as_slice());
 

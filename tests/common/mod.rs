@@ -17,7 +17,7 @@ use cdrs_tokio::query::QueryExecutor;
 use regex::Regex;
 
 #[cfg(feature = "e2e-tests")]
-const ADDR: &'static str = "localhost:9042";
+const ADDR: &str = "localhost:9042";
 
 #[cfg(feature = "e2e-tests")]
 type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
