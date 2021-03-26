@@ -9,24 +9,14 @@ use crate::transport::CDRSTransport;
 use crate::types::rows::Row;
 use crate::types::CBytes;
 
-pub struct SessionPager<
-    'a,
-    S: CDRSSession<T> + 'a,
-    T: CDRSTransport + Unpin + 'static,
-> {
+pub struct SessionPager<'a, S: CDRSSession<T> + 'a, T: CDRSTransport + Unpin + 'static> {
     page_size: i32,
     session: &'a mut S,
     transport_type: PhantomData<&'a T>,
     connection_type: PhantomData<&'a T::Manager>,
 }
 
-impl<
-        'a,
-        'b: 'a,
-        S: CDRSSession<T>,
-        T: CDRSTransport + Unpin + 'static,
-    > SessionPager<'a, S, T>
-{
+impl<'a, 'b: 'a, S: CDRSSession<T>, T: CDRSTransport + Unpin + 'static> SessionPager<'a, S, T> {
     pub fn new(session: &'b mut S, page_size: i32) -> SessionPager<'a, S, T> {
         SessionPager {
             session,
@@ -100,10 +90,7 @@ impl<
         }
     }
 
-    pub fn exec(
-        &'a mut self,
-        query: &'a PreparedQuery,
-    ) -> ExecPager<'a, SessionPager<'a, S, T>> {
+    pub fn exec(&'a mut self, query: &'a PreparedQuery) -> ExecPager<'a, SessionPager<'a, S, T>> {
         self.exec_with_pager_state(query, PagerState::new())
     }
 }
@@ -116,12 +103,8 @@ pub struct QueryPager<'a, Q: ToString, P: 'a> {
     consistency: Consistency,
 }
 
-impl<
-        'a,
-        Q: ToString,
-        T: CDRSTransport + Unpin + 'static,
-        S: CDRSSession<T> + Sync + Send,
-    > QueryPager<'a, Q, SessionPager<'a, S, T>>
+impl<'a, Q: ToString, T: CDRSTransport + Unpin + 'static, S: CDRSSession<T> + Sync + Send>
+    QueryPager<'a, Q, SessionPager<'a, S, T>>
 {
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
         let mut params = QueryParamsBuilder::new()
@@ -172,11 +155,8 @@ pub struct ExecPager<'a, P: 'a> {
     query: &'a PreparedQuery,
 }
 
-impl<
-        'a,
-        T: CDRSTransport + Unpin + 'static,
-        S: CDRSSession<T> + Sync + Send,
-    > ExecPager<'a, SessionPager<'a, S, T>>
+impl<'a, T: CDRSTransport + Unpin + 'static, S: CDRSSession<T> + Sync + Send>
+    ExecPager<'a, SessionPager<'a, S, T>>
 {
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
         let mut params = QueryParamsBuilder::new().page_size(self.pager.page_size);

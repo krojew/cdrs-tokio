@@ -1,9 +1,9 @@
 use async_trait::async_trait;
 use fxhash::FxHashMap;
 use std::iter::Iterator;
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::net::SocketAddr;
 use tokio::{io::AsyncWriteExt, sync::Mutex};
 
 #[cfg(feature = "unstable-dynamic-cluster")]
@@ -49,9 +49,7 @@ impl<LB> GetCompressor for Session<LB> {
 impl<'a, LB> Session<LB> {
     /// Basing on current session returns new `SessionPager` that can be used
     /// for performing paged queries.
-    pub fn paged<
-        T: CDRSTransport + Unpin + 'static,
-    >(
+    pub fn paged<T: CDRSTransport + Unpin + 'static>(
         &'a mut self,
         page_size: i32,
     ) -> SessionPager<'a, Session<LB>, T>

@@ -10,21 +10,28 @@
 //! * [`TransportRustls`] is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
+use crate::{
+    cluster::{KeyspaceHolder, TcpConnectionsManager},
+    error::FromCDRSError,
+    Error,
+};
 use async_trait::async_trait;
 use std::io;
 use std::sync::Arc;
 use std::task::Context;
-use tokio::{io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf}, sync::Mutex};
 use tokio::macros::support::{Pin, Poll};
 use tokio::net::TcpStream;
-use crate::{Error, cluster::{KeyspaceHolder, TcpConnectionsManager}, error::FromCDRSError};
+use tokio::{
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf},
+    sync::Mutex,
+};
 
 #[cfg(feature = "rust-tls")]
-use tokio_rustls::{client::TlsStream as RustlsStream, TlsConnector as RustlsConnector};
+use crate::cluster::RustlsConnectionsManager;
 #[cfg(feature = "rust-tls")]
 use std::net;
 #[cfg(feature = "rust-tls")]
-use crate::cluster::RustlsConnectionsManager;
+use tokio_rustls::{client::TlsStream as RustlsStream, TlsConnector as RustlsConnector};
 
 // TODO [v x.x.x]: CDRSTransport: ... + BufReader + ButWriter + ...
 ///General CDRS transport trait. Both [`TransportTcp`]
@@ -91,7 +98,10 @@ impl AsyncWrite for TransportTcp {
         Pin::new(&mut self.tcp).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.tcp).poll_shutdown(cx)
     }
 }
@@ -161,7 +171,10 @@ impl AsyncWrite for TransportRustls {
     }
 
     #[inline]
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }

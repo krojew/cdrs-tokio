@@ -23,11 +23,11 @@ pub use crate::cluster::pager::{ExecPager, PagerState, QueryPager, SessionPager}
 pub use crate::cluster::rustls_connection_pool::{
     new_rustls_pool, RustlsConnectionPool, RustlsConnectionsManager,
 };
+pub use crate::cluster::session::connect;
 pub use crate::cluster::tcp_connection_pool::{
     new_tcp_pool, startup, TcpConnectionPool, TcpConnectionsManager,
 };
 pub use generic_connection_pool::ConnectionPool;
-pub use crate::cluster::session::connect;
 
 use crate::compression::Compression;
 use crate::frame::{Frame, StreamId};
@@ -51,10 +51,7 @@ pub trait ConnectionConfig: Send + Sync {
 /// `GetConnection` trait provides a unified interface for Session to get a connection
 /// from a load balancer
 #[async_trait]
-pub trait GetConnection<
-    T: CDRSTransport + Send + Sync + 'static,
->
-{
+pub trait GetConnection<T: CDRSTransport + Send + Sync + 'static> {
     /// Returns connection from a load balancer.
     async fn get_connection(&self) -> Option<Arc<ConnectionPool<T>>>;
 }
@@ -74,9 +71,7 @@ pub trait ResponseCache {
 
 /// `CDRSSession` trait wrap ups whole query functionality. Use it only if whole query
 /// machinery is needed and direct sub traits otherwise.
-pub trait CDRSSession<
-    T: CDRSTransport + Unpin + 'static,
->:
+pub trait CDRSSession<T: CDRSTransport + Unpin + 'static>:
     GetCompressor
     + GetConnection<T>
     + QueryExecutor<T>
