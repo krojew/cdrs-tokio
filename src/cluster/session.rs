@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use fxhash::FxHashMap;
 use std::iter::Iterator;
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::{io::AsyncWriteExt, sync::Mutex};
@@ -10,8 +11,8 @@ use crate::cluster::NodeTcpConfig;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::{new_rustls_pool, ClusterRustlsConfig, RustlsConnectionPool};
 use crate::cluster::{
-    new_tcp_pool, startup, CDRSSession, ClusterTcpConfig, ConnectionPool, GetCompressor,
-    GetConnection, KeyspaceHolder, ResponseCache, TcpConnectionPool,
+    new_tcp_pool, startup, CDRSSession, ClusterTcpConfig, ConnectionConfig, ConnectionPool,
+    GetCompressor, GetConnection, KeyspaceHolder, ResponseCache, TcpConnectionPool,
 };
 use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
@@ -48,15 +49,12 @@ impl<LB> GetCompressor for Session<LB> {
 impl<'a, LB> Session<LB> {
     /// Basing on current session returns new `SessionPager` that can be used
     /// for performing paged queries.
-    pub fn paged<
-        T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    >(
+    pub fn paged<T: CDRSTransport + Unpin + 'static>(
         &'a mut self,
         page_size: i32,
-    ) -> SessionPager<'a, M, Session<LB>, T>
+    ) -> SessionPager<'a, Session<LB>, T>
     where
-        Session<LB>: CDRSSession<T, M>,
+        Session<LB>: CDRSSession<T>,
     {
         SessionPager::new(self, page_size)
     }
@@ -65,11 +63,10 @@ impl<'a, LB> Session<LB> {
 #[async_trait]
 impl<
         T: CDRSTransport + Send + Sync + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-    > GetConnection<T, M> for Session<LB>
+        LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
+    > GetConnection<T> for Session<LB>
 {
-    async fn get_connection(&self) -> Option<Arc<ConnectionPool<M>>> {
+    async fn get_connection(&self) -> Option<Arc<ConnectionPool<T>>> {
         if cfg!(feature = "unstable-dynamic-cluster") {
             if let Some(ref event_stream_mx) = self.event_stream {
                 if let Ok(ref mut event_stream) = event_stream_mx.try_lock() {
@@ -102,9 +99,8 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-    > QueryExecutor<T, M> for Session<LB>
+        LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
+    > QueryExecutor<T> for Session<LB>
 {
 }
 
@@ -112,9 +108,8 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    > PrepareExecutor<T, M> for Session<LB>
+        LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
+    > PrepareExecutor<T> for Session<LB>
 {
 }
 
@@ -122,9 +117,8 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    > ExecExecutor<T, M> for Session<LB>
+        LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
+    > ExecExecutor<T> for Session<LB>
 {
 }
 
@@ -132,17 +126,15 @@ impl<
 impl<
         'a,
         T: CDRSTransport + Unpin + 'static,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-    > BatchExecutor<T, M> for Session<LB>
+        LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
+    > BatchExecutor<T> for Session<LB>
 {
 }
 
 impl<
         T: CDRSTransport + Unpin + 'static,
-        M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
-        LB: LoadBalancingStrategy<ConnectionPool<M>> + Send + Sync,
-    > CDRSSession<T, M> for Session<LB>
+        LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
+    > CDRSSession<T> for Session<LB>
 {
 }
 
@@ -228,6 +220,43 @@ where
     session.event_stream = Some(Mutex::new(event_stream));
 
     Ok(session)
+}
+
+/// This function uses a user-supplied connection configuration to initialize all the
+/// connections in the session. It can be used to supply your own transport and load
+/// balancing mechanisms in order to support unusual node discovery mechanisms
+/// or configuration needs.
+///
+/// The config object supplied differs from the ClusterTcpConfig and ClusterRustlsConfig
+/// objects in that it is not expected to include an address. Instead the same configuration
+/// will be applied to all connections across the cluster.
+pub async fn connect<T, M, C, LB>(
+    config: &C,
+    initial_nodes: &[SocketAddr],
+    mut load_balancing: LB,
+    compression: Compression,
+) -> Result<Session<LB>, C::Error>
+where
+    M: bb8::ManageConnection<Connection = T>,
+    T: CDRSTransport<Manager = M>,
+    C: ConnectionConfig<Transport = T, Manager = M>,
+    LB: LoadBalancingStrategy<ConnectionPool<T>> + Sized,
+{
+    let mut nodes: Vec<Arc<ConnectionPool<T>>> = Vec::with_capacity(initial_nodes.len());
+
+    for node in initial_nodes {
+        let pool = config.connect(*node).await?;
+        nodes.push(Arc::new(ConnectionPool::new(pool, *node)));
+    }
+
+    load_balancing.init(nodes);
+
+    Ok(Session {
+        load_balancing: Mutex::new(load_balancing),
+        event_stream: None,
+        responses: Default::default(),
+        compression,
+    })
 }
 
 async fn connect_static<LB>(

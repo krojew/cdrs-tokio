@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
@@ -11,10 +10,8 @@ use super::utils::{prepare_flags, send_frame};
 use std::ops::Deref;
 
 #[async_trait]
-pub trait ExecExecutor<
-    T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
->: GetConnection<T, M> + GetCompressor + PrepareExecutor<T, M> + ResponseCache + Sync
+pub trait ExecExecutor<T: CDRSTransport + Unpin + 'static>:
+    GetConnection<T> + GetCompressor + PrepareExecutor<T> + ResponseCache + Sync
 {
     async fn exec_with_params_tw(
         &self,

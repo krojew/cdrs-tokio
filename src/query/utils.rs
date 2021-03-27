@@ -1,5 +1,3 @@
-use tokio::sync::Mutex;
-
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
 use crate::frame::frame_result::ResultKind;
@@ -22,15 +20,14 @@ pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
     flags
 }
 
-pub async fn send_frame<S: ?Sized, T, M>(
+pub async fn send_frame<S: ?Sized, T>(
     sender: &S,
     frame_bytes: Vec<u8>,
     stream_id: StreamId,
 ) -> error::Result<Frame>
 where
-    S: GetConnection<T, M> + GetCompressor + ResponseCache,
+    S: GetConnection<T> + GetCompressor + ResponseCache,
     T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
 {
     let compression = sender.get_compressor();
 

@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 #[cfg(feature = "rust-tls")]
 mod config_rustls;
@@ -24,27 +23,37 @@ pub use crate::cluster::pager::{ExecPager, PagerState, QueryPager, SessionPager}
 pub use crate::cluster::rustls_connection_pool::{
     new_rustls_pool, RustlsConnectionPool, RustlsConnectionsManager,
 };
+pub use crate::cluster::session::connect;
 pub use crate::cluster::tcp_connection_pool::{
     new_tcp_pool, startup, TcpConnectionPool, TcpConnectionsManager,
 };
-pub(crate) use generic_connection_pool::ConnectionPool;
+pub use generic_connection_pool::ConnectionPool;
 
 use crate::compression::Compression;
-use crate::error;
 use crate::frame::{Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::transport::CDRSTransport;
 
+use core::fmt::Debug;
+use std::net::SocketAddr;
+
+/// Generic connection configuration trait that can be used to create user-supplied
+/// connection objects that can be used with the `session::connect()` function.
+#[async_trait]
+pub trait ConnectionConfig: Send + Sync {
+    type Transport: CDRSTransport + Send + Sync;
+    type Error: Debug + Send + 'static;
+    type Manager: bb8::ManageConnection<Connection = Self::Transport, Error = Self::Error>;
+
+    async fn connect(&self, addr: SocketAddr) -> Result<bb8::Pool<Self::Manager>, Self::Error>;
+}
+
 /// `GetConnection` trait provides a unified interface for Session to get a connection
 /// from a load balancer
 #[async_trait]
-pub trait GetConnection<
-    T: CDRSTransport + Send + Sync + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
->
-{
+pub trait GetConnection<T: CDRSTransport + Send + Sync + 'static> {
     /// Returns connection from a load balancer.
-    async fn get_connection(&self) -> Option<Arc<ConnectionPool<M>>>;
+    async fn get_connection(&self) -> Option<Arc<ConnectionPool<T>>>;
 }
 
 /// `GetCompressor` trait provides a unified interface for Session to get a compressor
@@ -62,15 +71,12 @@ pub trait ResponseCache {
 
 /// `CDRSSession` trait wrap ups whole query functionality. Use it only if whole query
 /// machinery is needed and direct sub traits otherwise.
-pub trait CDRSSession<
-    T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
->:
+pub trait CDRSSession<T: CDRSTransport + Unpin + 'static>:
     GetCompressor
-    + GetConnection<T, M>
-    + QueryExecutor<T, M>
-    + PrepareExecutor<T, M>
-    + ExecExecutor<T, M>
-    + BatchExecutor<T, M>
+    + GetConnection<T>
+    + QueryExecutor<T>
+    + PrepareExecutor<T>
+    + ExecExecutor<T>
+    + BatchExecutor<T>
 {
 }

@@ -1,9 +1,9 @@
-use std::error;
 use std::fmt;
 use std::fmt::Display;
 use std::io;
 use std::result;
 use std::string::FromUtf8Error;
+use std::{error, fmt::Debug};
 
 use crate::compression::CompressionError;
 use crate::frame::frame_error::CDRSError;
@@ -101,4 +101,14 @@ impl<'a> From<&'a str> for Error {
     fn from(err: &str) -> Error {
         Error::General(err.to_string())
     }
+}
+
+/// Marker trait for error types that can be converted from CDRS errors
+pub trait FromCDRSError:
+    From<Error> + std::error::Error + Send + Sync + Debug + Display + 'static
+{
+}
+impl<E> FromCDRSError for E where
+    E: From<Error> + std::error::Error + Send + Sync + Debug + Display + 'static
+{
 }

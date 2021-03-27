@@ -10,19 +10,28 @@
 //! * [`TransportRustls`] is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
+use crate::{
+    cluster::{KeyspaceHolder, TcpConnectionsManager},
+    error::FromCDRSError,
+    Error,
+};
 use async_trait::async_trait;
 use std::io;
-use std::io::Error;
-use std::net;
 use std::sync::Arc;
 use std::task::Context;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::macros::support::{Pin, Poll};
 use tokio::net::TcpStream;
+use tokio::{
+    io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf},
+    sync::Mutex,
+};
+
+#[cfg(feature = "rust-tls")]
+use crate::cluster::RustlsConnectionsManager;
+#[cfg(feature = "rust-tls")]
+use std::net;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::{client::TlsStream as RustlsStream, TlsConnector as RustlsConnector};
-
-use crate::cluster::KeyspaceHolder;
 
 // TODO [v x.x.x]: CDRSTransport: ... + BufReader + ButWriter + ...
 ///General CDRS transport trait. Both [`TransportTcp`]
@@ -30,27 +39,17 @@ use crate::cluster::KeyspaceHolder;
 ///speaking it extends/includes `io::Read` and `io::Write` traits and should be thread safe.
 #[async_trait]
 pub trait CDRSTransport: Sized + AsyncRead + AsyncWriteExt + Send + Sync {
-    /// Creates a new independently owned handle to the underlying socket.
-    ///
-    /// The returned TcpStream is a reference to the same stream that this object references.
-    /// Both handles will read and write the same stream of data, and options set on one stream
-    /// will be propagated to the other stream.
-    async fn try_clone(&self) -> io::Result<Self>;
-
-    /// Shuts down the read, write, or both halves of this connection.
-    async fn close(&mut self, close: net::Shutdown) -> io::Result<()>;
-
-    /// Method that checks that transport is alive
-    fn is_alive(&self) -> bool;
+    type Error: FromCDRSError;
+    type Manager: bb8::ManageConnection<Connection = Mutex<Self>, Error = Self::Error>;
 
     /// Sets last USEd keyspace for further connections from the same pool
     async fn set_current_keyspace(&self, keyspace: &str);
 }
 
 /// Default Tcp transport.
+#[derive(Debug)]
 pub struct TransportTcp {
     tcp: TcpStream,
-    addr: String,
     keyspace_holder: Arc<KeyspaceHolder>,
 }
 
@@ -71,7 +70,6 @@ impl TransportTcp {
     pub async fn new(addr: &str, keyspace_holder: Arc<KeyspaceHolder>) -> io::Result<TransportTcp> {
         TcpStream::connect(addr).await.map(|socket| TransportTcp {
             tcp: socket,
-            addr: addr.to_string(),
             keyspace_holder,
         })
     }
@@ -92,38 +90,26 @@ impl AsyncWrite for TransportTcp {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize, Error>> {
+    ) -> Poll<Result<usize, io::Error>> {
         Pin::new(&mut self.tcp).poll_write(cx, buf)
     }
 
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.tcp).poll_flush(cx)
     }
 
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.tcp).poll_shutdown(cx)
     }
 }
 
 #[async_trait]
 impl CDRSTransport for TransportTcp {
-    async fn try_clone(&self) -> io::Result<TransportTcp> {
-        TcpStream::connect(self.addr.as_str())
-            .await
-            .map(|socket| TransportTcp {
-                tcp: socket,
-                addr: self.addr.clone(),
-                keyspace_holder: self.keyspace_holder.clone(),
-            })
-    }
-
-    async fn close(&mut self, _close: net::Shutdown) -> io::Result<()> {
-        self.tcp.shutdown().await
-    }
-
-    fn is_alive(&self) -> bool {
-        self.tcp.peer_addr().is_ok()
-    }
+    type Error = Error;
+    type Manager = TcpConnectionsManager;
 
     async fn set_current_keyspace(&self, keyspace: &str) {
         self.keyspace_holder.set_current_keyspace(keyspace).await;
@@ -133,9 +119,6 @@ impl CDRSTransport for TransportTcp {
 #[cfg(feature = "rust-tls")]
 pub struct TransportRustls {
     inner: RustlsStream<TcpStream>,
-    config: Arc<rustls::ClientConfig>,
-    addr: net::SocketAddr,
-    dns_name: webpki::DNSName,
     keyspace_holder: Arc<KeyspaceHolder>,
 }
 
@@ -154,9 +137,6 @@ impl TransportRustls {
 
         Ok(Self {
             inner: stream,
-            config,
-            addr,
-            dns_name,
             keyspace_holder,
         })
     }
@@ -181,17 +161,20 @@ impl AsyncWrite for TransportRustls {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize, Error>> {
+    ) -> Poll<Result<usize, io::Error>> {
         Pin::new(&mut self.inner).poll_write(cx, buf)
     }
 
     #[inline]
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.inner).poll_flush(cx)
     }
 
     #[inline]
-    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), io::Error>> {
         Pin::new(&mut self.inner).poll_shutdown(cx)
     }
 }
@@ -199,24 +182,8 @@ impl AsyncWrite for TransportRustls {
 #[cfg(feature = "rust-tls")]
 #[async_trait]
 impl CDRSTransport for TransportRustls {
-    #[inline]
-    async fn try_clone(&self) -> io::Result<Self> {
-        Self::new(
-            self.addr,
-            self.dns_name.clone(),
-            self.config.clone(),
-            self.keyspace_holder.clone(),
-        )
-        .await
-    }
-
-    async fn close(&mut self, _close: net::Shutdown) -> io::Result<()> {
-        self.inner.get_mut().0.shutdown().await
-    }
-
-    fn is_alive(&self) -> bool {
-        self.inner.get_ref().0.peer_addr().is_ok()
-    }
+    type Error = Error;
+    type Manager = RustlsConnectionsManager;
 
     async fn set_current_keyspace(&self, keyspace: &str) {
         self.keyspace_holder.set_current_keyspace(keyspace).await;

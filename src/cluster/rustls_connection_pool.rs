@@ -16,7 +16,7 @@ use crate::frame::{AsBytes, Frame};
 use crate::transport::TransportRustls;
 use std::ops::Deref;
 
-pub type RustlsConnectionPool = ConnectionPool<RustlsConnectionsManager>;
+pub type RustlsConnectionPool = ConnectionPool<TransportRustls>;
 
 /// `bb8::Pool` of SSL-based CDRS connections.
 ///

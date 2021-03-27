@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use tokio::sync::Mutex;
 
 use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
@@ -10,10 +9,8 @@ use crate::transport::CDRSTransport;
 use super::utils::{prepare_flags, send_frame};
 
 #[async_trait]
-pub trait QueryExecutor<
-    T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
->: GetConnection<T, M> + GetCompressor + ResponseCache + Sync
+pub trait QueryExecutor<T: CDRSTransport + Unpin + 'static>:
+    GetConnection<T> + GetCompressor + ResponseCache + Sync
 {
     async fn query_with_params_tw<Q: ToString + Send>(
         &self,

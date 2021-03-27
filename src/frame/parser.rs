@@ -12,13 +12,14 @@ use crate::transport::CDRSTransport;
 use crate::types::data_serialization_types::decode_timeuuid;
 use crate::types::{from_bytes, from_i16_bytes, CStringList, UUID_LEN};
 
-pub async fn from_connection<M, T>(
+pub async fn from_connection<M, E, T>(
     conn: &bb8::PooledConnection<'_, M>,
     compressor: Compression,
 ) -> error::Result<Frame>
 where
     T: CDRSTransport + Unpin + 'static,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = error::Error>,
+    E: error::FromCDRSError,
+    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
 {
     parse_frame(conn.deref(), compressor).await
 }
