@@ -11,13 +11,13 @@ use crate::types::CBytes;
 
 pub struct SessionPager<'a, S: CDRSSession<T> + 'a, T: CDRSTransport + Unpin + 'static> {
     page_size: i32,
-    session: &'a mut S,
+    session: &'a S,
     transport_type: PhantomData<&'a T>,
     connection_type: PhantomData<&'a T::Manager>,
 }
 
 impl<'a, 'b: 'a, S: CDRSSession<T>, T: CDRSTransport + Unpin + 'static> SessionPager<'a, S, T> {
-    pub fn new(session: &'b mut S, page_size: i32) -> SessionPager<'a, S, T> {
+    pub fn new(session: &'b S, page_size: i32) -> SessionPager<'a, S, T> {
         SessionPager {
             session,
             page_size,
