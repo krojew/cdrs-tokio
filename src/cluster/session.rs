@@ -50,7 +50,7 @@ impl<'a, LB> Session<LB> {
     /// Basing on current session returns new `SessionPager` that can be used
     /// for performing paged queries.
     pub fn paged<T: CDRSTransport + Unpin + 'static>(
-        &'a mut self,
+        &'a self,
         page_size: i32,
     ) -> SessionPager<'a, Session<LB>, T>
     where
