@@ -23,18 +23,19 @@ pub use crate::cluster::pager::{ExecPager, PagerState, QueryPager, SessionPager}
 pub use crate::cluster::rustls_connection_pool::{
     new_rustls_pool, RustlsConnectionPool, RustlsConnectionsManager,
 };
-pub use crate::cluster::session::connect;
+#[cfg(feature = "unstable-dynamic-cluster")]
+pub use crate::cluster::session::connect_generic_dynamic;
+pub use crate::cluster::session::connect_generic_static;
 pub use crate::cluster::tcp_connection_pool::{
     new_tcp_pool, startup, TcpConnectionPool, TcpConnectionsManager,
 };
 pub use generic_connection_pool::ConnectionPool;
 
-use crate::compression::Compression;
 use crate::frame::{Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::transport::CDRSTransport;
+use crate::{compression::Compression, error::FromCDRSError};
 
-use core::fmt::Debug;
 use std::net::SocketAddr;
 
 /// Generic connection configuration trait that can be used to create user-supplied
@@ -42,7 +43,7 @@ use std::net::SocketAddr;
 #[async_trait]
 pub trait ConnectionConfig: Send + Sync {
     type Transport: CDRSTransport + Send + Sync;
-    type Error: Debug + Send + 'static;
+    type Error: FromCDRSError;
     type Manager: bb8::ManageConnection<Connection = Self::Transport, Error = Self::Error>;
 
     async fn connect(&self, addr: SocketAddr) -> Result<bb8::Pool<Self::Manager>, Self::Error>;
