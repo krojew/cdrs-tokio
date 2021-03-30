@@ -14,7 +14,7 @@ use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::map::Map;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::udt::UDT;
+use cdrs_tokio::types::udt::Udt;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
@@ -43,7 +43,7 @@ async fn simple_udt() {
     }
 
     impl MyUdt {
-        pub fn try_from(udt: UDT) -> Result<MyUdt> {
+        pub fn try_from(udt: Udt) -> Result<MyUdt> {
             let my_text: String = udt.get_r_by_name("my_text")?;
             Ok(MyUdt { my_text })
         }
@@ -82,7 +82,7 @@ async fn simple_udt() {
 
     assert_eq!(rows.len(), 1);
     for row in rows {
-        let my_udt_row: UDT = row.get_r_by_name("my_udt").expect("my_udt");
+        let my_udt_row: Udt = row.get_r_by_name("my_udt").expect("my_udt");
         let my_udt_row = MyUdt::try_from(my_udt_row).expect("from udt");
         assert_eq!(my_udt_row, my_udt);
     }
@@ -106,7 +106,7 @@ async fn nested_udt() {
     }
 
     impl MyInnerUdt {
-        pub fn try_from(udt: UDT) -> Result<MyInnerUdt> {
+        pub fn try_from(udt: Udt) -> Result<MyInnerUdt> {
             let my_text: String = udt.get_r_by_name("my_text")?;
             Ok(MyInnerUdt { my_text })
         }
@@ -127,8 +127,8 @@ async fn nested_udt() {
     }
 
     impl MyOuterUdt {
-        pub fn try_from(udt: UDT) -> Result<MyOuterUdt> {
-            let my_inner_udt: UDT = udt.get_r_by_name("my_inner_udt")?;
+        pub fn try_from(udt: Udt) -> Result<MyOuterUdt> {
+            let my_inner_udt: Udt = udt.get_r_by_name("my_inner_udt")?;
             let my_inner_udt = MyInnerUdt::try_from(my_inner_udt).expect("from udt");
             Ok(MyOuterUdt { my_inner_udt })
         }
@@ -168,7 +168,7 @@ async fn nested_udt() {
 
     assert_eq!(rows.len(), 1);
     for row in rows {
-        let my_outer_udt_row: UDT = row.get_r_by_name("my_outer_udt").expect("my_outer_udt");
+        let my_outer_udt_row: Udt = row.get_r_by_name("my_outer_udt").expect("my_outer_udt");
         let my_outer_udt_row = MyOuterUdt::try_from(my_outer_udt_row).expect("from udt");
         assert_eq!(my_outer_udt_row, my_outer_udt);
     }
@@ -212,7 +212,7 @@ async fn alter_udt_add() {
     }
 
     impl MyUdtB {
-        pub fn try_from(udt: UDT) -> Result<MyUdtB> {
+        pub fn try_from(udt: Udt) -> Result<MyUdtB> {
             let my_text: String = udt.get_r_by_name("my_text")?;
             let my_timestamp: Option<PrimitiveDateTime> = udt.get_by_name("my_timestamp")?;
             Ok(MyUdtB {
@@ -256,7 +256,7 @@ async fn alter_udt_add() {
     assert_eq!(rows.len(), 1);
     for row in rows {
         let my_map_row: Map = row.get_r_by_name("my_map").expect("my_map");
-        let my_map_row: HashMap<String, UDT> = my_map_row.as_r_rust().expect("my_map as rust");
+        let my_map_row: HashMap<String, Udt> = my_map_row.as_r_rust().expect("my_map as rust");
 
         for (key, my_udt_row) in my_map_row {
             let my_udt_row = MyUdtB::try_from(my_udt_row).expect("from udt");

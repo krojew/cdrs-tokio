@@ -11,12 +11,12 @@ use crate::cluster::NodeTcpConfig;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::{new_rustls_pool, ClusterRustlsConfig, RustlsConnectionPool};
 use crate::cluster::{
-    new_tcp_pool, startup, CDRSSession, ClusterTcpConfig, ConnectionConfig, ConnectionPool,
+    new_tcp_pool, startup, CdrsSession, ClusterTcpConfig, ConnectionConfig, ConnectionPool,
     GetCompressor, GetConnection, KeyspaceHolder, ResponseCache, TcpConnectionPool,
 };
 use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
-use crate::transport::{CDRSTransport, TransportTcp};
+use crate::transport::{CdrsTransport, TransportTcp};
 
 use crate::authenticators::Authenticator;
 use crate::cluster::SessionPager;
@@ -49,12 +49,12 @@ impl<LB> GetCompressor for Session<LB> {
 impl<'a, LB> Session<LB> {
     /// Basing on current session returns new `SessionPager` that can be used
     /// for performing paged queries.
-    pub fn paged<T: CDRSTransport + Unpin + 'static>(
+    pub fn paged<T: CdrsTransport + Unpin + 'static>(
         &'a self,
         page_size: i32,
     ) -> SessionPager<'a, Session<LB>, T>
     where
-        Session<LB>: CDRSSession<T>,
+        Session<LB>: CdrsSession<T>,
     {
         SessionPager::new(self, page_size)
     }
@@ -62,7 +62,7 @@ impl<'a, LB> Session<LB> {
 
 #[async_trait]
 impl<
-        T: CDRSTransport + Send + Sync + 'static,
+        T: CdrsTransport + Send + Sync + 'static,
         LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
     > GetConnection<T> for Session<LB>
 {
@@ -98,7 +98,7 @@ impl<
 #[async_trait]
 impl<
         'a,
-        T: CDRSTransport + Unpin + 'static,
+        T: CdrsTransport + Unpin + 'static,
         LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
     > QueryExecutor<T> for Session<LB>
 {
@@ -107,7 +107,7 @@ impl<
 #[async_trait]
 impl<
         'a,
-        T: CDRSTransport + Unpin + 'static,
+        T: CdrsTransport + Unpin + 'static,
         LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
     > PrepareExecutor<T> for Session<LB>
 {
@@ -116,7 +116,7 @@ impl<
 #[async_trait]
 impl<
         'a,
-        T: CDRSTransport + Unpin + 'static,
+        T: CdrsTransport + Unpin + 'static,
         LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
     > ExecExecutor<T> for Session<LB>
 {
@@ -125,16 +125,16 @@ impl<
 #[async_trait]
 impl<
         'a,
-        T: CDRSTransport + Unpin + 'static,
+        T: CdrsTransport + Unpin + 'static,
         LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
     > BatchExecutor<T> for Session<LB>
 {
 }
 
 impl<
-        T: CDRSTransport + Unpin + 'static,
+        T: CdrsTransport + Unpin + 'static,
         LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
-    > CDRSSession<T> for Session<LB>
+    > CdrsSession<T> for Session<LB>
 {
 }
 
@@ -238,7 +238,7 @@ pub async fn connect_generic_static<T, M, C, LB>(
 ) -> Result<Session<LB>, C::Error>
 where
     M: bb8::ManageConnection<Connection = T>,
-    T: CDRSTransport<Manager = M>,
+    T: CdrsTransport<Manager = M>,
     C: ConnectionConfig<Transport = T, Manager = M>,
     LB: LoadBalancingStrategy<ConnectionPool<T>> + Sized,
 {
@@ -269,7 +269,7 @@ pub async fn connect_generic_dynamic<T, M, C, LB>(
 ) -> Result<Session<LB>, C::Error>
 where
     M: bb8::ManageConnection<Connection = T>,
-    T: CDRSTransport<Manager = M>,
+    T: CdrsTransport<Manager = M>,
     C: ConnectionConfig<Transport = T, Manager = M>,
     LB: LoadBalancingStrategy<ConnectionPool<T>> + Sized,
 {

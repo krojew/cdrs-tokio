@@ -4,13 +4,13 @@ use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
 use crate::error;
 use crate::frame::{AsBytes, Frame};
 use crate::query::{PrepareExecutor, PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
-use crate::transport::CDRSTransport;
+use crate::transport::CdrsTransport;
 
 use super::utils::{prepare_flags, send_frame};
 use std::ops::Deref;
 
 #[async_trait]
-pub trait ExecExecutor<T: CDRSTransport + Unpin + 'static>:
+pub trait ExecExecutor<T: CdrsTransport + Unpin + 'static>:
     GetConnection<T> + GetCompressor + PrepareExecutor<T> + ResponseCache + Sync
 {
     async fn exec_with_params_tw(

@@ -526,7 +526,7 @@ pub enum ColTypeOptionValue {
 pub struct CUdt {
     /// Keyspace name.
     pub ks: CString,
-    /// UDT name
+    /// Udt name
     pub udt_name: CString,
     /// List of pairs `(name, type)` where name is field name and type is type of field.
     pub descriptions: Vec<(CString, ColTypeOption)>,

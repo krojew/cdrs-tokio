@@ -8,7 +8,7 @@ use cdrs_tokio::consistency::Consistency;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::frame::AsBytes;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::frame::{TryFromRow, TryFromUDT};
+use cdrs_tokio::frame::{TryFromRow, TryFromUdt};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
@@ -20,7 +20,7 @@ use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::from_cdrs::FromCDRSByName;
+use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::AsRustType;
 #[cfg(feature = "e2e-tests")]
@@ -47,7 +47,7 @@ async fn simple_udt() {
         .await
         .expect("setup");
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromRow, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStruct {
         my_key: i32,
         my_udt: MyUdt,
@@ -61,7 +61,7 @@ async fn simple_udt() {
         }
     }
 
-    #[derive(Debug, Clone, PartialEq, IntoCDRSValue, TryFromUDT)]
+    #[derive(Debug, Clone, PartialEq, IntoCdrsValue, TryFromUdt)]
     struct MyUdt {
         pub my_text: String,
     }
@@ -111,7 +111,7 @@ async fn nested_udt() {
         .await
         .expect("setup");
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromRow, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStruct {
         my_key: i32,
         my_outer_udt: MyOuterUdt,
@@ -123,12 +123,12 @@ async fn nested_udt() {
         }
     }
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromUDT, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromUdt, PartialEq)]
     struct MyInnerUdt {
         pub my_text: String,
     }
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromUDT, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromUdt, PartialEq)]
     struct MyOuterUdt {
         pub my_inner_udt: MyInnerUdt,
     }
@@ -183,7 +183,7 @@ async fn alter_udt_add() {
     .await
     .expect("setup");
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromRow, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStruct {
         my_key: i32,
         my_map: HashMap<String, MyUdtA>,
@@ -195,18 +195,18 @@ async fn alter_udt_add() {
         }
     }
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromUDT, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromUdt, PartialEq)]
     struct MyUdtA {
         pub my_text: String,
     }
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromRow, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStructB {
         my_key: i32,
         my_map: HashMap<String, MyUdtB>,
     }
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromUDT, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromUdt, PartialEq)]
     struct MyUdtB {
         pub my_text: String,
         pub my_timestamp: Option<PrimitiveDateTime>,
@@ -270,7 +270,7 @@ async fn update_list_with_udt() {
     .await
     .expect("setup");
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromRow, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStruct {
         id: Uuid,
         udts_set: Vec<MyUdt>,
@@ -282,7 +282,7 @@ async fn update_list_with_udt() {
         }
     }
 
-    #[derive(Clone, Debug, IntoCDRSValue, TryFromUDT, PartialEq)]
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromUdt, PartialEq)]
     struct MyUdt {
         pub id: Uuid,
         pub text: String,

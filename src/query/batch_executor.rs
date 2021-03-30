@@ -5,12 +5,12 @@ use crate::error;
 use crate::frame::traits::AsBytes;
 use crate::frame::Frame;
 use crate::query::batch_query_builder::QueryBatch;
-use crate::transport::CDRSTransport;
+use crate::transport::CdrsTransport;
 
 use super::utils::{prepare_flags, send_frame};
 
 #[async_trait]
-pub trait BatchExecutor<T: CDRSTransport + Unpin + 'static>:
+pub trait BatchExecutor<T: CdrsTransport + Unpin + 'static>:
     GetConnection<T> + GetCompressor + ResponseCache + Sync
 {
     async fn batch_with_params_tw(

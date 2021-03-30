@@ -14,7 +14,7 @@ use crate::compression::Compression;
 use crate::error;
 use crate::frame::parser::parse_frame;
 use crate::frame::{AsBytes, Frame, Opcode};
-use crate::transport::{CDRSTransport, TransportTcp};
+use crate::transport::{CdrsTransport, TransportTcp};
 use std::ops::Deref;
 
 /// Shortcut for `bb8::Pool` type of TCP-based CDRS connections.
@@ -90,7 +90,7 @@ impl ManageConnection for TcpConnectionsManager {
 }
 
 pub async fn startup<
-    T: CDRSTransport + Unpin + 'static,
+    T: CdrsTransport + Unpin + 'static,
     A: Authenticator + Send + Sync + ?Sized + 'static,
 >(
     transport: &Mutex<T>,

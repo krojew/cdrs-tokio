@@ -13,7 +13,7 @@ session.query_with_values(insert_numbers_query, values).unwrap();
 
 `insert_numbers_query` is a typical query template. `session::query_with_values` method provides an API for using such query strings along with query values.
 
-There is full list of `CDRSSession` methods that allow using values and query templates:
+There is full list of `CdrsSession` methods that allow using values and query templates:
 
 - `exec_with_values` - executes previously preared query with provided values (see [example](../examples/prepare_batch_execute.rs) and/or [Preparing and Executing](./preparing-and-executing-queries.md) section);
 
@@ -46,7 +46,7 @@ session.query_with_values(insert_numbers_query, values).unwrap();
 
 What kind of values can be used as `query_values!` arguments? All types that have implementations of [`Into<Bytes>` trait](https://docs.rs/cdrs/2.0.0-beta.1/cdrs/types/value/struct.Bytes.html).
 
-For Rust structs represented by [Cassandra User Defined types](http://cassandra.apache.org/doc/4.0/cql/types.html#grammar-token-user_defined_type) `#[derive(IntoCDRSValue)]` can be used for recurcive implementation. See [CRUD example](../examples/crud_operations.rs).
+For Rust structs represented by [Cassandra User Defined types](http://cassandra.apache.org/doc/4.0/cql/types.html#grammar-token-user_defined_type) `#[derive(IntoCdrsValue)]` can be used for recurcive implementation. See [CRUD example](../examples/crud_operations.rs).
 
 ### Reference
 

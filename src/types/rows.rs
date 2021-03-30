@@ -15,7 +15,7 @@ use crate::types::decimal::Decimal;
 use crate::types::list::List;
 use crate::types::map::Map;
 use crate::types::tuple::Tuple;
-use crate::types::udt::UDT;
+use crate::types::udt::Udt;
 use crate::types::{ByIndex, ByName, CBytes, IntoRustByIndex, IntoRustByName};
 
 #[derive(Clone, Debug)]
@@ -69,7 +69,7 @@ into_rust_by_name!(Row, IpAddr);
 into_rust_by_name!(Row, Uuid);
 into_rust_by_name!(Row, List);
 into_rust_by_name!(Row, Map);
-into_rust_by_name!(Row, UDT);
+into_rust_by_name!(Row, Udt);
 into_rust_by_name!(Row, Tuple);
 into_rust_by_name!(Row, PrimitiveDateTime);
 into_rust_by_name!(Row, Decimal);
@@ -95,7 +95,7 @@ into_rust_by_index!(Row, IpAddr);
 into_rust_by_index!(Row, Uuid);
 into_rust_by_index!(Row, List);
 into_rust_by_index!(Row, Map);
-into_rust_by_index!(Row, UDT);
+into_rust_by_index!(Row, Udt);
 into_rust_by_index!(Row, Tuple);
 into_rust_by_index!(Row, PrimitiveDateTime);
 into_rust_by_index!(Row, Decimal);

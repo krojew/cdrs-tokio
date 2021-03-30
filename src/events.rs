@@ -9,7 +9,7 @@ use crate::frame::events::{
     SimpleServerEvent as FrameSimpleServerEvent,
 };
 use crate::frame::parser::parse_frame;
-use crate::transport::CDRSTransport;
+use crate::transport::CdrsTransport;
 
 /// Full Server Event which includes all details about occured change.
 pub type ServerEvent = FrameServerEvent;
@@ -45,7 +45,7 @@ pub struct Listener<X> {
     tx: Sender<ServerEvent>,
 }
 
-impl<X: CDRSTransport + Unpin + 'static> Listener<Mutex<X>> {
+impl<X: CdrsTransport + Unpin + 'static> Listener<Mutex<X>> {
     /// It starts a process of listening to new events. Locks a frame.
     pub async fn start(self, compressor: Compression) -> error::Result<()> {
         loop {

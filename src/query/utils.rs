@@ -3,7 +3,7 @@ use crate::error;
 use crate::frame::frame_result::ResultKind;
 use crate::frame::parser::from_connection;
 use crate::frame::{Flag, Frame, FromBytes, Opcode, StreamId};
-use crate::transport::CDRSTransport;
+use crate::transport::CdrsTransport;
 use crate::types::INT_LEN;
 
 pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
@@ -27,7 +27,7 @@ pub async fn send_frame<S: ?Sized, T>(
 ) -> error::Result<Frame>
 where
     S: GetConnection<T> + GetCompressor + ResponseCache,
-    T: CDRSTransport + Unpin + 'static,
+    T: CdrsTransport + Unpin + 'static,
 {
     let compression = sender.get_compressor();
 

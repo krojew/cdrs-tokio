@@ -33,8 +33,8 @@ pub use generic_connection_pool::ConnectionPool;
 
 use crate::frame::{Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
-use crate::transport::CDRSTransport;
-use crate::{compression::Compression, error::FromCDRSError};
+use crate::transport::CdrsTransport;
+use crate::{compression::Compression, error::FromCdrsError};
 
 use std::net::SocketAddr;
 
@@ -42,8 +42,8 @@ use std::net::SocketAddr;
 /// connection objects that can be used with the `session::connect()` function.
 #[async_trait]
 pub trait ConnectionConfig: Send + Sync {
-    type Transport: CDRSTransport + Send + Sync;
-    type Error: FromCDRSError;
+    type Transport: CdrsTransport + Send + Sync;
+    type Error: FromCdrsError;
     type Manager: bb8::ManageConnection<Connection = Self::Transport, Error = Self::Error>;
 
     async fn connect(&self, addr: SocketAddr) -> Result<bb8::Pool<Self::Manager>, Self::Error>;
@@ -52,7 +52,7 @@ pub trait ConnectionConfig: Send + Sync {
 /// `GetConnection` trait provides a unified interface for Session to get a connection
 /// from a load balancer
 #[async_trait]
-pub trait GetConnection<T: CDRSTransport + Send + Sync + 'static> {
+pub trait GetConnection<T: CdrsTransport + Send + Sync + 'static> {
     /// Returns connection from a load balancer.
     async fn get_connection(&self) -> Option<Arc<ConnectionPool<T>>>;
 }
@@ -70,9 +70,9 @@ pub trait ResponseCache {
     async fn match_or_cache_response(&self, stream_id: StreamId, frame: Frame) -> Option<Frame>;
 }
 
-/// `CDRSSession` trait wrap ups whole query functionality. Use it only if whole query
+/// `CdrsSession` trait wrap ups whole query functionality. Use it only if whole query
 /// machinery is needed and direct sub traits otherwise.
-pub trait CDRSSession<T: CDRSTransport + Unpin + 'static>:
+pub trait CdrsSession<T: CdrsTransport + Unpin + 'static>:
     GetCompressor
     + GetConnection<T>
     + QueryExecutor<T>

@@ -1,4 +1,4 @@
-//!This module contains a declaration of `CDRSTransport` trait which should be implemented
+//!This module contains a declaration of `CdrsTransport` trait which should be implemented
 //!for particular transport in order to be able using it as a transport of CDRS client.
 //!
 //!Currently CDRS provides to concrete transports which implement `CDRSTranpsport` trait. There
@@ -12,7 +12,7 @@
 //!with `rust-tls` feature.
 use crate::{
     cluster::{KeyspaceHolder, TcpConnectionsManager},
-    error::FromCDRSError,
+    error::FromCdrsError,
     Error,
 };
 use async_trait::async_trait;
@@ -33,13 +33,13 @@ use std::net;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::{client::TlsStream as RustlsStream, TlsConnector as RustlsConnector};
 
-// TODO [v x.x.x]: CDRSTransport: ... + BufReader + ButWriter + ...
+// TODO [v x.x.x]: CdrsTransport: ... + BufReader + ButWriter + ...
 ///General CDRS transport trait. Both [`TransportTcp`]
-///and [`TransportRustls`] has their own implementations of this trait. Generaly
+///and [`TransportRustls`] has their own implementations of this trait. Generally
 ///speaking it extends/includes `io::Read` and `io::Write` traits and should be thread safe.
 #[async_trait]
-pub trait CDRSTransport: Sized + AsyncRead + AsyncWriteExt + Send + Sync {
-    type Error: FromCDRSError;
+pub trait CdrsTransport: Sized + AsyncRead + AsyncWriteExt + Send + Sync {
+    type Error: FromCdrsError;
     type Manager: bb8::ManageConnection<Connection = Mutex<Self>, Error = Self::Error>;
 
     /// Sets last USEd keyspace for further connections from the same pool
@@ -107,7 +107,7 @@ impl AsyncWrite for TransportTcp {
 }
 
 #[async_trait]
-impl CDRSTransport for TransportTcp {
+impl CdrsTransport for TransportTcp {
     type Error = Error;
     type Manager = TcpConnectionsManager;
 
@@ -181,7 +181,7 @@ impl AsyncWrite for TransportRustls {
 
 #[cfg(feature = "rust-tls")]
 #[async_trait]
-impl CDRSTransport for TransportRustls {
+impl CdrsTransport for TransportRustls {
     type Error = Error;
     type Manager = RustlsConnectionsManager;
 

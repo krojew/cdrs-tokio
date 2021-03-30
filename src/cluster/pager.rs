@@ -1,22 +1,22 @@
 use std::marker::PhantomData;
 
-use crate::cluster::CDRSSession;
+use crate::cluster::CdrsSession;
 use crate::consistency::Consistency;
 use crate::error;
 use crate::frame::frame_result::{RowsMetadata, RowsMetadataFlag};
 use crate::query::{PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
-use crate::transport::CDRSTransport;
+use crate::transport::CdrsTransport;
 use crate::types::rows::Row;
 use crate::types::CBytes;
 
-pub struct SessionPager<'a, S: CDRSSession<T> + 'a, T: CDRSTransport + Unpin + 'static> {
+pub struct SessionPager<'a, S: CdrsSession<T> + 'a, T: CdrsTransport + Unpin + 'static> {
     page_size: i32,
     session: &'a S,
     transport_type: PhantomData<&'a T>,
     connection_type: PhantomData<&'a T::Manager>,
 }
 
-impl<'a, 'b: 'a, S: CDRSSession<T>, T: CDRSTransport + Unpin + 'static> SessionPager<'a, S, T> {
+impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + Unpin + 'static> SessionPager<'a, S, T> {
     pub fn new(session: &'b S, page_size: i32) -> SessionPager<'a, S, T> {
         SessionPager {
             session,
@@ -103,7 +103,7 @@ pub struct QueryPager<'a, Q: ToString, P: 'a> {
     consistency: Consistency,
 }
 
-impl<'a, Q: ToString, T: CDRSTransport + Unpin + 'static, S: CDRSSession<T> + Sync + Send>
+impl<'a, Q: ToString, T: CdrsTransport + Unpin + 'static, S: CdrsSession<T> + Sync + Send>
     QueryPager<'a, Q, SessionPager<'a, S, T>>
 {
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
@@ -155,7 +155,7 @@ pub struct ExecPager<'a, P: 'a> {
     query: &'a PreparedQuery,
 }
 
-impl<'a, T: CDRSTransport + Unpin + 'static, S: CDRSSession<T> + Sync + Send>
+impl<'a, T: CdrsTransport + Unpin + 'static, S: CdrsSession<T> + Sync + Send>
     ExecPager<'a, SessionPager<'a, S, T>>
 {
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {

@@ -7,12 +7,12 @@ use crate::error;
 use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::{AsBytes, Frame};
 use crate::query::PreparedQuery;
-use crate::transport::CDRSTransport;
+use crate::transport::CdrsTransport;
 
 use super::utils::{prepare_flags, send_frame};
 
 #[async_trait]
-pub trait PrepareExecutor<T: CDRSTransport + Unpin + 'static>:
+pub trait PrepareExecutor<T: CdrsTransport + Unpin + 'static>:
     GetConnection<T> + GetCompressor + ResponseCache + Sync
 {
     /// It prepares a query for execution, along with query itself the

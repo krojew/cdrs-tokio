@@ -12,7 +12,7 @@ use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
 
 use cdrs_tokio::frame::AsBytes;
-use cdrs_tokio::types::from_cdrs::FromCDRSByName;
+use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 use cdrs_tokio::types::prelude::*;
 
 use cdrs_tokio_helpers_derive::*;
@@ -39,7 +39,7 @@ async fn main() {
     delete_struct(&mut no_compression).await;
 }
 
-#[derive(Clone, Debug, IntoCDRSValue, TryFromRow, PartialEq)]
+#[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
 struct RowStruct {
     key: i32,
     user: User,
@@ -53,7 +53,7 @@ impl RowStruct {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, IntoCDRSValue, TryFromUDT)]
+#[derive(Debug, Clone, PartialEq, IntoCdrsValue, TryFromUdt)]
 struct User {
     username: String,
 }

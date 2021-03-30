@@ -10,7 +10,7 @@ use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
 use crate::types::list::List;
 use crate::types::tuple::Tuple;
-use crate::types::udt::UDT;
+use crate::types::udt::Udt;
 use crate::types::{AsRust, AsRustType, CBytes};
 
 #[derive(Debug)]
@@ -50,7 +50,7 @@ map_as_rust!({ Blob }, { Uuid });
 map_as_rust!({ Blob }, { PrimitiveDateTime });
 map_as_rust!({ Blob }, { List });
 map_as_rust!({ Blob }, { Map });
-map_as_rust!({ Blob }, { UDT });
+map_as_rust!({ Blob }, { Udt });
 map_as_rust!({ Blob }, { Tuple });
 map_as_rust!({ Blob }, { Decimal });
 
@@ -68,7 +68,7 @@ map_as_rust!({ String }, { Uuid });
 map_as_rust!({ String }, { PrimitiveDateTime });
 map_as_rust!({ String }, { List });
 map_as_rust!({ String }, { Map });
-map_as_rust!({ String }, { UDT });
+map_as_rust!({ String }, { Udt });
 map_as_rust!({ String }, { Tuple });
 map_as_rust!({ String }, { Decimal });
 
@@ -86,7 +86,7 @@ map_as_rust!({ bool }, { Uuid });
 map_as_rust!({ bool }, { PrimitiveDateTime });
 map_as_rust!({ bool }, { List });
 map_as_rust!({ bool }, { Map });
-map_as_rust!({ bool }, { UDT });
+map_as_rust!({ bool }, { Udt });
 map_as_rust!({ bool }, { Tuple });
 map_as_rust!({ bool }, { Decimal });
 
@@ -104,7 +104,7 @@ map_as_rust!({ i64 }, { Uuid });
 map_as_rust!({ i64 }, { PrimitiveDateTime });
 map_as_rust!({ i64 }, { List });
 map_as_rust!({ i64 }, { Map });
-map_as_rust!({ i64 }, { UDT });
+map_as_rust!({ i64 }, { Udt });
 map_as_rust!({ i64 }, { Tuple });
 map_as_rust!({ i64 }, { Decimal });
 
@@ -122,7 +122,7 @@ map_as_rust!({ i32 }, { Uuid });
 map_as_rust!({ i32 }, { PrimitiveDateTime });
 map_as_rust!({ i32 }, { List });
 map_as_rust!({ i32 }, { Map });
-map_as_rust!({ i32 }, { UDT });
+map_as_rust!({ i32 }, { Udt });
 map_as_rust!({ i32 }, { Tuple });
 map_as_rust!({ i32 }, { Decimal });
 
@@ -140,7 +140,7 @@ map_as_rust!({ i16 }, { Uuid });
 map_as_rust!({ i16 }, { PrimitiveDateTime });
 map_as_rust!({ i16 }, { List });
 map_as_rust!({ i16 }, { Map });
-map_as_rust!({ i16 }, { UDT });
+map_as_rust!({ i16 }, { Udt });
 map_as_rust!({ i16 }, { Tuple });
 map_as_rust!({ i16 }, { Decimal });
 
@@ -158,7 +158,7 @@ map_as_rust!({ i8 }, { Uuid });
 map_as_rust!({ i8 }, { PrimitiveDateTime });
 map_as_rust!({ i8 }, { List });
 map_as_rust!({ i8 }, { Map });
-map_as_rust!({ i8 }, { UDT });
+map_as_rust!({ i8 }, { Udt });
 map_as_rust!({ i8 }, { Tuple });
 map_as_rust!({ i8 }, { Decimal });
 
@@ -176,7 +176,7 @@ map_as_rust!({ IpAddr }, { Uuid });
 map_as_rust!({ IpAddr }, { PrimitiveDateTime });
 map_as_rust!({ IpAddr }, { List });
 map_as_rust!({ IpAddr }, { Map });
-map_as_rust!({ IpAddr }, { UDT });
+map_as_rust!({ IpAddr }, { Udt });
 map_as_rust!({ IpAddr }, { Tuple });
 map_as_rust!({ IpAddr }, { Decimal });
 
@@ -194,7 +194,7 @@ map_as_rust!({ Uuid }, { Uuid });
 map_as_rust!({ Uuid }, { PrimitiveDateTime });
 map_as_rust!({ Uuid }, { List });
 map_as_rust!({ Uuid }, { Map });
-map_as_rust!({ Uuid }, { UDT });
+map_as_rust!({ Uuid }, { Udt });
 map_as_rust!({ Uuid }, { Tuple });
 map_as_rust!({ Uuid }, { Decimal });
 
@@ -212,7 +212,7 @@ map_as_rust!({ PrimitiveDateTime }, { Uuid });
 map_as_rust!({ PrimitiveDateTime }, { PrimitiveDateTime });
 map_as_rust!({ PrimitiveDateTime }, { List });
 map_as_rust!({ PrimitiveDateTime }, { Map });
-map_as_rust!({ PrimitiveDateTime }, { UDT });
+map_as_rust!({ PrimitiveDateTime }, { Udt });
 map_as_rust!({ PrimitiveDateTime }, { Tuple });
 map_as_rust!({ PrimitiveDateTime }, { Decimal });
 
@@ -230,6 +230,6 @@ map_as_rust!({ Tuple }, { Uuid });
 map_as_rust!({ Tuple }, { PrimitiveDateTime });
 map_as_rust!({ Tuple }, { List });
 map_as_rust!({ Tuple }, { Map });
-map_as_rust!({ Tuple }, { UDT });
+map_as_rust!({ Tuple }, { Udt });
 map_as_rust!({ Tuple }, { Tuple });
 map_as_rust!({ Tuple }, { Decimal });

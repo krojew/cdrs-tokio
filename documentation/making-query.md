@@ -26,16 +26,16 @@ use cdrs_tokio::query::BatchExecutor;
 
 `BatchExecutor` provides functionality for executing multiple queries in a single request to Cluster. For more details refer to [Batch Queries](./batching-multiple-queries.md) section.
 
-### `CDRSSession` trait
+### `CdrsSession` trait
 
-Each of traits enumered beyond provides just a piece of full query API. They can be used independently one from another though. However if the whole query functionality is needed in a programm `use cdrs_tokio::cluster::CDRSSession` should be considered instead.
+Each of traits enumerated beyond provides just a piece of full query API. They can be used independently one from another though. However if the whole query functionality is needed in a programm `use cdrs_tokio::cluster::CdrsSession` should be considered instead.
 
-`CDRSSession` source code looks following
+`CdrsSession` source code looks following
 
 ```rust
-pub trait CDRSSession<
+pub trait CdrsSession<
   'a,
-  T: CDRSTransport + 'static,
+  T: CdrsTransport + 'static,
   M: bb8::ManageConnection<Connection = cell::RefCell<T>, Error = error::Error>,
 >:
   GetCompressor<'static>

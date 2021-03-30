@@ -31,7 +31,7 @@ pub trait FromSingleByte {
 }
 
 /// `FromCursor` should be used to get parsed structure from an `io:Cursor`
-/// wich bound to an array of bytes.
+/// which bound to an array of bytes.
 pub trait FromCursor {
     /// It should return an implementor from an `io::Cursor` over an array of bytes.
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self>
@@ -48,6 +48,6 @@ pub trait TryFromRow: Sized {
     fn try_from_row(row: crate::types::rows::Row) -> error::Result<Self>;
 }
 
-pub trait TryFromUDT: Sized {
-    fn try_from_udt(udt: crate::types::udt::UDT) -> error::Result<Self>;
+pub trait TryFromUdt: Sized {
+    fn try_from_udt(udt: crate::types::udt::Udt) -> error::Result<Self>;
 }

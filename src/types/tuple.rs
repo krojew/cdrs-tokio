@@ -11,7 +11,7 @@ use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
 use crate::types::list::List;
 use crate::types::map::Map;
-use crate::types::udt::UDT;
+use crate::types::udt::Udt;
 use crate::types::{ByIndex, CBytes, IntoRustByIndex};
 
 use std::hash::{Hash, Hasher};
@@ -75,7 +75,7 @@ into_rust_by_index!(Tuple, IpAddr);
 into_rust_by_index!(Tuple, Uuid);
 into_rust_by_index!(Tuple, List);
 into_rust_by_index!(Tuple, Map);
-into_rust_by_index!(Tuple, UDT);
+into_rust_by_index!(Tuple, Udt);
 into_rust_by_index!(Tuple, Tuple);
 into_rust_by_index!(Tuple, PrimitiveDateTime);
 into_rust_by_index!(Tuple, Decimal);

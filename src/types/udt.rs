@@ -17,12 +17,12 @@ use crate::types::tuple::Tuple;
 use crate::types::{ByName, CBytes, IntoRustByName};
 
 #[derive(Clone, Debug)]
-pub struct UDT {
+pub struct Udt {
     data: HashMap<String, (ColTypeOption, CBytes)>,
 }
 
-impl UDT {
-    pub fn new(data: Vec<CBytes>, metadata: &CUdt) -> UDT {
+impl Udt {
+    pub fn new(data: Vec<CBytes>, metadata: &CUdt) -> Udt {
         let meta_iter = metadata.descriptions.iter();
 
         let acc: HashMap<String, (ColTypeOption, CBytes)> =
@@ -35,32 +35,32 @@ impl UDT {
             a
         });
 
-        UDT { data: d }
+        Udt { data: d }
     }
 }
 
-impl ByName for UDT {}
+impl ByName for Udt {}
 
-into_rust_by_name!(UDT, Blob);
-into_rust_by_name!(UDT, String);
-into_rust_by_name!(UDT, bool);
-into_rust_by_name!(UDT, i64);
-into_rust_by_name!(UDT, i32);
-into_rust_by_name!(UDT, i16);
-into_rust_by_name!(UDT, i8);
-into_rust_by_name!(UDT, f64);
-into_rust_by_name!(UDT, f32);
-into_rust_by_name!(UDT, IpAddr);
-into_rust_by_name!(UDT, Uuid);
-into_rust_by_name!(UDT, List);
-into_rust_by_name!(UDT, Map);
-into_rust_by_name!(UDT, UDT);
-into_rust_by_name!(UDT, Tuple);
-into_rust_by_name!(UDT, PrimitiveDateTime);
-into_rust_by_name!(UDT, Decimal);
-into_rust_by_name!(UDT, NonZeroI8);
-into_rust_by_name!(UDT, NonZeroI16);
-into_rust_by_name!(UDT, NonZeroI32);
-into_rust_by_name!(UDT, NonZeroI64);
-into_rust_by_name!(UDT, NaiveDateTime);
-into_rust_by_name!(UDT, DateTime<Utc>);
+into_rust_by_name!(Udt, Blob);
+into_rust_by_name!(Udt, String);
+into_rust_by_name!(Udt, bool);
+into_rust_by_name!(Udt, i64);
+into_rust_by_name!(Udt, i32);
+into_rust_by_name!(Udt, i16);
+into_rust_by_name!(Udt, i8);
+into_rust_by_name!(Udt, f64);
+into_rust_by_name!(Udt, f32);
+into_rust_by_name!(Udt, IpAddr);
+into_rust_by_name!(Udt, Uuid);
+into_rust_by_name!(Udt, List);
+into_rust_by_name!(Udt, Map);
+into_rust_by_name!(Udt, Udt);
+into_rust_by_name!(Udt, Tuple);
+into_rust_by_name!(Udt, PrimitiveDateTime);
+into_rust_by_name!(Udt, Decimal);
+into_rust_by_name!(Udt, NonZeroI8);
+into_rust_by_name!(Udt, NonZeroI16);
+into_rust_by_name!(Udt, NonZeroI32);
+into_rust_by_name!(Udt, NonZeroI64);
+into_rust_by_name!(Udt, NaiveDateTime);
+into_rust_by_name!(Udt, DateTime<Utc>);

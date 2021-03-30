@@ -8,7 +8,7 @@ use crate::compression::Compression;
 use crate::error;
 use crate::frame::frame_response::ResponseBody;
 use crate::frame::FromCursor;
-use crate::transport::CDRSTransport;
+use crate::transport::CdrsTransport;
 use crate::types::data_serialization_types::decode_timeuuid;
 use crate::types::{from_bytes, from_i16_bytes, CStringList, UUID_LEN};
 
@@ -17,8 +17,8 @@ pub async fn from_connection<M, E, T>(
     compressor: Compression,
 ) -> error::Result<Frame>
 where
-    T: CDRSTransport + Unpin + 'static,
-    E: error::FromCDRSError,
+    T: CdrsTransport + Unpin + 'static,
+    E: error::FromCdrsError,
     M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
 {
     parse_frame(conn.deref(), compressor).await

@@ -3,7 +3,7 @@ use std::io;
 use std::io::{Cursor, Read};
 use std::net::SocketAddr;
 
-use crate::error::{column_is_empty_err, Error as CDRSError, Result as CDRSResult};
+use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
 use crate::frame::traits::{AsBytes, FromBytes, FromCursor};
 use crate::types::data_serialization_types::decode_inet;
 use byteorder::{BigEndian, ByteOrder, ReadBytesExt, WriteBytesExt};
@@ -27,14 +27,14 @@ pub mod value;
 
 pub mod prelude {
     pub use crate::error::{Error, Result};
-    pub use crate::frame::{TryFromRow, TryFromUDT};
+    pub use crate::frame::{TryFromRow, TryFromUdt};
     pub use crate::types::blob::Blob;
     pub use crate::types::decimal::Decimal;
     pub use crate::types::list::List;
     pub use crate::types::map::Map;
     pub use crate::types::rows::Row;
     pub use crate::types::tuple::Tuple;
-    pub use crate::types::udt::UDT;
+    pub use crate::types::udt::Udt;
     pub use crate::types::value::{Bytes, Value};
     pub use crate::types::AsRustType;
 }
@@ -45,7 +45,7 @@ pub trait AsRustType<T> {
 
     fn as_r_type(&self) -> CDRSResult<T> {
         self.as_rust_type()
-            .and_then(|op| op.ok_or_else(|| CDRSError::from("Value is null or non-set")))
+            .and_then(|op| op.ok_or_else(|| CdrsError::from("Value is null or non-set")))
     }
 }
 

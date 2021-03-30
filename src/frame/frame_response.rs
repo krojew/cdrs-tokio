@@ -4,7 +4,7 @@ use crate::error;
 use crate::frame::frame_auth_challenge::*;
 use crate::frame::frame_auth_success::BodyReqAuthSuccess;
 use crate::frame::frame_authenticate::BodyResAuthenticate;
-use crate::frame::frame_error::CDRSError;
+use crate::frame::frame_error::CdrsError;
 use crate::frame::frame_event::BodyResEvent;
 use crate::frame::frame_result::{
     BodyResResultPrepared, BodyResResultRows, BodyResResultSetKeyspace, BodyResResultVoid,
@@ -17,7 +17,7 @@ use crate::types::rows::Row;
 
 #[derive(Debug)]
 pub enum ResponseBody {
-    Error(CDRSError),
+    Error(CdrsError),
     Startup,
     Ready(BodyResResultVoid),
     Authenticate(BodyResAuthenticate),
@@ -50,7 +50,7 @@ impl ResponseBody {
             Opcode::AuthResponse => unreachable!(),
 
             // response frames
-            Opcode::Error => ResponseBody::Error(CDRSError::from_cursor(&mut cursor)?),
+            Opcode::Error => ResponseBody::Error(CdrsError::from_cursor(&mut cursor)?),
             Opcode::Ready => ResponseBody::Ready(BodyResResultVoid::from_cursor(&mut cursor)?),
             Opcode::Authenticate => {
                 ResponseBody::Authenticate(BodyResAuthenticate::from_cursor(&mut cursor)?)

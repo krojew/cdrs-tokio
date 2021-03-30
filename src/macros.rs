@@ -103,8 +103,8 @@ macro_rules! into_rust_by_name {
             }
         }
     );
-    (UDT, $($into_type:tt)+) => (
-        impl IntoRustByName<$($into_type)+> for UDT {
+    (Udt, $($into_type:tt)+) => (
+        impl IntoRustByName<$($into_type)+> for Udt {
             fn get_by_name(&self, name: &str) -> Result<Option<$($into_type)+>> {
                 self.data.get(name)
                 .ok_or(column_is_empty_err(name))
@@ -374,20 +374,20 @@ macro_rules! as_rust_type {
             ))),
         }
     };
-    ($data_type_option:ident, $data_value:ident, UDT) => {
+    ($data_type_option:ident, $data_value:ident, Udt) => {
         match *$data_type_option {
             ColTypeOption {
                 id: ColType::Udt,
                 value: Some(ColTypeOptionValue::UdtType(ref list_type_option)),
             } => match $data_value.as_slice() {
                 Some(ref bytes) => decode_udt(bytes, list_type_option.descriptions.len())
-                    .map(|data| Some(UDT::new(data, list_type_option)))
+                    .map(|data| Some(Udt::new(data, list_type_option)))
                     .map_err(Into::into),
                 None => Ok(None),
             },
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into UDT (valid types: UDT).",
+                 Cannot convert {:?} into Udt (valid types: Udt).",
                 $data_type_option.id
             ))),
         }
