@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use fxhash::FxHashMap;
 use std::iter::Iterator;
-use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::{io::AsyncWriteExt, sync::Mutex};
@@ -11,7 +10,7 @@ use crate::cluster::NodeTcpConfig;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::{new_rustls_pool, ClusterRustlsConfig, RustlsConnectionPool};
 use crate::cluster::{
-    new_tcp_pool, startup, CdrsSession, ClusterTcpConfig, ConnectionConfig, ConnectionPool,
+    new_tcp_pool, startup, CdrsSession, ClusterTcpConfig, ConnectionPool, GenericClusterConfig,
     GetCompressor, GetConnection, KeyspaceHolder, ResponseCache, TcpConnectionPool,
 };
 use crate::error;
@@ -230,23 +229,24 @@ where
 /// The config object supplied differs from the ClusterTcpConfig and ClusterRustlsConfig
 /// objects in that it is not expected to include an address. Instead the same configuration
 /// will be applied to all connections across the cluster.
-pub async fn connect_generic_static<T, M, C, LB>(
+pub async fn connect_generic_static<T, M, C, A, LB>(
     config: &C,
-    initial_nodes: &[SocketAddr],
+    initial_nodes: &[A],
     mut load_balancing: LB,
     compression: Compression,
 ) -> Result<Session<LB>, C::Error>
 where
-    M: bb8::ManageConnection<Connection = T>,
+    M: bb8::ManageConnection<Connection = Mutex<T>>,
+    A: Clone,
     T: CdrsTransport<Manager = M>,
-    C: ConnectionConfig<Transport = T, Manager = M>,
+    C: GenericClusterConfig<Transport = T, Address = A>,
     LB: LoadBalancingStrategy<ConnectionPool<T>> + Sized,
 {
     let mut nodes: Vec<Arc<ConnectionPool<T>>> = Vec::with_capacity(initial_nodes.len());
 
     for node in initial_nodes {
-        let pool = config.connect(*node).await?;
-        nodes.push(Arc::new(ConnectionPool::new(pool, *node)));
+        let pool = config.connect(node.clone()).await?;
+        nodes.push(Arc::new(pool));
     }
 
     load_balancing.init(nodes);
@@ -260,24 +260,25 @@ where
 }
 
 #[cfg(feature = "unstable-dynamic-cluster")]
-pub async fn connect_generic_dynamic<T, M, C, LB>(
+pub async fn connect_generic_dynamic<T, M, C, A, LB>(
     config: &C,
-    initial_nodes: &[SocketAddr],
+    initial_nodes: &[A],
     mut load_balancing: LB,
     compression: Compression,
     event_src: NodeTcpConfig,
 ) -> Result<Session<LB>, C::Error>
 where
-    M: bb8::ManageConnection<Connection = T>,
+    M: bb8::ManageConnection<Connection = Mutex<T>>,
+    A: Clone,
     T: CdrsTransport<Manager = M>,
-    C: ConnectionConfig<Transport = T, Manager = M>,
+    C: GenericClusterConfig<Transport = T, Address = A>,
     LB: LoadBalancingStrategy<ConnectionPool<T>> + Sized,
 {
     let mut nodes: Vec<Arc<ConnectionPool<T>>> = Vec::with_capacity(initial_nodes.len());
 
     for node in initial_nodes {
-        let pool = config.connect(*node).await?;
-        nodes.push(Arc::new(ConnectionPool::new(pool, *node)));
+        let pool = config.connect(node.clone()).await?;
+        nodes.push(Arc::new(pool));
     }
 
     load_balancing.init(nodes);
