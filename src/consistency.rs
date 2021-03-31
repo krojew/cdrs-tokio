@@ -3,6 +3,7 @@
 use std::convert::From;
 use std::default::Default;
 use std::io;
+use std::str::FromStr;
 
 use crate::error;
 use crate::frame::{AsBytes, FromBytes, FromCursor};
@@ -77,6 +78,34 @@ pub enum Consistency {
 impl Default for Consistency {
     fn default() -> Consistency {
         Consistency::One
+    }
+}
+
+impl FromStr for Consistency {
+    type Err = error::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let consistency = match s {
+            "Any" => Consistency::Any,
+            "One" => Consistency::One,
+            "Two" => Consistency::Two,
+            "Three" => Consistency::Three,
+            "Quorum" => Consistency::Quorum,
+            "All" => Consistency::All,
+            "LocalQuorum" => Consistency::LocalQuorum,
+            "EachQuorum" => Consistency::EachQuorum,
+            "Serial" => Consistency::Serial,
+            "LocalSerial" => Consistency::LocalSerial,
+            "LocalOne" => Consistency::LocalOne,
+            _ => {
+                return Err(error::Error::General(format!(
+                    "Invalid consistency provided: {}",
+                    s
+                )))
+            }
+        };
+
+        Ok(consistency)
     }
 }
 
