@@ -97,7 +97,7 @@ impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + Unpin + 'static> SessionP
 
 pub struct QueryPager<'a, Q: ToString, P: 'a> {
     pager: &'a mut P,
-    pager_state: PagerState,
+    pub pager_state: PagerState,
     query: Q,
     qv: Option<QueryValues>,
     consistency: Consistency,
@@ -196,7 +196,7 @@ impl<'a, T: CdrsTransport + Unpin + 'static, S: CdrsSession<T> + Sync + Send>
 
 #[derive(Clone, PartialEq, Debug, Default)]
 pub struct PagerState {
-    cursor: Option<CBytes>,
+    pub cursor: Option<CBytes>,
     has_more_pages: Option<bool>,
 }
 
