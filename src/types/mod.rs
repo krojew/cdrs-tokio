@@ -562,6 +562,10 @@ impl CBytes {
             Some(bytes) => bytes.is_empty(),
         }
     }
+
+    pub fn into_bytes(self) -> Option<Vec<u8>> {
+        self.bytes
+    }
 }
 
 impl FromCursor for CBytes {
