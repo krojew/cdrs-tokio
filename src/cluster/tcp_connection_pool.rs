@@ -113,8 +113,8 @@ pub async fn startup<
     }
 
     if start_response.opcode == Opcode::Authenticate {
-        let body = start_response.get_body()?;
-        let authenticator = body.get_authenticator().expect(
+        let body = start_response.body()?;
+        let authenticator = body.authenticator().expect(
             "Cassandra Server did communicate that it needed
                 authentication but the auth schema was missing in the body response",
         );
@@ -127,7 +127,7 @@ pub async fn startup<
         // 3. if it falls through it means the preliminary conditions are true
 
         let auth_check = session_authenticator
-            .get_cassandra_name()
+            .cassandra_name()
             .ok_or_else(|| error::Error::General("No authenticator was provided".to_string()))
             .map(|auth| {
                 if authenticator != auth {
@@ -148,7 +148,7 @@ pub async fn startup<
             return Err(err);
         }
 
-        let auth_token_bytes = session_authenticator.get_auth_token();
+        let auth_token_bytes = session_authenticator.auth_token();
         transport
             .lock()
             .await

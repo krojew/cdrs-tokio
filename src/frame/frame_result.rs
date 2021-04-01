@@ -190,7 +190,7 @@ pub struct BodyResResultRows {
 
 impl BodyResResultRows {
     /// It retrieves rows content having knowledge about number of rows and columns.
-    fn get_rows_content(
+    fn rows_content(
         mut cursor: &mut Cursor<&[u8]>,
         rows_count: i32,
         columns_count: i32,
@@ -211,7 +211,7 @@ impl FromCursor for BodyResResultRows {
         let metadata = RowsMetadata::from_cursor(&mut cursor)?;
         let rows_count = CInt::from_cursor(&mut cursor)?;
         let rows_content: Vec<Vec<CBytes>> =
-            BodyResResultRows::get_rows_content(&mut cursor, rows_count, metadata.columns_count);
+            BodyResResultRows::rows_content(&mut cursor, rows_count, metadata.columns_count);
 
         Ok(BodyResResultRows {
             metadata,

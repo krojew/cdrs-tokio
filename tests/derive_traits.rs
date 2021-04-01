@@ -87,7 +87,7 @@ async fn simple_udt() {
         .query(cql)
         .await
         .expect("query")
-        .get_body()
+        .body()
         .expect("get body")
         .into_rows()
         .expect("into rows");
@@ -154,7 +154,7 @@ async fn nested_udt() {
         .query(cql)
         .await
         .expect("query")
-        .get_body()
+        .body()
         .expect("get body")
         .into_rows()
         .expect("into rows");
@@ -237,7 +237,7 @@ async fn alter_udt_add() {
         .query(cql)
         .await
         .expect("query")
-        .get_body()
+        .body()
         .expect("get body")
         .into_rows()
         .expect("into rows");
@@ -340,7 +340,7 @@ async fn update_list_with_udt() {
         .query(cql)
         .await
         .expect("query")
-        .get_body()
+        .body()
         .expect("get body")
         .into_rows()
         .expect("into rows");

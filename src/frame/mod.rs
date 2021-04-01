@@ -39,7 +39,7 @@ static STREAM_ID: AtomicI16 = AtomicI16::new(0);
 
 pub type StreamId = i16;
 
-fn get_next_stream_id() -> StreamId {
+fn next_stream_id() -> StreamId {
     loop {
         let stream = STREAM_ID.fetch_add(1, Ordering::SeqCst);
         if stream < 0 {
@@ -73,7 +73,7 @@ impl Frame {
         tracing_id: Option<Uuid>,
         warnings: Vec<String>,
     ) -> Self {
-        let stream = get_next_stream_id();
+        let stream = next_stream_id();
         Frame {
             version,
             flags,
@@ -85,7 +85,7 @@ impl Frame {
         }
     }
 
-    pub fn get_body(&self) -> error::Result<ResponseBody> {
+    pub fn body(&self) -> error::Result<ResponseBody> {
         ResponseBody::from(self.body.as_slice(), &self.opcode)
     }
 
@@ -241,7 +241,7 @@ impl Flag {
     const BYTE_LENGTH: usize = 1;
 
     /// It returns selected flags collection.
-    pub fn get_collection(flags: u8) -> Vec<Flag> {
+    pub fn collection(flags: u8) -> Vec<Flag> {
         let mut found_flags: Vec<Flag> = vec![];
 
         if Flag::has_compression(flags) {
@@ -479,18 +479,18 @@ mod tests {
     }
 
     #[test]
-    fn test_flag_get_collection() {
+    fn test_flag_collection() {
         let all = vec![
             Flag::Compression,
             Flag::Tracing,
             Flag::CustomPayload,
             Flag::Warning,
         ];
-        assert_eq!(Flag::get_collection(1 | 2 | 4 | 8), all);
+        assert_eq!(Flag::collection(1 | 2 | 4 | 8), all);
         let some = vec![Flag::Compression, Flag::Warning];
-        assert_eq!(Flag::get_collection(1 | 8), some);
+        assert_eq!(Flag::collection(1 | 8), some);
         let one = vec![Flag::Compression];
-        assert_eq!(Flag::get_collection(1), one);
+        assert_eq!(Flag::collection(1), one);
     }
 
     #[test]

@@ -35,7 +35,7 @@ impl Row {
             .collect()
     }
 
-    fn get_col_spec_by_name(&self, name: &str) -> Option<(&ColSpec, &CBytes)> {
+    fn col_spec_by_name(&self, name: &str) -> Option<(&ColSpec, &CBytes)> {
         self.metadata
             .col_specs
             .iter()
@@ -47,7 +47,7 @@ impl Row {
             })
     }
 
-    fn get_col_spec_by_index(&self, index: usize) -> Option<(&ColSpec, &CBytes)> {
+    fn col_spec_by_index(&self, index: usize) -> Option<(&ColSpec, &CBytes)> {
         let specs = self.metadata.col_specs.iter();
         let values = self.row_content.iter();
         specs.zip(values).nth(index)

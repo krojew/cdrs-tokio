@@ -54,14 +54,14 @@ pub trait ConnectionConfig: Send + Sync {
 #[async_trait]
 pub trait GetConnection<T: CdrsTransport + Send + Sync + 'static> {
     /// Returns connection from a load balancer.
-    async fn get_connection(&self) -> Option<Arc<ConnectionPool<T>>>;
+    async fn connection(&self) -> Option<Arc<ConnectionPool<T>>>;
 }
 
 /// `GetCompressor` trait provides a unified interface for Session to get a compressor
 /// for further decompressing received data.
 pub trait GetCompressor {
     /// Returns actual compressor.
-    fn get_compressor(&self) -> Compression;
+    fn compressor(&self) -> Compression;
 }
 
 /// `ResponseCache` caches responses to match them by their stream id to requests.

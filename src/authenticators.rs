@@ -1,8 +1,8 @@
 use crate::types::CBytes;
 
 pub trait Authenticator {
-    fn get_auth_token(&self) -> CBytes;
-    fn get_cassandra_name(&self) -> Option<&str>;
+    fn auth_token(&self) -> CBytes;
+    fn cassandra_name(&self) -> Option<&str>;
 }
 
 #[derive(Debug, Clone)]
@@ -21,7 +21,7 @@ impl StaticPasswordAuthenticator {
 }
 
 impl Authenticator for StaticPasswordAuthenticator {
-    fn get_auth_token(&self) -> CBytes {
+    fn auth_token(&self) -> CBytes {
         let mut token = vec![0];
         token.extend_from_slice(self.username.as_bytes());
         token.push(0);
@@ -30,7 +30,7 @@ impl Authenticator for StaticPasswordAuthenticator {
         CBytes::new(token)
     }
 
-    fn get_cassandra_name(&self) -> Option<&str> {
+    fn cassandra_name(&self) -> Option<&str> {
         Some("org.apache.cassandra.auth.PasswordAuthenticator")
     }
 }
@@ -39,11 +39,11 @@ impl Authenticator for StaticPasswordAuthenticator {
 pub struct NoneAuthenticator;
 
 impl Authenticator for NoneAuthenticator {
-    fn get_auth_token(&self) -> CBytes {
+    fn auth_token(&self) -> CBytes {
         CBytes::new(vec![0])
     }
 
-    fn get_cassandra_name(&self) -> Option<&str> {
+    fn cassandra_name(&self) -> Option<&str> {
         None
     }
 }
@@ -59,18 +59,18 @@ mod tests {
     }
 
     #[test]
-    fn test_static_password_authenticator_get_cassandra_name() {
+    fn test_static_password_authenticator_cassandra_name() {
         let auth = StaticPasswordAuthenticator::new("foo", "bar");
         assert_eq!(
-            auth.get_cassandra_name(),
+            auth.cassandra_name(),
             Some("org.apache.cassandra.auth.PasswordAuthenticator")
         );
     }
 
     #[test]
-    fn test_authenticator_none_get_cassandra_name() {
+    fn test_authenticator_none_cassandra_name() {
         let auth = NoneAuthenticator;
-        assert_eq!(auth.get_cassandra_name(), None);
-        assert_eq!(auth.get_auth_token().into_plain().unwrap(), vec![0]);
+        assert_eq!(auth.cassandra_name(), None);
+        assert_eq!(auth.auth_token().into_plain().unwrap(), vec![0]);
     }
 }

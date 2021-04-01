@@ -124,7 +124,7 @@ impl<'a, Q: ToString, T: CdrsTransport + Unpin + 'static, S: CdrsSession<T> + Sy
             .session
             .query_with_params(query, params.finalize())
             .await
-            .and_then(|frame| frame.get_body())?;
+            .and_then(|frame| frame.body())?;
 
         let metadata_res: error::Result<RowsMetadata> = body
             .as_rows_metadata()
@@ -169,7 +169,7 @@ impl<'a, T: CdrsTransport + Unpin + 'static, S: CdrsSession<T> + Sync + Send>
             .session
             .exec_with_params(self.query, params.finalize())
             .await
-            .and_then(|frame| frame.get_body())?;
+            .and_then(|frame| frame.body())?;
 
         let metadata_res: error::Result<RowsMetadata> = body
             .as_rows_metadata()
@@ -223,7 +223,7 @@ impl PagerState {
         self.has_more_pages.unwrap_or(false)
     }
 
-    pub fn get_cursor(&self) -> Option<CBytes> {
+    pub fn cursor(&self) -> Option<CBytes> {
         self.cursor.clone()
     }
 }

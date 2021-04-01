@@ -51,7 +51,7 @@ impl<X: CdrsTransport + Unpin + 'static> Listener<Mutex<X>> {
         loop {
             let event_opt = parse_frame(&self.transport, compressor)
                 .await?
-                .get_body()?
+                .body()?
                 .into_server_event();
 
             let event = if event_opt.is_some() {

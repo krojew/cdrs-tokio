@@ -43,7 +43,7 @@ where
     cursor.read_exact(&mut length_bytes).await?;
 
     let version = Version::from(version_bytes.to_vec());
-    let flags = Flag::get_collection(flag_bytes[0]);
+    let flags = Flag::collection(flag_bytes[0]);
     let stream = from_i16_bytes(&stream_bytes);
     let opcode = Opcode::from(opcode_bytes[0]);
     let length = from_bytes(&length_bytes) as usize;
@@ -101,7 +101,7 @@ where
 
 fn convert_frame_into_result(frame: Frame) -> error::Result<Frame> {
     match frame.opcode {
-        Opcode::Error => frame.get_body().and_then(|err| match err {
+        Opcode::Error => frame.body().and_then(|err| match err {
             ResponseBody::Error(err) => Err(error::Error::Server(err)),
             _ => unreachable!(),
         }),

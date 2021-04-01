@@ -20,12 +20,12 @@ impl<T: CdrsTransport> ConnectionPool<T> {
     }
 
     /// Returns reference to underlying `bb8::Pool`.
-    pub fn get_pool(&self) -> Arc<bb8::Pool<T::Manager>> {
+    pub fn pool(&self) -> Arc<bb8::Pool<T::Manager>> {
         self.pool.clone()
     }
 
     /// Return an IP address.
-    pub fn get_addr(&self) -> SocketAddr {
+    pub fn addr(&self) -> SocketAddr {
         self.addr
     }
 }

@@ -29,13 +29,13 @@ where
     S: GetConnection<T> + GetCompressor + ResponseCache,
     T: CdrsTransport + Unpin + 'static,
 {
-    let compression = sender.get_compressor();
+    let compression = sender.compressor();
 
     let transport = sender
-        .get_connection()
+        .connection()
         .await
         .ok_or_else(|| error::Error::from("Unable to get transport"))?
-        .get_pool();
+        .pool();
 
     let pool = transport
         .get()
@@ -56,7 +56,7 @@ where
             if frame.opcode == Opcode::Result {
                 let result_kind = ResultKind::from_bytes(&frame.body[..INT_LEN])?;
                 if result_kind == ResultKind::SetKeyspace {
-                    let response_body = frame.get_body()?;
+                    let response_body = frame.body()?;
                     let set_keyspace = response_body
                         .into_set_keyspace()
                         .expect("SetKeyspace not found with SetKeyspace opcode!");

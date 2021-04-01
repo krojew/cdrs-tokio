@@ -111,7 +111,7 @@ async fn select_struct(session: &mut CurrentSession) {
         .query(select_struct_cql)
         .await
         .expect("query")
-        .get_body()
+        .body()
         .expect("get body")
         .into_rows()
         .expect("into rows");

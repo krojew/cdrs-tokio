@@ -31,7 +31,7 @@ pub trait PrepareExecutor<T: CdrsTransport + Unpin + 'static>:
 
         send_frame(self, query_frame.as_bytes(), query_frame.stream)
             .await
-            .and_then(|response| response.get_body())
+            .and_then(|response| response.body())
             .map(|body| {
                 body.into_prepared()
                     .expect("CDRS BUG: cannot convert frame into prepared")
