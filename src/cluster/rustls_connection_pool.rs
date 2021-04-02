@@ -91,7 +91,10 @@ impl ManageConnection for RustlsConnectionsManager {
 
     async fn is_valid(&self, conn: &mut PooledConnection<'_, Self>) -> Result<(), Self::Error> {
         let options_frame = Frame::new_req_options().as_bytes();
-        conn.lock().await.write(options_frame.as_slice()).await?;
+        conn.lock()
+            .await
+            .write_all(options_frame.as_slice())
+            .await?;
 
         parse_frame(&conn, Compression::None).await.map(|_| ())
     }

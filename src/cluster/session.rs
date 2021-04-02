@@ -594,7 +594,11 @@ impl<L> Session<L> {
         startup(&transport, authenticator, keyspace_holder.deref()).await?;
 
         let query_frame = Frame::new_req_register(events).as_bytes();
-        transport.lock().await.write(query_frame.as_slice()).await?;
+        transport
+            .lock()
+            .await
+            .write_all(query_frame.as_slice())
+            .await?;
         parse_frame(&transport, compression).await?;
 
         Ok(new_listener(transport))
