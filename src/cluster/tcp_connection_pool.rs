@@ -78,12 +78,10 @@ impl ManageConnection for TcpConnectionsManager {
 
     async fn is_valid(&self, conn: &mut PooledConnection<'_, Self>) -> Result<(), Self::Error> {
         let options_frame = Frame::new_req_options().as_bytes();
-        conn.lock()
-            .await
-            .write_all(options_frame.as_slice())
-            .await?;
+        conn.lock().await.write_all(&options_frame).await?;
 
-        parse_frame(&conn, Compression::None).await.map(|_| ())
+        parse_frame(&conn, Compression::None).await?;
+        Ok(())
     }
 
     fn has_broken(&self, _conn: &mut Self::Connection) -> bool {

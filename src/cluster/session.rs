@@ -594,11 +594,13 @@ impl<L> Session<L> {
         startup(&transport, authenticator, keyspace_holder.deref()).await?;
 
         let query_frame = Frame::new_req_register(events).as_bytes();
-        transport
-            .lock()
-            .await
-            .write_all(query_frame.as_slice())
-            .await?;
+        transport.lock().await.write_all(&query_frame).await?;
+
+        // TLS connections may not write data to the stream immediately,
+        // but may wait for more data. Ensure the data is sent.
+        // Otherwise Cassandra server will not send out a response.
+        transport.lock().await.flush().await?;
+
         parse_frame(&transport, compression).await?;
 
         Ok(new_listener(transport))
