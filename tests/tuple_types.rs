@@ -20,14 +20,12 @@ use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::{IntoRustByIndex, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
-use time::PrimitiveDateTime;
+use time::{date, time, PrimitiveDateTime};
 #[cfg(feature = "e2e-tests")]
 use uuid::Uuid;
 
 #[cfg(feature = "e2e-tests")]
 use std::str::FromStr;
-#[cfg(feature = "e2e-tests")]
-use std::time::SystemTime;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
@@ -169,10 +167,11 @@ async fn nested_tuples() {
 
     let my_uuid = Uuid::from_str("bb16106a-10bc-4a07-baa3-126ffe208c43").unwrap();
     let my_blob: Vec<u8> = vec![0, 1, 2, 4, 8, 16, 32, 64, 128, 255];
+    let timestamp = PrimitiveDateTime::new(date!(2019 - 01 - 01), time!(3:01));
     let my_inner_tuple = MyInnerTuple {
         my_text: "my_text".to_string(),
         my_int: 1_000,
-        my_timestamp: SystemTime::now().into(),
+        my_timestamp: timestamp,
     };
     let my_outer_tuple = MyOuterTuple {
         my_uuid,
