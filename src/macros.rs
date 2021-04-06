@@ -163,6 +163,23 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, Blob) => {
         match $data_type_option.id {
             ColType::Blob => as_res_opt!($data_value, decode_blob),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.BytesType" {
+                            return as_res_opt!($data_value, decode_blob);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into Vec<u8> (valid types: org.apache.cassandra.db.marshal.BytesType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into Vec<u8> (valid types: Blob).",
@@ -189,6 +206,23 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, bool) => {
         match $data_type_option.id {
             ColType::Boolean => as_res_opt!($data_value, decode_boolean),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.BooleanType" {
+                            return as_res_opt!($data_value, decode_boolean);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into bool (valid types: org.apache.cassandra.db.marshal.BooleanType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into bool (valid types: Boolean).",
@@ -203,6 +237,27 @@ macro_rules! as_rust_type {
             ColType::Time => as_res_opt!($data_value, decode_time),
             ColType::Varint => as_res_opt!($data_value, decode_varint),
             ColType::Counter => as_res_opt!($data_value, decode_bigint),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        match value.as_str() {
+                            "org.apache.cassandra.db.marshal.LongType" | "org.apache.cassandra.db.marshal.CounterColumnType" => return as_res_opt!($data_value, decode_bigint),
+                            "org.apache.cassandra.db.marshal.IntegerType" => return as_res_opt!($data_value, decode_varint),
+                            "org.apache.cassandra.db.marshal.TimestampType" => return as_res_opt!($data_value, decode_timestamp),
+                            "org.apache.cassandra.db.marshal.TimeType" => return as_res_opt!($data_value, decode_time),
+                            _ => {}
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into i64 (valid types: org.apache.cassandra.db.marshal.{{LongType|IntegerType|CounterColumnType|TimestampType|TimeType}}).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
@@ -215,6 +270,25 @@ macro_rules! as_rust_type {
         match $data_type_option.id {
             ColType::Int => as_res_opt!($data_value, decode_int),
             ColType::Date => as_res_opt!($data_value, decode_date),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        match value.as_str() {
+                            "org.apache.cassandra.db.marshal.Int32Type" => return as_res_opt!($data_value, decode_int),
+                            "org.apache.cassandra.db.marshal.SimpleDateType" => return as_res_opt!($data_value, decode_date),
+                            _ => {}
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into i32 (valid types: org.apache.cassandra.db.marshal.Int32Type).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i32 (valid types: Int, Date).",
@@ -225,6 +299,23 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, i16) => {
         match $data_type_option.id {
             ColType::Smallint => as_res_opt!($data_value, decode_smallint),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.ShortType" {
+                            return as_res_opt!($data_value, decode_smallint);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into i16 (valid types: org.apache.cassandra.db.marshal.ShortType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i16 (valid types: Smallint).",
@@ -235,6 +326,23 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, i8) => {
         match $data_type_option.id {
             ColType::Tinyint => as_res_opt!($data_value, decode_tinyint),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.ByteType" {
+                            return as_res_opt!($data_value, decode_tinyint);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into i8 (valid types: org.apache.cassandra.db.marshal.ByteType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i8 (valid types: Tinyint).",
@@ -258,6 +366,27 @@ macro_rules! as_rust_type {
             ColType::Counter => {
                 as_res_opt!($data_value, decode_bigint).map(|value| value.and_then(NonZeroI64::new))
             }
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        match value.as_str() {
+                            "org.apache.cassandra.db.marshal.LongType" | "org.apache.cassandra.db.marshal.CounterColumnType" => return as_res_opt!($data_value, decode_bigint),
+                            "org.apache.cassandra.db.marshal.IntegerType" => return as_res_opt!($data_value, decode_varint),
+                            "org.apache.cassandra.db.marshal.TimestampType" => return as_res_opt!($data_value, decode_timestamp),
+                            "org.apache.cassandra.db.marshal.TimeType" => return as_res_opt!($data_value, decode_time),
+                            _ => {}
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into i64 (valid types: org.apache.cassandra.db.marshal.{{LongType|IntegerType|CounterColumnType|TimestampType|TimeType}}).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal().map(|value| value.and_then(NonZeroI64::new))
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
@@ -274,6 +403,25 @@ macro_rules! as_rust_type {
             ColType::Date => {
                 as_res_opt!($data_value, decode_date).map(|value| value.and_then(NonZeroI32::new))
             }
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        match value.as_str() {
+                            "org.apache.cassandra.db.marshal.Int32Type" => return as_res_opt!($data_value, decode_int),
+                            "org.apache.cassandra.db.marshal.SimpleDateType" => return as_res_opt!($data_value, decode_date),
+                            _ => {}
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into i32 (valid types: org.apache.cassandra.db.marshal.Int32Type).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal().map(|value| value.and_then(NonZeroI32::new))
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i32 (valid types: Int, Date).",
@@ -285,6 +433,23 @@ macro_rules! as_rust_type {
         match $data_type_option.id {
             ColType::Smallint => as_res_opt!($data_value, decode_smallint)
                 .map(|value| value.and_then(NonZeroI16::new)),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.ShortType" {
+                            return as_res_opt!($data_value, decode_smallint);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into i16 (valid types: org.apache.cassandra.db.marshal.ShortType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal().map(|value| value.and_then(NonZeroI16::new))
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i16 (valid types: Smallint).",
@@ -297,6 +462,23 @@ macro_rules! as_rust_type {
             ColType::Tinyint => {
                 as_res_opt!($data_value, decode_tinyint).map(|value| value.and_then(NonZeroI8::new))
             }
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.ByteType" {
+                            return as_res_opt!($data_value, decode_tinyint);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into i8 (valid types: org.apache.cassandra.db.marshal.ByteType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal().map(|value| value.and_then(NonZeroI8::new))
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i8 (valid types: Tinyint).",
@@ -307,6 +489,23 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, f64) => {
         match $data_type_option.id {
             ColType::Double => as_res_opt!($data_value, decode_double),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.DoubleType" {
+                            return as_res_opt!($data_value, decode_double);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into f64 (valid types: org.apache.cassandra.db.marshal.DoubleType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into f64 (valid types: Double).",
@@ -317,6 +516,23 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, f32) => {
         match $data_type_option.id {
             ColType::Float => as_res_opt!($data_value, decode_float),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.FloatType" {
+                            return as_res_opt!($data_value, decode_float);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into f32 (valid types: org.apache.cassandra.db.marshal.FloatType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into f32 (valid types: Float).",
@@ -327,6 +543,23 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, IpAddr) => {
         match $data_type_option.id {
             ColType::Inet => as_res_opt!($data_value, decode_inet),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.InetAddressType" {
+                            return as_res_opt!($data_value, decode_inet);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into IpAddr (valid types: org.apache.cassandra.db.marshal.InetAddressType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into IpAddr (valid types: Inet).",
@@ -337,6 +570,24 @@ macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, Uuid) => {
         match $data_type_option.id {
             ColType::Uuid | ColType::Timeuuid => as_res_opt!($data_value, decode_timeuuid),
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        match value.as_str() {
+                            "org.apache.cassandra.db.marshal.UUIDType" | "org.apache.cassandra.db.marshal.TimeUUIDType" => return as_res_opt!($data_value, decode_timeuuid),
+                            _ => {}
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into Uuid (valid types: org.apache.cassandra.db.marshal.{{UUIDType|TimeUUIDType}}).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into Uuid (valid types: Uuid, Timeuuid).",

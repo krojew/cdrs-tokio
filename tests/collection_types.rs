@@ -82,7 +82,6 @@ async fn list() {
 }
 
 #[tokio::test]
-#[ignore]
 #[cfg(all(feature = "v4", feature = "e2e-tests"))]
 async fn list_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_lists_v4 \

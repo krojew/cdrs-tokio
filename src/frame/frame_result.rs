@@ -389,7 +389,7 @@ impl ColSpec {
     }
 }
 
-/// Cassandra data types which clould be returned by a server.
+/// Cassandra data types which could be returned by a server.
 #[derive(Debug, Clone)]
 pub enum ColType {
     Custom,
