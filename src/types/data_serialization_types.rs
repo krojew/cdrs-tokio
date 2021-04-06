@@ -435,6 +435,24 @@ mod tests {
     }
 
     #[test]
+    fn as_rust_v4_blob_test() {
+        let d_type = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.BytesType".into(),
+            ))),
+        };
+        let data = CBytes::new(vec![1, 2, 3]);
+        assert_eq!(
+            as_rust_type!(d_type, data, Blob)
+                .unwrap()
+                .unwrap()
+                .into_vec(),
+            vec![1, 2, 3]
+        );
+    }
+
+    #[test]
     fn as_rust_string_test() {
         let type_custom = ColTypeOption {
             id: ColType::Custom,
@@ -496,6 +514,30 @@ mod tests {
     }
 
     #[test]
+    fn as_rust_v4_bool_test() {
+        let type_boolean = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.BooleanType".into(),
+            ))),
+        };
+        let data_true = CBytes::new(vec![1]);
+        let data_false = CBytes::new(vec![0]);
+        assert_eq!(
+            as_rust_type!(type_boolean, data_true, bool)
+                .unwrap()
+                .unwrap(),
+            true
+        );
+        assert_eq!(
+            as_rust_type!(type_boolean, data_false, bool)
+                .unwrap()
+                .unwrap(),
+            false
+        );
+    }
+
+    #[test]
     fn as_rust_i64_test() {
         let type_bigint = ColTypeOption {
             id: ColType::Bigint,
@@ -529,6 +571,42 @@ mod tests {
     }
 
     #[test]
+    fn as_rust_v4_i64_test() {
+        let type_bigint = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.LongType".into(),
+            ))),
+        };
+        let type_timestamp = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.TimestampType".into(),
+            ))),
+        };
+        let type_time = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.TimeType".into(),
+            ))),
+        };
+        let type_varint = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.IntegerType".into(),
+            ))),
+        };
+        let data = CBytes::new(vec![0, 0, 0, 0, 0, 0, 0, 100]);
+        assert_eq!(as_rust_type!(type_bigint, data, i64).unwrap().unwrap(), 100);
+        assert_eq!(
+            as_rust_type!(type_timestamp, data, i64).unwrap().unwrap(),
+            100
+        );
+        assert_eq!(as_rust_type!(type_time, data, i64).unwrap().unwrap(), 100);
+        assert_eq!(as_rust_type!(type_varint, data, i64).unwrap().unwrap(), 100);
+    }
+
+    #[test]
     fn as_rust_i32_test() {
         let type_int = ColTypeOption {
             id: ColType::Int,
@@ -546,6 +624,25 @@ mod tests {
             value: None,
         };
         assert!(as_rust_type!(wrong_type, data, i32).is_err());
+    }
+
+    #[test]
+    fn as_rust_v4_i32_test() {
+        let type_int = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.Int32Type".into(),
+            ))),
+        };
+        let type_date = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.SimpleDateType".into(),
+            ))),
+        };
+        let data = CBytes::new(vec![0, 0, 0, 100]);
+        assert_eq!(as_rust_type!(type_int, data, i32).unwrap().unwrap(), 100);
+        assert_eq!(as_rust_type!(type_date, data, i32).unwrap().unwrap(), 100);
     }
 
     #[test]
@@ -567,6 +664,21 @@ mod tests {
     }
 
     #[test]
+    fn as_rust_v4_i16_test() {
+        let type_smallint = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.ShortType".into(),
+            ))),
+        };
+        let data = CBytes::new(vec![0, 100]);
+        assert_eq!(
+            as_rust_type!(type_smallint, data, i16).unwrap().unwrap(),
+            100
+        );
+    }
+
+    #[test]
     fn as_rust_i8_test() {
         let type_tinyint = ColTypeOption {
             id: ColType::Tinyint,
@@ -579,6 +691,18 @@ mod tests {
             value: None,
         };
         assert!(as_rust_type!(wrong_type, data, i8).is_err());
+    }
+
+    #[test]
+    fn as_rust_v4_i8_test() {
+        let type_tinyint = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.ByteType".into(),
+            ))),
+        };
+        let data = CBytes::new(vec![100]);
+        assert_eq!(as_rust_type!(type_tinyint, data, i8).unwrap().unwrap(), 100);
     }
 
     #[test]
@@ -598,6 +722,22 @@ mod tests {
             value: None,
         };
         assert!(as_rust_type!(wrong_type, data, f64).is_err());
+    }
+
+    #[test]
+    fn as_rust_v4_f64_test() {
+        let type_double = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.DoubleType".into(),
+            ))),
+        };
+        let data = CBytes::new(to_float_big(0.1_f64));
+        assert_float_eq!(
+            as_rust_type!(type_double, data, f64).unwrap().unwrap(),
+            0.1,
+            abs <= f64::EPSILON
+        );
     }
 
     #[test]
@@ -622,6 +762,24 @@ mod tests {
     }
 
     #[test]
+    fn as_rust_v4_f32_test() {
+        // let type_decimal = ColTypeOption { id: ColType::Decimal };
+        let type_float = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.FloatType".into(),
+            ))),
+        };
+        let data = CBytes::new(to_float(0.1_f32));
+        // assert_eq!(as_rust_type!(type_decimal, data, f32).unwrap(), 100.0);
+        assert_float_eq!(
+            as_rust_type!(type_float, data, f32).unwrap().unwrap(),
+            0.1,
+            abs <= f32::EPSILON
+        );
+    }
+
+    #[test]
     fn as_rust_inet_test() {
         let type_inet = ColTypeOption {
             id: ColType::Inet,
@@ -638,5 +796,21 @@ mod tests {
             value: None,
         };
         assert!(as_rust_type!(wrong_type, data, f32).is_err());
+    }
+
+    #[test]
+    fn as_rust_v4_inet_test() {
+        let type_inet = ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(CString::new(
+                "org.apache.cassandra.db.marshal.InetAddressType".into(),
+            ))),
+        };
+        let data = CBytes::new(vec![0, 0, 0, 0]);
+
+        match as_rust_type!(type_inet, data, IpAddr) {
+            Ok(Some(IpAddr::V4(ref ip))) => assert_eq!(ip.octets(), [0, 0, 0, 0]),
+            _ => panic!("wrong ip v4 address"),
+        }
     }
 }
