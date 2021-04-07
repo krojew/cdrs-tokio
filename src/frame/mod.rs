@@ -316,7 +316,7 @@ impl From<u8> for Flag {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
 pub enum Opcode {
     Error,
     Startup,
