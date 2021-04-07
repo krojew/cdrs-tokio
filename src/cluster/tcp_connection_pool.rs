@@ -112,7 +112,7 @@ pub async fn startup<
     let start_response = parse_frame(transport, compression).await?;
 
     if start_response.opcode == Opcode::Ready {
-        return Ok(());
+        return set_keyspace(transport, keyspace_holder, compression).await;
     }
 
     if start_response.opcode == Opcode::Authenticate {
@@ -163,29 +163,37 @@ pub async fn startup<
             .await?;
         parse_frame(transport, compression).await?;
 
-        if let Some(current_keyspace) = keyspace_holder.current_keyspace().await {
-            let use_frame = Frame::new_req_query(
-                format!("USE {}", current_keyspace),
-                Default::default(),
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                Default::default(),
-            );
-
-            transport
-                .lock()
-                .await
-                .write_all(use_frame.as_bytes().as_slice())
-                .await?;
-            parse_frame(transport, compression).await?;
-        }
-
-        return Ok(());
+        return set_keyspace(transport, keyspace_holder, compression).await;
     }
 
     unreachable!();
+}
+
+async fn set_keyspace<T: CdrsTransport + Unpin>(
+    transport: &Mutex<T>,
+    keyspace_holder: &KeyspaceHolder,
+    compression: Compression,
+) -> error::Result<()> {
+    if let Some(current_keyspace) = keyspace_holder.current_keyspace().await {
+        let use_frame = Frame::new_req_query(
+            format!("USE {}", current_keyspace),
+            Default::default(),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Default::default(),
+        );
+
+        transport
+            .lock()
+            .await
+            .write_all(use_frame.as_bytes().as_slice())
+            .await?;
+        parse_frame(transport, compression).await.map(|_| ())
+    } else {
+        Ok(())
+    }
 }
