@@ -1,9 +1,9 @@
-use cdrs_tokio::cluster::{NodeTcpConfigBuilder, ClusterTcpConfig};
-use std::sync::Arc;
-use cdrs_tokio::load_balancing::RoundRobin;
-use cdrs_tokio::cluster::session::new;
-use cdrs_tokio::query::QueryExecutor;
 use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::cluster::session::new;
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::load_balancing::RoundRobin;
+use cdrs_tokio::query::QueryExecutor;
+use std::sync::Arc;
 
 #[tokio::test]
 async fn paged_query() {
@@ -15,17 +15,25 @@ async fn paged_query() {
         .expect("session should be created");
 
     session
-        .query("CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
-                                       'class' : 'SimpleStrategy', 'replication_factor' : 1 };")
+        .query(
+            "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
+                                       'class' : 'SimpleStrategy', 'replication_factor' : 1 };",
+        )
         .await
         .expect("Keyspace creation error");
 
-    session.query("use test_ks").await.expect("Using keyspace went wrong");
+    session
+        .query("use test_ks")
+        .await
+        .expect("Using keyspace went wrong");
 
     session.query("create table if not exists user (user_id int primary key) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };").await.expect("Could not create table");
 
     for i in 0..=9 {
-        session.query(format!("insert into user(user_id) values ({})", i)).await.expect("Could not create table");
+        session
+            .query(format!("insert into user(user_id) values ({})", i))
+            .await
+            .expect("Could not create table");
     }
 
     let mut pager = session.paged(3);

@@ -550,10 +550,7 @@ impl CBytes {
         self.bytes.clone()
     }
     pub fn as_slice(&self) -> Option<&[u8]> {
-        match self.bytes {
-            Some(ref v) => Some(v.as_slice()),
-            None => None,
-        }
+        self.bytes.as_deref()
         // self.bytes.map(|v| v.as_slice())
     }
     pub fn is_empty(&self) -> bool {
