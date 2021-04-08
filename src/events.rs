@@ -82,9 +82,9 @@ impl Iterator for EventStream {
     }
 }
 
-impl Into<EventStreamNonBlocking> for EventStream {
-    fn into(self) -> EventStreamNonBlocking {
-        EventStreamNonBlocking { rx: self.rx }
+impl From<EventStream> for EventStreamNonBlocking {
+    fn from(stream: EventStream) -> Self {
+        Self { rx: stream.rx }
     }
 }
 

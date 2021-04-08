@@ -551,7 +551,6 @@ impl CBytes {
     }
     pub fn as_slice(&self) -> Option<&[u8]> {
         self.bytes.as_deref()
-        // self.bytes.map(|v| v.as_slice())
     }
     pub fn is_empty(&self) -> bool {
         match &self.bytes {

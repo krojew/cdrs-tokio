@@ -91,12 +91,15 @@ impl ManageConnection for RustlsConnectionsManager {
 
     async fn is_valid(&self, conn: &mut PooledConnection<'_, Self>) -> Result<(), Self::Error> {
         let options_frame = Frame::new_req_options().as_bytes();
-        conn.lock()
-            .await
-            .write_all(options_frame.as_slice())
-            .await?;
+        conn.lock().await.write_all(&options_frame).await?;
 
-        parse_frame(&conn, Compression::None).await.map(|_| ())
+        // TLS connections may not write data to the stream immediately,
+        // but may wait for more data. Ensure the data is sent.
+        // Otherwise Cassandra server will not send out a response.
+        conn.lock().await.flush().await?;
+
+        parse_frame(&conn, Compression::None).await?;
+        Ok(())
     }
 
     fn has_broken(&self, _conn: &mut Self::Connection) -> bool {

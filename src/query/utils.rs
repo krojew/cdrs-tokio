@@ -42,11 +42,12 @@ where
         .await
         .map_err(|error| error::Error::from(error.to_string()))?;
 
-    pool.lock()
-        .await
-        .write_all(frame_bytes.as_slice())
-        .await
-        .map_err(error::Error::from)?;
+    pool.lock().await.write_all(&frame_bytes).await?;
+
+    // TLS connections may not write data to the stream immediately,
+    // but may wait for more data. Ensure the data is sent.
+    // Otherwise Cassandra server will not send out a response.
+    pool.lock().await.flush().await?;
 
     loop {
         let frame = from_connection(&pool, compression).await?;
