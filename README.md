@@ -8,16 +8,21 @@ CDRS is Apache **C**assandra **d**river written in pure **R**u**s**t.
 
 ## Features
 
-- TCP/SSL connection;
-- Load balancing;
+- Asynchronous API;
+- TCP/TLS connection;
+- Configurable load balancing;
 - Connection pooling;
+- Configurable connection strategies;
 - LZ4, Snappy compression;
 - Cassandra-to-Rust data deserialization;
 - Pluggable authentication strategies;
 - [ScyllaDB](https://www.scylladb.com/) support;
 - Server events listening;
 - Multiple CQL version support (3, 4), full spec implementation;
-- Query tracing information.
+- Query tracing information;
+- Prepared statements;
+- Query paging;
+- Batch statements;
 
 ## Documentation and examples
 
