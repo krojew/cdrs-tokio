@@ -36,17 +36,18 @@ use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::transport::CdrsTransport;
 use crate::{compression::Compression, error::FromCdrsError};
 
-use std::net::SocketAddr;
-
 /// Generic connection configuration trait that can be used to create user-supplied
 /// connection objects that can be used with the `session::connect()` function.
 #[async_trait]
-pub trait ConnectionConfig: Send + Sync {
+pub trait GenericClusterConfig: Send + Sync {
     type Transport: CdrsTransport + Send + Sync;
+    type Address: Clone;
     type Error: FromCdrsError;
-    type Manager: bb8::ManageConnection<Connection = Self::Transport, Error = Self::Error>;
 
-    async fn connect(&self, addr: SocketAddr) -> Result<bb8::Pool<Self::Manager>, Self::Error>;
+    async fn connect(
+        &self,
+        addr: Self::Address,
+    ) -> Result<ConnectionPool<Self::Transport>, Self::Error>;
 }
 
 /// `GetConnection` trait provides a unified interface for Session to get a connection
