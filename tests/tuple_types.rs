@@ -48,12 +48,12 @@ async fn simple_tuple() {
         }
     }
 
-    impl Into<Bytes> for MyTuple {
-        fn into(self) -> Bytes {
+    impl From<MyTuple> for Bytes {
+        fn from(value: MyTuple) -> Bytes {
             let mut bytes = Vec::new();
-            let val_bytes: Bytes = self.my_text.into();
+            let val_bytes: Bytes = value.my_text.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
-            let val_bytes: Bytes = self.my_int.into();
+            let val_bytes: Bytes = value.my_int.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
@@ -118,14 +118,14 @@ async fn nested_tuples() {
         }
     }
 
-    impl Into<Bytes> for MyInnerTuple {
-        fn into(self) -> Bytes {
+    impl From<MyInnerTuple> for Bytes {
+        fn from(value: MyInnerTuple) -> Bytes {
             let mut bytes = Vec::new();
-            let val_bytes: Bytes = self.my_text.into();
+            let val_bytes: Bytes = value.my_text.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
-            let val_bytes: Bytes = self.my_int.into();
+            let val_bytes: Bytes = value.my_int.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
-            let val_bytes: Bytes = self.my_timestamp.into();
+            let val_bytes: Bytes = value.my_timestamp.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
@@ -152,14 +152,14 @@ async fn nested_tuples() {
         }
     }
 
-    impl Into<Bytes> for MyOuterTuple {
-        fn into(self) -> Bytes {
+    impl From<MyOuterTuple> for Bytes {
+        fn from(value: MyOuterTuple) -> Bytes {
             let mut bytes = Vec::new();
-            let val_bytes: Bytes = self.my_uuid.into();
+            let val_bytes: Bytes = value.my_uuid.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
-            let val_bytes: Bytes = Bytes::new(self.my_blob);
+            let val_bytes: Bytes = Bytes::new(value.my_blob);
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
-            let val_bytes: Bytes = self.my_inner_tuple.into();
+            let val_bytes: Bytes = value.my_inner_tuple.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }

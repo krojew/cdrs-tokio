@@ -49,10 +49,10 @@ async fn simple_udt() {
         }
     }
 
-    impl Into<Bytes> for MyUdt {
-        fn into(self) -> Bytes {
+    impl From<MyUdt> for Bytes {
+        fn from(value: MyUdt) -> Bytes {
             let mut bytes = Vec::new();
-            let val_bytes: Bytes = self.my_text.into();
+            let val_bytes: Bytes = value.my_text.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
@@ -112,10 +112,10 @@ async fn nested_udt() {
         }
     }
 
-    impl Into<Bytes> for MyInnerUdt {
-        fn into(self) -> Bytes {
+    impl From<MyInnerUdt> for Bytes {
+        fn from(value: MyInnerUdt) -> Bytes {
             let mut bytes = Vec::new();
-            let val_bytes: Bytes = self.my_text.into();
+            let val_bytes: Bytes = value.my_text.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
@@ -134,10 +134,10 @@ async fn nested_udt() {
         }
     }
 
-    impl Into<Bytes> for MyOuterUdt {
-        fn into(self) -> Bytes {
+    impl From<MyOuterUdt> for Bytes {
+        fn from(value: MyOuterUdt) -> Bytes {
             let mut bytes = Vec::new();
-            let val_bytes: Bytes = self.my_inner_udt.into();
+            let val_bytes: Bytes = value.my_inner_udt.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
@@ -196,10 +196,10 @@ async fn alter_udt_add() {
         pub my_text: String,
     }
 
-    impl Into<Bytes> for MyUdtA {
-        fn into(self) -> Bytes {
+    impl From<MyUdtA> for Bytes {
+        fn from(value: MyUdtA) -> Bytes {
             let mut bytes = Vec::new();
-            let val_bytes: Bytes = self.my_text.into();
+            let val_bytes: Bytes = value.my_text.into();
             bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
             Bytes::new(bytes)
         }
