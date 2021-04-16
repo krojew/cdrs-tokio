@@ -2,7 +2,7 @@ use std::sync::RwLock;
 
 use async_trait::async_trait;
 
-use crate::cluster::{GetCompressor, GetConnection, ResponseCache};
+use crate::cluster::{GetCompressor, GetConnection, GetRetryPolicy, ResponseCache};
 use crate::error;
 use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::{AsBytes, Frame};
@@ -13,7 +13,7 @@ use super::utils::{prepare_flags, send_frame};
 
 #[async_trait]
 pub trait PrepareExecutor<T: CdrsTransport + Unpin + 'static>:
-    GetConnection<T> + GetCompressor + ResponseCache + Sync
+    GetConnection<T> + GetCompressor + ResponseCache + GetRetryPolicy + Sync
 {
     /// It prepares a query for execution, along with query itself the
     /// method takes `with_tracing` and `with_warnings` flags to get
@@ -29,7 +29,7 @@ pub trait PrepareExecutor<T: CdrsTransport + Unpin + 'static>:
 
         let query_frame = Frame::new_req_prepare(query.to_string(), flags);
 
-        send_frame(self, query_frame.as_bytes(), query_frame.stream)
+        send_frame(self, query_frame.as_bytes(), query_frame.stream, false)
             .await
             .and_then(|response| response.body())
             .map(|body| {

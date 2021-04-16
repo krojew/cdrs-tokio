@@ -3,6 +3,7 @@ use cdrs_tokio::cluster::session::new;
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::query::QueryExecutor;
+use cdrs_tokio::retry::DefaultRetryPolicy;
 use std::sync::Arc;
 
 #[tokio::test]
@@ -10,7 +11,7 @@ async fn paged_query() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new(&cluster_config, lb)
+    let session = new(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
         .await
         .expect("session should be created");
 

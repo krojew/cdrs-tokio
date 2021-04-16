@@ -7,6 +7,8 @@ use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::retry::DefaultRetryPolicy;
+#[cfg(feature = "e2e-tests")]
 use std::sync::Arc;
 
 #[tokio::test]
@@ -14,9 +16,13 @@ use std::sync::Arc;
 async fn multithread() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
-    let no_compression = cdrs_tokio::cluster::session::new(&cluster_config, RoundRobin::new())
-        .await
-        .expect("session should be created");
+    let no_compression = cdrs_tokio::cluster::session::new(
+        &cluster_config,
+        RoundRobin::new(),
+        Box::new(DefaultRetryPolicy::default()),
+    )
+    .await
+    .expect("session should be created");
 
     no_compression.query("CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };").await.expect("Could not create ks");
     no_compression

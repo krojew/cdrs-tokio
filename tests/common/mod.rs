@@ -14,6 +14,8 @@ use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::retry::DefaultRetryPolicy;
+#[cfg(feature = "e2e-tests")]
 use regex::Regex;
 
 #[cfg(feature = "e2e-tests")]
@@ -33,7 +35,7 @@ pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSessi
     let node = NodeTcpConfigBuilder::new(ADDR, Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(&cluster_config, lb)
+    let session = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
         .await
         .expect("session should be created");
     let re_table_name = Regex::new(r"CREATE TABLE IF NOT EXISTS (\w+\.\w+)").unwrap();

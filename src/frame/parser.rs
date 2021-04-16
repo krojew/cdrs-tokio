@@ -6,7 +6,6 @@ use tokio::sync::Mutex;
 use super::*;
 use crate::compression::Compression;
 use crate::error;
-use crate::frame::frame_response::ResponseBody;
 use crate::frame::FromCursor;
 use crate::transport::CdrsTransport;
 use crate::types::data_serialization_types::decode_timeuuid;
@@ -24,7 +23,10 @@ where
     parse_frame(conn.deref(), compressor).await
 }
 
-pub async fn parse_frame<T>(cursor_cell: &Mutex<T>, compressor: Compression) -> error::Result<Frame>
+pub async fn parse_raw_frame<T>(
+    cursor_cell: &Mutex<T>,
+    compressor: Compression,
+) -> error::Result<Frame>
 where
     T: AsyncRead + Unpin,
 {
@@ -96,7 +98,14 @@ where
         warnings,
     };
 
-    convert_frame_into_result(frame)
+    Ok(frame)
+}
+
+pub async fn parse_frame<T>(cursor_cell: &Mutex<T>, compressor: Compression) -> error::Result<Frame>
+where
+    T: AsyncRead + Unpin,
+{
+    convert_frame_into_result(parse_raw_frame(cursor_cell, compressor).await?)
 }
 
 fn convert_frame_into_result(frame: Frame) -> error::Result<Frame> {

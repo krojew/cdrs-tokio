@@ -11,7 +11,7 @@ use crate::cluster::NodeTcpConfig;
 use crate::cluster::{new_rustls_pool, ClusterRustlsConfig, RustlsConnectionPool};
 use crate::cluster::{
     new_tcp_pool, startup, CdrsSession, ClusterTcpConfig, ConnectionPool, GenericClusterConfig,
-    GetCompressor, GetConnection, KeyspaceHolder, ResponseCache, TcpConnectionPool,
+    GetCompressor, GetConnection, GetRetryPolicy, KeyspaceHolder, ResponseCache, TcpConnectionPool,
 };
 use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
@@ -25,17 +25,17 @@ use crate::frame::events::{ServerEvent, SimpleServerEvent, StatusChange, StatusC
 use crate::frame::parser::parse_frame;
 use crate::frame::{AsBytes, Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
+use crate::retry::RetryPolicy;
 
 /// CDRS session that holds one pool of authorized connecitons per node.
 /// `compression` field contains data compressor that will be used
 /// for decompressing data received from Cassandra server.
-#[derive(Debug)]
 pub struct Session<LB> {
     load_balancing: Mutex<LB>,
     event_stream: Option<Mutex<EventStreamNonBlocking>>,
     responses: Mutex<FxHashMap<StreamId, Frame>>,
-    #[allow(dead_code)]
-    pub compression: Compression,
+    compression: Compression,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 }
 
 impl<LB> GetCompressor for Session<LB> {
@@ -130,6 +130,12 @@ impl<
 {
 }
 
+impl<LB> GetRetryPolicy for Session<LB> {
+    fn retry_policy(&self) -> &dyn RetryPolicy {
+        self.retry_policy.as_ref()
+    }
+}
+
 impl<
         T: CdrsTransport + Unpin + 'static,
         LB: LoadBalancingStrategy<ConnectionPool<T>> + Send + Sync,
@@ -159,6 +165,7 @@ async fn connect_tls_static<LB>(
     node_configs: &ClusterRustlsConfig,
     mut load_balancing: LB,
     compression: Compression,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<RustlsConnectionPool>,
@@ -177,6 +184,7 @@ where
         event_stream: None,
         responses: Default::default(),
         compression,
+        retry_policy,
     })
 }
 
@@ -185,6 +193,7 @@ async fn connect_tls_dynamic<LB>(
     node_configs: &ClusterRustlsConfig,
     mut load_balancing: LB,
     compression: Compression,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     event_src: NodeTcpConfig,
 ) -> error::Result<Session<LB>>
 where
@@ -204,6 +213,7 @@ where
         event_stream: None,
         responses: Default::default(),
         compression,
+        retry_policy,
     };
 
     let (listener, event_stream) = session
@@ -221,6 +231,10 @@ where
     Ok(session)
 }
 
+/// Workaround for https://github.com/rust-lang/rust/issues/63033
+#[repr(transparent)]
+pub struct RetryPolicyWrapper(pub Box<dyn RetryPolicy + Send + Sync>);
+
 /// This function uses a user-supplied connection configuration to initialize all the
 /// connections in the session. It can be used to supply your own transport and load
 /// balancing mechanisms in order to support unusual node discovery mechanisms
@@ -234,6 +248,7 @@ pub async fn connect_generic_static<T, M, C, A, LB>(
     initial_nodes: &[A],
     mut load_balancing: LB,
     compression: Compression,
+    retry_policy: RetryPolicyWrapper,
 ) -> Result<Session<LB>, C::Error>
 where
     M: bb8::ManageConnection<Connection = Mutex<T>>,
@@ -256,6 +271,7 @@ where
         event_stream: None,
         responses: Default::default(),
         compression,
+        retry_policy: retry_policy.0,
     })
 }
 
@@ -265,6 +281,7 @@ pub async fn connect_generic_dynamic<T, M, C, A, LB>(
     initial_nodes: &[A],
     mut load_balancing: LB,
     compression: Compression,
+    retry_policy: RetryPolicyWrapper,
     event_src: NodeTcpConfig,
 ) -> Result<Session<LB>, C::Error>
 where
@@ -288,6 +305,7 @@ where
         event_stream: None,
         responses: Default::default(),
         compression,
+        retry_policy: retry_policy.0,
     };
 
     let (listener, event_stream) = session
@@ -309,6 +327,7 @@ async fn connect_static<LB>(
     node_configs: &ClusterTcpConfig,
     mut load_balancing: LB,
     compression: Compression,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<TcpConnectionPool>,
@@ -327,6 +346,7 @@ where
         event_stream: None,
         responses: Default::default(),
         compression,
+        retry_policy,
     })
 }
 
@@ -335,6 +355,7 @@ async fn connect_dynamic<LB>(
     node_configs: &ClusterTcpConfig,
     mut load_balancing: LB,
     compression: Compression,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     event_src: NodeTcpConfig,
 ) -> error::Result<Session<LB>>
 where
@@ -354,6 +375,7 @@ where
         event_stream: None,
         responses: Default::default(),
         compression,
+        retry_policy,
     };
 
     let (listener, event_stream) = session
@@ -379,11 +401,18 @@ where
 pub async fn new<LB>(
     node_configs: &ClusterTcpConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
-    connect_static(node_configs, load_balancing, Compression::None).await
+    connect_static(
+        node_configs,
+        load_balancing,
+        Compression::None,
+        retry_policy,
+    )
+    .await
 }
 
 /// Creates new session that will perform queries without any compression. `Compression` type
@@ -397,12 +426,20 @@ where
 pub async fn new_dynamic<LB>(
     node_configs: &ClusterTcpConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     event_src: NodeTcpConfig,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
-    connect_dynamic(node_configs, load_balancing, Compression::None, event_src).await
+    connect_dynamic(
+        node_configs,
+        load_balancing,
+        Compression::None,
+        retry_policy,
+        event_src,
+    )
+    .await
 }
 
 /// Creates new session that will perform queries with Snappy compression. `Compression` type
@@ -413,11 +450,18 @@ where
 pub async fn new_snappy<LB>(
     node_configs: &ClusterTcpConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
-    connect_static(node_configs, load_balancing, Compression::Snappy).await
+    connect_static(
+        node_configs,
+        load_balancing,
+        Compression::Snappy,
+        retry_policy,
+    )
+    .await
 }
 
 /// Creates new session that will perform queries with Snappy compression. `Compression` type
@@ -431,12 +475,20 @@ where
 pub async fn new_snappy_dynamic<LB>(
     node_configs: &ClusterTcpConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     event_src: NodeTcpConfig,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
-    connect_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
+    connect_dynamic(
+        node_configs,
+        load_balancing,
+        Compression::Snappy,
+        retry_policy,
+        event_src,
+    )
+    .await
 }
 
 /// Creates new session that will perform queries with LZ4 compression. `Compression` type
@@ -447,11 +499,12 @@ where
 pub async fn new_lz4<LB>(
     node_configs: &ClusterTcpConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
-    connect_static(node_configs, load_balancing, Compression::Lz4).await
+    connect_static(node_configs, load_balancing, Compression::Lz4, retry_policy).await
 }
 
 /// Creates new session that will perform queries with LZ4 compression. `Compression` type
@@ -465,12 +518,20 @@ where
 pub async fn new_lz4_dynamic<LB>(
     node_configs: &ClusterTcpConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     event_src: NodeTcpConfig,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<TcpConnectionPool>,
 {
-    connect_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
+    connect_dynamic(
+        node_configs,
+        load_balancing,
+        Compression::Lz4,
+        retry_policy,
+        event_src,
+    )
+    .await
 }
 
 /// Creates new TLS session that will perform queries without any compression. `Compression` type
@@ -482,11 +543,18 @@ where
 pub async fn new_tls<LB>(
     node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
-    connect_tls_static(node_configs, load_balancing, Compression::None).await
+    connect_tls_static(
+        node_configs,
+        load_balancing,
+        Compression::None,
+        retry_policy,
+    )
+    .await
 }
 
 /// Creates new TLS session that will perform queries without any compression. `Compression` type
@@ -500,12 +568,20 @@ where
 pub async fn new_tls_dynamic<LB>(
     node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     event_src: NodeTcpConfig,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
-    connect_tls_dynamic(node_configs, load_balancing, Compression::None, event_src).await
+    connect_tls_dynamic(
+        node_configs,
+        load_balancing,
+        Compression::None,
+        retry_policy,
+        event_src,
+    )
+    .await
 }
 
 /// Creates new TLS session that will perform queries with Snappy compression. `Compression` type
@@ -517,11 +593,18 @@ where
 pub async fn new_snappy_tls<LB>(
     node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
-    connect_tls_static(node_configs, load_balancing, Compression::Snappy).await
+    connect_tls_static(
+        node_configs,
+        load_balancing,
+        Compression::Snappy,
+        retry_policy,
+    )
+    .await
 }
 
 /// Creates new TLS session that will perform queries with Snappy compression. `Compression` type
@@ -535,12 +618,20 @@ where
 pub async fn new_snappy_tls_dynamic<LB>(
     node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     event_src: NodeTcpConfig,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
-    connect_tls_dynamic(node_configs, load_balancing, Compression::Snappy, event_src).await
+    connect_tls_dynamic(
+        node_configs,
+        load_balancing,
+        Compression::Snappy,
+        retry_policy,
+        event_src,
+    )
+    .await
 }
 
 /// Creates new TLS session that will perform queries with LZ4 compression. `Compression` type
@@ -552,11 +643,12 @@ where
 pub async fn new_lz4_tls<LB>(
     node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
-    connect_tls_static(node_configs, load_balancing, Compression::Lz4).await
+    connect_tls_static(node_configs, load_balancing, Compression::Lz4, retry_policy).await
 }
 
 /// Creates new TLS session that will perform queries with LZ4 compression. `Compression` type
@@ -570,12 +662,20 @@ where
 pub async fn new_lz4_tls_dynamic<LB>(
     node_configs: &ClusterRustlsConfig,
     load_balancing: LB,
+    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     event_src: NodeTcpConfig,
 ) -> error::Result<Session<LB>>
 where
     LB: LoadBalancingStrategy<RustlsConnectionPool>,
 {
-    connect_tls_dynamic(node_configs, load_balancing, Compression::Lz4, event_src).await
+    connect_tls_dynamic(
+        node_configs,
+        load_balancing,
+        Compression::Lz4,
+        retry_policy,
+        event_src,
+    )
+    .await
 }
 
 impl<L> Session<L> {

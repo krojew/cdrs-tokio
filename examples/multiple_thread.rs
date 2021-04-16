@@ -5,6 +5,7 @@ use cdrs_tokio::cluster::session::{new as new_session, Session};
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
+use cdrs_tokio::retry::DefaultRetryPolicy;
 
 use cdrs_tokio::frame::AsBytes;
 use cdrs_tokio::load_balancing::RoundRobin;
@@ -21,7 +22,7 @@ async fn main() {
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let no_compression: Arc<CurrentSession> = Arc::new(
-        new_session(&cluster_config, lb)
+        new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
             .await
             .expect("session should be created"),
     );

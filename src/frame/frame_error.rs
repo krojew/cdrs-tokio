@@ -179,7 +179,7 @@ pub struct WriteTimeoutError {
     /// `i32` representing the number of nodes having acknowledged the request.
     pub received: CInt,
     /// `i32` representing the number of replicas whose acknowledgement is required to achieve `cl`.
-    pub blockfor: CInt,
+    pub block_for: CInt,
     /// Describes the type of the write that timed out
     pub write_type: WriteType,
 }
@@ -188,13 +188,13 @@ impl FromCursor for WriteTimeoutError {
     fn from_cursor(mut cursor: &mut io::Cursor<&[u8]>) -> error::Result<WriteTimeoutError> {
         let cl = Consistency::from_cursor(&mut cursor)?;
         let received = CInt::from_cursor(&mut cursor)?;
-        let blockfor = CInt::from_cursor(&mut cursor)?;
+        let block_for = CInt::from_cursor(&mut cursor)?;
         let write_type = WriteType::from_cursor(&mut cursor)?;
 
         Ok(WriteTimeoutError {
             cl,
             received,
-            blockfor,
+            block_for,
             write_type,
         })
     }
@@ -208,12 +208,13 @@ pub struct ReadTimeoutError {
     /// `i32` representing the number of nodes having acknowledged the request.
     pub received: CInt,
     /// `i32` representing the number of replicas whose acknowledgement is required to achieve `cl`.
-    pub blockfor: CInt,
+    pub block_for: CInt,
     data_present: u8,
 }
 
 impl ReadTimeoutError {
-    /// Shows if replica has resonded to a query.
+    /// Shows if a replica has responded to a query.
+    #[inline]
     pub fn replica_has_responded(&self) -> bool {
         self.data_present != 0
     }
@@ -223,13 +224,13 @@ impl FromCursor for ReadTimeoutError {
     fn from_cursor(mut cursor: &mut io::Cursor<&[u8]>) -> error::Result<ReadTimeoutError> {
         let cl = Consistency::from_cursor(&mut cursor)?;
         let received = CInt::from_cursor(&mut cursor)?;
-        let blockfor = CInt::from_cursor(&mut cursor)?;
+        let block_for = CInt::from_cursor(&mut cursor)?;
         let data_present = try_from_bytes(cursor_fill_value(&mut cursor, &mut [0])?)? as u8;
 
         Ok(ReadTimeoutError {
             cl,
             received,
-            blockfor,
+            block_for,
             data_present,
         })
     }
@@ -243,7 +244,7 @@ pub struct ReadFailureError {
     /// `i32` representing the number of nodes having acknowledged the request.
     pub received: CInt,
     /// `i32` representing the number of replicas whose acknowledgement is required to achieve `cl`.
-    pub blockfor: CInt,
+    pub block_for: CInt,
     /// Represents the number of nodes that experience a failure while executing the request.
     pub num_failures: CInt,
     data_present: u8,
@@ -260,14 +261,14 @@ impl FromCursor for ReadFailureError {
     fn from_cursor(mut cursor: &mut io::Cursor<&[u8]>) -> error::Result<ReadFailureError> {
         let cl = Consistency::from_cursor(&mut cursor)?;
         let received = CInt::from_cursor(&mut cursor)?;
-        let blockfor = CInt::from_cursor(&mut cursor)?;
+        let block_for = CInt::from_cursor(&mut cursor)?;
         let num_failures = CInt::from_cursor(&mut cursor)?;
         let data_present = try_from_bytes(cursor_fill_value(&mut cursor, &mut [0])?)? as u8;
 
         Ok(ReadFailureError {
             cl,
             received,
-            blockfor,
+            block_for,
             num_failures,
             data_present,
         })
@@ -308,7 +309,7 @@ pub struct WriteFailureError {
     /// Represents the number of nodes having answered the request.
     pub received: CInt,
     /// Represents the number of replicas whose acknowledgement is required to achieve `cl`.
-    pub blockfor: CInt,
+    pub block_for: CInt,
     /// Represents the number of nodes that experience a failure while executing the request.
     pub num_failures: CInt,
     /// describes the type of the write that failed.
@@ -319,14 +320,14 @@ impl FromCursor for WriteFailureError {
     fn from_cursor(mut cursor: &mut io::Cursor<&[u8]>) -> error::Result<WriteFailureError> {
         let cl = Consistency::from_cursor(&mut cursor)?;
         let received = CInt::from_cursor(&mut cursor)?;
-        let blockfor = CInt::from_cursor(&mut cursor)?;
+        let block_for = CInt::from_cursor(&mut cursor)?;
         let num_failures = CInt::from_cursor(&mut cursor)?;
         let write_type = WriteType::from_cursor(&mut cursor)?;
 
         Ok(WriteFailureError {
             cl,
             received,
-            blockfor,
+            block_for,
             num_failures,
             write_type,
         })
@@ -335,7 +336,7 @@ impl FromCursor for WriteFailureError {
 
 /// Describes the type of the write that failed.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1118)
-#[derive(Debug)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
 pub enum WriteType {
     /// The write was a non-batched non-counter write
     Simple,

@@ -15,6 +15,7 @@ pub struct BodyReqBatch {
     pub query_flags: Vec<QueryFlags>,
     pub serial_consistency: Option<Consistency>,
     pub timestamp: Option<i64>,
+    pub is_idempotent: bool,
 }
 
 impl AsBytes for BodyReqBatch {

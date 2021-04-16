@@ -14,6 +14,7 @@ pub mod compression;
 pub mod consistency;
 pub mod error;
 pub mod events;
+pub mod retry;
 pub mod transport;
 
 pub type Error = error::Error;

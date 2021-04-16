@@ -7,15 +7,14 @@ use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 use cdrs_tokio::compression::Compression;
 use cdrs_tokio::frame::events::{ChangeType, ServerEvent, SimpleServerEvent, Target};
 use cdrs_tokio::load_balancing::RoundRobin;
-
-const _ADDR: &str = "127.0.0.1:9042";
+use cdrs_tokio::retry::DefaultRetryPolicy;
 
 #[tokio::main]
 async fn main() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let no_compression = new_session(&cluster_config, lb)
+    let no_compression = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
         .await
         .expect("session should be created");
 

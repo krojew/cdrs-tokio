@@ -18,6 +18,7 @@ use cdrs_tokio::{
     load_balancing::RoundRobin,
     query::*,
     query_values,
+    retry::DefaultRetryPolicy,
     transport::TransportTcp,
     types::from_cdrs::FromCdrsByName,
     types::prelude::*,
@@ -26,6 +27,7 @@ use cdrs_tokio::{
 use cdrs_tokio_helpers_derive::*;
 
 use async_trait::async_trait;
+use cdrs_tokio::cluster::session::RetryPolicyWrapper;
 
 type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 
@@ -114,6 +116,7 @@ async fn main() {
         &nodes,
         load_balancing,
         compression,
+        RetryPolicyWrapper(Box::new(DefaultRetryPolicy::default())),
     )
     .await
     .expect("session should be created");

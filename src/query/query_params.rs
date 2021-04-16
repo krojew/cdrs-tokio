@@ -24,6 +24,8 @@ pub struct QueryParams {
     pub serial_consistency: Option<Consistency>,
     /// Timestamp.
     pub timestamp: Option<i64>,
+    /// Is the query idempotent.
+    pub is_idempotent: bool,
 }
 
 impl QueryParams {

@@ -108,6 +108,7 @@ pub trait FromCdrsError:
     From<Error> + std::error::Error + Send + Sync + Debug + Display + 'static
 {
 }
+
 impl<E> FromCdrsError for E where
     E: From<Error> + std::error::Error + Send + Sync + Debug + Display + 'static
 {

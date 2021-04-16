@@ -12,6 +12,7 @@ pub struct QueryParamsBuilder {
     paging_state: Option<CBytes>,
     serial_consistency: Option<Consistency>,
     timestamp: Option<i64>,
+    is_idempotent: bool,
 }
 
 impl QueryParamsBuilder {
@@ -31,7 +32,6 @@ impl QueryParamsBuilder {
     // Sets new flags.
     builder_opt_field!(flags, Vec<QueryFlags>);
 
-    /// Sets new values.
     /// Sets new query consistency
     pub fn values(mut self, values: QueryValues) -> Self {
         let with_names = values.with_names();
@@ -51,7 +51,6 @@ impl QueryParamsBuilder {
     // Sets new with_names parameter value.
     builder_opt_field!(with_names, bool);
 
-    /// Sets new values.
     /// Sets new query consistency
     pub fn page_size(mut self, size: i32) -> Self {
         self.page_size = Some(size);
@@ -63,7 +62,6 @@ impl QueryParamsBuilder {
         self
     }
 
-    /// Sets new values.
     /// Sets new query consistency
     pub fn paging_state(mut self, state: CBytes) -> Self {
         self.paging_state = Some(state);
@@ -81,6 +79,12 @@ impl QueryParamsBuilder {
     // Sets new timestamp value.
     builder_opt_field!(timestamp, i64);
 
+    /// Marks the query as idempotent or not
+    pub fn idempotent(mut self, value: bool) -> Self {
+        self.is_idempotent = value;
+        self
+    }
+
     /// Finalizes query building process and returns query itself
     pub fn finalize(self) -> QueryParams {
         QueryParams {
@@ -92,6 +96,7 @@ impl QueryParamsBuilder {
             paging_state: self.paging_state,
             serial_consistency: self.serial_consistency,
             timestamp: self.timestamp,
+            is_idempotent: self.is_idempotent,
         }
     }
 }

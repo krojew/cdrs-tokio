@@ -10,6 +10,7 @@ use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionP
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
+use cdrs_tokio::retry::DefaultRetryPolicy;
 
 use cdrs_tokio::frame::AsBytes;
 use cdrs_tokio::types::from_cdrs::FromCdrsByName;
@@ -26,9 +27,13 @@ async fn main() {
     let auth = StaticPasswordAuthenticator::new(&user, &password);
     let node = NodeTcpConfigBuilder::new("localhost:9042", Arc::new(auth)).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
-    let mut no_compression: CurrentSession = new_session(&cluster_config, RoundRobin::new())
-        .await
-        .expect("session should be created");
+    let mut no_compression: CurrentSession = new_session(
+        &cluster_config,
+        RoundRobin::new(),
+        Box::new(DefaultRetryPolicy::default()),
+    )
+    .await
+    .expect("session should be created");
 
     create_keyspace(&mut no_compression).await;
     create_udt(&mut no_compression).await;

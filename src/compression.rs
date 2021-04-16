@@ -52,7 +52,7 @@ impl Error for CompressionError {
 }
 
 /// Enum which represents a type of compression. Only non-startup frame's body can be compressed.
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Ord, PartialOrd)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Ord, PartialOrd, Hash)]
 pub enum Compression {
     /// [lz4](https://code.google.com/p/lz4/) compression
     Lz4,

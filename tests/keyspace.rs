@@ -14,9 +14,12 @@ use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::retry::DefaultRetryPolicy;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::map::Map;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
+
 #[cfg(feature = "e2e-tests")]
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
@@ -24,7 +27,7 @@ async fn create_keyspace() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(&cluster_config, lb)
+    let session = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
         .await
         .expect("session should be created");
 
@@ -92,7 +95,7 @@ async fn alter_keyspace() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(&cluster_config, lb)
+    let session = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
         .await
         .expect("session should be created");
 
@@ -151,7 +154,7 @@ async fn use_keyspace() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(&cluster_config, lb)
+    let session = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
         .await
         .expect("session should be created");
 
@@ -183,7 +186,7 @@ async fn drop_keyspace() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(&cluster_config, lb)
+    let session = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
         .await
         .expect("session should be created");
 

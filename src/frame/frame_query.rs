@@ -26,6 +26,7 @@ impl BodyReqQuery {
         paging_state: Option<CBytes>,
         serial_consistency: Option<Consistency>,
         timestamp: Option<i64>,
+        is_idempotent: bool,
     ) -> BodyReqQuery {
         // query flags
         let mut flags: Vec<QueryFlags> = vec![];
@@ -59,6 +60,7 @@ impl BodyReqQuery {
                 paging_state,
                 serial_consistency,
                 timestamp,
+                is_idempotent,
             },
         }
     }
@@ -88,6 +90,7 @@ impl Frame {
         serial_consistency: Option<Consistency>,
         timestamp: Option<i64>,
         flags: Vec<Flag>,
+        is_idempotent: bool,
     ) -> Frame {
         let version = Version::Request;
         let opcode = Opcode::Query;
@@ -100,6 +103,7 @@ impl Frame {
             paging_state,
             serial_consistency,
             timestamp,
+            is_idempotent,
         );
 
         Frame::new(version, flags, opcode, body.as_bytes(), None, vec![])
@@ -117,6 +121,7 @@ impl Frame {
             query.params.serial_consistency,
             query.params.timestamp,
             flags,
+            query.params.is_idempotent,
         )
     }
 }

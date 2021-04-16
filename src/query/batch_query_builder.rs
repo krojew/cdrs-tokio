@@ -13,6 +13,7 @@ pub struct BatchQueryBuilder {
     consistency: Consistency,
     serial_consistency: Option<Consistency>,
     timestamp: Option<i64>,
+    is_idempotent: bool,
 }
 
 impl Default for BatchQueryBuilder {
@@ -23,6 +24,7 @@ impl Default for BatchQueryBuilder {
             consistency: Consistency::One,
             serial_consistency: None,
             timestamp: None,
+            is_idempotent: false,
         }
     }
 }
@@ -77,6 +79,11 @@ impl BatchQueryBuilder {
         self
     }
 
+    pub fn idempotent(mut self, value: bool) -> Self {
+        self.is_idempotent = value;
+        self
+    }
+
     pub fn finalize(self) -> CResult<BodyReqBatch> {
         let mut flags = vec![];
 
@@ -112,6 +119,7 @@ impl BatchQueryBuilder {
             consistency: self.consistency,
             serial_consistency: self.serial_consistency,
             timestamp: self.timestamp,
+            is_idempotent: self.is_idempotent,
         })
     }
 }

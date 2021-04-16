@@ -23,6 +23,7 @@ CDRS is Apache **C**assandra **d**river written in pure **R**u**s**t.
 - Prepared statements;
 - Query paging;
 - Batch statements;
+- Configurable retry policy;
 
 ## Documentation and examples
 

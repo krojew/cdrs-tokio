@@ -183,6 +183,7 @@ async fn set_keyspace<T: CdrsTransport + Unpin>(
             None,
             None,
             Default::default(),
+            false,
         );
 
         transport
