@@ -5,6 +5,7 @@ use crate::compression::Compression;
 use crate::frame::frame_response::ResponseBody;
 pub use crate::frame::traits::*;
 use crate::types::to_n_bytes;
+use log::*;
 use uuid::Uuid;
 
 /// Number of stream bytes in accordance to protocol.

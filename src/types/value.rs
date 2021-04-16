@@ -7,10 +7,10 @@ use std::net::IpAddr;
 use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 
 use chrono::prelude::*;
+use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 use crate::frame::AsBytes;
-use crate::time::PrimitiveDateTime;
 
 use super::blob::Blob;
 use super::decimal::Decimal;

@@ -1,3 +1,5 @@
+use log::*;
+
 use crate::frame::*;
 use crate::query::QueryParams;
 use crate::types::*;
