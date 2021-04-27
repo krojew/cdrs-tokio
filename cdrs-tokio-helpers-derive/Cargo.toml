@@ -1,0 +1,16 @@
+[package]
+name = "cdrs-tokio-helpers-derive"
+version = "3.0.0"
+authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
+description = "Derive CDRS helper traits"
+license = "MIT/Apache-2.0"
+repository = "https://github.com/krojew/cdrs-tokio-helpers-derive"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "0.1"
+syn = "0.11.11"
+quote = "0.3.15"
+rand = "0.4.2"

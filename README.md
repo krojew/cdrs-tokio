@@ -24,11 +24,12 @@ CDRS is Apache **C**assandra **d**river written in pure **R**u**s**t.
 - Query paging;
 - Batch statements;
 - Configurable retry policy;
+- Support for interleaved queries;
 
 ## Documentation and examples
 
 - [User guide](./documentation).
-- [Examples](./examples).
+- [Examples](./cdrs-tokio/examples).
 - API docs (release).
 - Using ScyllaDB with RUST [lesson](https://university.scylladb.com/courses/using-scylla-drivers/lessons/rust-and-scylla/).
 
