@@ -1,3 +1,31 @@
+## 4.0.0
+
+### Fixed
+
+* Build problems with Rustls.
+* TLS connections sometimes not flushing all data.
+* Not setting current namespace when not using an authenticator.
+
+### New
+
+* New `connect_generic_*` functions allowing custom connection configurations (see `generic_connection.rs`
+  for example usage).
+* Possibility to use custom error types which implement `FromCdrsError` throughout the crate.
+* `Consistency` now implements `FromStr`.
+* Pagers can be converted into `PagerState`.
+* Support for v4 marshaled types.
+* `Copy`, `Clone`, `Ord`, `PartialOrd`, `Eq`, `Hash` for `Opcode`.
+* Customizable query retry policies with built-in `FallthroughRetrySession` and `DefaultRetryPolicy`.
+
+### Changed
+
+* TCP configuration now owns contained data - no need to keep it alive while the config is alive.
+* `ExecPager` is now public.
+* `Bytes` now implements `From` for supported types, instead of `Into`.
+* Moved some generic types to associated types, thus removing a lot of type passing.
+* `SessionPager` no longer needs mutable session.
+* A lot of names have been migrated to idiomatic Rust (mainly upper camel case abbreviations).
+
 ## 3.0.0
 
 ### Fixed
