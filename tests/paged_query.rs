@@ -1,12 +1,20 @@
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::authenticators::NoneAuthenticator;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::new;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::load_balancing::RoundRobin;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::DefaultRetryPolicy;
+#[cfg(feature = "e2e-tests")]
 use std::sync::Arc;
 
 #[tokio::test]
+#[cfg(feature = "e2e-tests")]
 async fn paged_query() {
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
