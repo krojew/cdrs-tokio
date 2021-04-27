@@ -13,11 +13,11 @@ mod into_cdrs_value;
 mod try_from_row;
 mod try_from_udt;
 
-use proc_macro::TokenStream;
+use db_mirror::impl_db_mirror;
 use into_cdrs_value::impl_into_cdrs_value;
+use proc_macro::TokenStream;
 use try_from_row::impl_try_from_row;
 use try_from_udt::impl_try_from_udt;
-use db_mirror::impl_db_mirror;
 
 #[proc_macro_derive(DBMirror)]
 pub fn db_mirror(input: TokenStream) -> TokenStream {

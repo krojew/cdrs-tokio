@@ -15,11 +15,11 @@ pub fn impl_db_mirror(ast: &syn::DeriveInput) -> quote::Tokens {
         .iter()
         .map(|i| i.to_string())
         .collect::<Vec<String>>();
-    let names = fields
-        .join(", ");
+    let names = fields.join(", ");
     let question_marks = fields
         .iter()
-        .map(|_| "?".to_string()).collect::<Vec<String>>()
+        .map(|_| "?".to_string())
+        .collect::<Vec<String>>()
         .join(", ");
 
     quote! {
