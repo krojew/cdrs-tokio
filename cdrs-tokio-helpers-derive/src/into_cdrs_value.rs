@@ -1,7 +1,6 @@
-use quote;
-use syn;
+use quote::*;
 
-use common::get_ident_string;
+use crate::common::get_ident_string;
 
 pub fn impl_into_cdrs_value(ast: &syn::DeriveInput) -> quote::Tokens {
     let name = &ast.ident;

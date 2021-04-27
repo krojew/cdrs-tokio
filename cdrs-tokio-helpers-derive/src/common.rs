@@ -1,5 +1,4 @@
-use quote;
-use syn;
+use quote::*;
 use syn::Field;
 
 pub fn get_struct_fields(ast: &syn::DeriveInput) -> Vec<quote::Tokens> {

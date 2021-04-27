@@ -1,6 +1,6 @@
-use common::get_struct_fields;
-use quote;
-use syn;
+use quote::*;
+
+use crate::common::get_struct_fields;
 
 pub fn impl_try_from_row(ast: &syn::DeriveInput) -> quote::Tokens {
     let name = &ast.ident;

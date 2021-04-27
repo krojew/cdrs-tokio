@@ -5,6 +5,7 @@ authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.
 description = "Derive CDRS helper traits"
 license = "MIT/Apache-2.0"
 repository = "https://github.com/krojew/cdrs-tokio-helpers-derive"
+edition = "2018"
 
 [lib]
 proc-macro = true
@@ -13,4 +14,3 @@ proc-macro = true
 proc-macro2 = "0.1"
 syn = "0.11.11"
 quote = "0.3.15"
-rand = "0.4.2"

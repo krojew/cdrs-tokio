@@ -1,12 +1,6 @@
 //! This trait provides functionality for derivation  `IntoCDRSBytes` trait implementation
 //! for underlying
 
-extern crate proc_macro;
-#[macro_use]
-extern crate quote;
-extern crate rand;
-extern crate syn;
-
 mod common;
 mod db_mirror;
 mod into_cdrs_value;

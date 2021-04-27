@@ -3,7 +3,6 @@ name = "cdrs-tokio"
 version = "4.0.0"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
-
 description = "Async Cassandra DB driver written in Rust"
 documentation = "https://docs.rs/cdrs-tokio"
 homepage = "https://github.com/krojew/cdrs-tokio"
