@@ -4,7 +4,7 @@ version = "3.0.0"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 description = "Derive CDRS helper traits"
 license = "MIT/Apache-2.0"
-repository = "https://github.com/krojew/cdrs-tokio-helpers-derive"
+repository = "https://github.com/krojew/cdrs-tokio"
 edition = "2018"
 
 [lib]
