@@ -7,7 +7,7 @@ description = "Async Cassandra DB driver written in Rust"
 documentation = "https://docs.rs/cdrs-tokio"
 homepage = "https://github.com/krojew/cdrs-tokio"
 repository = "https://github.com/krojew/cdrs-tokio"
-readme = "./README.md"
+readme = "../README.md"
 keywords = ["cassandra", "driver", "client", "cassandradb", "async"]
 license = "MIT/Apache-2.0"
 
