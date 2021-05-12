@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use async_trait::async_trait;
 use bb8::{Builder, ManageConnection, PooledConnection};
 use std::io;
@@ -6,16 +8,16 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
-use crate::authenticators::Authenticator;
+use crate::authenticators::SaslAuthenticator;
 use crate::cluster::ConnectionPool;
 use crate::cluster::KeyspaceHolder;
 use crate::cluster::NodeTcpConfig;
 use crate::compression::Compression;
 use crate::error;
+use crate::frame::frame_response::ResponseBody;
 use crate::frame::parser::parse_frame;
 use crate::frame::{AsBytes, Frame, Opcode};
 use crate::transport::{CdrsTransport, TransportTcp};
-use std::ops::Deref;
 
 /// Shortcut for `bb8::Pool` type of TCP-based CDRS connections.
 pub type TcpConnectionPool = ConnectionPool<TransportTcp>;
@@ -23,6 +25,7 @@ pub type TcpConnectionPool = ConnectionPool<TransportTcp>;
 /// `bb8::Pool` of TCP-based CDRS connections.
 ///
 /// Used internally for TCP Session for holding connections to a specific Cassandra node.
+//noinspection DuplicatedCode
 pub async fn new_tcp_pool(node_config: NodeTcpConfig) -> error::Result<TcpConnectionPool> {
     let manager =
         TcpConnectionsManager::new(node_config.addr.to_string(), node_config.authenticator);
@@ -49,12 +52,12 @@ pub async fn new_tcp_pool(node_config: NodeTcpConfig) -> error::Result<TcpConnec
 /// `bb8` connection manager.
 pub struct TcpConnectionsManager {
     addr: String,
-    auth: Arc<dyn Authenticator + Send + Sync>,
+    auth: Arc<dyn SaslAuthenticator + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
 }
 
 impl TcpConnectionsManager {
-    pub fn new<S: ToString>(addr: S, auth: Arc<dyn Authenticator + Send + Sync>) -> Self {
+    pub fn new<S: ToString>(addr: S, auth: Arc<dyn SaslAuthenticator + Send + Sync>) -> Self {
         TcpConnectionsManager {
             addr: addr.to_string(),
             auth,
@@ -92,7 +95,7 @@ impl ManageConnection for TcpConnectionsManager {
 
 pub async fn startup<
     T: CdrsTransport + Unpin + 'static,
-    A: Authenticator + Send + Sync + ?Sized + 'static,
+    A: SaslAuthenticator + Send + Sync + ?Sized + 'static,
 >(
     transport: &Mutex<T>,
     session_authenticator: &A,
@@ -128,7 +131,7 @@ pub async fn startup<
         // 3. if it falls through it means the preliminary conditions are true
 
         let auth_check = session_authenticator
-            .cassandra_name()
+            .name()
             .ok_or_else(|| error::Error::General("No authenticator was provided".to_string()))
             .map(|auth| {
                 if authenticator != auth {
@@ -149,17 +152,28 @@ pub async fn startup<
             return Err(err);
         }
 
-        let auth_token_bytes = session_authenticator.auth_token();
+        let response = session_authenticator.initial_response();
         transport
             .lock()
             .await
-            .write_all(
-                Frame::new_req_auth_response(auth_token_bytes)
-                    .as_bytes()
-                    .as_slice(),
-            )
+            .write_all(Frame::new_req_auth_response(response).as_bytes().as_slice())
             .await?;
-        parse_frame(transport, compression).await?;
+
+        loop {
+            let frame = parse_frame(transport, compression).await?;
+            match frame.body()? {
+                ResponseBody::AuthChallenge(challenge) => {
+                    let response = session_authenticator.evaluate_challenge(challenge.data)?;
+                    transport
+                        .lock()
+                        .await
+                        .write_all(Frame::new_req_auth_response(response).as_bytes().as_slice())
+                        .await?;
+                }
+                ResponseBody::AuthSuccess(..) => break,
+                _ => return Err(format!("Unexpected auth response: {:?}", frame.opcode).into()),
+            }
+        }
 
         return set_keyspace(transport, keyspace_holder, compression).await;
     }

@@ -17,7 +17,7 @@ use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::transport::{CdrsTransport, TransportTcp};
 
-use crate::authenticators::Authenticator;
+use crate::authenticators::SaslAuthenticator;
 use crate::cluster::SessionPager;
 use crate::compression::Compression;
 use crate::events::{new_listener, EventStream, EventStreamNonBlocking, Listener};
@@ -27,7 +27,7 @@ use crate::frame::{AsBytes, Frame, StreamId};
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::retry::RetryPolicy;
 
-/// CDRS session that holds one pool of authorized connecitons per node.
+/// CDRS session that holds one pool of authorized connections per node.
 /// `compression` field contains data compressor that will be used
 /// for decompressing data received from Cassandra server.
 pub struct Session<LB> {
@@ -680,7 +680,7 @@ where
 
 impl<L> Session<L> {
     /// Returns new event listener.
-    pub async fn listen<A: Authenticator + Send + Sync + ?Sized + 'static>(
+    pub async fn listen<A: SaslAuthenticator + Send + Sync + ?Sized + 'static>(
         &self,
         node: &str,
         authenticator: &A,
@@ -710,7 +710,7 @@ impl<L> Session<L> {
         Ok(new_listener(transport))
     }
 
-    pub async fn listen_non_blocking<A: Authenticator + Send + Sync + ?Sized + 'static>(
+    pub async fn listen_non_blocking<A: SaslAuthenticator + Send + Sync + ?Sized + 'static>(
         &self,
         node: &str,
         authenticator: &A,

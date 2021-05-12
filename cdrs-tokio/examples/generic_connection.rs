@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate maplit;
-
 use std::{
     collections::HashMap,
     net::IpAddr,
@@ -10,7 +7,7 @@ use std::{
 };
 
 use cdrs_tokio::{
-    authenticators::{Authenticator, StaticPasswordAuthenticator},
+    authenticators::{SaslAuthenticator, StaticPasswordAuthenticator},
     cluster::session::Session,
     cluster::TcpConnectionPool,
     cluster::{ConnectionPool, GenericClusterConfig, TcpConnectionsManager},
@@ -28,6 +25,7 @@ use cdrs_tokio_helpers_derive::*;
 
 use async_trait::async_trait;
 use cdrs_tokio::cluster::session::RetryPolicyWrapper;
+use maplit::hashmap;
 
 type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 
@@ -43,7 +41,7 @@ type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 /// This is just a simple use for the generic configuration. By
 /// replacing the transport itself you can do much more.
 struct VirtualClusterConfig {
-    authenticator: Arc<dyn Authenticator + Sync + Send>,
+    authenticator: Arc<dyn SaslAuthenticator + Sync + Send>,
     mask: Ipv4Addr,
     actual: Ipv4Addr,
 }
