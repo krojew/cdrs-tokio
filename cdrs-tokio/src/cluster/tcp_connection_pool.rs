@@ -153,22 +153,24 @@ pub async fn startup<
         }
 
         let response = session_authenticator.initial_response();
-        transport
-            .lock()
-            .await
-            .write_all(Frame::new_req_auth_response(response).as_bytes().as_slice())
-            .await?;
+        {
+            let mut lock = transport.lock().await;
+
+            lock.write_all(Frame::new_req_auth_response(response).as_bytes().as_slice())
+                .await?;
+            lock.flush().await?;
+        }
 
         loop {
             let frame = parse_frame(transport, compression).await?;
             match frame.body()? {
                 ResponseBody::AuthChallenge(challenge) => {
                     let response = session_authenticator.evaluate_challenge(challenge.data)?;
-                    transport
-                        .lock()
-                        .await
-                        .write_all(Frame::new_req_auth_response(response).as_bytes().as_slice())
+                    let mut lock = transport.lock().await;
+
+                    lock.write_all(Frame::new_req_auth_response(response).as_bytes().as_slice())
                         .await?;
+                    lock.flush().await?;
                 }
                 ResponseBody::AuthSuccess(..) => break,
                 _ => return Err(format!("Unexpected auth response: {:?}", frame.opcode).into()),
