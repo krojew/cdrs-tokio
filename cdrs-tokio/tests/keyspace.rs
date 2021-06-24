@@ -70,7 +70,7 @@ async fn create_keyspace() {
     let durable_writes: bool = keyspace
         .get_r_by_name("durable_writes")
         .expect("durable writes into rust error");
-    assert_eq!(durable_writes, false, "wrong durable writes");
+    assert!(!durable_writes, "wrong durable writes");
 
     let mut expected_strategy_options: HashMap<String, String> = HashMap::new();
     expected_strategy_options.insert("replication_factor".to_string(), "1".to_string());
