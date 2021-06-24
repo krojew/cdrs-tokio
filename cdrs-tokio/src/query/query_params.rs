@@ -86,7 +86,6 @@ impl AsBytes for QueryParams {
             v.extend_from_slice(
                 to_int(
                     self.page_size
-                        .clone()
                         // unwrap is safe as we've checked that
                         // self.page_size.is_some()
                         .unwrap(),
@@ -112,7 +111,6 @@ impl AsBytes for QueryParams {
             // XXX clone
             v.extend_from_slice(
                 self.serial_consistency
-                    .clone()
                     // unwrap is safe as we've checked that
                     // self.serial_consistency.is_some()
                     .unwrap()

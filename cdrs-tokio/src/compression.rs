@@ -244,7 +244,7 @@ mod tests {
         let bytes: Vec<u8> = vec![0x7f, 0x7f, 0x7f, 0x7f, 0x7f];
         let encoded = lz4_compression.encode(bytes).unwrap();
         let decode = lz4_compression.decode(encoded);
-        assert_eq!(decode.is_err(), true);
+        assert!(decode.is_err());
     }
 
     #[test]

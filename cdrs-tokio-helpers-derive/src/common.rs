@@ -63,8 +63,8 @@ pub fn get_map_params_string(ty: &Type) -> (Type, Type) {
 }
 
 fn remove_r(s: String) -> String {
-    if s.starts_with("r#") {
-        s[2..].to_string()
+    if let Some(s) = s.strip_prefix("r#") {
+        s.to_string()
     } else {
         s
     }

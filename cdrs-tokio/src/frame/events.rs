@@ -33,7 +33,7 @@ const AGGREGATE: &str = "AGGREGATE";
 /// Simplified `ServerEvent` that does not contain details
 /// about a concrete change. It may be useful for subscription
 /// when you need only string representation of an event.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
 pub enum SimpleServerEvent {
     TopologyChange,
     StatusChange,
@@ -72,7 +72,7 @@ impl<'a> From<&'a ServerEvent> for SimpleServerEvent {
 
 impl PartialEq<ServerEvent> for SimpleServerEvent {
     fn eq(&self, full_event: &ServerEvent) -> bool {
-        *self == SimpleServerEvent::from(full_event)
+        self == &SimpleServerEvent::from(full_event)
     }
 }
 
@@ -89,7 +89,7 @@ pub enum ServerEvent {
 
 impl PartialEq<SimpleServerEvent> for ServerEvent {
     fn eq(&self, event: &SimpleServerEvent) -> bool {
-        SimpleServerEvent::from(self) == *event
+        &SimpleServerEvent::from(self) == event
     }
 }
 

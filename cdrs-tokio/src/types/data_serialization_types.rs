@@ -259,8 +259,8 @@ mod tests {
 
     #[test]
     fn decode_boolean_test() {
-        assert_eq!(decode_boolean(&[0]).unwrap(), false);
-        assert_eq!(decode_boolean(&[1]).unwrap(), true);
+        assert!(!decode_boolean(&[0]).unwrap());
+        assert!(decode_boolean(&[1]).unwrap());
         assert!(decode_boolean(&[]).is_err());
     }
 
@@ -494,18 +494,12 @@ mod tests {
         };
         let data_true = CBytes::new(vec![1]);
         let data_false = CBytes::new(vec![0]);
-        assert_eq!(
-            as_rust_type!(type_boolean, data_true, bool)
-                .unwrap()
-                .unwrap(),
-            true
-        );
-        assert_eq!(
-            as_rust_type!(type_boolean, data_false, bool)
-                .unwrap()
-                .unwrap(),
-            false
-        );
+        assert!(as_rust_type!(type_boolean, data_true, bool)
+            .unwrap()
+            .unwrap());
+        assert!(!as_rust_type!(type_boolean, data_false, bool)
+            .unwrap()
+            .unwrap());
         let wrong_type = ColTypeOption {
             id: ColType::Map,
             value: None,
@@ -523,18 +517,12 @@ mod tests {
         };
         let data_true = CBytes::new(vec![1]);
         let data_false = CBytes::new(vec![0]);
-        assert_eq!(
-            as_rust_type!(type_boolean, data_true, bool)
-                .unwrap()
-                .unwrap(),
-            true
-        );
-        assert_eq!(
-            as_rust_type!(type_boolean, data_false, bool)
-                .unwrap()
-                .unwrap(),
-            false
-        );
+        assert!(as_rust_type!(type_boolean, data_true, bool)
+            .unwrap()
+            .unwrap());
+        assert!(!as_rust_type!(type_boolean, data_false, bool)
+            .unwrap()
+            .unwrap());
     }
 
     #[test]
