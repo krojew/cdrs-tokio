@@ -1,13 +1,15 @@
+use proc_macro2::TokenStream;
 use quote::*;
+use syn::{Data, DataStruct, DeriveInput};
 
 use crate::common::get_ident_string;
 
-pub fn impl_into_cdrs_value(ast: &syn::DeriveInput) -> quote::Tokens {
+pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
     let name = &ast.ident;
-    if let syn::Body::Struct(syn::VariantData::Struct(ref fields)) = ast.body {
+    if let Data::Struct(DataStruct { ref fields, .. }) = ast.data {
         let convert_into_bytes = fields.iter().map(|field| {
       let field_ident = field.ident.clone().unwrap();
-      return if get_ident_string(field.ty.clone()).as_str() == "Option" {
+      return if get_ident_string(&field.ty).as_str() == "Option" {
         quote! {
           match value.#field_ident {
             Some(ref val) => {

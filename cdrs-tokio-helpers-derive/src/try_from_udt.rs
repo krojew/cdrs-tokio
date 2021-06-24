@@ -1,8 +1,10 @@
+use proc_macro2::TokenStream;
 use quote::*;
+use syn::DeriveInput;
 
 use crate::common::get_struct_fields;
 
-pub fn impl_try_from_udt(ast: &syn::DeriveInput) -> quote::Tokens {
+pub fn impl_try_from_udt(ast: &DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let fields = get_struct_fields(ast);
     quote! {

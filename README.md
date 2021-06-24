@@ -55,8 +55,8 @@ async fn main() {
   let no_compression =
     new_session(&cluster_config, RoundRobin::new()).await.expect("session should be created");
 
-  let create_ks: &'static str = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
-                                 'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
+  let create_ks = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
+                   'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
   no_compression.query(create_ks).await.expect("Keyspace create error");
 }
 ```

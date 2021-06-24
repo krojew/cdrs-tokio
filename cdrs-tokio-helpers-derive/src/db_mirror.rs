@@ -1,15 +1,15 @@
+use proc_macro2::TokenStream;
 use quote::*;
+use syn::DeriveInput;
 
 use crate::common::struct_fields;
 
-pub fn impl_db_mirror(ast: &syn::DeriveInput) -> quote::Tokens {
+pub fn impl_db_mirror(ast: &DeriveInput) -> TokenStream {
     let name = &ast.ident;
     let idents = struct_fields(ast)
         .iter()
         .map(|f| f.ident.clone().unwrap())
         .collect::<Vec<_>>();
-    // TODO when https://github.com/AlexPikalov/cdrs-helpers-derive/issues/8 is merged,
-    // this variable can be replaced by variable 'idents'
     let idents_copy = idents.clone();
 
     let fields = idents

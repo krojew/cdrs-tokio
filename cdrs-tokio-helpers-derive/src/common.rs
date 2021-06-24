@@ -1,7 +1,11 @@
+use proc_macro2::{Literal, TokenStream};
 use quote::*;
-use syn::Field;
+use syn::{
+    parse_str, Data, DataStruct, DeriveInput, Field, Fields, GenericArgument, Ident, Path,
+    PathArguments, PathSegment, Type, TypePath,
+};
 
-pub fn get_struct_fields(ast: &syn::DeriveInput) -> Vec<quote::Tokens> {
+pub fn get_struct_fields(ast: &DeriveInput) -> Vec<TokenStream> {
     struct_fields(ast)
         .iter()
         .map(|field| {
@@ -14,65 +18,83 @@ pub fn get_struct_fields(ast: &syn::DeriveInput) -> Vec<quote::Tokens> {
         .collect()
 }
 
-pub fn struct_fields(ast: &syn::DeriveInput) -> &Vec<Field> {
-    if let syn::Body::Struct(syn::VariantData::Struct(ref fields)) = ast.body {
+pub fn struct_fields(ast: &DeriveInput) -> &Fields {
+    if let Data::Struct(DataStruct { fields, .. }) = &ast.data {
         fields
     } else {
         panic!("The derive macro is defined for structs with named fields, not for enums or unit structs");
     }
 }
 
-pub fn get_map_params_string(ty: syn::Ty) -> (syn::Ty, syn::Ty) {
-    match ty {
-        syn::Ty::Path(_, syn::Path { segments, .. }) => match segments.last() {
-            Some(&syn::PathSegment {
-                parameters: syn::PathParameters::AngleBracketed(ref angle_bracketed_data),
-                ..
-            }) => {
-                let bracket_types = angle_bracketed_data.types.clone();
-                (
-                    bracket_types
-                        .first()
-                        .expect("Cannot define Option type")
-                        .clone(),
-                    bracket_types
-                        .last()
-                        .expect("Cannot define Option type")
-                        .clone(),
-                )
-            }
-            _ => panic!("Cannot infer field type"),
-        },
-        _ => panic!("Cannot infer field type {:?}", ty),
+fn extract_type(arg: &GenericArgument) -> Type {
+    match arg {
+        GenericArgument::Type(ty) => ty.clone(),
+        _ => panic!("Expected type argument!"),
     }
 }
 
-fn convert_field_into_rust(field: syn::Field) -> quote::Tokens {
-    let mut string_name = quote! {};
-    string_name.append("\"");
-    string_name.append(field.ident.clone().unwrap());
-    string_name.append("\".trim()");
-    let arguments = get_arguments(string_name);
-
-    into_rust_with_args(field.ty, arguments)
+pub fn get_map_params_string(ty: &Type) -> (Type, Type) {
+    match ty {
+        Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+        }) => match segments.last() {
+            Some(&PathSegment {
+                arguments: PathArguments::AngleBracketed(ref angle_bracketed_data),
+                ..
+            }) => (
+                extract_type(
+                    angle_bracketed_data
+                        .args
+                        .first()
+                        .expect("Cannot extract map key type"),
+                ),
+                extract_type(
+                    angle_bracketed_data
+                        .args
+                        .last()
+                        .expect("Cannot extract map value type"),
+                ),
+            ),
+            _ => panic!("Cannot infer field type"),
+        },
+        _ => panic!("Cannot infer field type {}", get_ident_string(ty)),
+    }
 }
 
-fn get_arguments(name: quote::Tokens) -> quote::Tokens {
+fn remove_r(s: String) -> String {
+    if s.starts_with("r#") {
+        s[2..].to_string()
+    } else {
+        s
+    }
+}
+
+fn convert_field_into_rust(field: Field) -> TokenStream {
+    let mut string_name = quote! {};
+    let s = remove_r(field.ident.unwrap().to_string());
+    string_name.append(Literal::string(s.trim()));
+    let arguments = get_arguments(string_name);
+
+    into_rust_with_args(&field.ty, arguments)
+}
+
+fn get_arguments(name: TokenStream) -> TokenStream {
     quote! {
       &cdrs, #name
     }
 }
 
-fn into_rust_with_args(field_type: syn::Ty, arguments: quote::Tokens) -> quote::Tokens {
-    let field_type_ident = get_cdrs_type_ident(field_type.clone());
-    match field_type_ident.as_ref() {
+fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream {
+    let field_type_ident = get_cdrs_type(field_type);
+    match get_ident_string(&field_type_ident).as_str() {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "Decimal"
         | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime" => {
             quote! {
               #field_type_ident::from_cdrs_r(#arguments)?
             }
         }
-        "cdrs_tokio::types::list::List" => {
+        "List" => {
             let list_as_rust = as_rust(field_type, quote! {list});
 
             quote! {
@@ -84,7 +106,7 @@ fn into_rust_with_args(field_type: syn::Ty, arguments: quote::Tokens) -> quote::
               }
             }
         }
-        "cdrs_tokio::types::map::Map" => {
+        "Map" => {
             let map_as_rust = as_rust(field_type, quote! {map});
             quote! {
               match cdrs_tokio::types::map::Map::from_cdrs_r(#arguments) {
@@ -97,8 +119,8 @@ fn into_rust_with_args(field_type: syn::Ty, arguments: quote::Tokens) -> quote::
         }
         "Option" => {
             let opt_type = get_ident_params_string(field_type);
-            let opt_type_rustified = get_cdrs_type_ident(opt_type.clone());
-            let opt_value_as_rust = as_rust(opt_type, quote! {opt_value});
+            let opt_type_rustified = get_cdrs_type(&opt_type);
+            let opt_value_as_rust = as_rust(&opt_type, quote! {opt_value});
 
             if is_non_zero_primitive(&opt_type_rustified) {
                 quote! {
@@ -126,63 +148,66 @@ fn into_rust_with_args(field_type: syn::Ty, arguments: quote::Tokens) -> quote::
     }
 }
 
-fn is_non_zero_primitive(ident: &syn::Ident) -> bool {
+fn is_non_zero_primitive(ty: &Type) -> bool {
     matches!(
-        ident.as_ref(),
+        get_ident_string(ty).as_str(),
         "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64"
     )
 }
 
-fn get_cdrs_type_ident(ty: syn::Ty) -> syn::Ident {
+fn get_cdrs_type(ty: &Type) -> Type {
     let type_string = get_ident_string(ty);
     match type_string.as_str() {
-        "Blob" => "Blob".into(),
-        "String" => "String".into(),
-        "bool" => "bool".into(),
-        "i64" => "i64".into(),
-        "i32" => "i32".into(),
-        "i16" => "i16".into(),
-        "i8" => "i8".into(),
-        "f64" => "f64".into(),
-        "f32" => "f32".into(),
-        "Decimal" => "Decimal".into(),
-        "IpAddr" => "IpAddr".into(),
-        "Uuid" => "Uuid".into(),
-        "Timespec" => "Timespec".into(),
-        "PrimitiveDateTime" => "PrimitiveDateTime".into(),
-        "Vec" => "cdrs_tokio::types::list::List".into(),
-        "HashMap" => "cdrs_tokio::types::map::Map".into(),
-        "Option" => "Option".into(),
-        "NonZeroI8" => "NonZeroI8".into(),
-        "NonZeroI16" => "NonZeroI16".into(),
-        "NonZeroI32" => "NonZeroI32".into(),
-        "NonZeroI64" => "NonZeroI64".into(),
-        "NaiveDateTime" => "NaiveDateTime".into(),
-        "DateTime" => "DateTime".into(),
-        _ => "cdrs_tokio::types::udt::Udt".into(),
+        "Blob" => parse_str("Blob").unwrap(),
+        "String" => parse_str("String").unwrap(),
+        "bool" => parse_str("bool").unwrap(),
+        "i64" => parse_str("i64").unwrap(),
+        "i32" => parse_str("i32").unwrap(),
+        "i16" => parse_str("i16").unwrap(),
+        "i8" => parse_str("i8").unwrap(),
+        "f64" => parse_str("f64").unwrap(),
+        "f32" => parse_str("f32").unwrap(),
+        "Decimal" => parse_str("Decimal").unwrap(),
+        "IpAddr" => parse_str("IpAddr").unwrap(),
+        "Uuid" => parse_str("Uuid").unwrap(),
+        "Timespec" => parse_str("Timespec").unwrap(),
+        "PrimitiveDateTime" => parse_str("PrimitiveDateTime").unwrap(),
+        "Vec" => parse_str("cdrs_tokio::types::list::List").unwrap(),
+        "HashMap" => parse_str("cdrs_tokio::types::map::Map").unwrap(),
+        "Option" => parse_str("Option").unwrap(),
+        "NonZeroI8" => parse_str("NonZeroI8").unwrap(),
+        "NonZeroI16" => parse_str("NonZeroI16").unwrap(),
+        "NonZeroI32" => parse_str("NonZeroI32").unwrap(),
+        "NonZeroI64" => parse_str("NonZeroI64").unwrap(),
+        "NaiveDateTime" => parse_str("NaiveDateTime").unwrap(),
+        "DateTime" => parse_str("DateTime").unwrap(),
+        _ => parse_str("cdrs_tokio::types::udt::Udt").unwrap(),
     }
 }
 
-fn get_ident(ty: syn::Ty) -> syn::Ident {
+fn get_ident(ty: &Type) -> &Ident {
     match ty {
-        syn::Ty::Path(_, syn::Path { segments, .. }) => match segments.last() {
-            Some(&syn::PathSegment { ref ident, .. }) => ident.clone(),
+        Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+        }) => match segments.last() {
+            Some(&PathSegment { ref ident, .. }) => ident,
             _ => panic!("Cannot infer field type"),
         },
-        _ => panic!("Cannot infer field type {:?}", ty),
+        _ => panic!("Cannot infer field type {}", get_ident_string(ty)),
     }
 }
 
 // returns single value decoded and optionally iterative mapping that uses decoded value
-fn as_rust(ty: syn::Ty, val: quote::Tokens) -> quote::Tokens {
-    let cdrs_type = get_cdrs_type_ident(ty.clone());
-    match cdrs_type.as_ref() {
+fn as_rust(ty: &Type, val: TokenStream) -> TokenStream {
+    let cdrs_type = get_cdrs_type(ty);
+    match get_ident_string(&cdrs_type).as_str() {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "IpAddr"
         | "Uuid" | "Timespec" | "Decimal" | "PrimitiveDateTime" => val,
-        "cdrs_tokio::types::list::List" => {
+        "List" => {
             let vec_type = get_ident_params_string(ty);
-            let inter_rust_type = get_cdrs_type_ident(vec_type.clone());
-            let decoded_item = as_rust(vec_type.clone(), quote! {item});
+            let inter_rust_type = get_cdrs_type(&vec_type);
+            let decoded_item = as_rust(&vec_type, quote! {item});
             quote! {
               {
                 let inner: Vec<#inter_rust_type> = #val.as_rust_type()?.unwrap();
@@ -194,10 +219,10 @@ fn as_rust(ty: syn::Ty, val: quote::Tokens) -> quote::Tokens {
               }
             }
         }
-        "cdrs_tokio::types::map::Map" => {
+        "Map" => {
             let (map_key_type, map_value_type) = get_map_params_string(ty);
-            let inter_rust_type = get_cdrs_type_ident(map_value_type.clone());
-            let decoded_item = as_rust(map_value_type.clone(), quote! {val});
+            let inter_rust_type = get_cdrs_type(&map_value_type);
+            let decoded_item = as_rust(&map_value_type, quote! {val});
             quote! {
               {
                 let inner: std::collections::HashMap<#map_key_type, #inter_rust_type> = #val.as_rust_type()?.unwrap();
@@ -211,7 +236,7 @@ fn as_rust(ty: syn::Ty, val: quote::Tokens) -> quote::Tokens {
         }
         "Option" => {
             let opt_type = get_ident_params_string(ty);
-            as_rust(opt_type, val)
+            as_rust(&opt_type, val)
         }
         _ => {
             quote! {
@@ -221,23 +246,25 @@ fn as_rust(ty: syn::Ty, val: quote::Tokens) -> quote::Tokens {
     }
 }
 
-pub fn get_ident_string(ty: syn::Ty) -> String {
-    get_ident(ty).as_ref().into()
+pub fn get_ident_string(ty: &Type) -> String {
+    get_ident(ty).to_string()
 }
 
-pub fn get_ident_params_string(ty: syn::Ty) -> syn::Ty {
+pub fn get_ident_params_string(ty: &Type) -> Type {
     match ty {
-        syn::Ty::Path(_, syn::Path { segments, .. }) => match segments.last() {
-            Some(&syn::PathSegment {
-                parameters: syn::PathParameters::AngleBracketed(ref angle_bracketed_data),
+        Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+        }) => match segments.last() {
+            Some(&PathSegment {
+                arguments: PathArguments::AngleBracketed(ref angle_bracketed_data),
                 ..
-            }) => angle_bracketed_data
-                .types
-                .last()
-                .expect("Cannot define Option type")
-                .clone(),
+            }) => match angle_bracketed_data.args.last() {
+                Some(GenericArgument::Type(ty)) => ty.clone(),
+                _ => panic!("Cannot infer field type"),
+            },
             _ => panic!("Cannot infer field type"),
         },
-        _ => panic!("Cannot infer field type {:?}", ty),
+        _ => panic!("Cannot infer field type {}", get_ident_string(ty)),
     }
 }
