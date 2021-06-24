@@ -210,7 +210,7 @@ fn as_rust(ty: &Type, val: TokenStream) -> TokenStream {
             let decoded_item = as_rust(&vec_type, quote! {item});
             quote! {
               {
-                let inner: Vec<#inter_rust_type> = #val.as_rust_type()?.unwrap();
+                let inner: Vec<#inter_rust_type> = #val.as_r_type()?;
                 let mut decoded: Vec<#vec_type> = Vec::with_capacity(inner.len());
                 for item in inner {
                   decoded.push(#decoded_item);
@@ -225,7 +225,7 @@ fn as_rust(ty: &Type, val: TokenStream) -> TokenStream {
             let decoded_item = as_rust(&map_value_type, quote! {val});
             quote! {
               {
-                let inner: std::collections::HashMap<#map_key_type, #inter_rust_type> = #val.as_rust_type()?.unwrap();
+                let inner: std::collections::HashMap<#map_key_type, #inter_rust_type> = #val.as_r_type()?;
                 let mut decoded: std::collections::HashMap<#map_key_type, #map_value_type> = std::collections::HashMap::with_capacity(inner.len());
                 for (key, val) in inner {
                   decoded.insert(key, #decoded_item);
