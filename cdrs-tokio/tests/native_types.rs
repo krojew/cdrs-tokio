@@ -384,7 +384,7 @@ async fn inet() {
 
     let my_inet_v4 = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let my_inet_v6 = IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
-    let values = query_values!(my_inet_v4.clone(), my_inet_v6.clone());
+    let values = query_values!(my_inet_v4, my_inet_v6);
 
     let query = "INSERT INTO cdrs_test.test_inet (my_inet_v4, my_inet_v6) VALUES (?, ?)";
     session
