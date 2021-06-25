@@ -84,19 +84,6 @@ impl Compression {
     }
 
     /// It decodes `bytes` basing on type of compression.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    ///    use cdrs_tokio::compression::Compression;
-    ///     let lz4_compression = Compression::Lz4;
-    ///     let bytes = String::from("Hello World").into_bytes().to_vec();
-    ///     let encoded = lz4_compression.encode(bytes.clone()).unwrap();
-    ///     let len = encoded.len() as u8;
-    ///     let mut input = vec![0, 0, 0, len];
-    ///     input.extend_from_slice(encoded.as_slice());
-    ///     assert_eq!(lz4_compression.decode(input).unwrap(), bytes);
-    /// ```
     pub fn decode(&self, bytes: Vec<u8>) -> Result<Vec<u8>> {
         match *self {
             Compression::Lz4 => Compression::decode_lz4(bytes),
@@ -134,7 +121,7 @@ impl Compression {
 
         let mut result = vec![0; len];
 
-        let len = len as i32 - 4;
+        let len = bytes.len() as i32;
         result[..4].copy_from_slice(&len.to_be_bytes());
 
         let compressed_len = lz4_flex::compress_into(&bytes, &mut result, 4)
@@ -229,10 +216,7 @@ mod tests {
         let lz4_compression = Compression::Lz4;
         let bytes = String::from("Hello World").into_bytes().to_vec();
         let encoded = lz4_compression.encode(bytes.clone()).unwrap();
-        let len = encoded.len() as u8;
-        let mut input = vec![0, 0, 0, len];
-        input.extend_from_slice(encoded.as_slice());
-        assert_eq!(lz4_compression.decode(input).unwrap(), bytes);
+        assert_eq!(lz4_compression.decode(encoded).unwrap(), bytes);
     }
 
     #[test]
