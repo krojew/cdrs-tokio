@@ -239,9 +239,7 @@ mod tests {
     #[test]
     fn test_compression_encode_lz4_with_invalid_input() {
         let lz4_compression = Compression::Lz4;
-        let bytes: Vec<u8> = vec![0x7f, 0x7f, 0x7f, 0x7f, 0x7f];
-        let encoded = lz4_compression.encode(bytes).unwrap();
-        let decode = lz4_compression.decode(encoded);
+        let decode = lz4_compression.decode(vec![0, 0, 0, 0x7f, 0]);
         assert!(decode.is_err());
     }
 
