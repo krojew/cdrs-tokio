@@ -8,13 +8,12 @@
 //!by the server, messages can be compressed (including the response to the STARTUP
 //!request).
 
-use std::convert::From;
+use std::convert::{From, TryInto};
 use std::error::Error;
 use std::fmt;
 use std::io;
 use std::result;
 
-use lz4_compress as lz4;
 use snap::raw::{Decoder, Encoder};
 
 type Result<T> = result::Result<T, CompressionError>;
@@ -78,7 +77,7 @@ impl Compression {
     /// ```
     pub fn encode(&self, bytes: Vec<u8>) -> Result<Vec<u8>> {
         match *self {
-            Compression::Lz4 => Ok(Compression::encode_lz4(bytes)),
+            Compression::Lz4 => Compression::encode_lz4(bytes),
             Compression::Snappy => Compression::encode_snappy(bytes),
             Compression::None => Ok(bytes),
         }
@@ -129,14 +128,29 @@ impl Compression {
             .map_err(CompressionError::Snappy)
     }
 
-    fn encode_lz4(bytes: Vec<u8>) -> Vec<u8> {
-        lz4::compress(bytes.as_slice())
+    fn encode_lz4(bytes: Vec<u8>) -> Result<Vec<u8>> {
+        let len = 4 + lz4_flex::block::get_maximum_output_size(bytes.len());
+        assert!(len <= i32::MAX as usize);
+
+        let mut result = vec![0; len];
+
+        let len = len as i32 - 4;
+        result[..4].copy_from_slice(&len.to_be_bytes());
+
+        let compressed_len = lz4_flex::compress_into(&bytes, &mut result, 4)
+            .map_err(|error| CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error)))?;
+
+        result.truncate(4 + compressed_len);
+        Ok(result)
     }
 
     fn decode_lz4(bytes: Vec<u8>) -> Result<Vec<u8>> {
-        // skip first 4 bytes in accordance to
-        // https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L805
-        lz4::decompress(&bytes[4..])
+        let uncompressed_size =
+            i32::from_be_bytes(bytes[..4].try_into().map_err(|error| {
+                CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error))
+            })?);
+
+        lz4_flex::decompress(&bytes[4..], uncompressed_size as usize)
             .map_err(|error| CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error)))
     }
 }
