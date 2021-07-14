@@ -34,7 +34,7 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
         quote! {
             impl From<#name> for cdrs_tokio::types::value::Bytes {
               fn from(value: #name) -> Self {
-                let mut bytes: Vec<u8> = vec![];
+                let mut bytes: Vec<u8> = Vec::new();
                 #(#convert_into_bytes)*
                 Self::new(bytes)
               }
