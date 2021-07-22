@@ -2,7 +2,7 @@ use core::time::Duration;
 use std::net;
 use std::sync::Arc;
 
-use crate::authenticators::SaslAuthenticator;
+use crate::authenticators::SaslAuthenticatorProvider;
 
 /// Cluster configuration that holds per node SSL configs
 pub struct ClusterRustlsConfig(pub Vec<NodeRustlsConfig>);
@@ -12,7 +12,7 @@ pub struct ClusterRustlsConfig(pub Vec<NodeRustlsConfig>);
 pub struct NodeRustlsConfig {
     pub addr: net::SocketAddr,
     pub dns_name: webpki::DNSName,
-    pub authenticator: Arc<dyn SaslAuthenticator + Send + Sync>,
+    pub authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub max_size: u32,
     pub min_idle: Option<u32>,
     pub max_lifetime: Option<Duration>,
@@ -25,7 +25,7 @@ pub struct NodeRustlsConfig {
 pub struct NodeRustlsConfigBuilder {
     addr: net::SocketAddr,
     dns_name: webpki::DNSName,
-    authenticator: Arc<dyn SaslAuthenticator + Send + Sync>,
+    authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     max_size: Option<u32>,
     min_idle: Option<u32>,
     max_lifetime: Option<Duration>,
@@ -41,7 +41,7 @@ impl NodeRustlsConfigBuilder {
     pub fn new(
         addr: net::SocketAddr,
         dns_name: webpki::DNSName,
-        authenticator: Arc<dyn SaslAuthenticator + Send + Sync>,
+        authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
         config: Arc<rustls::ClientConfig>,
     ) -> Self {
         NodeRustlsConfigBuilder {
@@ -100,7 +100,7 @@ impl NodeRustlsConfigBuilder {
     /// Sets new authenticator.
     pub fn authenticator(
         mut self,
-        authenticator: Arc<dyn SaslAuthenticator + Send + Sync>,
+        authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     ) -> Self {
         self.authenticator = authenticator;
         self

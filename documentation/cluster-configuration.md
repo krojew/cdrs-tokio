@@ -5,11 +5,11 @@ Apache Cassandra is designed to be a scalable and higly available database. So m
 That's why CDRS driver was designed with multinode support in mind. In order to connect to Cassandra cluster via CDRS connection configuration should be provided:
 
 ```rust
-use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
 
 fn main() {
-  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
+  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticatorProvider)).build();
   let cluster_config = ClusterTcpConfig(vec![node]);
 }
 ```
@@ -18,7 +18,7 @@ fn main() {
 
 ```rust
 let node_address = "127.0.0.1:9042";
-let authenticator = NoneAuthenticator {};
+let authenticator = NoneAuthenticatorProvider;
 let node = NodeTcpConfigBuilder::new(node_address, authenticator)
   .max_size(5)
   .min_idle(4)

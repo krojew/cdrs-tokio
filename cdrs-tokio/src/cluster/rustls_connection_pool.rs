@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use std::net;
 use std::sync::Arc;
 
-use crate::authenticators::SaslAuthenticator;
+use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::ConnectionPool;
 use crate::cluster::{startup, KeyspaceHolder, NodeRustlsConfig};
 use crate::compression::Compression;
@@ -47,7 +47,7 @@ pub struct RustlsConnectionsManager {
     addr: net::SocketAddr,
     dns_name: webpki::DNSName,
     config: Arc<rustls::ClientConfig>,
-    auth: Arc<dyn SaslAuthenticator + Send + Sync>,
+    auth: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
 }
 
@@ -57,7 +57,7 @@ impl RustlsConnectionsManager {
         addr: net::SocketAddr,
         dns_name: webpki::DNSName,
         config: Arc<rustls::ClientConfig>,
-        auth: Arc<dyn SaslAuthenticator + Send + Sync>,
+        auth: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     ) -> Self {
         Self {
             addr,

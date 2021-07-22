@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::{new as new_session, Session};
 #[cfg(feature = "e2e-tests")]
@@ -32,7 +32,7 @@ pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
 
 #[cfg(feature = "e2e-tests")]
 pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSession> {
-    let node = NodeTcpConfigBuilder::new(ADDR, Arc::new(NoneAuthenticator {})).build();
+    let node = NodeTcpConfigBuilder::new(ADDR, Arc::new(NoneAuthenticatorProvider)).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let session = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))

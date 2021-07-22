@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::authenticators::SaslAuthenticator;
+use crate::authenticators::SaslAuthenticatorProvider;
 
 /// Cluster configuration that holds per node TCP configs
 pub struct ClusterTcpConfig(pub Vec<NodeTcpConfig>);
@@ -10,7 +10,7 @@ pub struct ClusterTcpConfig(pub Vec<NodeTcpConfig>);
 #[derive(Clone)]
 pub struct NodeTcpConfig {
     pub addr: String,
-    pub authenticator: Arc<dyn SaslAuthenticator + Send + Sync>,
+    pub authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub max_size: u32,
     pub min_idle: Option<u32>,
     pub max_lifetime: Option<Duration>,
@@ -21,7 +21,7 @@ pub struct NodeTcpConfig {
 /// Builder structure that helps to configure TCP connection for node.
 pub struct NodeTcpConfigBuilder {
     addr: String,
-    authenticator: Arc<dyn SaslAuthenticator + Send + Sync>,
+    authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     max_size: Option<u32>,
     min_idle: Option<u32>,
     max_lifetime: Option<Duration>,
@@ -35,7 +35,7 @@ impl NodeTcpConfigBuilder {
 
     pub fn new<S: ToString>(
         addr: S,
-        authenticator: Arc<dyn SaslAuthenticator + Send + Sync>,
+        authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     ) -> NodeTcpConfigBuilder {
         NodeTcpConfigBuilder {
             addr: addr.to_string(),
@@ -91,7 +91,7 @@ impl NodeTcpConfigBuilder {
     /// Sets new authenticator.
     pub fn authenticator(
         mut self,
-        authenticator: Arc<dyn SaslAuthenticator + Send + Sync>,
+        authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     ) -> Self {
         self.authenticator = authenticator;
         self

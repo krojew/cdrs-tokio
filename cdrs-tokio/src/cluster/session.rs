@@ -17,7 +17,7 @@ use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::transport::{CdrsTransport, TransportTcp};
 
-use crate::authenticators::SaslAuthenticator;
+use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::SessionPager;
 use crate::compression::Compression;
 use crate::events::{new_listener, EventStream, EventStreamNonBlocking, Listener};
@@ -680,7 +680,7 @@ where
 
 impl<L> Session<L> {
     /// Returns new event listener.
-    pub async fn listen<A: SaslAuthenticator + Send + Sync + ?Sized + 'static>(
+    pub async fn listen<A: SaslAuthenticatorProvider + Send + Sync + ?Sized + 'static>(
         &self,
         node: &str,
         authenticator: &A,
@@ -710,7 +710,9 @@ impl<L> Session<L> {
         Ok(new_listener(transport))
     }
 
-    pub async fn listen_non_blocking<A: SaslAuthenticator + Send + Sync + ?Sized + 'static>(
+    pub async fn listen_non_blocking<
+        A: SaslAuthenticatorProvider + Send + Sync + ?Sized + 'static,
+    >(
         &self,
         node: &str,
         authenticator: &A,

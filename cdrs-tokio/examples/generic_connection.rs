@@ -7,7 +7,7 @@ use std::{
 };
 
 use cdrs_tokio::{
-    authenticators::{SaslAuthenticator, StaticPasswordAuthenticator},
+    authenticators::{SaslAuthenticatorProvider, StaticPasswordAuthenticatorProvider},
     cluster::session::Session,
     cluster::TcpConnectionPool,
     cluster::{ConnectionPool, GenericClusterConfig, TcpConnectionsManager},
@@ -41,7 +41,7 @@ type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 /// This is just a simple use for the generic configuration. By
 /// replacing the transport itself you can do much more.
 struct VirtualClusterConfig {
-    authenticator: Arc<dyn SaslAuthenticator + Sync + Send>,
+    authenticator: Arc<dyn SaslAuthenticatorProvider + Sync + Send>,
     mask: Ipv4Addr,
     actual: Ipv4Addr,
 }
@@ -93,7 +93,7 @@ impl GenericClusterConfig for VirtualClusterConfig {
 async fn main() {
     let user = "user";
     let password = "password";
-    let authenticator = Arc::new(StaticPasswordAuthenticator::new(&user, &password));
+    let authenticator = Arc::new(StaticPasswordAuthenticatorProvider::new(&user, &password));
     let mask = Ipv4Addr::new(255, 255, 255, 0);
     let actual = Ipv4Addr::new(127, 0, 0, 0);
 

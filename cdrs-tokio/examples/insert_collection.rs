@@ -4,7 +4,7 @@ extern crate maplit;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use cdrs_tokio::authenticators::StaticPasswordAuthenticator;
+use cdrs_tokio::authenticators::StaticPasswordAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{new as new_session, Session};
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
 use cdrs_tokio::load_balancing::RoundRobin;
@@ -24,7 +24,7 @@ type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
 async fn main() {
     let user = "user";
     let password = "password";
-    let auth = StaticPasswordAuthenticator::new(&user, &password);
+    let auth = StaticPasswordAuthenticatorProvider::new(&user, &password);
     let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(auth)).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let mut no_compression: CurrentSession = new_session(

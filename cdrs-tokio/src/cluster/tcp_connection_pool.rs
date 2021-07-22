@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::Mutex;
 
-use crate::authenticators::SaslAuthenticator;
+use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::ConnectionPool;
 use crate::cluster::KeyspaceHolder;
 use crate::cluster::NodeTcpConfig;
@@ -52,12 +52,15 @@ pub async fn new_tcp_pool(node_config: NodeTcpConfig) -> error::Result<TcpConnec
 /// `bb8` connection manager.
 pub struct TcpConnectionsManager {
     addr: String,
-    auth: Arc<dyn SaslAuthenticator + Send + Sync>,
+    auth: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
 }
 
 impl TcpConnectionsManager {
-    pub fn new<S: ToString>(addr: S, auth: Arc<dyn SaslAuthenticator + Send + Sync>) -> Self {
+    pub fn new<S: ToString>(
+        addr: S,
+        auth: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+    ) -> Self {
         TcpConnectionsManager {
             addr: addr.to_string(),
             auth,
@@ -95,7 +98,7 @@ impl ManageConnection for TcpConnectionsManager {
 
 pub async fn startup<
     T: CdrsTransport + Unpin + 'static,
-    A: SaslAuthenticator + Send + Sync + ?Sized + 'static,
+    A: SaslAuthenticatorProvider + Send + Sync + ?Sized + 'static,
 >(
     transport: &Mutex<T>,
     session_authenticator: &A,
@@ -152,7 +155,8 @@ pub async fn startup<
             return Err(err);
         }
 
-        let response = session_authenticator.initial_response();
+        let authenticator = session_authenticator.create_authenticator();
+        let response = authenticator.initial_response();
         {
             let mut lock = transport.lock().await;
 
@@ -165,7 +169,7 @@ pub async fn startup<
             let frame = parse_frame(transport, compression).await?;
             match frame.body()? {
                 ResponseBody::AuthChallenge(challenge) => {
-                    let response = session_authenticator.evaluate_challenge(challenge.data)?;
+                    let response = authenticator.evaluate_challenge(challenge.data)?;
                     let mut lock = transport.lock().await;
 
                     lock.write_all(Frame::new_req_auth_response(response).as_bytes().as_slice())

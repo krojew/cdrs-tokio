@@ -1,5 +1,5 @@
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 #[cfg(feature = "e2e-tests")]
@@ -14,7 +14,8 @@ use std::sync::Arc;
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn multithread() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
+    let node =
+        NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticatorProvider)).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let no_compression = cdrs_tokio::cluster::session::new(
         &cluster_config,

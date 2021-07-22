@@ -42,7 +42,7 @@ cdrs-tokio = "desired version"
 ```
 
 ```rust
-use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{new as new_session};
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 use cdrs_tokio::load_balancing::RoundRobin;
@@ -50,7 +50,7 @@ use cdrs_tokio::query::*;
 
 #[tokio::main]
 async fn main() {
-  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
+  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticatorProvider)).build();
   let cluster_config = ClusterTcpConfig(vec![node]);
   let no_compression =
     new_session(&cluster_config, RoundRobin::new()).await.expect("session should be created");

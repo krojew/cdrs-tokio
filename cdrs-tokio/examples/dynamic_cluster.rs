@@ -4,7 +4,7 @@ use std::process::{Command, Output};
 use std::sync::Arc;
 use std::time::Duration;
 
-use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{new_dynamic as new_session, Session};
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
 use cdrs_tokio::load_balancing::RoundRobin;
@@ -84,7 +84,7 @@ fn start_cluster() {
 
 #[tokio::main]
 async fn main() {
-    let auth = Arc::new(NoneAuthenticator {});
+    let auth = Arc::new(NoneAuthenticatorProvider);
     let node_a = NodeTcpConfigBuilder::new("127.0.0.1:9042", auth.clone()).build();
     let node_b = NodeTcpConfigBuilder::new("127.0.0.1:9043", auth.clone()).build();
     let event_src = NodeTcpConfigBuilder::new("127.0.0.1:9042", auth.clone()).build();

@@ -1,7 +1,7 @@
 use std::iter::Iterator;
 use std::sync::Arc;
 
-use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::new as new_session;
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 use cdrs_tokio::compression::Compression;
@@ -11,7 +11,8 @@ use cdrs_tokio::retry::DefaultRetryPolicy;
 
 #[tokio::main]
 async fn main() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
+    let node =
+        NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticatorProvider)).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let no_compression = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
@@ -21,7 +22,7 @@ async fn main() {
     let (listener, stream) = no_compression
         .listen(
             "127.0.0.1:9042",
-            &NoneAuthenticator {},
+            &NoneAuthenticatorProvider,
             vec![SimpleServerEvent::SchemaChange],
         )
         .await

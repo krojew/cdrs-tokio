@@ -1,5 +1,5 @@
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::authenticators::NoneAuthenticator;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::new;
 #[cfg(feature = "e2e-tests")]
@@ -16,7 +16,8 @@ use std::sync::Arc;
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn paged_query() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticator {})).build();
+    let node =
+        NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticatorProvider)).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let session = new(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))

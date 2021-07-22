@@ -1,12 +1,6 @@
 use crate::error::Result;
 use crate::types::CBytes;
 
-#[deprecated(note = "Use the new SaslAuthenticator.")]
-pub trait Authenticator {
-    fn auth_token(&self) -> CBytes;
-    fn cassandra_name(&self) -> Option<&str>;
-}
-
 /// Handles SASL authentication. The lifecycle of an authenticator consists of:
 /// - The `initial_response` function will be called. The initial return value will be sent to the
 /// server to initiate the handshake.
@@ -16,29 +10,16 @@ pub trait Authenticator {
 ///  that will be sent to the server. This challenge/response negotiation will continue until
 ///  the server responds that authentication is successful or an error is raised.
 pub trait SaslAuthenticator {
-    fn name(&self) -> Option<&str>;
-
     fn initial_response(&self) -> CBytes;
 
     fn evaluate_challenge(&self, challenge: CBytes) -> Result<CBytes>;
 }
 
-#[allow(deprecated)]
-impl<A> SaslAuthenticator for A
-where
-    A: Authenticator,
-{
-    fn name(&self) -> Option<&str> {
-        self.cassandra_name()
-    }
+/// Provides authenticators per new connection.
+pub trait SaslAuthenticatorProvider {
+    fn name(&self) -> Option<&str>;
 
-    fn initial_response(&self) -> CBytes {
-        self.auth_token()
-    }
-
-    fn evaluate_challenge(&self, _challenge: CBytes) -> Result<CBytes> {
-        Err("Server challenges are not supported for legacy authenticators!".into())
-    }
+    fn create_authenticator(&self) -> Box<dyn SaslAuthenticator + Send>;
 }
 
 #[derive(Debug, Clone)]
@@ -57,10 +38,6 @@ impl StaticPasswordAuthenticator {
 }
 
 impl SaslAuthenticator for StaticPasswordAuthenticator {
-    fn name(&self) -> Option<&str> {
-        Some("org.apache.cassandra.auth.PasswordAuthenticator")
-    }
-
     fn initial_response(&self) -> CBytes {
         let mut token = vec![0];
         token.extend_from_slice(self.username.as_bytes());
@@ -76,19 +53,56 @@ impl SaslAuthenticator for StaticPasswordAuthenticator {
 }
 
 #[derive(Debug, Clone)]
+pub struct StaticPasswordAuthenticatorProvider {
+    username: String,
+    password: String,
+}
+
+impl SaslAuthenticatorProvider for StaticPasswordAuthenticatorProvider {
+    fn name(&self) -> Option<&str> {
+        Some("org.apache.cassandra.auth.PasswordAuthenticator")
+    }
+
+    fn create_authenticator(&self) -> Box<dyn SaslAuthenticator + Send> {
+        Box::new(StaticPasswordAuthenticator::new(
+            self.username.clone(),
+            self.password.clone(),
+        ))
+    }
+}
+
+impl StaticPasswordAuthenticatorProvider {
+    pub fn new<S: ToString>(username: S, password: S) -> Self {
+        StaticPasswordAuthenticatorProvider {
+            username: username.to_string(),
+            password: password.to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct NoneAuthenticator;
 
 impl SaslAuthenticator for NoneAuthenticator {
-    fn name(&self) -> Option<&str> {
-        None
-    }
-
     fn initial_response(&self) -> CBytes {
         CBytes::new(vec![0])
     }
 
     fn evaluate_challenge(&self, _challenge: CBytes) -> Result<CBytes> {
         Err("Server challenge is not supported for NoneAuthenticator!".into())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NoneAuthenticatorProvider;
+
+impl SaslAuthenticatorProvider for NoneAuthenticatorProvider {
+    fn name(&self) -> Option<&str> {
+        None
+    }
+
+    fn create_authenticator(&self) -> Box<dyn SaslAuthenticator + Send> {
+        Box::new(NoneAuthenticator)
     }
 }
 
@@ -104,7 +118,7 @@ mod tests {
 
     #[test]
     fn test_static_password_authenticator_cassandra_name() {
-        let auth = StaticPasswordAuthenticator::new("foo", "bar");
+        let auth = StaticPasswordAuthenticatorProvider::new("foo", "bar");
         assert_eq!(
             auth.name(),
             Some("org.apache.cassandra.auth.PasswordAuthenticator")
@@ -114,7 +128,8 @@ mod tests {
     #[test]
     fn test_authenticator_none_cassandra_name() {
         let auth = NoneAuthenticator;
-        assert_eq!(auth.name(), None);
+        let provider = NoneAuthenticatorProvider;
+        assert_eq!(provider.name(), None);
         assert_eq!(auth.initial_response().into_plain().unwrap(), vec![0]);
     }
 }
