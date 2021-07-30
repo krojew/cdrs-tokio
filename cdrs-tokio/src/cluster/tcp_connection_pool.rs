@@ -86,7 +86,7 @@ impl ManageConnection for TcpConnectionsManager {
         let options_frame = Frame::new_req_options().as_bytes();
         conn.lock().await.write_all(&options_frame).await?;
 
-        parse_frame(&conn, Compression::None).await?;
+        parse_frame(conn, Compression::None).await?;
         Ok(())
     }
 

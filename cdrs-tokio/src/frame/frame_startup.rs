@@ -33,7 +33,7 @@ impl<'a> AsBytes for BodyReqStartup<'a> {
     fn as_bytes(&self) -> Vec<u8> {
         let mut v = vec![];
         // push number of key-value pairs
-        v.extend_from_slice(&self.num().as_slice());
+        v.extend_from_slice(self.num().as_slice());
         for (key, val) in self.map.iter() {
             // push key len
             v.extend_from_slice(to_short(key.len() as i16).as_slice());

@@ -102,7 +102,7 @@ impl ManageConnection for RustlsConnectionsManager {
             conn.flush().await?;
         }
 
-        parse_frame(&conn, Compression::None).await?;
+        parse_frame(conn, Compression::None).await?;
         Ok(())
     }
 
