@@ -55,7 +55,7 @@ async fn main() {
         insert_row(&mut no_compression, row, &prepared_query).await;
     }
 
-    batch_few_queries(&mut no_compression, &insert_struct_cql).await;
+    batch_few_queries(&mut no_compression, insert_struct_cql).await;
 }
 
 async fn create_keyspace(session: &mut CurrentSession) {
