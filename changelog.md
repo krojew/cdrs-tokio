@@ -1,3 +1,13 @@
+## 5.0.0
+
+### New
+
+* Support for stateful SASL authenticators.
+
+### Changed
+
+* Using up-to-date lz4 crate (no more unmaintained dependency alerts).
+
 ## 4.0.0
 
 ### Fixed

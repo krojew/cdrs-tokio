@@ -4,7 +4,7 @@
   <img src="./cdrs-logo.png" alt="CDRS tokio - async Apache Cassandra driver using tokio"/>
 </p>
 
-CDRS is Apache **C**assandra **d**river written in pure **R**u**s**t.
+CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u**s**t.
 
 ## Features
 
