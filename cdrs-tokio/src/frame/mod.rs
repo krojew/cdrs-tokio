@@ -36,7 +36,10 @@ pub mod traits;
 
 use crate::error;
 
-static STREAM_ID: AtomicI16 = AtomicI16::new(0);
+const INITIAL_STREAM_ID: i16 = 1;
+pub const EVENT_STREAM_ID: i16 = -1;
+
+static STREAM_ID: AtomicI16 = AtomicI16::new(INITIAL_STREAM_ID);
 
 pub type StreamId = i16;
 
@@ -44,8 +47,13 @@ fn next_stream_id() -> StreamId {
     loop {
         let stream = STREAM_ID.fetch_add(1, Ordering::SeqCst);
         if stream < 0 {
-            match STREAM_ID.compare_exchange_weak(stream, 0, Ordering::SeqCst, Ordering::Relaxed) {
-                Ok(_) => return 0,
+            match STREAM_ID.compare_exchange_weak(
+                stream,
+                INITIAL_STREAM_ID,
+                Ordering::SeqCst,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return INITIAL_STREAM_ID,
                 Err(_) => continue,
             }
         }
@@ -54,7 +62,7 @@ fn next_stream_id() -> StreamId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Frame {
     pub version: Version,
     pub flags: Vec<Flag>,
@@ -228,7 +236,7 @@ impl From<Vec<u8>> for Version {
 
 /// Frame's flag
 // Is not implemented functionality. Only Igonore works for now
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
 pub enum Flag {
     Compression,
     Tracing,

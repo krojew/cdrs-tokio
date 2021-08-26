@@ -1,8 +1,7 @@
 use async_trait::async_trait;
 
-use crate::cluster::{GetCompressor, GetConnection, GetRetryPolicy, ResponseCache};
+use crate::cluster::{GetConnection, GetRetryPolicy};
 use crate::error;
-use crate::frame::traits::AsBytes;
 use crate::frame::Frame;
 use crate::query::batch_query_builder::QueryBatch;
 use crate::transport::CdrsTransport;
@@ -11,7 +10,7 @@ use super::utils::{prepare_flags, send_frame};
 
 #[async_trait]
 pub trait BatchExecutor<T: CdrsTransport + Unpin + 'static>:
-    GetConnection<T> + GetCompressor + ResponseCache + GetRetryPolicy + Sync
+    GetConnection<T> + GetRetryPolicy + Sync
 {
     async fn batch_with_params_tw(
         &self,
@@ -24,13 +23,7 @@ pub trait BatchExecutor<T: CdrsTransport + Unpin + 'static>:
 
         let query_frame = Frame::new_req_batch(batch, flags);
 
-        send_frame(
-            self,
-            query_frame.as_bytes(),
-            query_frame.stream,
-            is_idempotent,
-        )
-        .await
+        send_frame(self, query_frame, is_idempotent).await
     }
 
     async fn batch_with_params(&self, batch: QueryBatch) -> error::Result<Frame> {

@@ -1,14 +1,13 @@
 use std::iter::Iterator;
-use std::sync::mpsc::{channel, Receiver, Sender};
-use tokio::sync::Mutex;
+use std::sync::mpsc::{Receiver as StdReceiver, Sender as StdSender};
+use tokio::sync::mpsc::Receiver;
 
-use crate::compression::Compression;
 use crate::error;
 use crate::frame::events::{
     SchemaChange as FrameSchemaChange, ServerEvent as FrameServerEvent,
     SimpleServerEvent as FrameSimpleServerEvent,
 };
-use crate::frame::parser::parse_frame;
+use crate::frame::Frame;
 use crate::transport::CdrsTransport;
 
 /// Full Server Event which includes all details about occured change.
@@ -29,11 +28,16 @@ pub type SchemaChange = FrameSchemaChange;
 ///
 /// `EventStream` is an iterator which returns new events once they come.
 /// It is similar to `Receiver::iter`.
-pub fn new_listener<X>(transport: X) -> (Listener<X>, EventStream) {
-    let (tx, rx) = channel();
-    let listener = Listener { transport, tx };
-    let stream = EventStream { rx };
-    (listener, stream)
+pub fn new_listener<X>(
+    transport: X,
+    tx: StdSender<ServerEvent>,
+    rx: Receiver<Frame>,
+) -> Listener<X> {
+    Listener {
+        _transport: transport,
+        tx,
+        rx,
+    }
 }
 
 /// `Listener` provides only one function `start` to start listening. It
@@ -41,48 +45,57 @@ pub fn new_listener<X>(transport: X) -> (Listener<X>, EventStream) {
 /// main thread.
 
 pub struct Listener<X> {
-    transport: X,
-    tx: Sender<ServerEvent>,
+    _transport: X,
+    tx: StdSender<ServerEvent>,
+    rx: Receiver<Frame>,
 }
 
-impl<X: CdrsTransport + Unpin + 'static> Listener<Mutex<X>> {
-    /// It starts a process of listening to new events. Locks a frame.
-    pub async fn start(self, compressor: Compression) -> error::Result<()> {
+impl<X: CdrsTransport + Unpin + 'static> Listener<X> {
+    /// It starts a process of listening to new events.
+    pub async fn start(mut self) -> error::Result<()> {
         loop {
-            let event_opt = parse_frame(&self.transport, compressor)
-                .await?
-                .body()?
-                .into_server_event();
+            let event = self.rx.recv().await;
+            match event {
+                Some(event) => {
+                    let event = event.body()?.into_server_event();
 
-            let event = if event_opt.is_some() {
-                // unwrap is safe as we've checked that event_opt.is_some()
-                event_opt.unwrap().event as ServerEvent
-            } else {
-                continue;
-            };
-            match self.tx.send(event) {
-                Err(err) => return Err(error::Error::General(err.to_string())),
-                _ => continue,
+                    if let Some(event) = event {
+                        if let Err(error) = self.tx.send(event.event) {
+                            return Err(error::Error::General(error.to_string()));
+                        }
+                    }
+                }
+                None => break,
             }
         }
+
+        Ok(())
     }
 }
 
 /// `EventStream` is an iterator which returns new events once they come.
 /// It is similar to `Receiver::iter`.
 pub struct EventStream {
-    rx: Receiver<ServerEvent>,
+    rx: StdReceiver<ServerEvent>,
+}
+
+impl EventStream {
+    pub fn new(rx: StdReceiver<ServerEvent>) -> Self {
+        EventStream { rx }
+    }
 }
 
 impl Iterator for EventStream {
     type Item = ServerEvent;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.rx.recv().ok()
     }
 }
 
 impl From<EventStream> for EventStreamNonBlocking {
+    #[inline]
     fn from(stream: EventStream) -> Self {
         Self { rx: stream.rx }
     }
@@ -92,12 +105,13 @@ impl From<EventStream> for EventStreamNonBlocking {
 /// It is similar to `Receiver::iter`. It's a non-blocking version of `EventStream`
 #[derive(Debug)]
 pub struct EventStreamNonBlocking {
-    rx: Receiver<ServerEvent>,
+    rx: StdReceiver<ServerEvent>,
 }
 
 impl Iterator for EventStreamNonBlocking {
     type Item = ServerEvent;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.rx.try_recv().ok()
     }

@@ -1,41 +1,22 @@
 use std::io::Cursor;
-use std::ops::Deref;
-use tokio::io::{AsyncRead, AsyncReadExt};
-use tokio::sync::Mutex;
+use tokio::io::AsyncReadExt;
 
 use super::*;
 use crate::compression::Compression;
 use crate::error;
 use crate::frame::FromCursor;
-use crate::transport::CdrsTransport;
 use crate::types::data_serialization_types::decode_timeuuid;
 use crate::types::{from_bytes, from_i16_bytes, CStringList, UUID_LEN};
 
-pub async fn from_connection<M, E, T>(
-    conn: &bb8::PooledConnection<'_, M>,
+async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
+    cursor: &mut T,
     compressor: Compression,
-) -> error::Result<Frame>
-where
-    T: CdrsTransport + Unpin + 'static,
-    E: error::FromCdrsError,
-    M: bb8::ManageConnection<Connection = Mutex<T>, Error = E>,
-{
-    parse_frame(conn.deref(), compressor).await
-}
-
-pub async fn parse_raw_frame<T>(
-    cursor_cell: &Mutex<T>,
-    compressor: Compression,
-) -> error::Result<Frame>
-where
-    T: AsyncRead + Unpin,
-{
+) -> error::Result<Frame> {
     let mut version_bytes = [0; Version::BYTE_LENGTH];
     let mut flag_bytes = [0; Flag::BYTE_LENGTH];
     let mut opcode_bytes = [0; Opcode::BYTE_LENGTH];
     let mut stream_bytes = [0; STREAM_LEN];
     let mut length_bytes = [0; LENGTH_LEN];
-    let mut cursor = cursor_cell.lock().await;
 
     // NOTE: order of reads matters
     cursor.read_exact(&mut version_bytes).await?;
@@ -101,11 +82,11 @@ where
     Ok(frame)
 }
 
-pub async fn parse_frame<T>(cursor_cell: &Mutex<T>, compressor: Compression) -> error::Result<Frame>
-where
-    T: AsyncRead + Unpin,
-{
-    convert_frame_into_result(parse_raw_frame(cursor_cell, compressor).await?)
+pub async fn parse_frame<T: AsyncReadExt + Unpin>(
+    cursor: &mut T,
+    compressor: Compression,
+) -> error::Result<Frame> {
+    convert_frame_into_result(parse_raw_frame(cursor, compressor).await?)
 }
 
 fn convert_frame_into_result(frame: Frame) -> error::Result<Frame> {

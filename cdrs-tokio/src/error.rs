@@ -7,6 +7,7 @@ use std::{error, fmt::Debug};
 
 use crate::compression::CompressionError;
 use crate::frame::frame_error::CdrsError;
+use bb8::RunError;
 use uuid::Error as UuidError;
 
 pub type Result<T> = result::Result<T, Error>;
@@ -103,13 +104,11 @@ impl<'a> From<&'a str> for Error {
     }
 }
 
-/// Marker trait for error types that can be converted from CDRS errors
-pub trait FromCdrsError:
-    From<Error> + std::error::Error + Send + Sync + Debug + Display + 'static
+impl<E> From<RunError<E>> for Error
+where
+    RunError<E>: Display,
 {
-}
-
-impl<E> FromCdrsError for E where
-    E: From<Error> + std::error::Error + Send + Sync + Debug + Display + 'static
-{
+    fn from(err: RunError<E>) -> Self {
+        err.to_string().into()
+    }
 }

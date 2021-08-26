@@ -31,11 +31,10 @@ pub use crate::cluster::tcp_connection_pool::{
 };
 pub use generic_connection_pool::ConnectionPool;
 
-use crate::frame::{Frame, StreamId};
+use crate::error::Error;
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::retry::RetryPolicy;
 use crate::transport::CdrsTransport;
-use crate::{compression::Compression, error::FromCdrsError};
 
 /// Generic connection configuration trait that can be used to create user-supplied
 /// connection objects that can be used with the `session::connect()` function.
@@ -43,12 +42,8 @@ use crate::{compression::Compression, error::FromCdrsError};
 pub trait GenericClusterConfig: Send + Sync {
     type Transport: CdrsTransport + Send + Sync;
     type Address: Clone;
-    type Error: FromCdrsError;
 
-    async fn connect(
-        &self,
-        addr: Self::Address,
-    ) -> Result<ConnectionPool<Self::Transport>, Self::Error>;
+    async fn connect(&self, addr: Self::Address) -> Result<ConnectionPool<Self::Transport>, Error>;
 }
 
 /// `GetConnection` trait provides a unified interface for Session to get a connection
@@ -59,19 +54,6 @@ pub trait GetConnection<T: CdrsTransport + Send + Sync + 'static> {
     async fn connection(&self) -> Option<Arc<ConnectionPool<T>>>;
 }
 
-/// `GetCompressor` trait provides a unified interface for Session to get a compressor
-/// for further decompressing received data.
-pub trait GetCompressor {
-    /// Returns actual compressor.
-    fn compressor(&self) -> Compression;
-}
-
-/// `ResponseCache` caches responses to match them by their stream id to requests.
-#[async_trait]
-pub trait ResponseCache {
-    async fn match_or_cache_response(&self, stream_id: StreamId, frame: Frame) -> Option<Frame>;
-}
-
 /// `GetRetryPolicy` trait provides a unified interface for Session to get current retry policy.
 pub trait GetRetryPolicy {
     fn retry_policy(&self) -> &dyn RetryPolicy;
@@ -80,8 +62,7 @@ pub trait GetRetryPolicy {
 /// `CdrsSession` trait wrap ups whole query functionality. Use it only if whole query
 /// machinery is needed and direct sub traits otherwise.
 pub trait CdrsSession<T: CdrsTransport + Unpin + 'static>:
-    GetCompressor
-    + GetConnection<T>
+    GetConnection<T>
     + QueryExecutor<T>
     + PrepareExecutor<T>
     + ExecExecutor<T>

@@ -12,7 +12,7 @@ impl KeyspaceHolder {
         self.current_keyspace.lock().await.clone()
     }
 
-    pub async fn set_current_keyspace(&self, keyspace: &str) {
+    pub async fn update_current_keyspace(&self, keyspace: &str) {
         *self.current_keyspace.lock().await = Some(keyspace.into());
     }
 }

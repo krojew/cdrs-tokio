@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 
-use crate::cluster::{GetCompressor, GetConnection, GetRetryPolicy, ResponseCache};
+use crate::cluster::{GetConnection, GetRetryPolicy};
 use crate::error;
-use crate::frame::{AsBytes, Frame};
+use crate::frame::Frame;
 use crate::query::{PrepareExecutor, PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
 use crate::transport::CdrsTransport;
 
@@ -11,7 +11,7 @@ use std::ops::Deref;
 
 #[async_trait]
 pub trait ExecExecutor<T: CdrsTransport + Unpin + 'static>:
-    GetConnection<T> + GetCompressor + PrepareExecutor<T> + ResponseCache + GetRetryPolicy + Sync
+    GetConnection<T> + PrepareExecutor<T> + GetRetryPolicy + Sync
 {
     async fn exec_with_params_tw(
         &self,
@@ -31,13 +31,7 @@ pub trait ExecExecutor<T: CdrsTransport + Unpin + 'static>:
             flags,
         );
 
-        let mut result = send_frame(
-            self,
-            options_frame.as_bytes(),
-            options_frame.stream,
-            query_parameters.is_idempotent,
-        )
-        .await;
+        let mut result = send_frame(self, options_frame, query_parameters.is_idempotent).await;
 
         if let Err(error::Error::Server(error)) = &result {
             // if query is unprepared
@@ -49,13 +43,7 @@ pub trait ExecExecutor<T: CdrsTransport + Unpin + 'static>:
                         .expect("Cannot write prepared query id!") = new.id.clone();
                     let flags = prepare_flags(with_tracing, with_warnings);
                     let options_frame = Frame::new_req_execute(&new.id, &query_parameters, flags);
-                    result = send_frame(
-                        self,
-                        options_frame.as_bytes(),
-                        options_frame.stream,
-                        query_parameters.is_idempotent,
-                    )
-                    .await;
+                    result = send_frame(self, options_frame, query_parameters.is_idempotent).await;
                 }
             }
         }

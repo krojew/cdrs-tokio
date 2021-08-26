@@ -4,7 +4,6 @@ use std::sync::Arc;
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::new as new_session;
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
-use cdrs_tokio::compression::Compression;
 use cdrs_tokio::frame::events::{ChangeType, ServerEvent, SimpleServerEvent, Target};
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::retry::DefaultRetryPolicy;
@@ -28,7 +27,7 @@ async fn main() {
         .await
         .expect("listen error");
 
-    tokio::spawn(listener.start(Compression::None));
+    tokio::spawn(listener.start());
 
     let new_tables = stream
         // inspects all events in a stream

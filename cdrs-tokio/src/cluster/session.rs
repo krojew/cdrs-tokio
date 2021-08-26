@@ -1,31 +1,34 @@
 use async_trait::async_trait;
-use fxhash::FxHashMap;
 use std::iter::Iterator;
+#[cfg(feature = "rust-tls")]
+use std::net;
 use std::ops::Deref;
+use std::sync::mpsc::channel as std_channel;
 use std::sync::Arc;
-use tokio::{io::AsyncWriteExt, sync::Mutex};
+use tokio::sync::mpsc::channel;
+use tokio::sync::Mutex;
 
+use crate::authenticators::SaslAuthenticatorProvider;
 #[cfg(feature = "unstable-dynamic-cluster")]
 use crate::cluster::NodeTcpConfig;
+use crate::cluster::SessionPager;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::{new_rustls_pool, ClusterRustlsConfig, RustlsConnectionPool};
 use crate::cluster::{
     new_tcp_pool, startup, CdrsSession, ClusterTcpConfig, ConnectionPool, GenericClusterConfig,
-    GetCompressor, GetConnection, GetRetryPolicy, KeyspaceHolder, ResponseCache, TcpConnectionPool,
+    GetConnection, GetRetryPolicy, KeyspaceHolder, TcpConnectionPool,
 };
-use crate::error;
-use crate::load_balancing::LoadBalancingStrategy;
-use crate::transport::{CdrsTransport, TransportTcp};
-
-use crate::authenticators::SaslAuthenticatorProvider;
-use crate::cluster::SessionPager;
 use crate::compression::Compression;
+use crate::error;
 use crate::events::{new_listener, EventStream, EventStreamNonBlocking, Listener};
 use crate::frame::events::{ServerEvent, SimpleServerEvent, StatusChange, StatusChangeType};
-use crate::frame::parser::parse_frame;
-use crate::frame::{AsBytes, Frame, StreamId};
+use crate::frame::Frame;
+use crate::load_balancing::LoadBalancingStrategy;
 use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
 use crate::retry::RetryPolicy;
+#[cfg(feature = "rust-tls")]
+use crate::transport::TransportRustls;
+use crate::transport::{CdrsTransport, TransportTcp};
 
 /// CDRS session that holds one pool of authorized connections per node.
 /// `compression` field contains data compressor that will be used
@@ -33,16 +36,8 @@ use crate::retry::RetryPolicy;
 pub struct Session<LB> {
     load_balancing: Mutex<LB>,
     event_stream: Option<Mutex<EventStreamNonBlocking>>,
-    responses: Mutex<FxHashMap<StreamId, Frame>>,
     compression: Compression,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-}
-
-impl<LB> GetCompressor for Session<LB> {
-    /// Returns compression that current session has.
-    fn compressor(&self) -> Compression {
-        self.compression
-    }
 }
 
 impl<'a, LB> Session<LB> {
@@ -143,23 +138,6 @@ impl<
 {
 }
 
-#[async_trait]
-impl<LB> ResponseCache for Session<LB>
-where
-    LB: Send,
-{
-    async fn match_or_cache_response(&self, stream_id: i16, frame: Frame) -> Option<Frame> {
-        if frame.stream == stream_id {
-            return Some(frame);
-        }
-
-        let mut responses = self.responses.lock().await;
-
-        responses.insert(frame.stream, frame);
-        responses.remove(&stream_id)
-    }
-}
-
 #[cfg(feature = "rust-tls")]
 async fn connect_tls_static<LB>(
     node_configs: &ClusterRustlsConfig,
@@ -173,7 +151,7 @@ where
     let mut nodes: Vec<Arc<RustlsConnectionPool>> = Vec::with_capacity(node_configs.0.len());
 
     for node_config in &node_configs.0 {
-        let node_connection_pool = new_rustls_pool(node_config.clone()).await?;
+        let node_connection_pool = new_rustls_pool(node_config.clone(), compression).await?;
         nodes.push(Arc::new(node_connection_pool));
     }
 
@@ -182,7 +160,6 @@ where
     Ok(Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Default::default(),
         compression,
         retry_policy,
     })
@@ -202,7 +179,7 @@ where
     let mut nodes: Vec<Arc<RustlsConnectionPool>> = Vec::with_capacity(node_configs.0.len());
 
     for node_config in &node_configs.0 {
-        let node_connection_pool = new_rustls_pool(node_config.clone()).await?;
+        let node_connection_pool = new_rustls_pool(node_config.clone(), compression).await?;
         nodes.push(Arc::new(node_connection_pool));
     }
 
@@ -211,7 +188,6 @@ where
     let mut session = Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Default::default(),
         compression,
         retry_policy,
     };
@@ -224,7 +200,7 @@ where
         )
         .await?;
 
-    tokio::spawn(listener.start(Compression::None));
+    tokio::spawn(listener.start());
 
     session.event_stream = Some(Mutex::new(event_stream));
 
@@ -249,9 +225,9 @@ pub async fn connect_generic_static<T, M, C, A, LB>(
     mut load_balancing: LB,
     compression: Compression,
     retry_policy: RetryPolicyWrapper,
-) -> Result<Session<LB>, C::Error>
+) -> error::Result<Session<LB>>
 where
-    M: bb8::ManageConnection<Connection = Mutex<T>>,
+    M: bb8::ManageConnection<Connection = T>,
     A: Clone,
     T: CdrsTransport<Manager = M>,
     C: GenericClusterConfig<Transport = T, Address = A>,
@@ -269,7 +245,6 @@ where
     Ok(Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Default::default(),
         compression,
         retry_policy: retry_policy.0,
     })
@@ -283,9 +258,9 @@ pub async fn connect_generic_dynamic<T, M, C, A, LB>(
     compression: Compression,
     retry_policy: RetryPolicyWrapper,
     event_src: NodeTcpConfig,
-) -> Result<Session<LB>, C::Error>
+) -> error::Result<Session<LB>>
 where
-    M: bb8::ManageConnection<Connection = Mutex<T>>,
+    M: bb8::ManageConnection<Connection = T>,
     A: Clone,
     T: CdrsTransport<Manager = M>,
     C: GenericClusterConfig<Transport = T, Address = A>,
@@ -303,7 +278,6 @@ where
     let mut session = Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Default::default(),
         compression,
         retry_policy: retry_policy.0,
     };
@@ -316,7 +290,7 @@ where
         )
         .await?;
 
-    tokio::spawn(listener.start(Compression::None));
+    tokio::spawn(listener.start());
 
     session.event_stream = Some(Mutex::new(event_stream));
 
@@ -335,7 +309,7 @@ where
     let mut nodes: Vec<Arc<TcpConnectionPool>> = Vec::with_capacity(node_configs.0.len());
 
     for node_config in &node_configs.0 {
-        let node_connection_pool = new_tcp_pool(node_config.clone()).await?;
+        let node_connection_pool = new_tcp_pool(node_config.clone(), compression).await?;
         nodes.push(Arc::new(node_connection_pool));
     }
 
@@ -344,7 +318,6 @@ where
     Ok(Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Default::default(),
         compression,
         retry_policy,
     })
@@ -364,7 +337,7 @@ where
     let mut nodes: Vec<Arc<TcpConnectionPool>> = Vec::with_capacity(node_configs.0.len());
 
     for node_config in &node_configs.0 {
-        let node_connection_pool = new_tcp_pool(node_config.clone()).await?;
+        let node_connection_pool = new_tcp_pool(node_config.clone(), compression).await?;
         nodes.push(Arc::new(node_connection_pool));
     }
 
@@ -373,7 +346,6 @@ where
     let mut session = Session {
         load_balancing: Mutex::new(load_balancing),
         event_stream: None,
-        responses: Default::default(),
         compression,
         retry_policy,
     };
@@ -386,7 +358,7 @@ where
         )
         .await?;
 
-    tokio::spawn(listener.start(Compression::None));
+    tokio::spawn(listener.start());
 
     session.event_stream = Some(Mutex::new(event_stream));
 
@@ -685,29 +657,73 @@ impl<L> Session<L> {
         node: &str,
         authenticator: &A,
         events: Vec<SimpleServerEvent>,
-    ) -> error::Result<(Listener<Mutex<TransportTcp>>, EventStream)> {
-        let compression = self.compressor();
+    ) -> error::Result<(Listener<TransportTcp>, EventStream)> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
-        let transport = TransportTcp::new(node, keyspace_holder.clone())
-            .await
-            .map(Mutex::new)?;
+        let (frame_sender, frame_receiver) = channel(256);
+        let transport = TransportTcp::new(
+            node,
+            keyspace_holder.clone(),
+            Some(frame_sender),
+            self.compression,
+        )
+        .await?;
 
-        startup(&transport, authenticator, keyspace_holder.deref()).await?;
+        startup(
+            &transport,
+            authenticator,
+            keyspace_holder.deref(),
+            self.compression,
+        )
+        .await?;
 
-        let query_frame = Frame::new_req_register(events).as_bytes();
-        {
-            let mut transport = transport.lock().await;
-            transport.write_all(&query_frame).await?;
+        let query_frame = Frame::new_req_register(events);
+        transport.write_frame(query_frame).await?;
 
-            // TLS connections may not write data to the stream immediately,
-            // but may wait for more data. Ensure the data is sent.
-            // Otherwise Cassandra server will not send out a response.
-            transport.flush().await?;
-        }
+        let (sender, receiver) = std_channel();
+        Ok((
+            new_listener(transport, sender, frame_receiver),
+            EventStream::new(receiver),
+        ))
+    }
 
-        parse_frame(&transport, compression).await?;
+    #[cfg(feature = "rust-tls")]
+    /// Returns new event listener.
+    pub async fn listen_tls<A: SaslAuthenticatorProvider + Send + Sync + ?Sized + 'static>(
+        &self,
+        node: net::SocketAddr,
+        authenticator: &A,
+        events: Vec<SimpleServerEvent>,
+        dns_name: webpki::DNSName,
+        config: Arc<rustls::ClientConfig>,
+    ) -> error::Result<(Listener<TransportRustls>, EventStream)> {
+        let keyspace_holder = Arc::new(KeyspaceHolder::default());
+        let (frame_sender, frame_receiver) = channel(256);
+        let transport = TransportRustls::new(
+            node,
+            dns_name,
+            config,
+            keyspace_holder.clone(),
+            Some(frame_sender),
+            self.compression,
+        )
+        .await?;
 
-        Ok(new_listener(transport))
+        startup(
+            &transport,
+            authenticator,
+            keyspace_holder.deref(),
+            self.compression,
+        )
+        .await?;
+
+        let query_frame = Frame::new_req_register(events);
+        transport.write_frame(query_frame).await?;
+
+        let (sender, receiver) = std_channel();
+        Ok((
+            new_listener(transport, sender, frame_receiver),
+            EventStream::new(receiver),
+        ))
     }
 
     pub async fn listen_non_blocking<
@@ -717,7 +733,7 @@ impl<L> Session<L> {
         node: &str,
         authenticator: &A,
         events: Vec<SimpleServerEvent>,
-    ) -> error::Result<(Listener<Mutex<TransportTcp>>, EventStreamNonBlocking)> {
+    ) -> error::Result<(Listener<TransportTcp>, EventStreamNonBlocking)> {
         self.listen(node, authenticator, events).await.map(|l| {
             let (listener, stream) = l;
             (listener, stream.into())

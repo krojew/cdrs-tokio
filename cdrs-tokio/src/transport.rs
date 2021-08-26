@@ -12,45 +12,43 @@
 //!with `rust-tls` feature.
 use crate::{
     cluster::{KeyspaceHolder, TcpConnectionsManager},
-    error::FromCdrsError,
-    Error,
+    compression::Compression,
+    frame::{Frame, StreamId},
+    Error, Result,
 };
 use async_trait::async_trait;
+use fxhash::FxHashMap;
 use std::io;
-use std::sync::Arc;
-use std::task::Context;
-use tokio::macros::support::{Pin, Poll};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use tokio::io::{split, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
-use tokio::{
-    io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf},
-    sync::Mutex,
-};
+use tokio::sync::{mpsc, oneshot};
 
 #[cfg(feature = "rust-tls")]
 use crate::cluster::RustlsConnectionsManager;
+use crate::frame::frame_result::ResultKind;
+use crate::frame::parser::parse_frame;
+use crate::frame::{AsBytes, FromBytes, Opcode, EVENT_STREAM_ID};
+use crate::types::INT_LEN;
 #[cfg(feature = "rust-tls")]
 use std::net;
 #[cfg(feature = "rust-tls")]
-use tokio_rustls::{client::TlsStream as RustlsStream, TlsConnector as RustlsConnector};
+use tokio_rustls::TlsConnector as RustlsConnector;
 
-// TODO [v x.x.x]: CdrsTransport: ... + BufReader + ButWriter + ...
 ///General CDRS transport trait. Both [`TransportTcp`]
-///and [`TransportRustls`] has their own implementations of this trait. Generally
-///speaking it extends/includes `io::Read` and `io::Write` traits and should be thread safe.
+///and [`TransportRustls`] has their own implementations of this trait.
 #[async_trait]
-pub trait CdrsTransport: Sized + AsyncRead + AsyncWriteExt + Send + Sync {
-    type Error: FromCdrsError;
-    type Manager: bb8::ManageConnection<Connection = Mutex<Self>, Error = Self::Error>;
+pub trait CdrsTransport: Sized + Send + Sync {
+    type Manager: bb8::ManageConnection<Connection = Self, Error = Error>;
 
-    /// Sets last USEd keyspace for further connections from the same pool
-    async fn set_current_keyspace(&self, keyspace: &str);
+    /// Schedules data frame for writing and waits for a response
+    async fn write_frame(&self, frame: Frame) -> Result<Frame>;
 }
 
 /// Default Tcp transport.
-#[derive(Debug)]
 pub struct TransportTcp {
-    tcp: TcpStream,
-    keyspace_holder: Arc<KeyspaceHolder>,
+    inner: AsyncTransport,
 }
 
 impl TransportTcp {
@@ -60,66 +58,52 @@ impl TransportTcp {
     ///
     /// ```no_run
     /// use cdrs_tokio::transport::TransportTcp;
+    /// use cdrs_tokio::compression::Compression;
     ///
     /// #[tokio::main]
     /// async fn main() {
     ///     let addr = "127.0.0.1:9042";
-    ///     let tcp_transport = TransportTcp::new(addr, Default::default()).await.unwrap();
+    ///     let tcp_transport = TransportTcp::new(addr, Default::default(), None, Compression::None).await.unwrap();
     /// }
     /// ```
-    pub async fn new(addr: &str, keyspace_holder: Arc<KeyspaceHolder>) -> io::Result<TransportTcp> {
-        TcpStream::connect(addr).await.map(|socket| TransportTcp {
-            tcp: socket,
-            keyspace_holder,
+    pub async fn new(
+        addr: &str,
+        keyspace_holder: Arc<KeyspaceHolder>,
+        event_handler: Option<mpsc::Sender<Frame>>,
+        compression: Compression,
+    ) -> io::Result<TransportTcp> {
+        TcpStream::connect(addr).await.map(move |socket| {
+            let (read_half, write_half) = split(socket);
+            TransportTcp {
+                inner: AsyncTransport::new(
+                    compression,
+                    read_half,
+                    write_half,
+                    event_handler,
+                    keyspace_holder,
+                ),
+            }
         })
     }
-}
 
-impl AsyncRead for TransportTcp {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.tcp).poll_read(cx, buf)
-    }
-}
-
-impl AsyncWrite for TransportTcp {
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.tcp).poll_write(cx, buf)
-    }
-
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.tcp).poll_flush(cx)
-    }
-
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.tcp).poll_shutdown(cx)
+    #[inline]
+    pub fn is_broken(&self) -> bool {
+        self.inner.is_broken()
     }
 }
 
 #[async_trait]
 impl CdrsTransport for TransportTcp {
-    type Error = Error;
     type Manager = TcpConnectionsManager;
 
-    async fn set_current_keyspace(&self, keyspace: &str) {
-        self.keyspace_holder.set_current_keyspace(keyspace).await;
+    async fn write_frame(&self, frame: Frame) -> Result<Frame> {
+        self.inner.write_frame(frame).await
     }
 }
 
 #[cfg(feature = "rust-tls")]
 pub struct TransportRustls {
-    inner: RustlsStream<TcpStream>,
-    keyspace_holder: Arc<KeyspaceHolder>,
+    inner: AsyncTransport,
 }
 
 #[cfg(feature = "rust-tls")]
@@ -130,62 +114,253 @@ impl TransportRustls {
         dns_name: webpki::DNSName,
         config: Arc<rustls::ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
+        event_handler: Option<mpsc::Sender<Frame>>,
+        compression: Compression,
     ) -> io::Result<Self> {
         let stream = TcpStream::connect(addr).await?;
         let connector = RustlsConnector::from(config.clone());
         let stream = connector.connect(dns_name.as_ref(), stream).await?;
+        let (read_half, write_half) = split(stream);
 
         Ok(Self {
-            inner: stream,
-            keyspace_holder,
+            inner: AsyncTransport::new(
+                compression,
+                read_half,
+                write_half,
+                event_handler,
+                keyspace_holder,
+            ),
         })
     }
-}
-
-#[cfg(feature = "rust-tls")]
-impl AsyncRead for TransportRustls {
-    #[inline]
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.inner).poll_read(cx, buf)
-    }
-}
-
-#[cfg(feature = "rust-tls")]
-impl AsyncWrite for TransportRustls {
-    #[inline]
-    fn poll_write(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
-        Pin::new(&mut self.inner).poll_write(cx, buf)
-    }
 
     #[inline]
-    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.inner).poll_flush(cx)
-    }
-
-    #[inline]
-    fn poll_shutdown(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<(), io::Error>> {
-        Pin::new(&mut self.inner).poll_shutdown(cx)
+    pub fn is_broken(&self) -> bool {
+        self.inner.is_broken()
     }
 }
 
 #[cfg(feature = "rust-tls")]
 #[async_trait]
 impl CdrsTransport for TransportRustls {
-    type Error = Error;
     type Manager = RustlsConnectionsManager;
 
-    async fn set_current_keyspace(&self, keyspace: &str) {
-        self.keyspace_holder.set_current_keyspace(keyspace).await;
+    async fn write_frame(&self, frame: Frame) -> Result<Frame> {
+        self.inner.write_frame(frame).await
+    }
+}
+
+struct AsyncTransport {
+    compression: Compression,
+    write_sender: mpsc::Sender<Request>,
+    is_broken: Arc<AtomicBool>,
+}
+
+impl AsyncTransport {
+    pub fn new<T: AsyncRead + AsyncWrite + Send + 'static>(
+        compression: Compression,
+        read_half: ReadHalf<T>,
+        write_half: WriteHalf<T>,
+        event_handler: Option<mpsc::Sender<Frame>>,
+        keyspace_holder: Arc<KeyspaceHolder>,
+    ) -> Self {
+        let (write_sender, write_receiver) = mpsc::channel(256);
+        let is_broken = Arc::new(AtomicBool::new(false));
+
+        tokio::spawn(Self::start_processing(
+            write_receiver,
+            event_handler,
+            read_half,
+            write_half,
+            keyspace_holder,
+            is_broken.clone(),
+            compression,
+        ));
+
+        AsyncTransport {
+            compression,
+            write_sender,
+            is_broken,
+        }
+    }
+
+    #[inline]
+    pub fn is_broken(&self) -> bool {
+        self.is_broken.load(Ordering::Relaxed)
+    }
+
+    pub async fn write_frame(&self, frame: Frame) -> Result<Frame> {
+        let (sender, receiver) = oneshot::channel();
+        let stream_id = frame.stream;
+
+        // startup message is never compressed
+        let data = if frame.opcode != Opcode::Startup {
+            frame.encode_with(self.compression)?
+        } else {
+            frame.as_bytes()
+        };
+
+        self.write_sender
+            .send(Request::new(data, stream_id, sender))
+            .await
+            .map_err(|_| Error::General("Connection closed when writing data!".into()))?;
+
+        receiver
+            .await
+            .map_err(|_| Error::General("Connection closed while waiting for response!".into()))?
+    }
+
+    async fn start_processing<T: AsyncRead + AsyncWrite>(
+        write_receiver: mpsc::Receiver<Request>,
+        event_handler: Option<mpsc::Sender<Frame>>,
+        read_half: ReadHalf<T>,
+        write_half: WriteHalf<T>,
+        keyspace_holder: Arc<KeyspaceHolder>,
+        is_broken: Arc<AtomicBool>,
+        compression: Compression,
+    ) {
+        let response_handler_map = ResponseHandlerMap::new();
+
+        let writer = Self::start_writing(write_receiver, write_half, &response_handler_map);
+        let reader = Self::start_reading(
+            read_half,
+            event_handler,
+            compression,
+            keyspace_holder,
+            &response_handler_map,
+        );
+
+        let result = tokio::try_join!(writer, reader);
+        if let Err(error) = result {
+            is_broken.store(true, Ordering::Relaxed);
+            response_handler_map.signal_general_error(&error.to_string());
+        }
+    }
+
+    async fn start_reading<T: AsyncRead>(
+        mut read_half: ReadHalf<T>,
+        event_handler: Option<mpsc::Sender<Frame>>,
+        compression: Compression,
+        keyspace_holder: Arc<KeyspaceHolder>,
+        response_handler_map: &ResponseHandlerMap,
+    ) -> Result<()> {
+        loop {
+            let frame = parse_frame(&mut read_half, compression).await;
+            match frame {
+                Ok(frame) => {
+                    if frame.stream >= 0 {
+                        // in case we get a SetKeyspace result, we need to store current keyspace
+                        // checks are done manually for speed
+                        if frame.opcode == Opcode::Result {
+                            let result_kind = ResultKind::from_bytes(&frame.body[..INT_LEN])?;
+                            if result_kind == ResultKind::SetKeyspace {
+                                let response_body = frame.body()?;
+                                let set_keyspace =
+                                    response_body.into_set_keyspace().ok_or_else(|| {
+                                        Error::General(
+                                            "SetKeyspace not found with SetKeyspace opcode!".into(),
+                                        )
+                                    })?;
+
+                                keyspace_holder
+                                    .update_current_keyspace(set_keyspace.body.as_str())
+                                    .await;
+                            }
+                        }
+
+                        // normal response to query
+                        response_handler_map.send_response(frame.stream, Ok(frame))?;
+                    } else if frame.stream == EVENT_STREAM_ID {
+                        // server event
+                        if let Some(event_handler) = &event_handler {
+                            let _ = event_handler.send(frame).await;
+                        }
+                    }
+                }
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    async fn start_writing<T: AsyncWrite>(
+        mut write_receiver: mpsc::Receiver<Request>,
+        mut write_half: WriteHalf<T>,
+        response_handler_map: &ResponseHandlerMap,
+    ) -> Result<()> {
+        while let Some(request) = write_receiver.recv().await {
+            response_handler_map.add_handler(request.stream_id, request.handler);
+
+            if let Err(error) = write_half.write_all(&request.data).await {
+                response_handler_map.send_response(request.stream_id, Err(error.into()))?;
+                return Err(Error::General("Write channel failure!".into()));
+            }
+
+            if cfg!(feature = "rust-tls") {
+                // TLS sometimes waits for more data, thus stalling communication
+                if let Err(error) = write_half.flush().await {
+                    response_handler_map.send_response(request.stream_id, Err(error.into()))?;
+                    return Err(Error::General("Write channel failure!".into()));
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+type ResponseHandler = oneshot::Sender<Result<Frame>>;
+
+struct ResponseHandlerMap {
+    stream_handlers: Mutex<FxHashMap<StreamId, ResponseHandler>>,
+}
+
+impl ResponseHandlerMap {
+    pub fn new() -> Self {
+        ResponseHandlerMap {
+            stream_handlers: Default::default(),
+        }
+    }
+
+    #[inline]
+    pub fn add_handler(&self, stream_id: StreamId, handler: ResponseHandler) {
+        self.stream_handlers
+            .lock()
+            .unwrap()
+            .insert(stream_id, handler);
+    }
+
+    pub fn send_response(&self, stream_id: StreamId, response: Result<Frame>) -> Result<()> {
+        match self.stream_handlers.lock().unwrap().remove(&stream_id) {
+            Some(handler) => {
+                let _ = handler.send(response);
+                Ok(())
+            }
+            // unmatched stream - probably a bug somewhere
+            None => Err(Error::General(format!(
+                "Unmatched stream id: {}",
+                stream_id
+            ))),
+        }
+    }
+
+    pub fn signal_general_error(&self, error: &str) {
+        for (_, handler) in self.stream_handlers.lock().unwrap().drain() {
+            let _ = handler.send(Err(Error::General(error.to_string())));
+        }
+    }
+}
+
+struct Request {
+    data: Vec<u8>,
+    stream_id: StreamId,
+    handler: ResponseHandler,
+}
+
+impl Request {
+    pub fn new(data: Vec<u8>, stream_id: StreamId, handler: ResponseHandler) -> Self {
+        Request {
+            data,
+            stream_id,
+            handler,
+        }
     }
 }

@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 
-use crate::cluster::{GetCompressor, GetConnection, GetRetryPolicy, ResponseCache};
+use crate::cluster::{GetConnection, GetRetryPolicy};
 use crate::error;
-use crate::frame::{AsBytes, Frame};
+use crate::frame::Frame;
 use crate::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
 use crate::transport::CdrsTransport;
 
@@ -10,7 +10,7 @@ use super::utils::{prepare_flags, send_frame};
 
 #[async_trait]
 pub trait QueryExecutor<T: CdrsTransport + Unpin + 'static>:
-    GetConnection<T> + GetCompressor + ResponseCache + GetRetryPolicy + Sync
+    GetConnection<T> + GetRetryPolicy + Sync
 {
     async fn query_with_params_tw<Q: ToString + Send>(
         &self,
@@ -29,13 +29,7 @@ pub trait QueryExecutor<T: CdrsTransport + Unpin + 'static>:
 
         let query_frame = Frame::new_query(query, flags);
 
-        send_frame(
-            self,
-            query_frame.as_bytes(),
-            query_frame.stream,
-            is_idempotent,
-        )
-        .await
+        send_frame(self, query_frame, is_idempotent).await
     }
 
     /// Executes a query with default parameters:

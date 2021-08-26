@@ -1,9 +1,8 @@
 use async_trait::async_trait;
 use bb8::{Builder, ManageConnection, PooledConnection};
-use tokio::io::AsyncWriteExt;
-use tokio::sync::Mutex;
 
 use std::net;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::authenticators::SaslAuthenticatorProvider;
@@ -11,22 +10,24 @@ use crate::cluster::ConnectionPool;
 use crate::cluster::{startup, KeyspaceHolder, NodeRustlsConfig};
 use crate::compression::Compression;
 use crate::error;
-use crate::frame::parser::parse_frame;
-use crate::frame::{AsBytes, Frame};
-use crate::transport::TransportRustls;
-use std::ops::Deref;
+use crate::frame::Frame;
+use crate::transport::{CdrsTransport, TransportRustls};
 
 pub type RustlsConnectionPool = ConnectionPool<TransportRustls>;
 
 /// `bb8::Pool` of SSL-based CDRS connections.
 ///
 /// Used internally for SSL Session for holding connections to a specific Cassandra node.
-pub async fn new_rustls_pool(node_config: NodeRustlsConfig) -> error::Result<RustlsConnectionPool> {
+pub async fn new_rustls_pool(
+    node_config: NodeRustlsConfig,
+    compression: Compression,
+) -> error::Result<RustlsConnectionPool> {
     let manager = RustlsConnectionsManager::new(
         node_config.addr,
         node_config.dns_name,
         node_config.config,
         node_config.authenticator,
+        compression,
     );
 
     let pool = Builder::new()
@@ -49,6 +50,7 @@ pub struct RustlsConnectionsManager {
     config: Arc<rustls::ClientConfig>,
     auth: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
+    compression: Compression,
 }
 
 impl RustlsConnectionsManager {
@@ -58,55 +60,51 @@ impl RustlsConnectionsManager {
         dns_name: webpki::DNSName,
         config: Arc<rustls::ClientConfig>,
         auth: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+        compression: Compression,
     ) -> Self {
-        Self {
+        RustlsConnectionsManager {
             addr,
             dns_name,
             config,
             auth,
             keyspace_holder: Default::default(),
+            compression,
         }
     }
 }
 
 #[async_trait]
 impl ManageConnection for RustlsConnectionsManager {
-    type Connection = Mutex<TransportRustls>;
+    type Connection = TransportRustls;
     type Error = error::Error;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
-        let transport = Mutex::new(
-            TransportRustls::new(
-                self.addr,
-                self.dns_name.clone(),
-                self.config.clone(),
-                self.keyspace_holder.clone(),
-            )
-            .await?,
-        );
-        startup(&transport, self.auth.deref(), self.keyspace_holder.deref()).await?;
+        let transport = TransportRustls::new(
+            self.addr,
+            self.dns_name.clone(),
+            self.config.clone(),
+            self.keyspace_holder.clone(),
+            None,
+            self.compression,
+        )
+        .await?;
+        startup(
+            &transport,
+            self.auth.deref(),
+            self.keyspace_holder.deref(),
+            self.compression,
+        )
+        .await?;
 
         Ok(transport)
     }
 
     async fn is_valid(&self, conn: &mut PooledConnection<'_, Self>) -> Result<(), Self::Error> {
-        let options_frame = Frame::new_req_options().as_bytes();
-
-        {
-            let mut conn = conn.lock().await;
-            conn.write_all(&options_frame).await?;
-
-            // TLS connections may not write data to the stream immediately,
-            // but may wait for more data. Ensure the data is sent.
-            // Otherwise Cassandra server will not send out a response.
-            conn.flush().await?;
-        }
-
-        parse_frame(conn, Compression::None).await?;
-        Ok(())
+        let options_frame = Frame::new_req_options();
+        conn.write_frame(options_frame).await.map(|_| ())
     }
 
-    fn has_broken(&self, _conn: &mut Self::Connection) -> bool {
-        false
+    fn has_broken(&self, conn: &mut Self::Connection) -> bool {
+        conn.is_broken()
     }
 }

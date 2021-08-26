@@ -38,8 +38,7 @@ pub trait CdrsSession<
   T: CdrsTransport + 'static,
   M: bb8::ManageConnection<Connection = cell::RefCell<T>, Error = error::Error>,
 >:
-  GetCompressor<'static>
-  + GetConnection<T, M>
+  GetConnection<T, M>
   + QueryExecutor<T, M>
   + PrepareExecutor<T, M>
   + ExecExecutor<T, M>
@@ -67,10 +66,10 @@ The same query could be made leveraging something that is called Values. It allo
 extern crate cdrs;
 //...
 
-const insert_numbers_query: &'static str = "INSERT INTO my.numbers (my_int, my_bigint) VALUES (?, ?)";
+const INSERT_NUMBERS_QUERY: &'static str = "INSERT INTO my.numbers (my_int, my_bigint) VALUES (?, ?)";
 let values = query_values!(1 as i32, 1 as i64);
 
-session.query_with_values(insert_numbers_query, values).unwrap();
+session.query_with_values(INSERT_NUMBERS_QUERY, values).unwrap();
 ```
 
 Here we've provided a generic query string for inserting numbers into `my.numbers` table. This query string doesn't have actual values hardcoded so exactly the same query can be used for multiple insert operations. Such sort of query strings can be used for Prepare-and-Execute operations when a query string is sent just once during Prepare step and then Execution operation is performed each time new values should be inserted. For more detailes see [Preparing and Executing](./preparing-and-executing-queries.md) section.

@@ -5,13 +5,13 @@ Query `Value`-s can be used along with query string templates. Query string temp
 For instance:
 
 ```rust
-const insert_numbers_query: &'static str = "INSERT INTO my.numbers (my_int, my_bigint) VALUES (?, ?)";
+const INSERT_NUMBERS_QUERY: &'static str = "INSERT INTO my.numbers (my_int, my_bigint) VALUES (?, ?)";
 let values = query_values!(1 as i32, 1 as i64);
 
-session.query_with_values(insert_numbers_query, values).unwrap();
+session.query_with_values(INSERT_NUMBERS_QUERY, values).unwrap();
 ```
 
-`insert_numbers_query` is a typical query template. `session::query_with_values` method provides an API for using such query strings along with query values.
+`INSERT_NUMBERS_QUERY` is a typical query template. `session::query_with_values` method provides an API for using such query strings along with query values.
 
 There is full list of `CdrsSession` methods that allow using values and query templates:
 
@@ -38,10 +38,10 @@ let values = query_values!(1 as i32, 1 as i64);
 extern crate cdrs;
 //...
 
-const insert_numbers_query: &'static str = "INSERT INTO my.numbers (my_int, my_bigint) VALUES (?, ?)";
+const INSERT_NUMBERS_QUERY: &'static str = "INSERT INTO my.numbers (my_int, my_bigint) VALUES (?, ?)";
 let values = query_values!(my_bigint => 1 as i64, my_int => 1 as i64);
 
-session.query_with_values(insert_numbers_query, values).unwrap();
+session.query_with_values(INSERT_NUMBERS_QUERY, values).unwrap();
 ```
 
 What kind of values can be used as `query_values!` arguments? All types that have implementations of [`Into<Bytes>` trait](https://docs.rs/cdrs/2.0.0-beta.1/cdrs/types/value/struct.Bytes.html).

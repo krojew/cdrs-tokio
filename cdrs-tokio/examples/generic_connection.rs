@@ -2,7 +2,6 @@ use std::{
     collections::HashMap,
     net::IpAddr,
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
-    result::Result,
     sync::Arc,
 };
 
@@ -11,6 +10,7 @@ use cdrs_tokio::{
     cluster::session::Session,
     cluster::TcpConnectionPool,
     cluster::{ConnectionPool, GenericClusterConfig, TcpConnectionsManager},
+    error::Result,
     frame::AsBytes,
     load_balancing::RoundRobin,
     query::*,
@@ -25,6 +25,7 @@ use cdrs_tokio_helpers_derive::*;
 
 use async_trait::async_trait;
 use cdrs_tokio::cluster::session::RetryPolicyWrapper;
+use cdrs_tokio::compression::Compression;
 use maplit::hashmap;
 
 type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
@@ -70,17 +71,17 @@ impl VirtualConnectionAddress {
 impl GenericClusterConfig for VirtualClusterConfig {
     type Transport = TransportTcp;
     type Address = VirtualConnectionAddress;
-    type Error = cdrs_tokio::Error;
 
     async fn connect(
         &self,
         addr: VirtualConnectionAddress,
-    ) -> Result<ConnectionPool<Self::Transport>, Self::Error> {
+    ) -> Result<ConnectionPool<Self::Transport>> {
         // create a connection manager that points at the rewritten address so that's where it connects, but
         // then return a pool with the 'virtual' address for internal purposes.
         let manager = TcpConnectionsManager::new(
             addr.rewrite(&self.mask, &self.actual),
             self.authenticator.clone(),
+            Compression::None,
         );
         Ok(ConnectionPool::new(
             bb8::Pool::builder().build(manager).await?,
@@ -107,7 +108,7 @@ async fn main() {
         VirtualConnectionAddress(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 9043)),
     ];
     let load_balancing = RoundRobin::new();
-    let compression = cdrs_tokio::compression::Compression::None;
+    let compression = Compression::None;
 
     let mut no_compression = cdrs_tokio::cluster::connect_generic_static(
         &cluster_config,
