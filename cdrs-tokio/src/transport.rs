@@ -1,7 +1,7 @@
 //!This module contains a declaration of `CdrsTransport` trait which should be implemented
 //!for particular transport in order to be able using it as a transport of CDRS client.
 //!
-//!Currently CDRS provides to concrete transports which implement `CDRSTranpsport` trait. There
+//!Currently CDRS provides to concrete transports which implement `CdrsTransport` trait. There
 //! are:
 //!
 //! * [`TransportTcp`] is default TCP transport which is usually used to establish
@@ -10,40 +10,40 @@
 //! * [`TransportRustls`] is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
-use crate::{
-    cluster::{KeyspaceHolder, TcpConnectionsManager},
-    compression::Compression,
-    frame::{Frame, StreamId},
-    Error, Result,
-};
 use async_trait::async_trait;
 use fxhash::FxHashMap;
 use std::io;
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::io::{split, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
-
 #[cfg(feature = "rust-tls")]
-use crate::cluster::RustlsConnectionsManager;
+use tokio_rustls::TlsConnector as RustlsConnector;
+
+use crate::cluster::KeyspaceHolder;
+use crate::compression::Compression;
 use crate::frame::frame_result::ResultKind;
 use crate::frame::parser::parse_frame;
 use crate::frame::{AsBytes, FromBytes, Opcode, EVENT_STREAM_ID};
+use crate::frame::{Frame, StreamId};
 use crate::types::INT_LEN;
-#[cfg(feature = "rust-tls")]
-use std::net;
-#[cfg(feature = "rust-tls")]
-use tokio_rustls::TlsConnector as RustlsConnector;
+use crate::Error;
+use crate::Result;
 
 ///General CDRS transport trait. Both [`TransportTcp`]
 ///and [`TransportRustls`] has their own implementations of this trait.
 #[async_trait]
 pub trait CdrsTransport: Sized + Send + Sync {
-    type Manager: bb8::ManageConnection<Connection = Self, Error = Error>;
-
     /// Schedules data frame for writing and waits for a response
     async fn write_frame(&self, frame: Frame) -> Result<Frame>;
+
+    /// Checks if the connection is broken (e.g. after read or write errors)
+    fn is_broken(&self) -> bool;
+
+    /// Returns associated node address
+    fn addr(&self) -> &SocketAddr;
 }
 
 /// Default Tcp transport.
@@ -53,21 +53,8 @@ pub struct TransportTcp {
 
 impl TransportTcp {
     /// Constructs a new `TransportTcp`.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// use cdrs_tokio::transport::TransportTcp;
-    /// use cdrs_tokio::compression::Compression;
-    ///
-    /// #[tokio::main]
-    /// async fn main() {
-    ///     let addr = "127.0.0.1:9042";
-    ///     let tcp_transport = TransportTcp::new(addr, Default::default(), None, Compression::None).await.unwrap();
-    /// }
-    /// ```
     pub async fn new(
-        addr: &str,
+        addr: SocketAddr,
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Frame>>,
         compression: Compression,
@@ -76,6 +63,7 @@ impl TransportTcp {
             let (read_half, write_half) = split(socket);
             TransportTcp {
                 inner: AsyncTransport::new(
+                    addr,
                     compression,
                     read_half,
                     write_half,
@@ -85,19 +73,23 @@ impl TransportTcp {
             }
         })
     }
-
-    #[inline]
-    pub fn is_broken(&self) -> bool {
-        self.inner.is_broken()
-    }
 }
 
 #[async_trait]
 impl CdrsTransport for TransportTcp {
-    type Manager = TcpConnectionsManager;
-
+    #[inline]
     async fn write_frame(&self, frame: Frame) -> Result<Frame> {
         self.inner.write_frame(frame).await
+    }
+
+    #[inline]
+    fn is_broken(&self) -> bool {
+        self.inner.is_broken()
+    }
+
+    #[inline]
+    fn addr(&self) -> &SocketAddr {
+        self.inner.addr()
     }
 }
 
@@ -110,7 +102,7 @@ pub struct TransportRustls {
 impl TransportRustls {
     ///Creates new instance with provided configuration
     pub async fn new(
-        addr: net::SocketAddr,
+        addr: SocketAddr,
         dns_name: webpki::DNSName,
         config: Arc<rustls::ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
@@ -124,6 +116,7 @@ impl TransportRustls {
 
         Ok(Self {
             inner: AsyncTransport::new(
+                addr,
                 compression,
                 read_half,
                 write_half,
@@ -132,24 +125,29 @@ impl TransportRustls {
             ),
         })
     }
-
-    #[inline]
-    pub fn is_broken(&self) -> bool {
-        self.inner.is_broken()
-    }
 }
 
 #[cfg(feature = "rust-tls")]
 #[async_trait]
 impl CdrsTransport for TransportRustls {
-    type Manager = RustlsConnectionsManager;
-
+    #[inline]
     async fn write_frame(&self, frame: Frame) -> Result<Frame> {
         self.inner.write_frame(frame).await
+    }
+
+    #[inline]
+    fn is_broken(&self) -> bool {
+        self.inner.is_broken()
+    }
+
+    #[inline]
+    fn addr(&self) -> &SocketAddr {
+        self.inner.addr()
     }
 }
 
 struct AsyncTransport {
+    addr: SocketAddr,
     compression: Compression,
     write_sender: mpsc::Sender<Request>,
     is_broken: Arc<AtomicBool>,
@@ -157,6 +155,7 @@ struct AsyncTransport {
 
 impl AsyncTransport {
     pub fn new<T: AsyncRead + AsyncWrite + Send + 'static>(
+        addr: SocketAddr,
         compression: Compression,
         read_half: ReadHalf<T>,
         write_half: WriteHalf<T>,
@@ -177,6 +176,7 @@ impl AsyncTransport {
         ));
 
         AsyncTransport {
+            addr,
             compression,
             write_sender,
             is_broken,
@@ -186,6 +186,11 @@ impl AsyncTransport {
     #[inline]
     pub fn is_broken(&self) -> bool {
         self.is_broken.load(Ordering::Relaxed)
+    }
+
+    #[inline]
+    fn addr(&self) -> &SocketAddr {
+        &self.addr
     }
 
     pub async fn write_frame(&self, frame: Frame) -> Result<Frame> {

@@ -31,11 +31,10 @@ float_eq = "0.6"
 fxhash = "0.2"
 log = "0.4.1"
 lz4_flex = "0.8"
-bb8 = "0.7"
 rand = "0.8"
 snap = "1.0"
 time = "0.2"
-tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
 tokio-rustls = { version = "0.22", optional = true }
 uuid = "0.8"
 webpki = { version = "0.21", optional = true }

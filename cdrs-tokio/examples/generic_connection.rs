@@ -8,8 +8,7 @@ use std::{
 use cdrs_tokio::{
     authenticators::{SaslAuthenticatorProvider, StaticPasswordAuthenticatorProvider},
     cluster::session::Session,
-    cluster::TcpConnectionPool,
-    cluster::{ConnectionPool, GenericClusterConfig, TcpConnectionsManager},
+    cluster::{GenericClusterConfig, TcpConnectionManager},
     error::Result,
     frame::AsBytes,
     load_balancing::RoundRobin,
@@ -24,11 +23,13 @@ use cdrs_tokio::{
 use cdrs_tokio_helpers_derive::*;
 
 use async_trait::async_trait;
-use cdrs_tokio::cluster::session::RetryPolicyWrapper;
+use cdrs_tokio::cluster::session::{ReconnectionPolicyWrapper, RetryPolicyWrapper};
+use cdrs_tokio::cluster::{KeyspaceHolder, NodeTcpConfigBuilder};
 use cdrs_tokio::compression::Compression;
+use cdrs_tokio::retry::ConstantReconnectionPolicy;
 use maplit::hashmap;
 
-type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
+type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;
 
 /// Implements a cluster configuration where the addresses to
 /// connect to are different from the ones configured by replacing
@@ -45,6 +46,7 @@ struct VirtualClusterConfig {
     authenticator: Arc<dyn SaslAuthenticatorProvider + Sync + Send>,
     mask: Ipv4Addr,
     actual: Ipv4Addr,
+    keyspace_holder: Arc<KeyspaceHolder>,
 }
 
 #[derive(Clone)]
@@ -68,24 +70,21 @@ impl VirtualConnectionAddress {
 }
 
 #[async_trait]
-impl GenericClusterConfig for VirtualClusterConfig {
-    type Transport = TransportTcp;
+impl GenericClusterConfig<TransportTcp, TcpConnectionManager> for VirtualClusterConfig {
     type Address = VirtualConnectionAddress;
 
-    async fn connect(
-        &self,
-        addr: VirtualConnectionAddress,
-    ) -> Result<ConnectionPool<Self::Transport>> {
+    async fn create_manager(&self, addr: VirtualConnectionAddress) -> Result<TcpConnectionManager> {
         // create a connection manager that points at the rewritten address so that's where it connects, but
-        // then return a pool with the 'virtual' address for internal purposes.
-        let manager = TcpConnectionsManager::new(
-            addr.rewrite(&self.mask, &self.actual),
-            self.authenticator.clone(),
+        // then return a manager with the 'virtual' address for internal purposes.
+        Ok(TcpConnectionManager::new(
+            NodeTcpConfigBuilder::new(
+                addr.rewrite(&self.mask, &self.actual),
+                self.authenticator.clone(),
+            )
+            .build(),
+            self.keyspace_holder.clone(),
             Compression::None,
-        );
-        Ok(ConnectionPool::new(
-            bb8::Pool::builder().build(manager).await?,
-            SocketAddr::V4(addr.0),
+            None,
         ))
     }
 }
@@ -102,6 +101,7 @@ async fn main() {
         authenticator,
         mask,
         actual,
+        keyspace_holder: Default::default(),
     };
     let nodes = [
         VirtualConnectionAddress(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 9042)),
@@ -116,6 +116,7 @@ async fn main() {
         load_balancing,
         compression,
         RetryPolicyWrapper(Box::new(DefaultRetryPolicy::default())),
+        ReconnectionPolicyWrapper(Box::new(ConstantReconnectionPolicy::default())),
     )
     .await
     .expect("session should be created");

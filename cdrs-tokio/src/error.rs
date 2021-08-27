@@ -7,7 +7,6 @@ use std::{error, fmt::Debug};
 
 use crate::compression::CompressionError;
 use crate::frame::frame_error::CdrsError;
-use bb8::RunError;
 use uuid::Error as UuidError;
 
 pub type Result<T> = result::Result<T, Error>;
@@ -101,14 +100,5 @@ impl From<String> for Error {
 impl<'a> From<&'a str> for Error {
     fn from(err: &str) -> Error {
         Error::General(err.to_string())
-    }
-}
-
-impl<E> From<RunError<E>> for Error
-where
-    RunError<E>: Display,
-{
-    fn from(err: RunError<E>) -> Self {
-        err.to_string().into()
     }
 }

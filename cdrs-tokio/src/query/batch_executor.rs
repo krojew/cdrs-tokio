@@ -9,7 +9,7 @@ use crate::transport::CdrsTransport;
 use super::utils::{prepare_flags, send_frame};
 
 #[async_trait]
-pub trait BatchExecutor<T: CdrsTransport + Unpin + 'static>:
+pub trait BatchExecutor<T: CdrsTransport + 'static>:
     GetConnection<T> + GetRetryPolicy + Sync
 {
     async fn batch_with_params_tw(

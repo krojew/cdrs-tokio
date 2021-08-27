@@ -36,6 +36,26 @@ where
     fn next(&self) -> Option<Arc<N>> {
         self.cluster.get(0).cloned()
     }
+
+    fn size(&self) -> usize {
+        if self.cluster.is_empty() {
+            0
+        } else {
+            1
+        }
+    }
+
+    fn find<F>(&self, mut filter: F) -> Option<Arc<N>>
+    where
+        F: FnMut(&N) -> bool,
+    {
+        let node = self.cluster.get(0)?;
+        if filter(node) {
+            Some(node.clone())
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]
@@ -44,16 +64,10 @@ mod tests {
 
     #[test]
     fn single_node() {
-        let nodes = vec!["a"];
-        let nodes_c = nodes.clone();
-        let load_balancer = SingleNode::from(
-            nodes
-                .iter()
-                .map(|value| Arc::new(*value))
-                .collect::<Vec<Arc<&str>>>(),
-        );
-        assert_eq!(&nodes_c[0], load_balancer.next().unwrap().as_ref());
+        let node = "a";
+        let load_balancer = SingleNode::from(vec![Arc::new(node)]);
+        assert_eq!(node, *load_balancer.next().unwrap());
         // and one more time to check
-        assert_eq!(&nodes_c[0], load_balancer.next().unwrap().as_ref());
+        assert_eq!(node, *load_balancer.next().unwrap());
     }
 }

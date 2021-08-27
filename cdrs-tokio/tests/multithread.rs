@@ -9,18 +9,24 @@ use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::DefaultRetryPolicy;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::retry::NeverReconnectionPolicy;
+#[cfg(feature = "e2e-tests")]
 use std::sync::Arc;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn multithread() {
-    let node =
-        NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticatorProvider)).build();
+    let node = NodeTcpConfigBuilder::new(
+        "127.0.0.1:9042".parse().unwrap(),
+        Arc::new(NoneAuthenticatorProvider),
+    )
+    .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let no_compression = cdrs_tokio::cluster::session::new(
         &cluster_config,
         RoundRobin::new(),
         Box::new(DefaultRetryPolicy::default()),
+        Box::new(NeverReconnectionPolicy::default()),
     )
     .await
     .expect("session should be created");

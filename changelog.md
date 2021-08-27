@@ -1,3 +1,14 @@
+## x.y.z
+
+## New
+
+* New `listen_tls` and `listen_tls_blocking` functions for listening for server events.
+* New `ReconnectionPolicy` used when trying to re-establish connections to downed nodes.
+
+### Changed
+
+* Rewritten transport layer for massive performance improvements (including removing `bb8`).
+
 ## 5.0.0
 
 ### New

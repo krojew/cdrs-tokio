@@ -2,30 +2,39 @@ use std::sync::Arc;
 
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{new as new_session, Session};
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionManager};
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
-use cdrs_tokio::retry::DefaultRetryPolicy;
+use cdrs_tokio::retry::{DefaultRetryPolicy, NeverReconnectionPolicy};
 
 use cdrs_tokio::frame::AsBytes;
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 use cdrs_tokio::types::prelude::*;
 
+use cdrs_tokio::transport::TransportTcp;
 use cdrs_tokio_helpers_derive::*;
 
-type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
+type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;
 
 #[tokio::main]
 async fn main() {
-    let node =
-        NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(NoneAuthenticatorProvider)).build();
+    let node = NodeTcpConfigBuilder::new(
+        "127.0.0.1:9042".parse().unwrap(),
+        Arc::new(NoneAuthenticatorProvider),
+    )
+    .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
     let no_compression: Arc<CurrentSession> = Arc::new(
-        new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
-            .await
-            .expect("session should be created"),
+        new_session(
+            &cluster_config,
+            lb,
+            Box::new(DefaultRetryPolicy::default()),
+            Box::new(NeverReconnectionPolicy::default()),
+        )
+        .await
+        .expect("session should be created"),
     );
 
     create_keyspace(no_compression.clone()).await;

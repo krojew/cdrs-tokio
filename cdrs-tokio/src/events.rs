@@ -8,7 +8,6 @@ use crate::frame::events::{
     SimpleServerEvent as FrameSimpleServerEvent,
 };
 use crate::frame::Frame;
-use crate::transport::CdrsTransport;
 
 /// Full Server Event which includes all details about occured change.
 pub type ServerEvent = FrameServerEvent;
@@ -28,29 +27,20 @@ pub type SchemaChange = FrameSchemaChange;
 ///
 /// `EventStream` is an iterator which returns new events once they come.
 /// It is similar to `Receiver::iter`.
-pub fn new_listener<X>(
-    transport: X,
-    tx: StdSender<ServerEvent>,
-    rx: Receiver<Frame>,
-) -> Listener<X> {
-    Listener {
-        _transport: transport,
-        tx,
-        rx,
-    }
+pub fn new_listener(tx: StdSender<ServerEvent>, rx: Receiver<Frame>) -> Listener {
+    Listener { tx, rx }
 }
 
 /// `Listener` provides only one function `start` to start listening. It
 /// blocks a thread so should be moved into a separate one to no release
 /// main thread.
 
-pub struct Listener<X> {
-    _transport: X,
+pub struct Listener {
     tx: StdSender<ServerEvent>,
     rx: Receiver<Frame>,
 }
 
-impl<X: CdrsTransport + Unpin + 'static> Listener<X> {
+impl Listener {
     /// It starts a process of listening to new events.
     pub async fn start(mut self) -> error::Result<()> {
         loop {

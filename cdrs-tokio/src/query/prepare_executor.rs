@@ -12,7 +12,7 @@ use crate::transport::CdrsTransport;
 use super::utils::{prepare_flags, send_frame};
 
 #[async_trait]
-pub trait PrepareExecutor<T: CdrsTransport + Unpin + 'static>:
+pub trait PrepareExecutor<T: CdrsTransport + 'static>:
     GetConnection<T> + GetRetryPolicy + Sync
 {
     /// It prepares a query for execution, along with query itself the

@@ -6,31 +6,33 @@ use std::sync::Arc;
 
 use cdrs_tokio::authenticators::StaticPasswordAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{new as new_session, Session};
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionManager};
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
-use cdrs_tokio::retry::DefaultRetryPolicy;
+use cdrs_tokio::retry::{DefaultRetryPolicy, NeverReconnectionPolicy};
 
 use cdrs_tokio::frame::AsBytes;
 use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 use cdrs_tokio::types::prelude::*;
 
+use cdrs_tokio::transport::TransportTcp;
 use cdrs_tokio_helpers_derive::*;
 
-type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
+type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;
 
 #[tokio::main]
 async fn main() {
     let user = "user";
     let password = "password";
     let auth = StaticPasswordAuthenticatorProvider::new(&user, &password);
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042", Arc::new(auth)).build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap(), Arc::new(auth)).build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let mut no_compression: CurrentSession = new_session(
         &cluster_config,
         RoundRobin::new(),
         Box::new(DefaultRetryPolicy::default()),
+        Box::new(NeverReconnectionPolicy::default()),
     )
     .await
     .expect("session should be created");

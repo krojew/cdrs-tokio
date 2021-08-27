@@ -26,35 +26,15 @@ pub async fn send_frame<S: ?Sized, T>(
 ) -> error::Result<Frame>
 where
     S: GetConnection<T> + GetRetryPolicy,
-    T: CdrsTransport + Unpin + 'static,
+    T: CdrsTransport + 'static,
 {
     let mut retry_session = sender.retry_policy().new_session();
 
     'next_node: loop {
-        let transport = sender
-            .connection()
+        let mut transport = sender
+            .load_balanced_connection()
             .await
-            .ok_or_else(|| Error::from("Unable to get transport"))?
-            .pool();
-
-        let connection = transport.get().await;
-
-        let transport = match connection {
-            Ok(pool) => pool,
-            Err(error) => {
-                let error = Error::from(error);
-                let query_info = QueryInfo {
-                    error: &error,
-                    is_idempotent,
-                };
-
-                if retry_session.decide(query_info) == RetryDecision::DontRetry {
-                    return Err(error);
-                }
-
-                continue;
-            }
-        };
+            .ok_or_else(|| Error::from("Unable to get transport"))??;
 
         loop {
             match transport.write_frame(frame.clone()).await {
@@ -66,7 +46,12 @@ where
                     };
 
                     match retry_session.decide(query_info) {
-                        RetryDecision::RetrySameNode => continue,
+                        RetryDecision::RetrySameNode => {
+                            transport = sender
+                                .node_connection(transport.addr())
+                                .await
+                                .ok_or_else(|| Error::from("Unable to get transport"))??;
+                        }
                         RetryDecision::RetryNextNode => continue 'next_node,
                         RetryDecision::DontRetry => return Err(error),
                     }

@@ -6,7 +6,9 @@ use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::{new as new_session, Session};
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
+use cdrs_tokio::cluster::TcpConnectionManager;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
@@ -16,13 +18,17 @@ use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::DefaultRetryPolicy;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::retry::NeverReconnectionPolicy;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::transport::TransportTcp;
+#[cfg(feature = "e2e-tests")]
 use regex::Regex;
 
 #[cfg(feature = "e2e-tests")]
-const ADDR: &str = "localhost:9042";
+const ADDR: &str = "127.0.0.1:9042";
 
 #[cfg(feature = "e2e-tests")]
-type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
+type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;
 
 #[cfg(feature = "e2e-tests")]
 #[allow(dead_code)]
@@ -32,12 +38,19 @@ pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
 
 #[cfg(feature = "e2e-tests")]
 pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSession> {
-    let node = NodeTcpConfigBuilder::new(ADDR, Arc::new(NoneAuthenticatorProvider)).build();
+    let node =
+        NodeTcpConfigBuilder::new(ADDR.parse().unwrap(), Arc::new(NoneAuthenticatorProvider))
+            .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(&cluster_config, lb, Box::new(DefaultRetryPolicy::default()))
-        .await
-        .expect("session should be created");
+    let session = new_session(
+        &cluster_config,
+        lb,
+        Box::new(DefaultRetryPolicy::default()),
+        Box::new(NeverReconnectionPolicy::default()),
+    )
+    .await
+    .expect("session should be created");
     let re_table_name = Regex::new(r"CREATE TABLE IF NOT EXISTS (\w+\.\w+)").unwrap();
 
     let create_keyspace_query = "CREATE KEYSPACE IF NOT EXISTS cdrs_test WITH \

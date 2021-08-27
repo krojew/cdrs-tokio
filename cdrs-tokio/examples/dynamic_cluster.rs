@@ -6,11 +6,11 @@ use std::time::Duration;
 
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{new_dynamic as new_session, Session};
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionPool};
+use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionManager};
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
-use cdrs_tokio::retry::DefaultRetryPolicy;
+use cdrs_tokio::retry::{DefaultRetryPolicy, NeverReconnectionPolicy};
 
 use cdrs_tokio::frame::AsBytes;
 use cdrs_tokio::types::from_cdrs::FromCdrsByName;
@@ -18,9 +18,10 @@ use cdrs_tokio::types::prelude::*;
 
 use cdrs_tokio_helpers_derive::*;
 
+use cdrs_tokio::transport::TransportTcp;
 use maplit::hashmap;
 
-type CurrentSession = Session<RoundRobin<TcpConnectionPool>>;
+type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;
 
 fn start_node_a<A>(_: A) -> io::Result<Output> {
     Command::new("docker")
@@ -85,9 +86,10 @@ fn start_cluster() {
 #[tokio::main]
 async fn main() {
     let auth = Arc::new(NoneAuthenticatorProvider);
-    let node_a = NodeTcpConfigBuilder::new("127.0.0.1:9042", auth.clone()).build();
-    let node_b = NodeTcpConfigBuilder::new("127.0.0.1:9043", auth.clone()).build();
-    let event_src = NodeTcpConfigBuilder::new("127.0.0.1:9042", auth.clone()).build();
+    let node_a = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap(), auth.clone()).build();
+    let node_b = NodeTcpConfigBuilder::new("127.0.0.1:9043".parse().unwrap(), auth.clone()).build();
+    let event_src =
+        NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap(), auth.clone()).build();
     let cluster_config = ClusterTcpConfig(vec![node_a, node_b]);
 
     println!("> Starting cluster...");
@@ -97,6 +99,7 @@ async fn main() {
         &cluster_config,
         RoundRobin::new(),
         Box::new(DefaultRetryPolicy::default()),
+        Box::new(NeverReconnectionPolicy::default()),
         event_src,
     )
     .await

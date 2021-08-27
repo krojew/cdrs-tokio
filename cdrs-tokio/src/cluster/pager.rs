@@ -9,20 +9,18 @@ use crate::transport::CdrsTransport;
 use crate::types::rows::Row;
 use crate::types::CBytes;
 
-pub struct SessionPager<'a, S: CdrsSession<T> + 'a, T: CdrsTransport + Unpin + 'static> {
+pub struct SessionPager<'a, S: CdrsSession<T> + 'a, T: CdrsTransport + 'static> {
     page_size: i32,
     session: &'a S,
     transport_type: PhantomData<&'a T>,
-    connection_type: PhantomData<&'a T::Manager>,
 }
 
-impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + Unpin + 'static> SessionPager<'a, S, T> {
+impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + 'static> SessionPager<'a, S, T> {
     pub fn new(session: &'b S, page_size: i32) -> SessionPager<'a, S, T> {
         SessionPager {
             session,
             page_size,
             transport_type: PhantomData,
-            connection_type: PhantomData,
         }
     }
 
@@ -103,7 +101,7 @@ pub struct QueryPager<'a, Q: ToString, P: 'a> {
     consistency: Consistency,
 }
 
-impl<'a, Q: ToString, T: CdrsTransport + Unpin + 'static, S: CdrsSession<T> + Sync + Send>
+impl<'a, Q: ToString, T: CdrsTransport + 'static, S: CdrsSession<T> + Sync + Send>
     QueryPager<'a, Q, SessionPager<'a, S, T>>
 {
     pub fn into_pager_state(self) -> PagerState {
@@ -159,7 +157,7 @@ pub struct ExecPager<'a, P: 'a> {
     query: &'a PreparedQuery,
 }
 
-impl<'a, T: CdrsTransport + Unpin + 'static, S: CdrsSession<T> + Sync + Send>
+impl<'a, T: CdrsTransport + 'static, S: CdrsSession<T> + Sync + Send>
     ExecPager<'a, SessionPager<'a, S, T>>
 {
     pub fn into_pager_state(self) -> PagerState {
@@ -213,18 +211,28 @@ impl PagerState {
         Default::default()
     }
 
-    pub fn with_cursor(cursor: CBytes) -> Self {
+    pub fn new_with_cursor(cursor: CBytes) -> Self {
         PagerState {
             cursor: Some(cursor),
             has_more_pages: None,
         }
     }
 
-    pub fn with_cursor_and_more_flag(cursor: CBytes, has_more: bool) -> Self {
+    pub fn new_with_cursor_and_more_flag(cursor: CBytes, has_more: bool) -> Self {
         PagerState {
             cursor: Some(cursor),
             has_more_pages: Some(has_more),
         }
+    }
+
+    #[deprecated(note = "Use new_with_cursor().")]
+    pub fn with_cursor(cursor: CBytes) -> Self {
+        Self::new_with_cursor(cursor)
+    }
+
+    #[deprecated(note = "Use new_with_cursor_and_more_flag().")]
+    pub fn with_cursor_and_more_flag(cursor: CBytes, has_more: bool) -> Self {
+        Self::new_with_cursor_and_more_flag(cursor, has_more)
     }
 
     pub fn has_more(&self) -> bool {

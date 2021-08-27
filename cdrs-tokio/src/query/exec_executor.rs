@@ -10,7 +10,7 @@ use super::utils::{prepare_flags, send_frame};
 use std::ops::Deref;
 
 #[async_trait]
-pub trait ExecExecutor<T: CdrsTransport + Unpin + 'static>:
+pub trait ExecExecutor<T: CdrsTransport + 'static>:
     GetConnection<T> + PrepareExecutor<T> + GetRetryPolicy + Sync
 {
     async fn exec_with_params_tw(

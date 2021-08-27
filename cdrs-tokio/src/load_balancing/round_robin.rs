@@ -47,6 +47,17 @@ where
         self.cluster.get(cur_idx % self.cluster.len()).cloned()
     }
 
+    fn size(&self) -> usize {
+        self.cluster.len()
+    }
+
+    fn find<F>(&self, mut filter: F) -> Option<Arc<N>>
+    where
+        F: FnMut(&N) -> bool,
+    {
+        self.cluster.iter().find(|node| filter(*node)).cloned()
+    }
+
     fn remove_node<F>(&mut self, mut filter: F)
     where
         F: FnMut(&N) -> bool,
