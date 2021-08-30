@@ -1,6 +1,8 @@
+use rand::{thread_rng, Rng};
 use std::time::Duration;
 
 const DEFAULT_BASE_DELAY: Duration = Duration::from_secs(1);
+const DEFAULT_MAX_DELAY: Duration = Duration::from_secs(60);
 
 /// Determines the time for the next reconnection attempt when trying to reconnect to a node.
 pub trait ReconnectionSchedule {
@@ -69,5 +71,85 @@ struct NeverReconnectionSchedule;
 impl ReconnectionSchedule for NeverReconnectionSchedule {
     fn next_delay(&mut self) -> Option<Duration> {
         None
+    }
+}
+
+/// A reconnection policy that waits exponentially longer between each reconnection attempt (but
+/// keeps a constant delay once a maximum delay is reached). The delay will increase exponentially,
+/// with an added jitter.
+#[derive(Copy, Clone)]
+pub struct ExponentialReconnectionPolicy {
+    base_delay: Duration,
+    max_delay: Duration,
+    max_attempts: usize,
+}
+
+impl ReconnectionPolicy for ExponentialReconnectionPolicy {
+    fn new_node_schedule(&self) -> Box<dyn ReconnectionSchedule + Send + Sync> {
+        Box::new(ExponentialReconnectionSchedule::new(
+            self.base_delay,
+            self.max_delay,
+            self.max_attempts,
+        ))
+    }
+}
+
+impl Default for ExponentialReconnectionPolicy {
+    fn default() -> Self {
+        let base_delay = DEFAULT_BASE_DELAY.as_millis() as i64;
+        let ceil = if (base_delay & (base_delay - 1)) == 0 {
+            0
+        } else {
+            1
+        };
+
+        ExponentialReconnectionPolicy::new(
+            DEFAULT_BASE_DELAY,
+            DEFAULT_MAX_DELAY,
+            (64 - (i64::MAX / base_delay).leading_zeros() - ceil) as usize,
+        )
+    }
+}
+
+impl ExponentialReconnectionPolicy {
+    pub fn new(base_delay: Duration, max_delay: Duration, max_attempts: usize) -> Self {
+        ExponentialReconnectionPolicy {
+            base_delay,
+            max_delay,
+            max_attempts,
+        }
+    }
+}
+
+struct ExponentialReconnectionSchedule {
+    base_delay: Duration,
+    max_delay: Duration,
+    max_attempts: usize,
+    attempt: usize,
+}
+
+impl ReconnectionSchedule for ExponentialReconnectionSchedule {
+    fn next_delay(&mut self) -> Option<Duration> {
+        if self.attempt == self.max_attempts {
+            return Some(self.max_delay);
+        }
+
+        self.attempt += 1;
+
+        let delay = ((1 << self.attempt) * self.base_delay).min(self.max_delay);
+        let jitter = thread_rng().gen_range(85..116);
+
+        Some((jitter * delay / 100).clamp(self.base_delay, self.max_delay))
+    }
+}
+
+impl ExponentialReconnectionSchedule {
+    pub fn new(base_delay: Duration, max_delay: Duration, max_attempts: usize) -> Self {
+        ExponentialReconnectionSchedule {
+            base_delay,
+            max_delay,
+            max_attempts,
+            attempt: 0,
+        }
     }
 }
