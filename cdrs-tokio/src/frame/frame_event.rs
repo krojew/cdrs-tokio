@@ -10,9 +10,8 @@ pub struct BodyResEvent {
 }
 
 impl FromCursor for BodyResEvent {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResEvent> {
-        let event = ServerEvent::from_cursor(&mut cursor)?;
-
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResEvent> {
+        let event = ServerEvent::from_cursor(cursor)?;
         Ok(BodyResEvent { event })
     }
 }

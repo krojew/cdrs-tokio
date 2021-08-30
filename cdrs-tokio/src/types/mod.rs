@@ -1,17 +1,20 @@
-/// Cassandra types
+use num::BigInt;
+use std::convert::TryInto;
 use std::io;
 use std::io::{Cursor, Read};
 use std::net::SocketAddr;
 
 use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
-use crate::frame::traits::{AsBytes, FromBytes, FromCursor};
+use crate::frame::traits::{AsBytes, FromCursor};
 use crate::types::data_serialization_types::decode_inet;
-use byteorder::{BigEndian, ByteOrder, ReadBytesExt, WriteBytesExt};
 
 pub const LONG_STR_LEN: usize = 4;
 pub const SHORT_LEN: usize = 2;
 pub const INT_LEN: usize = 4;
 pub const UUID_LEN: usize = 16;
+
+const NULL_INT_LEN: CInt = -1;
+const NULL_SHORT_LEN: CIntShort = -1;
 
 #[macro_use]
 pub mod blob;
@@ -120,258 +123,114 @@ pub trait ByIndex {
     }
 }
 
-/// Tries to converts u64 numerical value into array of n bytes.
-pub fn try_to_n_bytes(int: u64, n: usize) -> io::Result<Vec<u8>> {
-    let mut bytes = vec![];
-    bytes.write_uint::<BigEndian>(int, n)?;
-
-    Ok(bytes)
+#[inline]
+fn convert_to_array<const S: usize>(bytes: &[u8]) -> Result<[u8; S], io::Error> {
+    bytes
+        .try_into()
+        .map_err(|error| io::Error::new(io::ErrorKind::UnexpectedEof, error))
 }
 
-/// Converts u64 numerical value into array of n bytes
-///
-/// # Panics
-///
-/// It panics if given unsigned integer could not be converted in an array of n bytes
-pub fn to_n_bytes(int: u64, n: usize) -> Vec<u8> {
-    try_to_n_bytes(int, n).unwrap()
+#[inline]
+pub(crate) fn try_u64_from_bytes(bytes: &[u8]) -> Result<u64, io::Error> {
+    Ok(u64::from_be_bytes(convert_to_array(bytes)?))
 }
 
-pub fn try_i_to_n_bytes(int: i64, n: usize) -> io::Result<Vec<u8>> {
-    let mut bytes = Vec::with_capacity(n);
-    unsafe {
-        bytes.set_len(n);
+#[inline]
+pub(crate) fn try_i64_from_bytes(bytes: &[u8]) -> Result<i64, io::Error> {
+    Ok(i64::from_be_bytes(convert_to_array(bytes)?))
+}
+
+#[inline]
+pub(crate) fn try_i32_from_bytes(bytes: &[u8]) -> Result<i32, io::Error> {
+    Ok(i32::from_be_bytes(convert_to_array(bytes)?))
+}
+
+#[inline]
+pub(crate) fn try_i16_from_bytes(bytes: &[u8]) -> Result<i16, io::Error> {
+    Ok(i16::from_be_bytes(convert_to_array(bytes)?))
+}
+
+#[inline]
+pub(crate) fn try_f32_from_bytes(bytes: &[u8]) -> Result<f32, io::Error> {
+    Ok(f32::from_be_bytes(convert_to_array(bytes)?))
+}
+
+#[inline]
+pub(crate) fn try_f64_from_bytes(bytes: &[u8]) -> Result<f64, io::Error> {
+    Ok(f64::from_be_bytes(convert_to_array(bytes)?))
+}
+
+#[inline]
+pub(crate) fn u16_from_bytes(bytes: [u8; 2]) -> u16 {
+    u16::from_be_bytes(bytes)
+}
+
+#[inline]
+pub(crate) fn to_short(int: i16) -> Vec<u8> {
+    int.to_be_bytes().into()
+}
+
+#[inline]
+pub(crate) fn to_int(int: i32) -> Vec<u8> {
+    int.to_be_bytes().into()
+}
+
+#[inline]
+pub(crate) fn to_bigint(int: i64) -> Vec<u8> {
+    int.to_be_bytes().into()
+}
+
+#[inline]
+pub(crate) fn to_varint(int: BigInt) -> Vec<u8> {
+    int.to_signed_bytes_be()
+}
+
+#[inline]
+pub(crate) fn to_u_short(int: u16) -> Vec<u8> {
+    int.to_be_bytes().into()
+}
+
+#[inline]
+pub(crate) fn to_u_int(int: u32) -> Vec<u8> {
+    int.to_be_bytes().into()
+}
+
+#[inline]
+pub(crate) fn to_u_big(int: u64) -> Vec<u8> {
+    int.to_be_bytes().into()
+}
+
+#[inline]
+pub(crate) fn to_float(f: f32) -> Vec<u8> {
+    f.to_be_bytes().into()
+}
+
+#[inline]
+pub(crate) fn to_float_big(f: f64) -> Vec<u8> {
+    f.to_be_bytes().into()
+}
+
+pub struct CStringRef<'a> {
+    string: &'a str,
+}
+
+impl<'a> CStringRef<'a> {
+    #[inline]
+    pub fn new(string: &'a str) -> Self {
+        CStringRef { string }
     }
-    BigEndian::write_int(&mut bytes, int, n);
-
-    Ok(bytes)
 }
 
-/// Converts u64 numerical value into array of n bytes
-///
-/// # Panics
-///
-/// It panics if given integer could not be converted in an array of n bytes
-pub fn i_to_n_bytes(int: i64, n: usize) -> Vec<u8> {
-    try_i_to_n_bytes(int, n).unwrap()
-}
+impl<'a> AsBytes for CStringRef<'a> {
+    fn as_bytes(&self) -> Vec<u8> {
+        let l = self.string.len();
+        let mut v = Vec::with_capacity(SHORT_LEN + l);
 
-/// Tries to decode bytes array into `u64`.
-pub fn try_from_bytes(bytes: &[u8]) -> Result<u64, io::Error> {
-    let l = bytes.len();
-    let mut c = Cursor::new(bytes);
-    c.read_uint::<BigEndian>(l)
-}
-
-/// Tries to decode bytes array into `u16`.
-pub fn try_u16_from_bytes(bytes: &[u8]) -> Result<u16, io::Error> {
-    let mut c = Cursor::new(bytes);
-    c.read_u16::<BigEndian>()
-}
-
-/// Tries to decode bytes array into `i64`.
-pub fn try_i_from_bytes(bytes: &[u8]) -> Result<i64, io::Error> {
-    let l = bytes.len();
-    let mut c = Cursor::new(bytes);
-    c.read_int::<BigEndian>(l)
-}
-
-/// Tries to decode bytes array into `i32`.
-pub fn try_i32_from_bytes(bytes: &[u8]) -> Result<i32, io::Error> {
-    let mut c = Cursor::new(bytes);
-    c.read_i32::<BigEndian>()
-}
-
-/// Tries to decode bytes array into `i16`.
-pub fn try_i16_from_bytes(bytes: &[u8]) -> Result<i16, io::Error> {
-    let mut c = Cursor::new(bytes);
-    c.read_i16::<BigEndian>()
-}
-
-/// Tries to decode bytes array into `f32`.
-pub fn try_f32_from_bytes(bytes: &[u8]) -> Result<f32, io::Error> {
-    let mut c = Cursor::new(bytes);
-    c.read_f32::<BigEndian>()
-}
-
-/// Tries to decode bytes array into `f64`.
-pub fn try_f64_from_bytes(bytes: &[u8]) -> Result<f64, io::Error> {
-    let mut c = Cursor::new(bytes);
-    c.read_f64::<BigEndian>()
-}
-
-/// Converts byte-array into u64
-///
-/// # Panics
-///
-/// It panics if given bytes could not be converted into `u64`
-pub fn from_bytes(bytes: &[u8]) -> u64 {
-    try_from_bytes(bytes).unwrap()
-}
-
-/// Converts byte-array into i64
-///
-/// # Panics
-///
-/// It panics if given bytes could not be converted into `i64`
-pub fn from_i_bytes(bytes: &[u8]) -> i64 {
-    try_i_from_bytes(bytes).unwrap()
-}
-
-/// Converts byte-array into u16
-///
-/// # Panics
-///
-/// It panics if given bytes could not be converted into `u16`
-pub fn from_u16_bytes(bytes: &[u8]) -> u16 {
-    try_u16_from_bytes(bytes).unwrap()
-}
-
-/// Converts byte-array into i16
-///
-/// # Panics
-///
-/// It panics if given bytes could not be converted into `u16`
-pub fn from_i16_bytes(bytes: &[u8]) -> i16 {
-    try_i16_from_bytes(bytes).unwrap()
-}
-
-/// Converts number i16 into Cassandra's short.
-///
-/// # Panics
-///
-/// It panics if given `i16` could not be converted into bytes
-pub fn to_short(int: i16) -> Vec<u8> {
-    let mut bytes = vec![];
-    // should not panic as input is i16
-    let _ = bytes.write_i16::<BigEndian>(int).unwrap();
-
-    bytes
-}
-
-/// Converts integer into Cassandra's int
-///
-/// # Panics
-///
-/// It panics if given `i32` could not be converted into bytes
-pub fn to_int(int: i32) -> Vec<u8> {
-    let mut bytes = vec![];
-    // should not panic as input is i16
-    let _ = bytes.write_i32::<BigEndian>(int).unwrap();
-
-    bytes
-}
-
-/// Converts integer into Cassandra's int
-///
-/// # Panics
-///
-/// It panics if given `i64` could not be converted into bytes
-pub fn to_bigint(int: i64) -> Vec<u8> {
-    let mut bytes = vec![];
-    // should not panic as input is i64
-    let _ = bytes.write_i64::<BigEndian>(int).unwrap();
-
-    bytes
-}
-
-/// Converts integer into Cassandra's varint.
-pub fn to_varint(int: i64) -> Vec<u8> {
-    if int == 0 {
-        return vec![0];
+        let l = l as i16;
+        v.extend_from_slice(&l.to_be_bytes());
+        v.extend_from_slice(self.string.as_bytes());
+        v
     }
-
-    let mut int_bytes = to_bigint(int);
-    match int.signum() {
-        1 => {
-            int_bytes = int_bytes.into_iter().skip_while(|b| *b == 0x00).collect();
-            if int_bytes
-                .get(0)
-                .map(|b| b.leading_zeros() == 0)
-                .unwrap_or(true)
-            {
-                int_bytes.insert(0, 0x00);
-            }
-        }
-        -1 => {
-            int_bytes = int_bytes.into_iter().skip_while(|b| *b == 0xFF).collect();
-            if int_bytes
-                .get(0)
-                .map(|b| b.leading_zeros() > 0)
-                .unwrap_or(true)
-            {
-                int_bytes.insert(0, 0xFF);
-            }
-        }
-        _ => unreachable!(),
-    }
-
-    int_bytes
-}
-
-/// Converts number i16 into Cassandra's `short`.
-///
-/// # Panics
-///
-/// It panics if given `u16` could not be converted into bytes
-pub fn to_u_short(int: u16) -> Vec<u8> {
-    let mut bytes = vec![];
-    // should not panic as input is i16
-    let _ = bytes.write_u16::<BigEndian>(int).unwrap();
-
-    bytes
-}
-
-/// Converts integer into Cassandra's int
-///
-/// # Panics
-///
-/// It panics if given `u32` could not be converted into bytes
-pub fn to_u(int: u32) -> Vec<u8> {
-    let mut bytes = vec![];
-    // should not panic as input is u64
-    let _ = bytes.write_u32::<BigEndian>(int).unwrap();
-
-    bytes
-}
-
-/// Converts integer into Cassandra's `int`
-///
-/// # Panics
-///
-/// It panics if given `u64` could not be converted into `u64`
-pub fn to_u_big(int: u64) -> Vec<u8> {
-    let mut bytes = vec![];
-    // should not panic as input is u64
-    let _ = bytes.write_u64::<BigEndian>(int).unwrap();
-
-    bytes
-}
-
-/// Converts `f32` into bytes
-///
-/// # Panics
-///
-/// It panics if given `f32` could not be converted into bytes
-pub fn to_float(f: f32) -> Vec<u8> {
-    let mut bytes = vec![];
-    // should not panic as input is f32
-    let _ = bytes.write_f32::<BigEndian>(f).unwrap();
-
-    bytes
-}
-
-/// Converts `f64` into array of bytes
-///
-/// # Panics
-///
-/// It panics if given `f63` could not be converted into bytes
-pub fn to_float_big(f: f64) -> Vec<u8> {
-    let mut bytes = vec![];
-    // should not panic as input is f64
-    let _ = bytes.write_f64::<BigEndian>(f).unwrap();
-
-    bytes
 }
 
 #[derive(Debug, Clone)]
@@ -380,21 +239,25 @@ pub struct CString {
 }
 
 impl CString {
+    #[inline]
     pub fn new(string: String) -> CString {
         CString { string }
     }
 
     /// Converts internal value into pointer of `str`.
+    #[inline]
     pub fn as_str(&self) -> &str {
         self.string.as_str()
     }
 
     /// Converts internal value into a plain `String`.
+    #[inline]
     pub fn into_plain(self) -> String {
         self.string
     }
 
     /// Represents internal value as a `String`.
+    #[inline]
     pub fn as_plain(&self) -> String {
         self.string.clone()
     }
@@ -403,24 +266,24 @@ impl CString {
 // Implementation for Rust std types
 // Use extended Rust string as Cassandra [string]
 impl AsBytes for CString {
-    /// Converts into Cassandra byte representation of string
     fn as_bytes(&self) -> Vec<u8> {
-        let mut v: Vec<u8> = vec![];
-        let l = self.string.len() as i16;
-        v.extend_from_slice(to_short(l).as_slice());
+        let l = self.string.len();
+        let mut v = Vec::with_capacity(SHORT_LEN + l);
+
+        let l = l as i16;
+        v.extend_from_slice(&l.to_be_bytes());
         v.extend_from_slice(self.string.as_bytes());
         v
     }
 }
 
 impl FromCursor for CString {
-    /// from_cursor gets Cursor who's position is set such that it should be a start of a string.
-    /// It reads required number of bytes and returns a String
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CString> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CString> {
         let mut buff = [0; SHORT_LEN];
-        let len_bytes = cursor_fill_value(&mut cursor, &mut buff)?;
-        let len: u64 = try_from_bytes(len_bytes)?;
-        let body_bytes = cursor_next_value(&mut cursor, len)?;
+        cursor.read_exact(&mut buff)?;
+
+        let len = i16::from_be_bytes(buff);
+        let body_bytes = cursor_next_value(cursor, len as usize)?;
 
         String::from_utf8(body_bytes)
             .map_err(Into::into)
@@ -434,42 +297,51 @@ pub struct CStringLong {
 }
 
 impl CStringLong {
+    #[inline]
     pub fn new(string: String) -> CStringLong {
         CStringLong { string }
     }
 
     /// Converts internal value into pointer of `str`.
+    #[inline]
     pub fn as_str(&self) -> &str {
         self.string.as_str()
     }
 
     /// Converts internal value into a plain `String`.
+    #[inline]
     pub fn into_plain(self) -> String {
         self.string
+    }
+
+    /// Return string length.
+    #[inline]
+    pub fn serialized_len(&self) -> usize {
+        self.string.len() + INT_LEN
     }
 }
 
 // Implementation for Rust std types
 // Use extended Rust string as Cassandra [string]
 impl AsBytes for CStringLong {
-    /// Converts into Cassandra byte representation of string
     fn as_bytes(&self) -> Vec<u8> {
-        let mut v: Vec<u8> = vec![];
-        let l = self.string.len() as i32;
-        v.extend_from_slice(to_int(l).as_slice());
+        let l = self.string.len();
+        let mut v = Vec::with_capacity(INT_LEN + l);
+
+        let l = l as i32;
+        v.extend_from_slice(&l.to_be_bytes());
         v.extend_from_slice(self.string.as_bytes());
         v
     }
 }
 
 impl FromCursor for CStringLong {
-    /// from_cursor gets Cursor who's position is set such that it should be a start of a string.
-    /// It reads required number of bytes and returns a String
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CStringLong> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CStringLong> {
         let mut buff = [0; INT_LEN];
-        let len_bytes = cursor_fill_value(&mut cursor, &mut buff)?;
-        let len: u64 = try_from_bytes(len_bytes)?;
-        let body_bytes = cursor_next_value(&mut cursor, len)?;
+        cursor.read_exact(&mut buff)?;
+
+        let len = i32::from_be_bytes(buff);
+        let body_bytes = cursor_next_value(cursor, len as usize)?;
 
         String::from_utf8(body_bytes)
             .map_err(Into::into)
@@ -485,22 +357,23 @@ pub struct CStringList {
 impl CStringList {
     pub fn into_plain(self) -> Vec<String> {
         self.list
-            .iter()
-            .map(|string| string.clone().into_plain())
+            .into_iter()
+            .map(|string| string.into_plain())
             .collect()
     }
 }
 
 impl AsBytes for CStringList {
     fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![];
+        let l = self.list.len();
+        let mut bytes = Vec::with_capacity(l);
 
-        let l = to_short(self.list.len() as i16);
-        bytes.extend_from_slice(l.as_slice());
+        let l = l as i16;
+        bytes.extend_from_slice(&l.to_be_bytes());
 
-        bytes = self.list.iter().fold(bytes, |mut _bytes, cstring| {
-            _bytes.extend_from_slice(cstring.as_bytes().as_slice());
-            _bytes
+        bytes = self.list.iter().fold(bytes, |mut bytes, cstring| {
+            bytes.append(&mut cstring.as_bytes());
+            bytes
         });
 
         bytes
@@ -508,14 +381,14 @@ impl AsBytes for CStringList {
 }
 
 impl FromCursor for CStringList {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CStringList> {
-        // TODO: try to use slice instead
-        let mut len_bytes = [0; SHORT_LEN];
-        cursor.read_exact(&mut len_bytes)?;
-        let len = try_from_bytes(len_bytes.to_vec().as_slice())? as usize;
-        let mut list = Vec::with_capacity(len);
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CStringList> {
+        let mut buff = [0; SHORT_LEN];
+        cursor.read_exact(&mut buff)?;
+
+        let len = i16::from_be_bytes(buff);
+        let mut list = Vec::with_capacity(len as usize * SHORT_LEN);
         for _ in 0..len {
-            list.push(CString::from_cursor(&mut cursor)?);
+            list.push(CString::from_cursor(cursor)?);
         }
 
         Ok(CStringList { list })
@@ -531,27 +404,35 @@ pub struct CBytes {
 }
 
 impl CBytes {
+    #[inline]
     pub fn new(bytes: Vec<u8>) -> CBytes {
         CBytes { bytes: Some(bytes) }
     }
 
     /// Creates Cassandra bytes that represent empty or null value
+    #[inline]
     pub fn new_empty() -> CBytes {
         CBytes { bytes: None }
     }
 
     /// Converts `CBytes` into a plain array of bytes
+    #[inline]
     pub fn into_plain(self) -> Option<Vec<u8>> {
         self.bytes
     }
 
     // TODO: try to replace usage of `as_plain` by `as_slice`
+    #[inline]
     pub fn as_plain(&self) -> Option<Vec<u8>> {
         self.bytes.clone()
     }
+
+    #[inline]
     pub fn as_slice(&self) -> Option<&[u8]> {
         self.bytes.as_deref()
     }
+
+    #[inline]
     pub fn is_empty(&self) -> bool {
         match &self.bytes {
             None => true,
@@ -559,6 +440,7 @@ impl CBytes {
         }
     }
 
+    #[inline]
     pub fn into_bytes(self) -> Option<Vec<u8>> {
         self.bytes
     }
@@ -567,29 +449,31 @@ impl CBytes {
 impl FromCursor for CBytes {
     /// from_cursor gets Cursor who's position is set such that it should be a start of bytes.
     /// It reads required number of bytes and returns a CBytes
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CBytes> {
-        let len = CInt::from_cursor(&mut cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CBytes> {
+        let len = CInt::from_cursor(cursor)?;
         // null or not set value
         if len < 0 {
             return Ok(CBytes { bytes: None });
         }
 
-        cursor_next_value(&mut cursor, len as u64).map(CBytes::new)
+        cursor_next_value(cursor, len as usize).map(CBytes::new)
     }
 }
 
 // Use extended Rust Vec<u8> as Cassandra [bytes]
 impl AsBytes for CBytes {
     fn as_bytes(&self) -> Vec<u8> {
-        match self.bytes {
-            Some(ref b) => {
-                let mut v: Vec<u8> = vec![];
-                let l = b.len() as i32;
-                v.extend_from_slice(to_int(l).as_slice());
+        match &self.bytes {
+            Some(b) => {
+                let l = b.len();
+                let mut v = Vec::with_capacity(INT_LEN + l);
+
+                let l = l as CInt;
+                v.extend_from_slice(&l.to_be_bytes());
                 v.extend_from_slice(b.as_slice());
                 v
             }
-            None => vec![],
+            None => to_int(NULL_INT_LEN),
         }
     }
 }
@@ -601,26 +485,39 @@ pub struct CBytesShort {
 }
 
 impl CBytesShort {
+    #[inline]
     pub fn new(bytes: Vec<u8>) -> CBytesShort {
         CBytesShort { bytes: Some(bytes) }
     }
+
     /// Converts `CBytesShort` into plain vector of bytes;
+    #[inline]
     pub fn into_plain(self) -> Option<Vec<u8>> {
         self.bytes
+    }
+
+    #[inline]
+    pub fn serialized_len(&self) -> usize {
+        SHORT_LEN
+            + if let Some(bytes) = &self.bytes {
+                bytes.len()
+            } else {
+                0
+            }
     }
 }
 
 impl FromCursor for CBytesShort {
     /// from_cursor gets Cursor who's position is set such that it should be a start of bytes.
     /// It reads required number of bytes and returns a CBytes
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CBytesShort> {
-        let len = CIntShort::from_cursor(&mut cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CBytesShort> {
+        let len = CIntShort::from_cursor(cursor)?;
 
         if len < 0 {
             return Ok(CBytesShort { bytes: None });
         }
 
-        cursor_next_value(&mut cursor, len as u64)
+        cursor_next_value(cursor, len as usize)
             .map(CBytesShort::new)
             .map_err(Into::into)
     }
@@ -629,15 +526,17 @@ impl FromCursor for CBytesShort {
 // Use extended Rust Vec<u8> as Cassandra [bytes]
 impl AsBytes for CBytesShort {
     fn as_bytes(&self) -> Vec<u8> {
-        match self.bytes {
-            Some(ref b) => {
-                let mut v: Vec<u8> = vec![];
-                let l = b.len() as i16;
-                v.extend_from_slice(to_short(l).as_slice());
+        match &self.bytes {
+            Some(b) => {
+                let l = b.len();
+                let mut v = Vec::with_capacity(SHORT_LEN + l);
+
+                let l = l as CIntShort;
+                v.extend_from_slice(&l.to_be_bytes());
                 v.extend_from_slice(b.as_slice());
                 v
             }
-            None => vec![],
+            None => to_short(NULL_SHORT_LEN),
         }
     }
 }
@@ -646,10 +545,11 @@ impl AsBytes for CBytesShort {
 pub type CInt = i32;
 
 impl FromCursor for CInt {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CInt> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CInt> {
         let mut buff = [0; INT_LEN];
-        let bytes = cursor_fill_value(&mut cursor, &mut buff)?;
-        try_i32_from_bytes(bytes).map_err(Into::into)
+        cursor.read_exact(&mut buff)?;
+
+        Ok(i32::from_be_bytes(buff))
     }
 }
 
@@ -657,22 +557,11 @@ impl FromCursor for CInt {
 pub type CIntShort = i16;
 
 impl FromCursor for CIntShort {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CIntShort> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CIntShort> {
         let mut buff = [0; SHORT_LEN];
-        let bytes = cursor_fill_value(&mut cursor, &mut buff)?;
-        try_i16_from_bytes(bytes).map_err(Into::into)
-    }
-}
+        cursor.read_exact(&mut buff)?;
 
-// Use extended Rust Vec<u8> as Cassandra [bytes]
-impl FromBytes for Vec<u8> {
-    fn from_bytes(bytes: &[u8]) -> CDRSResult<Vec<u8>> {
-        let mut cursor = Cursor::new(bytes);
-        let mut buff = [0; SHORT_LEN];
-        let len_bytes = cursor_fill_value(&mut cursor, &mut buff)?;
-        let len: u64 = try_from_bytes(len_bytes)?;
-
-        cursor_next_value(&mut cursor, len).map_err(Into::into)
+        Ok(i16::from_be_bytes(buff))
     }
 }
 
@@ -684,35 +573,26 @@ pub struct CInet {
 }
 
 impl FromCursor for CInet {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> CDRSResult<CInet> {
-        let n = cursor_fill_value(&mut cursor, &mut [0])?[0];
-        let ip = decode_inet(cursor_next_value(&mut cursor, n as u64)?.as_slice())?;
-        let port = CInt::from_cursor(&mut cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CInet> {
+        let mut buff = [0];
+        cursor.read_exact(&mut buff)?;
+
+        let n = buff[0];
+
+        let ip = decode_inet(cursor_next_value(cursor, n as usize)?.as_slice())?;
+        let port = CInt::from_cursor(cursor)?;
         let socket_addr = SocketAddr::new(ip, port as u16);
 
         Ok(CInet { addr: socket_addr })
     }
 }
 
-pub fn cursor_next_value(cursor: &mut Cursor<&[u8]>, len: u64) -> CDRSResult<Vec<u8>> {
-    let l = len as usize;
-    let current_position = cursor.position();
-    let mut buff: Vec<u8> = Vec::with_capacity(l);
+pub fn cursor_next_value(cursor: &mut Cursor<&[u8]>, len: usize) -> CDRSResult<Vec<u8>> {
+    let mut buff: Vec<u8> = Vec::with_capacity(len);
     unsafe {
-        buff.set_len(l);
+        buff.set_len(len);
     }
     cursor.read_exact(&mut buff)?;
-    cursor.set_position(current_position + len);
-    Ok(buff)
-}
-
-pub fn cursor_fill_value<'a>(
-    cursor: &mut Cursor<&[u8]>,
-    buff: &'a mut [u8],
-) -> CDRSResult<&'a [u8]> {
-    let current_position = cursor.position();
-    cursor.read_exact(buff)?;
-    cursor.set_position(current_position + buff.len() as u64);
     Ok(buff)
 }
 
@@ -722,6 +602,14 @@ mod tests {
     use crate::frame::traits::{AsBytes, FromCursor};
     use std::io::Cursor;
     use std::mem::transmute;
+
+    fn from_i_bytes(bytes: &[u8]) -> i64 {
+        try_i64_from_bytes(bytes).unwrap()
+    }
+
+    fn try_u16_from_bytes(bytes: &[u8]) -> Result<u16, io::Error> {
+        Ok(u16::from_be_bytes(convert_to_array(bytes)?))
+    }
 
     // CString
     #[test]
@@ -824,7 +712,7 @@ mod tests {
     #[test]
     fn test_cbytes_into_plain() {
         let cbytes = CBytes::new(vec![1, 2, 3]);
-        assert_eq!(cbytes.into_plain().unwrap(), &[1, 2, 3]);
+        assert_eq!(cbytes.into_bytes().unwrap(), &[1, 2, 3]);
     }
 
     #[test]
@@ -832,7 +720,7 @@ mod tests {
         let a = &[0, 0, 0, 3, 1, 2, 3];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
         let cbytes = CBytes::from_cursor(&mut cursor).unwrap();
-        assert_eq!(cbytes.into_plain().unwrap(), vec![1, 2, 3]);
+        assert_eq!(cbytes.into_bytes().unwrap(), vec![1, 2, 3]);
     }
 
     #[test]
@@ -893,7 +781,7 @@ mod tests {
     fn test_cursor_next_value() {
         let a = &[0, 1, 2, 3, 4];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
-        let l: u64 = 3;
+        let l = 3;
         let val = cursor_next_value(&mut cursor, l).unwrap();
         assert_eq!(val, vec![0, 1, 2]);
     }
@@ -914,13 +802,13 @@ mod tests {
 
     #[test]
     fn test_to_varint() {
-        assert_eq!(to_varint(0), vec![0x00]);
-        assert_eq!(to_varint(1), vec![0x01]);
-        assert_eq!(to_varint(127), vec![0x7F]);
-        assert_eq!(to_varint(128), vec![0x00, 0x80]);
-        assert_eq!(to_varint(129), vec![0x00, 0x81]);
-        assert_eq!(to_varint(-1), vec![0xFF]);
-        assert_eq!(to_varint(-128), vec![0x80]);
-        assert_eq!(to_varint(-129), vec![0xFF, 0x7F]);
+        assert_eq!(to_varint(0.into()), vec![0x00]);
+        assert_eq!(to_varint(1.into()), vec![0x01]);
+        assert_eq!(to_varint(127.into()), vec![0x7F]);
+        assert_eq!(to_varint(128.into()), vec![0x00, 0x80]);
+        assert_eq!(to_varint(129.into()), vec![0x00, 0x81]);
+        assert_eq!(to_varint(BigInt::from(-1)), vec![0xFF]);
+        assert_eq!(to_varint(BigInt::from(-128)), vec![0x80]);
+        assert_eq!(to_varint(BigInt::from(-129)), vec![0xFF, 0x7F]);
     }
 }

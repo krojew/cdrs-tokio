@@ -1,5 +1,6 @@
 use std::net::IpAddr;
 use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
+use std::sync::Arc;
 
 use chrono::prelude::*;
 use time::PrimitiveDateTime;
@@ -17,20 +18,22 @@ use crate::types::map::Map;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
 use crate::types::{ByIndex, ByName, CBytes, IntoRustByIndex, IntoRustByName};
+use num::BigInt;
 
 #[derive(Clone, Debug)]
 pub struct Row {
-    metadata: RowsMetadata,
+    metadata: Arc<RowsMetadata>,
     row_content: Vec<CBytes>,
 }
 
 impl Row {
     pub fn from_frame_body(body: BodyResResultRows) -> Vec<Row> {
+        let metadata = Arc::new(body.metadata);
         body.rows_content
-            .iter()
+            .into_iter()
             .map(|row| Row {
-                metadata: body.metadata.clone(),
-                row_content: row.clone(),
+                metadata: metadata.clone(),
+                row_content: row,
             })
             .collect()
     }
@@ -79,6 +82,7 @@ into_rust_by_name!(Row, NonZeroI32);
 into_rust_by_name!(Row, NonZeroI64);
 into_rust_by_name!(Row, NaiveDateTime);
 into_rust_by_name!(Row, DateTime<Utc>);
+into_rust_by_name!(Row, BigInt);
 
 impl ByIndex for Row {}
 
@@ -105,3 +109,4 @@ into_rust_by_index!(Row, NonZeroI32);
 into_rust_by_index!(Row, NonZeroI64);
 into_rust_by_index!(Row, NaiveDateTime);
 into_rust_by_index!(Row, DateTime<Utc>);
+into_rust_by_index!(Row, BigInt);

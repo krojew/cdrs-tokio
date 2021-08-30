@@ -7,12 +7,14 @@ pub struct BodyReqAuthResponse {
 }
 
 impl BodyReqAuthResponse {
+    #[inline]
     pub fn new(data: CBytes) -> BodyReqAuthResponse {
         BodyReqAuthResponse { data }
     }
 }
 
 impl AsBytes for BodyReqAuthResponse {
+    #[inline]
     fn as_bytes(&self) -> Vec<u8> {
         self.data.as_bytes()
     }

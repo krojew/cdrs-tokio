@@ -199,7 +199,6 @@ async fn integer_v4() {
     }
 }
 
-// TODO decimal
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn float() {
@@ -209,11 +208,11 @@ async fn float() {
 
     let my_float: f32 = 123.456;
     let my_double: f64 = 987.654;
-    let my_decimal_b = std::i64::MAX;
+    let my_decimal_b = i64::MAX;
     let values = query_values!(
         my_float,
         my_double,
-        Decimal::new(12001, 2),
+        Decimal::new(12001.into(), 2),
         Decimal::from(my_decimal_b)
     );
 
@@ -242,7 +241,7 @@ async fn float() {
         let my_decimal_row_b: Decimal = row.get_r_by_name("my_decimal_b").expect("my_decimal_b");
         assert_float_eq!(my_float_row, my_float, abs <= f32::EPSILON);
         assert_float_eq!(my_double_row, my_double, abs <= f64::EPSILON);
-        assert_eq!(my_decimal_row_a, Decimal::new(12001, 2));
+        assert_eq!(my_decimal_row_a, Decimal::new(12001.into(), 2));
         assert_eq!(my_decimal_row_b, Decimal::from(my_decimal_b));
     }
 }
@@ -327,7 +326,7 @@ async fn uuid() {
         .body()
         .expect("get body with UUID error")
         .into_rows()
-        .expect("convertion body with UUID into rows error");
+        .expect("conversion body with UUID into rows error");
 
     assert_eq!(rows.len(), 1);
     for row in rows {

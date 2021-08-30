@@ -4,10 +4,14 @@
 
 * New `listen_tls` and `listen_tls_blocking` functions for listening for server events.
 * New `ReconnectionPolicy` used when trying to re-establish connections to downed nodes.
+* `Error` now implements standard `Error`.
 
 ### Changed
 
-* Rewritten transport layer for massive performance improvements (including removing `bb8`).
+* Rewritten transport layer for massive performance improvements (including removing `bb8`). This
+  involves changing a large portion of public API related to transport and server events.
+* Changed `Target` and `ChangeType` enums to `SchemaChangeTarget` and `SchemaChangeType`.
+* The `varint` type now uses `num::BigInt` representation (this implies `Decimal` also uses "big" types).
 
 ## 5.0.0
 

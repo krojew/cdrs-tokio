@@ -3,7 +3,7 @@ use std::hash::Hash;
 
 use crate::frame::AsBytes;
 use crate::types::value::Value;
-use crate::types::CString;
+use crate::types::CStringRef;
 
 /// Enum that represents two types of query values:
 /// * values without name
@@ -16,7 +16,8 @@ pub enum QueryValues {
 
 impl QueryValues {
     /// Returns `true` if query values is with names and `false` otherwise.
-    pub fn with_names(&self) -> bool {
+    #[inline]
+    pub fn has_names(&self) -> bool {
         !matches!(*self, QueryValues::SimpleValues(_))
     }
 
@@ -33,11 +34,11 @@ impl QueryValues {
         self.len() == 0
     }
 
-    fn named_value_into_bytes_fold(mut bytes: Vec<u8>, vals: (&String, &Value)) -> Vec<u8> {
-        let mut name_bytes = CString::new(vals.0.clone()).as_bytes();
-        let mut vals_bytes = vals.1.as_bytes();
+    fn named_value_into_bytes_fold(mut bytes: Vec<u8>, values: (&String, &Value)) -> Vec<u8> {
+        let mut name_bytes = CStringRef::new(values.0).as_bytes();
+        let mut values_bytes = values.1.as_bytes();
         bytes.append(&mut name_bytes);
-        bytes.append(&mut vals_bytes);
+        bytes.append(&mut values_bytes);
         bytes
     }
 
@@ -81,11 +82,11 @@ impl<S: ToString + Hash + Eq, V: Into<Value> + Clone> From<HashMap<S, V>> for Qu
 impl AsBytes for QueryValues {
     fn as_bytes(&self) -> Vec<u8> {
         let bytes: Vec<u8> = vec![];
-        match *self {
-            QueryValues::SimpleValues(ref v) => {
+        match self {
+            QueryValues::SimpleValues(v) => {
                 v.iter().fold(bytes, QueryValues::value_into_bytes_fold)
             }
-            QueryValues::NamedValues(ref v) => v
+            QueryValues::NamedValues(v) => v
                 .iter()
                 .fold(bytes, QueryValues::named_value_into_bytes_fold),
         }

@@ -111,26 +111,13 @@ impl FromStr for Consistency {
 
 impl AsBytes for Consistency {
     fn as_bytes(&self) -> Vec<u8> {
-        match *self {
-            Consistency::Any => to_short(0x0000),
-            Consistency::One => to_short(0x0001),
-            Consistency::Two => to_short(0x0002),
-            Consistency::Three => to_short(0x0003),
-            Consistency::Quorum => to_short(0x0004),
-            Consistency::All => to_short(0x0005),
-            Consistency::LocalQuorum => to_short(0x0006),
-            Consistency::EachQuorum => to_short(0x0007),
-            Consistency::Serial => to_short(0x0008),
-            Consistency::LocalSerial => to_short(0x0009),
-            Consistency::LocalOne => to_short(0x000A),
-            Consistency::Unknown => to_short(0x0063),
-            // giving Unknown a value of 99
-        }
+        let value: i16 = (*self).into();
+        to_short(value)
     }
 }
 
-impl From<i32> for Consistency {
-    fn from(bytes: i32) -> Consistency {
+impl From<i16> for Consistency {
+    fn from(bytes: i16) -> Consistency {
         match bytes {
             0x0000 => Consistency::Any,
             0x0001 => Consistency::One,
@@ -148,29 +135,37 @@ impl From<i32> for Consistency {
     }
 }
 
+impl From<Consistency> for i16 {
+    fn from(value: Consistency) -> Self {
+        match value {
+            Consistency::Any => 0x0000,
+            Consistency::One => 0x0001,
+            Consistency::Two => 0x0002,
+            Consistency::Three => 0x0003,
+            Consistency::Quorum => 0x0004,
+            Consistency::All => 0x0005,
+            Consistency::LocalQuorum => 0x0006,
+            Consistency::EachQuorum => 0x0007,
+            Consistency::Serial => 0x0008,
+            Consistency::LocalSerial => 0x0009,
+            Consistency::LocalOne => 0x000A,
+            Consistency::Unknown => 0x0063,
+            // giving Unknown a value of 99
+        }
+    }
+}
+
 impl FromBytes for Consistency {
     fn from_bytes(bytes: &[u8]) -> error::Result<Consistency> {
-        try_from_bytes(bytes).map_err(Into::into).map(|b| match b {
-            0x0000 => Consistency::Any,
-            0x0001 => Consistency::One,
-            0x0002 => Consistency::Two,
-            0x0003 => Consistency::Three,
-            0x0004 => Consistency::Quorum,
-            0x0005 => Consistency::All,
-            0x0006 => Consistency::LocalQuorum,
-            0x0007 => Consistency::EachQuorum,
-            0x0008 => Consistency::Serial,
-            0x0009 => Consistency::LocalSerial,
-            0x000A => Consistency::LocalOne,
-            _ => Consistency::Unknown,
-        })
+        try_i16_from_bytes(bytes)
+            .map_err(Into::into)
+            .map(Into::into)
     }
 }
 
 impl FromCursor for Consistency {
-    fn from_cursor(mut cursor: &mut io::Cursor<&[u8]>) -> error::Result<Consistency> {
-        let consistency_num = CIntShort::from_cursor(&mut cursor)? as i32;
-        Ok(Consistency::from(consistency_num))
+    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<Consistency> {
+        CIntShort::from_cursor(cursor).map(Into::into)
     }
 }
 

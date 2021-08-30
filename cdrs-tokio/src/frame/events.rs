@@ -94,19 +94,20 @@ impl PartialEq<SimpleServerEvent> for ServerEvent {
 }
 
 impl FromCursor for ServerEvent {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<ServerEvent> {
-        let event_type = CString::from_cursor(&mut cursor)?;
-        match event_type.as_str() {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ServerEvent> {
+        let event_type = CString::from_cursor(cursor)?;
+        let event_type = event_type.as_str();
+        match event_type {
             TOPOLOGY_CHANGE => Ok(ServerEvent::TopologyChange(TopologyChange::from_cursor(
-                &mut cursor,
+                cursor,
             )?)),
             STATUS_CHANGE => Ok(ServerEvent::StatusChange(StatusChange::from_cursor(
-                &mut cursor,
+                cursor,
             )?)),
             SCHEMA_CHANGE => Ok(ServerEvent::SchemaChange(SchemaChange::from_cursor(
-                &mut cursor,
+                cursor,
             )?)),
-            _ => Err("Unexpected server event".into()),
+            _ => Err(format!("Unexpected server event: {}", event_type).into()),
         }
     }
 }
@@ -119,9 +120,9 @@ pub struct TopologyChange {
 }
 
 impl FromCursor for TopologyChange {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<TopologyChange> {
-        let change_type = TopologyChangeType::from_cursor(&mut cursor)?;
-        let addr = CInet::from_cursor(&mut cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<TopologyChange> {
+        let change_type = TopologyChangeType::from_cursor(cursor)?;
+        let addr = CInet::from_cursor(cursor)?;
 
         Ok(TopologyChange { change_type, addr })
     }
@@ -134,11 +135,18 @@ pub enum TopologyChangeType {
 }
 
 impl FromCursor for TopologyChangeType {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<TopologyChangeType> {
-        CString::from_cursor(&mut cursor).and_then(|tc| match tc.as_str() {
-            NEW_NODE => Ok(TopologyChangeType::NewNode),
-            REMOVED_NODE => Ok(TopologyChangeType::RemovedNode),
-            _ => Err("Unexpected topology change type received from Cluster".into()),
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<TopologyChangeType> {
+        CString::from_cursor(cursor).and_then(|tc| {
+            let tc = tc.as_str();
+            match tc {
+                NEW_NODE => Ok(TopologyChangeType::NewNode),
+                REMOVED_NODE => Ok(TopologyChangeType::RemovedNode),
+                _ => Err(format!(
+                    "Unexpected topology change type received from Cluster: {}",
+                    tc
+                )
+                .into()),
+            }
         })
     }
 }
@@ -151,9 +159,9 @@ pub struct StatusChange {
 }
 
 impl FromCursor for StatusChange {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<StatusChange> {
-        let change_type = StatusChangeType::from_cursor(&mut cursor)?;
-        let addr = CInet::from_cursor(&mut cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<StatusChange> {
+        let change_type = StatusChangeType::from_cursor(cursor)?;
+        let addr = CInet::from_cursor(cursor)?;
 
         Ok(StatusChange { change_type, addr })
     }
@@ -166,11 +174,14 @@ pub enum StatusChangeType {
 }
 
 impl FromCursor for StatusChangeType {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<StatusChangeType> {
-        CString::from_cursor(&mut cursor).and_then(|sct| match sct.as_str() {
-            UP => Ok(StatusChangeType::Up),
-            DOWN => Ok(StatusChangeType::Down),
-            _ => Err("Unexpected status change type".into()),
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<StatusChangeType> {
+        CString::from_cursor(cursor).and_then(|sct| {
+            let sct = sct.as_str();
+            match sct {
+                UP => Ok(StatusChangeType::Up),
+                DOWN => Ok(StatusChangeType::Down),
+                _ => Err(format!("Unexpected status change type: {}", sct).into()),
+            }
         })
     }
 }
@@ -178,16 +189,16 @@ impl FromCursor for StatusChangeType {
 /// Events related to schema change.
 #[derive(Debug, PartialEq)]
 pub struct SchemaChange {
-    pub change_type: ChangeType,
-    pub target: Target,
+    pub change_type: SchemaChangeType,
+    pub target: SchemaChangeTarget,
     pub options: ChangeSchemeOptions,
 }
 
 impl FromCursor for SchemaChange {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChange> {
-        let change_type = ChangeType::from_cursor(&mut cursor)?;
-        let target = Target::from_cursor(&mut cursor)?;
-        let options = ChangeSchemeOptions::from_cursor_and_target(&mut cursor, &target)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChange> {
+        let change_type = SchemaChangeType::from_cursor(cursor)?;
+        let target = SchemaChangeTarget::from_cursor(cursor)?;
+        let options = ChangeSchemeOptions::from_cursor_and_target(cursor, &target)?;
 
         Ok(SchemaChange {
             change_type,
@@ -198,29 +209,30 @@ impl FromCursor for SchemaChange {
 }
 
 /// Represents type of changes.
-// TODO: rename to SchemaChangeType
 #[derive(Debug, PartialEq)]
-pub enum ChangeType {
+pub enum SchemaChangeType {
     Created,
     Updated,
     Dropped,
 }
 
-impl FromCursor for ChangeType {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<ChangeType> {
-        CString::from_cursor(&mut cursor).and_then(|ct| match ct.as_str() {
-            CREATED => Ok(ChangeType::Created),
-            UPDATED => Ok(ChangeType::Updated),
-            DROPPED => Ok(ChangeType::Dropped),
-            _ => Err("Unexpected schema change type".into()),
+impl FromCursor for SchemaChangeType {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeType> {
+        CString::from_cursor(cursor).and_then(|ct| {
+            let ct = ct.as_str();
+            match ct {
+                CREATED => Ok(SchemaChangeType::Created),
+                UPDATED => Ok(SchemaChangeType::Updated),
+                DROPPED => Ok(SchemaChangeType::Dropped),
+                _ => Err(format!("Unexpected schema change type: {}", ct).into()),
+            }
         })
     }
 }
 
 /// Refers to a target of changes were made.
-// TODO: rename to SchemaChangeTarget
 #[derive(Debug, PartialEq)]
-pub enum Target {
+pub enum SchemaChangeTarget {
     Keyspace,
     Table,
     Type,
@@ -228,15 +240,18 @@ pub enum Target {
     Aggregate,
 }
 
-impl FromCursor for Target {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<Target> {
-        CString::from_cursor(&mut cursor).and_then(|t| match t.as_str() {
-            KEYSPACE => Ok(Target::Keyspace),
-            TABLE => Ok(Target::Table),
-            TYPE => Ok(Target::Type),
-            FUNCTION => Ok(Target::Function),
-            AGGREGATE => Ok(Target::Aggregate),
-            _ => Err("Unexpected schema change target".into()),
+impl FromCursor for SchemaChangeTarget {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeTarget> {
+        CString::from_cursor(cursor).and_then(|t| {
+            let t = t.as_str();
+            match t {
+                KEYSPACE => Ok(SchemaChangeTarget::Keyspace),
+                TABLE => Ok(SchemaChangeTarget::Table),
+                TYPE => Ok(SchemaChangeTarget::Type),
+                FUNCTION => Ok(SchemaChangeTarget::Function),
+                AGGREGATE => Ok(SchemaChangeTarget::Aggregate),
+                _ => Err(format!("Unexpected schema change target: {}", t).into()),
+            }
         })
     }
 }
@@ -247,53 +262,51 @@ pub enum ChangeSchemeOptions {
     /// Changes related to keyspaces. Contains keyspace name.
     Keyspace(String),
     /// Changes related to tables. Contains keyspace and table names.
-    TableType((String, String)),
+    TableType(String, String),
     /// Changes related to functions and aggregations. Contains:
     /// * keyspace containing the user defined function / aggregate
     /// * the function/aggregate name
     /// * list of strings, one string for each argument type (as CQL type)
-    FunctionAggregate((String, String, Vec<String>)),
+    FunctionAggregate(String, String, Vec<String>),
 }
 
 impl ChangeSchemeOptions {
     fn from_cursor_and_target(
-        mut cursor: &mut Cursor<&[u8]>,
-        target: &Target,
+        cursor: &mut Cursor<&[u8]>,
+        target: &SchemaChangeTarget,
     ) -> error::Result<ChangeSchemeOptions> {
         Ok(match *target {
-            Target::Keyspace => ChangeSchemeOptions::from_cursor_keyspace(&mut cursor)?,
-            Target::Table | Target::Type => {
-                ChangeSchemeOptions::from_cursor_table_type(&mut cursor)?
+            SchemaChangeTarget::Keyspace => ChangeSchemeOptions::from_cursor_keyspace(cursor)?,
+            SchemaChangeTarget::Table | SchemaChangeTarget::Type => {
+                ChangeSchemeOptions::from_cursor_table_type(cursor)?
             }
-            Target::Function | Target::Aggregate => {
-                ChangeSchemeOptions::from_cursor_function_aggregate(&mut cursor)?
+            SchemaChangeTarget::Function | SchemaChangeTarget::Aggregate => {
+                ChangeSchemeOptions::from_cursor_function_aggregate(cursor)?
             }
         })
     }
 
-    fn from_cursor_keyspace(mut cursor: &mut Cursor<&[u8]>) -> error::Result<ChangeSchemeOptions> {
+    fn from_cursor_keyspace(cursor: &mut Cursor<&[u8]>) -> error::Result<ChangeSchemeOptions> {
         Ok(ChangeSchemeOptions::Keyspace(
-            CString::from_cursor(&mut cursor)?.into_plain(),
+            CString::from_cursor(cursor)?.into_plain(),
         ))
     }
 
-    fn from_cursor_table_type(
-        mut cursor: &mut Cursor<&[u8]>,
-    ) -> error::Result<ChangeSchemeOptions> {
-        let keyspace = CString::from_cursor(&mut cursor)?.into_plain();
-        let name = CString::from_cursor(&mut cursor)?.into_plain();
-        Ok(ChangeSchemeOptions::TableType((keyspace, name)))
+    fn from_cursor_table_type(cursor: &mut Cursor<&[u8]>) -> error::Result<ChangeSchemeOptions> {
+        let keyspace = CString::from_cursor(cursor)?.into_plain();
+        let name = CString::from_cursor(cursor)?.into_plain();
+        Ok(ChangeSchemeOptions::TableType(keyspace, name))
     }
 
     fn from_cursor_function_aggregate(
-        mut cursor: &mut Cursor<&[u8]>,
+        cursor: &mut Cursor<&[u8]>,
     ) -> error::Result<ChangeSchemeOptions> {
-        let keyspace = CString::from_cursor(&mut cursor)?.into_plain();
-        let name = CString::from_cursor(&mut cursor)?.into_plain();
-        let types = CStringList::from_cursor(&mut cursor)?.into_plain();
-        Ok(ChangeSchemeOptions::FunctionAggregate((
+        let keyspace = CString::from_cursor(cursor)?.into_plain();
+        let name = CString::from_cursor(cursor)?.into_plain();
+        let types = CStringList::from_cursor(cursor)?.into_plain();
+        Ok(ChangeSchemeOptions::FunctionAggregate(
             keyspace, name, types,
-        )))
+        ))
     }
 }
 
@@ -393,22 +406,22 @@ mod schema_change_type_test {
         let a = &[0, 7, 67, 82, 69, 65, 84, 69, 68];
         let mut created: Cursor<&[u8]> = Cursor::new(a);
         assert_eq!(
-            ChangeType::from_cursor(&mut created).unwrap(),
-            ChangeType::Created
+            SchemaChangeType::from_cursor(&mut created).unwrap(),
+            SchemaChangeType::Created
         );
 
         let b = &[0, 7, 85, 80, 68, 65, 84, 69, 68];
         let mut updated: Cursor<&[u8]> = Cursor::new(b);
         assert_eq!(
-            ChangeType::from_cursor(&mut updated).unwrap(),
-            ChangeType::Updated
+            SchemaChangeType::from_cursor(&mut updated).unwrap(),
+            SchemaChangeType::Updated
         );
 
         let c = &[0, 7, 68, 82, 79, 80, 80, 69, 68];
         let mut dropped: Cursor<&[u8]> = Cursor::new(c);
         assert_eq!(
-            ChangeType::from_cursor(&mut dropped).unwrap(),
-            ChangeType::Dropped
+            SchemaChangeType::from_cursor(&mut dropped).unwrap(),
+            SchemaChangeType::Dropped
         );
     }
 
@@ -417,7 +430,7 @@ mod schema_change_type_test {
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
         let mut wrong: Cursor<&[u8]> = Cursor::new(a);
-        let _ = ChangeType::from_cursor(&mut wrong).unwrap();
+        let _ = SchemaChangeType::from_cursor(&mut wrong).unwrap();
     }
 }
 
@@ -433,30 +446,36 @@ mod schema_change_target_test {
         let a = &[0, 8, 75, 69, 89, 83, 80, 65, 67, 69];
         let mut keyspace: Cursor<&[u8]> = Cursor::new(a);
         assert_eq!(
-            Target::from_cursor(&mut keyspace).unwrap(),
-            Target::Keyspace
+            SchemaChangeTarget::from_cursor(&mut keyspace).unwrap(),
+            SchemaChangeTarget::Keyspace
         );
 
         let b = &[0, 5, 84, 65, 66, 76, 69];
         let mut table: Cursor<&[u8]> = Cursor::new(b);
-        assert_eq!(Target::from_cursor(&mut table).unwrap(), Target::Table);
+        assert_eq!(
+            SchemaChangeTarget::from_cursor(&mut table).unwrap(),
+            SchemaChangeTarget::Table
+        );
 
         let c = &[0, 4, 84, 89, 80, 69];
         let mut _type: Cursor<&[u8]> = Cursor::new(c);
-        assert_eq!(Target::from_cursor(&mut _type).unwrap(), Target::Type);
+        assert_eq!(
+            SchemaChangeTarget::from_cursor(&mut _type).unwrap(),
+            SchemaChangeTarget::Type
+        );
 
         let d = &[0, 8, 70, 85, 78, 67, 84, 73, 79, 78];
         let mut function: Cursor<&[u8]> = Cursor::new(d);
         assert_eq!(
-            Target::from_cursor(&mut function).unwrap(),
-            Target::Function
+            SchemaChangeTarget::from_cursor(&mut function).unwrap(),
+            SchemaChangeTarget::Function
         );
 
         let e = &[0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69];
         let mut aggregate: Cursor<&[u8]> = Cursor::new(e);
         assert_eq!(
-            Target::from_cursor(&mut aggregate).unwrap(),
-            Target::Aggregate
+            SchemaChangeTarget::from_cursor(&mut aggregate).unwrap(),
+            SchemaChangeTarget::Aggregate
         );
     }
 
@@ -465,7 +484,7 @@ mod schema_change_target_test {
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
         let mut wrong: Cursor<&[u8]> = Cursor::new(a);
-        let _ = Target::from_cursor(&mut wrong).unwrap();
+        let _ = SchemaChangeTarget::from_cursor(&mut wrong).unwrap();
     }
 }
 
@@ -566,8 +585,8 @@ mod server_event {
         let ks_event = ServerEvent::from_cursor(&mut ks).unwrap();
         match ks_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Created);
-                assert_eq!(_c.target, Target::Keyspace);
+                assert_eq!(_c.change_type, SchemaChangeType::Created);
+                assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
                 match _c.options {
                     ChangeSchemeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
                     _ => panic!("should be keyspace"),
@@ -588,11 +607,12 @@ mod server_event {
         let tb_event = ServerEvent::from_cursor(&mut tb).unwrap();
         match tb_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Created);
-                assert_eq!(_c.target, Target::Table);
-                match _c.options {
-                    ChangeSchemeOptions::TableType(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "my_table".to_string()))
+                assert_eq!(_c.change_type, SchemaChangeType::Created);
+                assert_eq!(_c.target, SchemaChangeTarget::Table);
+                match &_c.options {
+                    ChangeSchemeOptions::TableType(ks, tn) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "my_table");
                     }
                     _ => panic!("should be table"),
                 }
@@ -612,11 +632,12 @@ mod server_event {
         let tp_event = ServerEvent::from_cursor(&mut tp).unwrap();
         match tp_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Created);
-                assert_eq!(_c.target, Target::Type);
-                match _c.options {
-                    ChangeSchemeOptions::TableType(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "my_table".to_string()))
+                assert_eq!(_c.change_type, SchemaChangeType::Created);
+                assert_eq!(_c.target, SchemaChangeTarget::Type);
+                match &_c.options {
+                    ChangeSchemeOptions::TableType(ks, tn) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "my_table");
                     }
                     _ => panic!("should be type"),
                 }
@@ -637,11 +658,13 @@ mod server_event {
         let fnct_event = ServerEvent::from_cursor(&mut fnct).unwrap();
         match fnct_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Created);
-                assert_eq!(_c.target, Target::Function);
-                match _c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "name".to_string(), vec![]))
+                assert_eq!(_c.change_type, SchemaChangeType::Created);
+                assert_eq!(_c.target, SchemaChangeTarget::Function);
+                match &_c.options {
+                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "name");
+                        assert!(v.is_empty());
                     }
                     _ => panic!("should be function"),
                 }
@@ -662,11 +685,13 @@ mod server_event {
         let aggr_event = ServerEvent::from_cursor(&mut aggr).unwrap();
         match aggr_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Created);
-                assert_eq!(_c.target, Target::Aggregate);
-                match _c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "name".to_string(), vec![]))
+                assert_eq!(_c.change_type, SchemaChangeType::Created);
+                assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
+                match &_c.options {
+                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "name");
+                        assert!(v.is_empty());
                     }
                     _ => panic!("should be aggregate"),
                 }
@@ -689,8 +714,8 @@ mod server_event {
         let ks_event = ServerEvent::from_cursor(&mut ks).unwrap();
         match ks_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Updated);
-                assert_eq!(_c.target, Target::Keyspace);
+                assert_eq!(_c.change_type, SchemaChangeType::Updated);
+                assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
                 match _c.options {
                     ChangeSchemeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
                     _ => panic!("should be keyspace"),
@@ -711,11 +736,12 @@ mod server_event {
         let tb_event = ServerEvent::from_cursor(&mut tb).unwrap();
         match tb_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Updated);
-                assert_eq!(_c.target, Target::Table);
-                match _c.options {
-                    ChangeSchemeOptions::TableType(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "my_table".to_string()))
+                assert_eq!(_c.change_type, SchemaChangeType::Updated);
+                assert_eq!(_c.target, SchemaChangeTarget::Table);
+                match &_c.options {
+                    ChangeSchemeOptions::TableType(ks, tn) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "my_table");
                     }
                     _ => panic!("should be table"),
                 }
@@ -735,11 +761,12 @@ mod server_event {
         let tp_event = ServerEvent::from_cursor(&mut tp).unwrap();
         match tp_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Updated);
-                assert_eq!(_c.target, Target::Type);
-                match _c.options {
-                    ChangeSchemeOptions::TableType(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "my_table".to_string()))
+                assert_eq!(_c.change_type, SchemaChangeType::Updated);
+                assert_eq!(_c.target, SchemaChangeTarget::Type);
+                match &_c.options {
+                    ChangeSchemeOptions::TableType(ks, tn) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "my_table");
                     }
                     _ => panic!("should be type"),
                 }
@@ -760,11 +787,13 @@ mod server_event {
         let fnct_event = ServerEvent::from_cursor(&mut fnct).unwrap();
         match fnct_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Updated);
-                assert_eq!(_c.target, Target::Function);
-                match _c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "name".to_string(), vec![]))
+                assert_eq!(_c.change_type, SchemaChangeType::Updated);
+                assert_eq!(_c.target, SchemaChangeTarget::Function);
+                match &_c.options {
+                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "name");
+                        assert!(v.is_empty());
                     }
                     _ => panic!("should be function"),
                 }
@@ -785,11 +814,13 @@ mod server_event {
         let aggr_event = ServerEvent::from_cursor(&mut aggr).unwrap();
         match aggr_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Updated);
-                assert_eq!(_c.target, Target::Aggregate);
-                match _c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "name".to_string(), vec![]))
+                assert_eq!(_c.change_type, SchemaChangeType::Updated);
+                assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
+                match &_c.options {
+                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "name");
+                        assert!(v.is_empty());
                     }
                     _ => panic!("should be aggregate"),
                 }
@@ -812,8 +843,8 @@ mod server_event {
         let ks_event = ServerEvent::from_cursor(&mut ks).unwrap();
         match ks_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Dropped);
-                assert_eq!(_c.target, Target::Keyspace);
+                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
+                assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
                 match _c.options {
                     ChangeSchemeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
                     _ => panic!("should be keyspace"),
@@ -834,11 +865,12 @@ mod server_event {
         let tb_event = ServerEvent::from_cursor(&mut tb).unwrap();
         match tb_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Dropped);
-                assert_eq!(_c.target, Target::Table);
-                match _c.options {
-                    ChangeSchemeOptions::TableType(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "my_table".to_string()))
+                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
+                assert_eq!(_c.target, SchemaChangeTarget::Table);
+                match &_c.options {
+                    ChangeSchemeOptions::TableType(ks, tn) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "my_table");
                     }
                     _ => panic!("should be table"),
                 }
@@ -858,11 +890,12 @@ mod server_event {
         let tp_event = ServerEvent::from_cursor(&mut tp).unwrap();
         match tp_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Dropped);
-                assert_eq!(_c.target, Target::Type);
-                match _c.options {
-                    ChangeSchemeOptions::TableType(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "my_table".to_string()))
+                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
+                assert_eq!(_c.target, SchemaChangeTarget::Type);
+                match &_c.options {
+                    ChangeSchemeOptions::TableType(ks, tn) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "my_table");
                     }
                     _ => panic!("should be type"),
                 }
@@ -883,11 +916,13 @@ mod server_event {
         let fnct_event = ServerEvent::from_cursor(&mut fnct).unwrap();
         match fnct_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Dropped);
-                assert_eq!(_c.target, Target::Function);
-                match _c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "name".to_string(), vec![]))
+                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
+                assert_eq!(_c.target, SchemaChangeTarget::Function);
+                match &_c.options {
+                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "name");
+                        assert!(v.is_empty());
                     }
                     _ => panic!("should be function"),
                 }
@@ -908,11 +943,13 @@ mod server_event {
         let aggr_event = ServerEvent::from_cursor(&mut aggr).unwrap();
         match aggr_event {
             ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, ChangeType::Dropped);
-                assert_eq!(_c.target, Target::Aggregate);
-                match _c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ref tt) => {
-                        assert_eq!(tt, &("my_ks".to_string(), "name".to_string(), vec![]))
+                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
+                assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
+                match &_c.options {
+                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                        assert_eq!(ks, "my_ks");
+                        assert_eq!(tn, "name");
+                        assert!(v.is_empty());
                     }
                     _ => panic!("should be aggregate"),
                 }

@@ -130,6 +130,6 @@ mod tests {
         let auth = NoneAuthenticator;
         let provider = NoneAuthenticatorProvider;
         assert_eq!(provider.name(), None);
-        assert_eq!(auth.initial_response().into_plain().unwrap(), vec![0]);
+        assert_eq!(auth.initial_response().into_bytes().unwrap(), vec![0]);
     }
 }

@@ -7,6 +7,7 @@ use crate::types::map::Map;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
 use crate::types::{AsRust, AsRustType, CBytes};
+use num::BigInt;
 use std::net::IpAddr;
 use uuid::Uuid;
 
@@ -50,3 +51,4 @@ list_as_rust!(Map);
 list_as_rust!(Udt);
 list_as_rust!(Tuple);
 list_as_rust!(Decimal);
+list_as_rust!(BigInt);

@@ -6,12 +6,14 @@ use crate::frame::AsBytes;
 pub struct BodyResReady;
 
 impl From<Vec<u8>> for BodyResReady {
-    fn from(_vec: Vec<u8>) -> BodyResReady {
+    #[inline]
+    fn from(_: Vec<u8>) -> BodyResReady {
         BodyResReady {}
     }
 }
 
 impl AsBytes for BodyResReady {
+    #[inline]
     fn as_bytes(&self) -> Vec<u8> {
         vec![]
     }

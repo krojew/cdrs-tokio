@@ -34,7 +34,7 @@ impl QueryParamsBuilder {
 
     /// Sets new query consistency
     pub fn values(mut self, values: QueryValues) -> Self {
-        let with_names = values.with_names();
+        let with_names = values.has_names();
         self.with_names = Some(with_names);
         self.values = Some(values);
         self.flags = self.flags.or_else(|| Some(vec![])).map(|mut flags| {

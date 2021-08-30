@@ -22,28 +22,30 @@ impl AsBytes for BodyReqBatch {
     fn as_bytes(&self) -> Vec<u8> {
         let mut bytes = vec![self.batch_type.as_byte()];
 
-        bytes.extend_from_slice(to_short(self.queries.len() as i16).as_slice());
+        let len = self.queries.len() as i16;
+        bytes.extend_from_slice(&len.to_be_bytes());
 
-        bytes = self.queries.iter().fold(bytes, |mut _bytes, q| {
-            _bytes.extend_from_slice(q.as_bytes().as_slice());
-            _bytes
+        bytes = self.queries.iter().fold(bytes, |mut bytes, q| {
+            bytes.append(&mut q.as_bytes());
+            bytes
         });
 
-        bytes.extend_from_slice(self.consistency.as_bytes().as_slice());
+        let consistency: i16 = self.consistency.into();
+        bytes.extend_from_slice(&consistency.to_be_bytes());
 
         let flag_byte = self
             .query_flags
             .iter()
-            .fold(0, |mut _bytes, f| _bytes | f.as_byte());
+            .fold(0, |bytes, f| bytes | f.as_byte());
         bytes.push(flag_byte);
 
-        if let Some(ref serial_consistency) = self.serial_consistency {
-            bytes.extend_from_slice(serial_consistency.as_bytes().as_slice());
+        if let Some(serial_consistency) = self.serial_consistency {
+            let serial_consistency: i16 = serial_consistency.into();
+            bytes.extend_from_slice(&serial_consistency.to_be_bytes());
         }
 
-        if let Some(ref timestamp) = self.timestamp {
-            //bytes.extend_from_slice(to_bigint(timestamp.clone()).as_slice());
-            bytes.extend_from_slice(to_bigint(*timestamp).as_slice());
+        if let Some(timestamp) = self.timestamp {
+            bytes.extend_from_slice(&timestamp.to_be_bytes());
         }
 
         bytes
@@ -110,7 +112,7 @@ pub enum BatchQuerySubj {
 
 impl AsBytes for BatchQuery {
     fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![];
+        let mut bytes = Vec::with_capacity(1 + INT_LEN + SHORT_LEN);
 
         // kind
         if self.is_prepared {
@@ -119,23 +121,24 @@ impl AsBytes for BatchQuery {
             bytes.push(0);
         }
 
-        match self.subject {
-            BatchQuerySubj::PreparedId(ref s) => {
-                bytes.extend_from_slice(
-                    s.id.read()
+        match &self.subject {
+            BatchQuerySubj::PreparedId(s) => {
+                bytes.append(
+                    &mut s
+                        .id
+                        .read()
                         .expect("Cannot read prepared query id!")
-                        .as_bytes()
-                        .as_slice(),
+                        .as_bytes(),
                 );
             }
-            BatchQuerySubj::QueryString(ref s) => {
-                bytes.extend_from_slice(s.as_bytes().as_slice());
+            BatchQuerySubj::QueryString(s) => {
+                bytes.append(&mut s.as_bytes());
             }
         }
 
-        bytes.extend_from_slice(to_short(self.values.len() as i16).as_slice());
-
-        bytes.extend_from_slice(self.values.as_bytes().as_slice());
+        let len = self.values.len() as i16;
+        bytes.extend_from_slice(&len.to_be_bytes());
+        bytes.append(&mut self.values.as_bytes());
 
         bytes
     }

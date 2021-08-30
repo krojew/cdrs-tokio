@@ -14,6 +14,7 @@ use crate::types::map::Map;
 use crate::types::udt::Udt;
 use crate::types::{ByIndex, CBytes, IntoRustByIndex};
 
+use num::BigInt;
 use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
@@ -81,3 +82,4 @@ into_rust_by_index!(Tuple, PrimitiveDateTime);
 into_rust_by_index!(Tuple, Decimal);
 into_rust_by_index!(Tuple, NaiveDateTime);
 into_rust_by_index!(Tuple, DateTime<Utc>);
+into_rust_by_index!(Tuple, BigInt);

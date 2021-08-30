@@ -28,74 +28,39 @@ pub enum QueryFlags {
 }
 
 impl QueryFlags {
-    #[doc(hidden)]
-    pub fn has_value(byte: u8) -> bool {
+    #[inline]
+    pub(crate) fn has_value(byte: u8) -> bool {
         (byte & FLAGS_VALUE) != 0
     }
 
-    #[doc(hidden)]
-    pub fn set_value(byte: u8) -> u8 {
-        byte | FLAGS_VALUE
-    }
-
-    #[doc(hidden)]
-    pub fn has_skip_metadata(byte: u8) -> bool {
+    #[inline]
+    pub(crate) fn has_skip_metadata(byte: u8) -> bool {
         (byte & FLAGS_SKIP_METADATA) != 0
     }
 
-    #[doc(hidden)]
-    pub fn set_skip_metadata(byte: u8) -> u8 {
-        byte | FLAGS_SKIP_METADATA
-    }
-
-    #[doc(hidden)]
-    pub fn has_page_size(byte: u8) -> bool {
+    #[inline]
+    pub(crate) fn has_page_size(byte: u8) -> bool {
         (byte & WITH_PAGE_SIZE) != 0
     }
 
-    #[doc(hidden)]
-    pub fn set_page_size(byte: u8) -> u8 {
-        byte | WITH_PAGE_SIZE
-    }
-
-    #[doc(hidden)]
-    pub fn has_with_paging_state(byte: u8) -> bool {
+    #[inline]
+    pub(crate) fn has_with_paging_state(byte: u8) -> bool {
         (byte & WITH_PAGING_STATE) != 0
     }
 
-    #[doc(hidden)]
-    pub fn set_with_paging_state(byte: u8) -> u8 {
-        byte | WITH_PAGING_STATE
-    }
-
-    #[doc(hidden)]
-    pub fn has_with_serial_consistency(byte: u8) -> bool {
+    #[inline]
+    pub(crate) fn has_with_serial_consistency(byte: u8) -> bool {
         (byte & WITH_SERIAL_CONSISTENCY) != 0
     }
 
-    #[doc(hidden)]
-    pub fn set_with_serial_consistency(byte: u8) -> u8 {
-        byte | WITH_SERIAL_CONSISTENCY
-    }
-
-    #[doc(hidden)]
-    pub fn has_with_default_timestamp(byte: u8) -> bool {
+    #[inline]
+    pub(crate) fn has_with_default_timestamp(byte: u8) -> bool {
         (byte & WITH_DEFAULT_TIMESTAMP) != 0
     }
 
-    #[doc(hidden)]
-    pub fn set_with_default_timestamp(byte: u8) -> u8 {
-        byte | WITH_DEFAULT_TIMESTAMP
-    }
-
-    #[doc(hidden)]
-    pub fn has_with_names_for_values(byte: u8) -> bool {
+    #[inline]
+    pub(crate) fn has_with_names_for_values(byte: u8) -> bool {
         (byte & WITH_NAME_FOR_VALUES) != 0
-    }
-
-    #[doc(hidden)]
-    pub fn set_with_names_for_values(byte: u8) -> u8 {
-        byte | WITH_NAME_FOR_VALUES
     }
 }
 
@@ -117,6 +82,34 @@ impl AsByte for QueryFlags {
 mod tests {
     use super::*;
 
+    fn add_value(byte: u8) -> u8 {
+        byte | FLAGS_VALUE
+    }
+
+    fn add_skip_metadata(byte: u8) -> u8 {
+        byte | FLAGS_SKIP_METADATA
+    }
+
+    fn add_page_size(byte: u8) -> u8 {
+        byte | WITH_PAGE_SIZE
+    }
+
+    fn add_with_paging_state(byte: u8) -> u8 {
+        byte | WITH_PAGING_STATE
+    }
+
+    fn add_with_serial_consistency(byte: u8) -> u8 {
+        byte | WITH_SERIAL_CONSISTENCY
+    }
+
+    fn add_with_default_timestamp(byte: u8) -> u8 {
+        byte | WITH_DEFAULT_TIMESTAMP
+    }
+
+    fn add_with_names_for_values(byte: u8) -> u8 {
+        byte | WITH_NAME_FOR_VALUES
+    }
+
     #[test]
     fn has_value_test() {
         assert!(
@@ -131,11 +124,7 @@ mod tests {
 
     #[test]
     fn set_value_test() {
-        assert_eq!(
-            QueryFlags::set_value(0),
-            FLAGS_VALUE,
-            "should set has value flag"
-        );
+        assert_eq!(add_value(0), FLAGS_VALUE, "should set has value flag");
     }
 
     #[test]
@@ -153,7 +142,7 @@ mod tests {
     #[test]
     fn set_skip_metadata_test() {
         assert_eq!(
-            QueryFlags::set_skip_metadata(0),
+            add_skip_metadata(0),
             FLAGS_SKIP_METADATA,
             "should set has skip metadata flag"
         );
@@ -174,7 +163,7 @@ mod tests {
     #[test]
     fn set_page_size_test() {
         assert_eq!(
-            QueryFlags::set_page_size(0),
+            add_page_size(0),
             WITH_PAGE_SIZE,
             "should set has page size flag"
         );
@@ -195,7 +184,7 @@ mod tests {
     #[test]
     fn set_with_paging_state_test() {
         assert_eq!(
-            QueryFlags::set_with_paging_state(0),
+            add_with_paging_state(0),
             WITH_PAGING_STATE,
             "should set has with paging state flag"
         );
@@ -216,7 +205,7 @@ mod tests {
     #[test]
     fn set_with_serial_consistency_test() {
         assert_eq!(
-            QueryFlags::set_with_serial_consistency(0),
+            add_with_serial_consistency(0),
             WITH_SERIAL_CONSISTENCY,
             "should set has with serial consistency flag"
         );
@@ -237,7 +226,7 @@ mod tests {
     #[test]
     fn set_with_default_timestamp_test() {
         assert_eq!(
-            QueryFlags::set_with_default_timestamp(0),
+            add_with_default_timestamp(0),
             WITH_DEFAULT_TIMESTAMP,
             "should set has with serial consistency flag"
         );
@@ -258,7 +247,7 @@ mod tests {
     #[test]
     fn set_with_names_for_values_test() {
         assert_eq!(
-            QueryFlags::set_with_names_for_values(0),
+            add_with_names_for_values(0),
             WITH_NAME_FOR_VALUES,
             "should set has with name for values flag"
         );

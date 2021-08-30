@@ -6,7 +6,7 @@ use crate::compression::Compression;
 use crate::error;
 use crate::frame::FromCursor;
 use crate::types::data_serialization_types::decode_timeuuid;
-use crate::types::{from_bytes, from_i16_bytes, CStringList, UUID_LEN};
+use crate::types::{try_i16_from_bytes, try_i32_from_bytes, CStringList, UUID_LEN};
 
 async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
@@ -27,9 +27,9 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
 
     let version = Version::from(version_bytes.to_vec());
     let flags = Flag::collection(flag_bytes[0]);
-    let stream = from_i16_bytes(&stream_bytes);
-    let opcode = Opcode::from(opcode_bytes[0]);
-    let length = from_bytes(&length_bytes) as usize;
+    let stream = try_i16_from_bytes(&stream_bytes)?;
+    let opcode = Opcode::try_from(opcode_bytes[0])?;
+    let length = try_i32_from_bytes(&length_bytes)? as usize;
 
     let mut body_bytes = Vec::with_capacity(length);
     unsafe {

@@ -1,3 +1,5 @@
+use arrayref::array_ref;
+use num::BigInt;
 use std::io;
 use std::net;
 use std::string::FromUtf8Error;
@@ -10,79 +12,90 @@ use crate::frame::FromCursor;
 
 // https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L813
 
-// Decodes Cassandra `ascii` data (bytes) into Rust's `Result<String, FromUtf8Error>`.
+const FALSE_BYTE: u8 = 0;
+
+// Decodes Cassandra `ascii` data (bytes)
+#[inline]
 pub fn decode_custom(bytes: &[u8]) -> Result<String, FromUtf8Error> {
     Ok(String::from_utf8_lossy(bytes).into_owned())
 }
 
-// Decodes Cassandra `ascii` data (bytes) into Rust's `Result<String, FromUtf8Error>`.
+// Decodes Cassandra `ascii` data (bytes)
+#[inline]
 pub fn decode_ascii(bytes: &[u8]) -> Result<String, FromUtf8Error> {
     Ok(String::from_utf8_lossy(bytes).into_owned())
 }
 
-// Decodes Cassandra `varchar` data (bytes) into Rust's `Result<String, FromUtf8Error>`.
+// Decodes Cassandra `varchar` data (bytes)
+#[inline]
 pub fn decode_varchar(bytes: &[u8]) -> Result<String, FromUtf8Error> {
     Ok(String::from_utf8_lossy(bytes).into_owned())
 }
 
-// Decodes Cassandra `bigint` data (bytes) into Rust's `Result<i32, io::Error>`
+// Decodes Cassandra `bigint` data (bytes)
+#[inline]
 pub fn decode_bigint(bytes: &[u8]) -> Result<i64, io::Error> {
-    try_from_bytes(bytes).map(|i| i as i64)
+    try_i64_from_bytes(bytes)
 }
 
-// Decodes Cassandra `blob` data (bytes) into Rust's `Result<Vec<u8>, io::Error>`
+// Decodes Cassandra `blob` data (bytes)
+#[inline]
 pub fn decode_blob(bytes: &[u8]) -> Result<Blob, io::Error> {
     // in fact we just pass it through.
     Ok(bytes.into())
 }
 
-// Decodes Cassandra `boolean` data (bytes) into Rust's `Result<i32, io::Error>`
+// Decodes Cassandra `boolean` data (bytes)
+#[inline]
 pub fn decode_boolean(bytes: &[u8]) -> Result<bool, io::Error> {
-    let false_byte: u8 = 0;
     if bytes.is_empty() {
         Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
             "no bytes were found",
         ))
     } else {
-        Ok(bytes[0] != false_byte)
+        Ok(bytes[0] != FALSE_BYTE)
     }
 }
 
-// Decodes Cassandra `int` data (bytes) into Rust's `Result<i32, io::Error>`
+// Decodes Cassandra `int` data (bytes)
+#[inline]
 pub fn decode_int(bytes: &[u8]) -> Result<i32, io::Error> {
-    try_from_bytes(bytes).map(|i| i as i32)
+    try_i32_from_bytes(bytes)
 }
 
-// Decodes Cassandra `date` data (bytes) into Rust's `Result<i32, io::Error>` in following way
+// Decodes Cassandra `date` data (bytes)
 //    0: -5877641-06-23
 // 2^31: 1970-1-1
 // 2^32: 5881580-07-11
+#[inline]
 pub fn decode_date(bytes: &[u8]) -> Result<i32, io::Error> {
-    try_from_bytes(bytes).map(|i| i as i32)
+    try_i32_from_bytes(bytes)
 }
 
-// Decodes Cassandra `decimal` data (bytes) into Rust's `Result<f32, io::Error>`
+// Decodes Cassandra `decimal` data (bytes)
 pub fn decode_decimal(bytes: &[u8]) -> Result<Decimal, io::Error> {
     let lr = bytes.split_at(INT_LEN);
 
-    let scale = try_i_from_bytes(lr.0)? as u32;
-    let unscaled = try_i_from_bytes(lr.1)?;
+    let scale = try_i32_from_bytes(lr.0)?;
+    let unscaled = decode_varint(lr.1)?;
 
     Ok(Decimal::new(unscaled, scale))
 }
 
-// Decodes Cassandra `double` data (bytes) into Rust's `Result<f32, io::Error>`
+// Decodes Cassandra `double` data (bytes)
+#[inline]
 pub fn decode_double(bytes: &[u8]) -> Result<f64, io::Error> {
     try_f64_from_bytes(bytes)
 }
 
-// Decodes Cassandra `float` data (bytes) into Rust's `Result<f32, io::Error>`
+// Decodes Cassandra `float` data (bytes)
+#[inline]
 pub fn decode_float(bytes: &[u8]) -> Result<f32, io::Error> {
     try_f32_from_bytes(bytes)
 }
 
-// Decodes Cassandra `inet` data (bytes) into Rust's `Result<net::IpAddr, io::Error>`
+// Decodes Cassandra `inet` data (bytes)
 #[allow(clippy::many_single_char_names)]
 pub fn decode_inet(bytes: &[u8]) -> Result<net::IpAddr, io::Error> {
     match bytes.len() {
@@ -92,23 +105,20 @@ pub fn decode_inet(bytes: &[u8]) -> Result<net::IpAddr, io::Error> {
         ))),
         // v6
         16 => {
-            let a = from_u16_bytes(&bytes[0..2]);
-            let b = from_u16_bytes(&bytes[2..4]);
-            let c = from_u16_bytes(&bytes[4..6]);
-            let d = from_u16_bytes(&bytes[6..8]);
-            let e = from_u16_bytes(&bytes[8..10]);
-            let f = from_u16_bytes(&bytes[10..12]);
-            let g = from_u16_bytes(&bytes[12..14]);
-            let h = from_u16_bytes(&bytes[14..16]);
+            let a = u16_from_bytes(*array_ref!(bytes, 0, 2));
+            let b = u16_from_bytes(*array_ref!(bytes, 2, 2));
+            let c = u16_from_bytes(*array_ref!(bytes, 4, 2));
+            let d = u16_from_bytes(*array_ref!(bytes, 6, 2));
+            let e = u16_from_bytes(*array_ref!(bytes, 8, 2));
+            let f = u16_from_bytes(*array_ref!(bytes, 10, 2));
+            let g = u16_from_bytes(*array_ref!(bytes, 12, 2));
+            let h = u16_from_bytes(*array_ref!(bytes, 14, 2));
             Ok(net::IpAddr::V6(net::Ipv6Addr::new(a, b, c, d, e, f, g, h)))
         }
-        _ => {
-            // let message = format!("Unparseable  Ip address {:?}", bytes);
-            Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Unparseable  Ip address {:?}", bytes),
-            ))
-        }
+        _ => Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("Invalid Ip address {:?}", bytes),
+        )),
     }
 }
 
@@ -116,13 +126,14 @@ pub fn decode_inet(bytes: &[u8]) -> Result<net::IpAddr, io::Error> {
 // `i32` represents a millisecond-precision
 //  offset from the unix epoch (00:00:00, January 1st, 1970).  Negative values
 //  represent a negative offset from the epoch.
+#[inline]
 pub fn decode_timestamp(bytes: &[u8]) -> Result<i64, io::Error> {
-    try_from_bytes(bytes).map(|i| i as i64)
+    try_i64_from_bytes(bytes)
 }
 
-// Decodes Cassandra `list` data (bytes) into Rust's `Result<Vec<CBytes>, io::Error>`
+// Decodes Cassandra `list` data (bytes)
 pub fn decode_list(bytes: &[u8]) -> Result<Vec<CBytes>, io::Error> {
-    let mut cursor: io::Cursor<&[u8]> = io::Cursor::new(bytes);
+    let mut cursor = io::Cursor::new(bytes);
     let l = CInt::from_cursor(&mut cursor)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let mut list = Vec::with_capacity(l as usize);
@@ -134,61 +145,67 @@ pub fn decode_list(bytes: &[u8]) -> Result<Vec<CBytes>, io::Error> {
     Ok(list)
 }
 
-// Decodes Cassandra `set` data (bytes) into Rust's `Result<Vec<CBytes>, io::Error>`
+// Decodes Cassandra `set` data (bytes)
+#[inline]
 pub fn decode_set(bytes: &[u8]) -> Result<Vec<CBytes>, io::Error> {
     decode_list(bytes)
 }
 
-// Decodes Cassandra `map` data (bytes) into Rust's `Result<Vec<(CBytes, CBytes)>, io::Error>`
+// Decodes Cassandra `map` data (bytes)
 pub fn decode_map(bytes: &[u8]) -> Result<Vec<(CBytes, CBytes)>, io::Error> {
-    let mut cursor: io::Cursor<&[u8]> = io::Cursor::new(bytes);
+    let mut cursor = io::Cursor::new(bytes);
     let l = CInt::from_cursor(&mut cursor)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
     let mut map = Vec::with_capacity(l as usize);
     for _ in 0..l {
-        let n = CBytes::from_cursor(&mut cursor)
+        let k = CBytes::from_cursor(&mut cursor)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         let v = CBytes::from_cursor(&mut cursor)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-        map.push((n, v));
+        map.push((k, v));
     }
     Ok(map)
 }
 
-// Decodes Cassandra `smallint` data (bytes) into Rust's `Result<i16, io::Error>`
+// Decodes Cassandra `smallint` data (bytes)
+#[inline]
 pub fn decode_smallint(bytes: &[u8]) -> Result<i16, io::Error> {
-    try_from_bytes(bytes).map(|i| i as i16)
+    try_i16_from_bytes(bytes)
 }
 
-// Decodes Cassandra `tinyint` data (bytes) into Rust's `Result<i8, io::Error>`
+// Decodes Cassandra `tinyint` data (bytes)
+#[inline]
 pub fn decode_tinyint(bytes: &[u8]) -> Result<i8, io::Error> {
     Ok(bytes[0] as i8)
 }
 
-// Decodes Cassandra `text` data (bytes) into Rust's `Result<String, FromUtf8Error>`.
+// Decodes Cassandra `text` data (bytes)
+#[inline]
 pub fn decode_text(bytes: &[u8]) -> Result<String, FromUtf8Error> {
     Ok(String::from_utf8_lossy(bytes).into_owned())
 }
 
-// Decodes Cassandra `time` data (bytes) into Rust's `Result<String, FromUtf8Error>`.
+// Decodes Cassandra `time` data (bytes)
+#[inline]
 pub fn decode_time(bytes: &[u8]) -> Result<i64, io::Error> {
-    try_i_from_bytes(bytes)
+    try_i64_from_bytes(bytes)
 }
 
-// Decodes Cassandra `timeuuid` data (bytes) into Rust's `Result<uuid::Uuid, uuid::Error>`
+// Decodes Cassandra `timeuuid` data (bytes)
+#[inline]
 pub fn decode_timeuuid(bytes: &[u8]) -> Result<uuid::Uuid, uuid::Error> {
     uuid::Uuid::from_slice(bytes)
 }
 
-// Decodes Cassandra `varint` data (bytes) into Rust's `Result<i64, io::Error>`
-pub fn decode_varint(bytes: &[u8]) -> Result<i64, io::Error> {
-    try_i_from_bytes(bytes)
+// Decodes Cassandra `varint` data (bytes)
+#[inline]
+pub fn decode_varint(bytes: &[u8]) -> Result<BigInt, io::Error> {
+    Ok(BigInt::from_signed_bytes_be(bytes))
 }
 
-// Decodes Cassandra `Udt` data (bytes) into Rust's `Result<Vec<CBytes>, io::Error>`
-// each `CBytes` is encoded type of field of user defined type
+// Decodes Cassandra `Udt` data (bytes)
 pub fn decode_udt(bytes: &[u8], l: usize) -> Result<Vec<CBytes>, io::Error> {
-    let mut cursor: io::Cursor<&[u8]> = io::Cursor::new(bytes);
+    let mut cursor = io::Cursor::new(bytes);
     let mut udt = Vec::with_capacity(l);
     for _ in 0..l {
         let v = CBytes::from_cursor(&mut cursor)
@@ -208,17 +225,16 @@ pub fn decode_udt(bytes: &[u8], l: usize) -> Result<Vec<CBytes>, io::Error> {
     Ok(udt)
 }
 
-// Decodes Cassandra `Tuple` data (bytes) into Rust's `Result<Vec<CBytes>, io::Error>`
-// each `CBytes` is encoded type of field of user defined type
+// Decodes Cassandra `Tuple` data (bytes)
 pub fn decode_tuple(bytes: &[u8], l: usize) -> Result<Vec<CBytes>, io::Error> {
-    let mut cursor: io::Cursor<&[u8]> = io::Cursor::new(bytes);
-    let mut udt = Vec::with_capacity(l);
+    let mut cursor = io::Cursor::new(bytes);
+    let mut tuple = Vec::with_capacity(l);
     for _ in 0..l {
         let v = CBytes::from_cursor(&mut cursor)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-        udt.push(v);
+        tuple.push(v);
     }
-    Ok(udt)
+    Ok(tuple)
 }
 
 #[cfg(test)]
@@ -350,27 +366,27 @@ mod tests {
     fn decode_decimal_test() {
         assert_eq!(
             decode_decimal(&[0, 0, 0, 0, 10u8]).unwrap(),
-            Decimal::new(10, 0)
+            Decimal::new(10.into(), 0)
         );
 
         assert_eq!(
             decode_decimal(&[0, 0, 0, 0, 0x00, 0x81]).unwrap(),
-            Decimal::new(129, 0)
+            Decimal::new(129.into(), 0)
         );
 
         assert_eq!(
             decode_decimal(&[0, 0, 0, 0, 0xFF, 0x7F]).unwrap(),
-            Decimal::new(-129, 0)
+            Decimal::new(BigInt::from(-129), 0)
         );
 
         assert_eq!(
             decode_decimal(&[0, 0, 0, 1, 0x00, 0x81]).unwrap(),
-            Decimal::new(129, 1)
+            Decimal::new(129.into(), 1)
         );
 
         assert_eq!(
             decode_decimal(&[0, 0, 0, 1, 0xFF, 0x7F]).unwrap(),
-            Decimal::new(-129, 1)
+            Decimal::new(BigInt::from(-129), 1)
         );
     }
 
@@ -396,14 +412,14 @@ mod tests {
 
     #[test]
     fn decode_varint_test() {
-        assert_eq!(decode_varint(&[0x00]).unwrap(), 0);
-        assert_eq!(decode_varint(&[0x01]).unwrap(), 1);
-        assert_eq!(decode_varint(&[0x7F]).unwrap(), 127);
-        assert_eq!(decode_varint(&[0x00, 0x80]).unwrap(), 128);
-        assert_eq!(decode_varint(&[0x00, 0x81]).unwrap(), 129);
-        assert_eq!(decode_varint(&[0xFF]).unwrap(), -1);
-        assert_eq!(decode_varint(&[0x80]).unwrap(), -128);
-        assert_eq!(decode_varint(&[0xFF, 0x7F]).unwrap(), -129);
+        assert_eq!(decode_varint(&[0x00]).unwrap(), 0.into());
+        assert_eq!(decode_varint(&[0x01]).unwrap(), 1.into());
+        assert_eq!(decode_varint(&[0x7F]).unwrap(), 127.into());
+        assert_eq!(decode_varint(&[0x00, 0x80]).unwrap(), 128.into());
+        assert_eq!(decode_varint(&[0x00, 0x81]).unwrap(), 129.into());
+        assert_eq!(decode_varint(&[0xFF]).unwrap(), BigInt::from(-1));
+        assert_eq!(decode_varint(&[0x80]).unwrap(), BigInt::from(-128));
+        assert_eq!(decode_varint(&[0xFF, 0x7F]).unwrap(), BigInt::from(-129));
     }
 
     #[test]
@@ -539,10 +555,6 @@ mod tests {
             id: ColType::Time,
             value: None,
         };
-        let type_varint = ColTypeOption {
-            id: ColType::Varint,
-            value: None,
-        };
         let data = CBytes::new(vec![0, 0, 0, 0, 0, 0, 0, 100]);
         assert_eq!(as_rust_type!(type_bigint, data, i64).unwrap().unwrap(), 100);
         assert_eq!(
@@ -550,7 +562,6 @@ mod tests {
             100
         );
         assert_eq!(as_rust_type!(type_time, data, i64).unwrap().unwrap(), 100);
-        assert_eq!(as_rust_type!(type_varint, data, i64).unwrap().unwrap(), 100);
         let wrong_type = ColTypeOption {
             id: ColType::Map,
             value: None,
@@ -578,12 +589,6 @@ mod tests {
                 "org.apache.cassandra.db.marshal.TimeType".into(),
             ))),
         };
-        let type_varint = ColTypeOption {
-            id: ColType::Custom,
-            value: Some(ColTypeOptionValue::CString(CString::new(
-                "org.apache.cassandra.db.marshal.IntegerType".into(),
-            ))),
-        };
         let data = CBytes::new(vec![0, 0, 0, 0, 0, 0, 0, 100]);
         assert_eq!(as_rust_type!(type_bigint, data, i64).unwrap().unwrap(), 100);
         assert_eq!(
@@ -591,7 +596,6 @@ mod tests {
             100
         );
         assert_eq!(as_rust_type!(type_time, data, i64).unwrap().unwrap(), 100);
-        assert_eq!(as_rust_type!(type_varint, data, i64).unwrap().unwrap(), 100);
     }
 
     #[test]

@@ -16,6 +16,9 @@ use super::blob::Blob;
 use super::decimal::Decimal;
 use super::*;
 
+const NULL_INT_VALUE: i32 = -1;
+const NOT_SET_INT_VALUE: i32 = -2;
+
 /// Types of Cassandra value: normal value (bits), null value and not-set value
 #[derive(Debug, Clone, PartialEq, Copy, Ord, PartialOrd, Eq, Hash)]
 pub enum ValueType {
@@ -28,8 +31,18 @@ impl AsBytes for ValueType {
     fn as_bytes(&self) -> Vec<u8> {
         match *self {
             ValueType::Normal(n) => to_int(n),
-            ValueType::Null => i_to_n_bytes(-1, INT_LEN),
-            ValueType::NotSet => i_to_n_bytes(-2, INT_LEN),
+            ValueType::Null => to_int(NULL_INT_VALUE),
+            ValueType::NotSet => to_int(NOT_SET_INT_VALUE),
+        }
+    }
+}
+
+impl From<ValueType> for i32 {
+    fn from(value: ValueType) -> Self {
+        match value {
+            ValueType::Normal(value) => value,
+            ValueType::Null => NULL_INT_VALUE,
+            ValueType::NotSet => NOT_SET_INT_VALUE,
         }
     }
 }
@@ -75,8 +88,12 @@ impl Value {
 impl AsBytes for Value {
     fn as_bytes(&self) -> Vec<u8> {
         let mut v = Vec::with_capacity(INT_LEN + self.body.len());
-        v.extend_from_slice(self.value_type.as_bytes().as_slice());
-        v.extend_from_slice(self.body.as_slice());
+        let value_int: i32 = self.value_type.into();
+        v.extend_from_slice(&value_int.to_be_bytes());
+        if let ValueType::Normal(_) = &self.value_type {
+            v.extend_from_slice(self.body.as_slice());
+        }
+
         v
     }
 }
@@ -164,7 +181,7 @@ impl From<u16> for Bytes {
 impl From<u32> for Bytes {
     #[inline]
     fn from(value: u32) -> Self {
-        Bytes(to_u(value))
+        Bytes(to_u_int(value))
     }
 }
 

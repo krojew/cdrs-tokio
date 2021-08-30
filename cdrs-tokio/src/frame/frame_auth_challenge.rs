@@ -11,8 +11,8 @@ pub struct BodyResAuthChallenge {
 }
 
 impl FromCursor for BodyResAuthChallenge {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResAuthChallenge> {
-        CBytes::from_cursor(&mut cursor).map(|data| BodyResAuthChallenge { data })
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResAuthChallenge> {
+        CBytes::from_cursor(cursor).map(|data| BodyResAuthChallenge { data })
     }
 }
 
@@ -28,7 +28,7 @@ mod tests {
         let mut cursor: Cursor<&[u8]> = Cursor::new(few_bytes);
         let body = BodyResAuthChallenge::from_cursor(&mut cursor).unwrap();
         assert_eq!(
-            body.data.into_plain().unwrap(),
+            body.data.into_bytes().unwrap(),
             vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
         );
     }

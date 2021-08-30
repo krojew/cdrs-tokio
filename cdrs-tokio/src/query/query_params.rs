@@ -3,7 +3,7 @@ use crate::frame::AsByte;
 use crate::frame::AsBytes;
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
-use crate::types::{to_bigint, to_int, to_short, CBytes};
+use crate::types::{CBytes, SHORT_LEN};
 
 /// Parameters of Query for query operation.
 #[derive(Debug, Default, Clone)]
@@ -71,57 +71,45 @@ impl QueryParams {
 
 impl AsBytes for QueryParams {
     fn as_bytes(&self) -> Vec<u8> {
-        let mut v: Vec<u8> = vec![];
+        let mut v = Vec::with_capacity(SHORT_LEN + 1);
 
-        v.extend_from_slice(self.consistency.as_bytes().as_slice());
-        v.push(self.flags_as_byte());
-        if QueryFlags::has_value(self.flags_as_byte()) {
-            if let Some(ref values) = self.values {
-                v.extend_from_slice(to_short(values.len() as i16).as_slice());
-                v.extend_from_slice(values.as_bytes().as_slice());
+        let consistency: i16 = self.consistency.into();
+        let flags = self.flags_as_byte();
+
+        v.extend_from_slice(&consistency.to_be_bytes());
+        v.push(flags);
+
+        if QueryFlags::has_value(flags) {
+            if let Some(values) = &self.values {
+                let len = values.len() as i16;
+                v.extend_from_slice(&len.to_be_bytes());
+                v.append(&mut values.as_bytes());
             }
         }
-        if QueryFlags::has_page_size(self.flags_as_byte()) && self.page_size.is_some() {
-            // XXX clone
-            v.extend_from_slice(
-                to_int(
-                    self.page_size
-                        // unwrap is safe as we've checked that
-                        // self.page_size.is_some()
-                        .unwrap(),
-                )
-                .as_slice(),
-            );
+
+        if QueryFlags::has_page_size(flags) {
+            if let Some(page_size) = self.page_size {
+                v.extend_from_slice(&page_size.to_be_bytes());
+            }
         }
-        if QueryFlags::has_with_paging_state(self.flags_as_byte()) && self.paging_state.is_some() {
-            // XXX clone
-            v.extend_from_slice(
-                self.paging_state
-                    .clone()
-                    // unwrap is safe as we've checked that
-                    // self.paging_state.is_some()
-                    .unwrap()
-                    .as_bytes()
-                    .as_slice(),
-            );
+
+        if QueryFlags::has_with_paging_state(flags) {
+            if let Some(paging_state) = &self.paging_state {
+                v.append(&mut paging_state.as_bytes());
+            }
         }
-        if QueryFlags::has_with_serial_consistency(self.flags_as_byte())
-            && self.serial_consistency.is_some()
-        {
-            // XXX clone
-            v.extend_from_slice(
-                self.serial_consistency
-                    // unwrap is safe as we've checked that
-                    // self.serial_consistency.is_some()
-                    .unwrap()
-                    .as_bytes()
-                    .as_slice(),
-            );
+
+        if QueryFlags::has_with_serial_consistency(flags) {
+            if let Some(serial_consistency) = self.serial_consistency {
+                let serial_consistency: i16 = serial_consistency.into();
+                v.extend_from_slice(&serial_consistency.to_be_bytes());
+            }
         }
-        if QueryFlags::has_with_default_timestamp(self.flags_as_byte()) && self.timestamp.is_some()
-        {
-            // unwrap is safe as we've checked that self.timestamp.is_some()
-            v.extend_from_slice(to_bigint(self.timestamp.unwrap()).as_slice());
+
+        if QueryFlags::has_with_default_timestamp(flags) {
+            if let Some(timestamp) = self.timestamp {
+                v.extend_from_slice(&timestamp.to_be_bytes());
+            }
         }
 
         v

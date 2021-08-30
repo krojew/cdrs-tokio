@@ -30,21 +30,27 @@ impl BodyReqQuery {
     ) -> BodyReqQuery {
         // query flags
         let mut flags: Vec<QueryFlags> = vec![];
+
         if values.is_some() {
             flags.push(QueryFlags::Value);
         }
+
         if with_names.unwrap_or(false) {
             flags.push(QueryFlags::WithNamesForValues);
         }
+
         if page_size.is_some() {
             flags.push(QueryFlags::PageSize);
         }
+
         if paging_state.is_some() {
             flags.push(QueryFlags::WithPagingState);
         }
+
         if serial_consistency.is_some() {
             flags.push(QueryFlags::WithSerialConsistency);
         }
+
         if timestamp.is_some() {
             flags.push(QueryFlags::WithDefaultTimestamp);
         }
@@ -68,9 +74,9 @@ impl BodyReqQuery {
 
 impl AsBytes for BodyReqQuery {
     fn as_bytes(&self) -> Vec<u8> {
-        let mut v: Vec<u8> = vec![];
-        v.extend_from_slice(self.query.clone().as_bytes().as_slice());
-        v.extend_from_slice(self.query_params.as_bytes().as_slice());
+        let mut v = Vec::with_capacity(self.query.serialized_len());
+        v.append(&mut self.query.as_bytes());
+        v.append(&mut self.query_params.as_bytes());
         v
     }
 }
@@ -78,9 +84,8 @@ impl AsBytes for BodyReqQuery {
 // Frame implementation related to BodyReqStartup
 
 impl Frame {
-    /// **Note:** This function should be used internally for building query request frames.
     #[allow(clippy::too_many_arguments)]
-    pub fn new_req_query(
+    pub(crate) fn new_req_query(
         query: String,
         consistency: Consistency,
         values: Option<QueryValues>,
@@ -109,8 +114,8 @@ impl Frame {
         Frame::new(version, flags, opcode, body.as_bytes(), None, vec![])
     }
 
-    /// **Note:** This function should be used internally for building query request frames.
-    pub fn new_query(query: Query, flags: Vec<Flag>) -> Frame {
+    #[inline]
+    pub(crate) fn new_query(query: Query, flags: Vec<Flag>) -> Frame {
         Frame::new_req_query(
             query.query,
             query.params.consistency,

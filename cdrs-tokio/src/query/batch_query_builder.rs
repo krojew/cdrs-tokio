@@ -95,10 +95,10 @@ impl BatchQueryBuilder {
             flags.push(QueryFlags::WithDefaultTimestamp);
         }
 
-        let with_names_for_values = self.queries.iter().all(|q| q.values.with_names());
+        let with_names_for_values = self.queries.iter().all(|q| q.values.has_names());
 
         if !with_names_for_values {
-            let some_names_for_values = self.queries.iter().any(|q| q.values.with_names());
+            let some_names_for_values = self.queries.iter().any(|q| q.values.has_names());
 
             if some_names_for_values {
                 return Err(CError::General(String::from(

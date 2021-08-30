@@ -12,6 +12,7 @@ use crate::types::list::List;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
 use crate::types::{AsRust, AsRustType, CBytes};
+use num::BigInt;
 
 #[derive(Debug)]
 pub struct Map {
@@ -53,6 +54,7 @@ map_as_rust!({ Blob }, { Map });
 map_as_rust!({ Blob }, { Udt });
 map_as_rust!({ Blob }, { Tuple });
 map_as_rust!({ Blob }, { Decimal });
+map_as_rust!({ Blob }, { BigInt });
 
 map_as_rust!({ String }, { Blob });
 map_as_rust!({ String }, { String });
@@ -71,6 +73,7 @@ map_as_rust!({ String }, { Map });
 map_as_rust!({ String }, { Udt });
 map_as_rust!({ String }, { Tuple });
 map_as_rust!({ String }, { Decimal });
+map_as_rust!({ String }, { BigInt });
 
 map_as_rust!({ bool }, { Blob });
 map_as_rust!({ bool }, { String });
@@ -89,6 +92,7 @@ map_as_rust!({ bool }, { Map });
 map_as_rust!({ bool }, { Udt });
 map_as_rust!({ bool }, { Tuple });
 map_as_rust!({ bool }, { Decimal });
+map_as_rust!({ bool }, { BigInt });
 
 map_as_rust!({ i64 }, { Blob });
 map_as_rust!({ i64 }, { String });
@@ -107,6 +111,7 @@ map_as_rust!({ i64 }, { Map });
 map_as_rust!({ i64 }, { Udt });
 map_as_rust!({ i64 }, { Tuple });
 map_as_rust!({ i64 }, { Decimal });
+map_as_rust!({ i64 }, { BigInt });
 
 map_as_rust!({ i32 }, { Blob });
 map_as_rust!({ i32 }, { String });
@@ -125,6 +130,7 @@ map_as_rust!({ i32 }, { Map });
 map_as_rust!({ i32 }, { Udt });
 map_as_rust!({ i32 }, { Tuple });
 map_as_rust!({ i32 }, { Decimal });
+map_as_rust!({ i32 }, { BigInt });
 
 map_as_rust!({ i16 }, { Blob });
 map_as_rust!({ i16 }, { String });
@@ -143,6 +149,7 @@ map_as_rust!({ i16 }, { Map });
 map_as_rust!({ i16 }, { Udt });
 map_as_rust!({ i16 }, { Tuple });
 map_as_rust!({ i16 }, { Decimal });
+map_as_rust!({ i16 }, { BigInt });
 
 map_as_rust!({ i8 }, { Blob });
 map_as_rust!({ i8 }, { String });
@@ -161,6 +168,7 @@ map_as_rust!({ i8 }, { Map });
 map_as_rust!({ i8 }, { Udt });
 map_as_rust!({ i8 }, { Tuple });
 map_as_rust!({ i8 }, { Decimal });
+map_as_rust!({ i8 }, { BigInt });
 
 map_as_rust!({ IpAddr }, { Blob });
 map_as_rust!({ IpAddr }, { String });
@@ -179,6 +187,7 @@ map_as_rust!({ IpAddr }, { Map });
 map_as_rust!({ IpAddr }, { Udt });
 map_as_rust!({ IpAddr }, { Tuple });
 map_as_rust!({ IpAddr }, { Decimal });
+map_as_rust!({ IpAddr }, { BigInt });
 
 map_as_rust!({ Uuid }, { Blob });
 map_as_rust!({ Uuid }, { String });
@@ -197,6 +206,7 @@ map_as_rust!({ Uuid }, { Map });
 map_as_rust!({ Uuid }, { Udt });
 map_as_rust!({ Uuid }, { Tuple });
 map_as_rust!({ Uuid }, { Decimal });
+map_as_rust!({ Uuid }, { BigInt });
 
 map_as_rust!({ PrimitiveDateTime }, { Blob });
 map_as_rust!({ PrimitiveDateTime }, { String });
@@ -215,6 +225,7 @@ map_as_rust!({ PrimitiveDateTime }, { Map });
 map_as_rust!({ PrimitiveDateTime }, { Udt });
 map_as_rust!({ PrimitiveDateTime }, { Tuple });
 map_as_rust!({ PrimitiveDateTime }, { Decimal });
+map_as_rust!({ PrimitiveDateTime }, { BigInt });
 
 map_as_rust!({ Tuple }, { Blob });
 map_as_rust!({ Tuple }, { String });
@@ -233,3 +244,4 @@ map_as_rust!({ Tuple }, { Map });
 map_as_rust!({ Tuple }, { Udt });
 map_as_rust!({ Tuple }, { Tuple });
 map_as_rust!({ Tuple }, { Decimal });
+map_as_rust!({ Tuple }, { BigInt });

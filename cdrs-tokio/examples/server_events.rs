@@ -4,7 +4,9 @@ use std::sync::Arc;
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::new as new_session;
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
-use cdrs_tokio::frame::events::{ChangeType, ServerEvent, SimpleServerEvent, Target};
+use cdrs_tokio::frame::events::{
+    SchemaChangeTarget, SchemaChangeType, ServerEvent, SimpleServerEvent,
+};
 use cdrs_tokio::load_balancing::RoundRobin;
 use cdrs_tokio::retry::{DefaultRetryPolicy, NeverReconnectionPolicy};
 
@@ -45,7 +47,8 @@ async fn main() {
         // filter by event's specific information: new table was added
         .filter(|event| match event {
             ServerEvent::SchemaChange(ref event) => {
-                event.change_type == ChangeType::Created && event.target == Target::Table
+                event.change_type == SchemaChangeType::Created
+                    && event.target == SchemaChangeTarget::Table
             }
             _ => false,
         });

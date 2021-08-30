@@ -15,6 +15,7 @@ use crate::types::list::List;
 use crate::types::map::Map;
 use crate::types::tuple::Tuple;
 use crate::types::{ByName, CBytes, IntoRustByName};
+use num::BigInt;
 
 #[derive(Clone, Debug)]
 pub struct Udt {
@@ -64,3 +65,4 @@ into_rust_by_name!(Udt, NonZeroI32);
 into_rust_by_name!(Udt, NonZeroI64);
 into_rust_by_name!(Udt, NaiveDateTime);
 into_rust_by_name!(Udt, DateTime<Utc>);
+into_rust_by_name!(Udt, BigInt);

@@ -67,13 +67,13 @@ macro_rules! map_as_rust {
         impl AsRustType<HashMap<$($key_type)+, $($val_type)+>> for Map {
             /// Converts `Map` into `HashMap` for blob values.
             fn as_rust_type(&self) -> Result<Option<HashMap<$($key_type)+, $($val_type)+>>> {
-                match self.metadata.value {
-                    Some(ColTypeOptionValue::CMap((ref key_type_option, ref val_type_option))) => {
+                match &self.metadata.value {
+                    Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) => {
                         let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
 
-                        for &(ref key, ref val) in self.data.iter() {
-                            let key_type_option = key_type_option.as_ref();
-                            let val_type_option = val_type_option.as_ref();
+                        for (key, val) in self.data.iter() {
                             let key = as_rust_type!(key_type_option, key, $($key_type)+)?;
                             let val = as_rust_type!(val_type_option, val, $($val_type)+)?;
                             if val.is_some() && key.is_some() {
@@ -107,12 +107,12 @@ macro_rules! into_rust_by_name {
         impl IntoRustByName<$($into_type)+> for Udt {
             fn get_by_name(&self, name: &str) -> Result<Option<$($into_type)+>> {
                 self.data.get(name)
-                .ok_or(column_is_empty_err(name))
-                .and_then(|v| {
-                    let &(ref col_type, ref bytes) = v;
-                    let converted = as_rust_type!(col_type, bytes, $($into_type)+);
-                    converted.map_err(|err| err.into())
-                })
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, $($into_type)+);
+                        converted.map_err(|err| err.into())
+                    })
             }
         }
     );
@@ -235,14 +235,12 @@ macro_rules! as_rust_type {
             ColType::Bigint => as_res_opt!($data_value, decode_bigint),
             ColType::Timestamp => as_res_opt!($data_value, decode_timestamp),
             ColType::Time => as_res_opt!($data_value, decode_time),
-            ColType::Varint => as_res_opt!($data_value, decode_varint),
             ColType::Counter => as_res_opt!($data_value, decode_bigint),
             ColType::Custom => {
                 let unmarshal = || {
                     if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
                         match value.as_str() {
                             "org.apache.cassandra.db.marshal.LongType" | "org.apache.cassandra.db.marshal.CounterColumnType" => return as_res_opt!($data_value, decode_bigint),
-                            "org.apache.cassandra.db.marshal.IntegerType" => return as_res_opt!($data_value, decode_varint),
                             "org.apache.cassandra.db.marshal.TimestampType" => return as_res_opt!($data_value, decode_timestamp),
                             "org.apache.cassandra.db.marshal.TimeType" => return as_res_opt!($data_value, decode_time),
                             _ => {}
@@ -360,9 +358,6 @@ macro_rules! as_rust_type {
             ColType::Time => {
                 as_res_opt!($data_value, decode_time).map(|value| value.and_then(NonZeroI64::new))
             }
-            ColType::Varint => {
-                as_res_opt!($data_value, decode_varint).map(|value| value.and_then(NonZeroI64::new))
-            }
             ColType::Counter => {
                 as_res_opt!($data_value, decode_bigint).map(|value| value.and_then(NonZeroI64::new))
             }
@@ -371,7 +366,6 @@ macro_rules! as_rust_type {
                     if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
                         match value.as_str() {
                             "org.apache.cassandra.db.marshal.LongType" | "org.apache.cassandra.db.marshal.CounterColumnType" => return as_res_opt!($data_value, decode_bigint),
-                            "org.apache.cassandra.db.marshal.IntegerType" => return as_res_opt!($data_value, decode_varint),
                             "org.apache.cassandra.db.marshal.TimestampType" => return as_res_opt!($data_value, decode_timestamp),
                             "org.apache.cassandra.db.marshal.TimeType" => return as_res_opt!($data_value, decode_time),
                             _ => {}
@@ -730,6 +724,33 @@ macro_rules! as_rust_type {
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into DateTime (valid types: Timestamp).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, BigInt) => {
+        match $data_type_option.id {
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.IntegerType" {
+                            return as_res_opt!($data_value, decode_varint);
+                        }
+                    }
+
+                    Err(Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshaled type {:?} into BigInt (valid types: org.apache.cassandra.db.marshal.IntegerType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
+            _ => Err(Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
+                 Counter).",
                 $data_type_option.id
             ))),
         }

@@ -1,10 +1,10 @@
 //! `frame` module contains general Frame functionality.
+use std::convert::TryFrom;
 use std::sync::atomic::{AtomicI16, Ordering};
 
 use crate::compression::Compression;
 use crate::frame::frame_response::ResponseBody;
 pub use crate::frame::traits::*;
-use crate::types::to_n_bytes;
 use log::*;
 use uuid::Uuid;
 
@@ -107,20 +107,22 @@ impl Frame {
     }
 
     pub fn encode_with(self, compressor: Compression) -> error::Result<Vec<u8>> {
-        let mut v = vec![];
-
-        let version_bytes = self.version.as_byte();
-        let flag_bytes = Flag::many_to_cbytes(&self.flags);
-        let opcode_bytes = self.opcode.as_byte();
-        let encoded_body = compressor.encode(self.body)?;
+        let version_byte = self.version.as_byte();
+        let flag_byte = Flag::many_to_cbytes(&self.flags);
+        let opcode_byte = self.opcode.as_byte();
+        let mut encoded_body = compressor.encode(self.body)?;
         let body_len = encoded_body.len();
 
-        v.push(version_bytes);
-        v.push(flag_bytes);
-        v.extend_from_slice(to_n_bytes(self.stream as u64, STREAM_LEN).as_slice());
-        v.push(opcode_bytes);
-        v.extend_from_slice(to_n_bytes(body_len as u64, LENGTH_LEN).as_slice());
-        v.extend_from_slice(encoded_body.as_slice());
+        let mut v = Vec::with_capacity(9 + body_len);
+
+        v.push(version_byte);
+        v.push(flag_byte);
+        v.extend_from_slice(&self.stream.to_be_bytes());
+        v.push(opcode_byte);
+
+        let body_len = body_len as i32;
+        v.extend_from_slice(&body_len.to_be_bytes());
+        v.append(&mut encoded_body);
 
         Ok(v)
     }
@@ -128,18 +130,20 @@ impl Frame {
 
 impl AsBytes for Frame {
     fn as_bytes(&self) -> Vec<u8> {
-        let mut v = vec![];
-
-        let version_bytes = self.version.as_byte();
-        let flag_bytes = Flag::many_to_cbytes(&self.flags);
-        let opcode_bytes = self.opcode.as_byte();
+        let version_byte = self.version.as_byte();
+        let flag_byte = Flag::many_to_cbytes(&self.flags);
+        let opcode_byte = self.opcode.as_byte();
         let body_len = self.body.len();
 
-        v.push(version_bytes);
-        v.push(flag_bytes);
-        v.extend_from_slice(to_n_bytes(self.stream as u64, STREAM_LEN).as_slice());
-        v.push(opcode_bytes);
-        v.extend_from_slice(to_n_bytes(body_len as u64, LENGTH_LEN).as_slice());
+        let mut v = Vec::with_capacity(9 + body_len);
+
+        v.push(version_byte);
+        v.push(flag_byte);
+        v.extend_from_slice(&self.stream.to_be_bytes());
+        v.push(opcode_byte);
+
+        let body_len = body_len as i32;
+        v.extend_from_slice(&body_len.to_be_bytes());
         v.extend_from_slice(self.body.as_slice());
 
         v
@@ -373,26 +377,28 @@ impl AsByte for Opcode {
     }
 }
 
-impl From<u8> for Opcode {
-    fn from(b: u8) -> Opcode {
-        match b {
-            0x00 => Opcode::Error,
-            0x01 => Opcode::Startup,
-            0x02 => Opcode::Ready,
-            0x03 => Opcode::Authenticate,
-            0x05 => Opcode::Options,
-            0x06 => Opcode::Supported,
-            0x07 => Opcode::Query,
-            0x08 => Opcode::Result,
-            0x09 => Opcode::Prepare,
-            0x0A => Opcode::Execute,
-            0x0B => Opcode::Register,
-            0x0C => Opcode::Event,
-            0x0D => Opcode::Batch,
-            0x0E => Opcode::AuthChallenge,
-            0x0F => Opcode::AuthResponse,
-            0x10 => Opcode::AuthSuccess,
-            _ => unreachable!(),
+impl TryFrom<u8> for Opcode {
+    type Error = error::Error;
+
+    fn try_from(value: u8) -> Result<Self, <Opcode as TryFrom<u8>>::Error> {
+        match value {
+            0x00 => Ok(Opcode::Error),
+            0x01 => Ok(Opcode::Startup),
+            0x02 => Ok(Opcode::Ready),
+            0x03 => Ok(Opcode::Authenticate),
+            0x05 => Ok(Opcode::Options),
+            0x06 => Ok(Opcode::Supported),
+            0x07 => Ok(Opcode::Query),
+            0x08 => Ok(Opcode::Result),
+            0x09 => Ok(Opcode::Prepare),
+            0x0A => Ok(Opcode::Execute),
+            0x0B => Ok(Opcode::Register),
+            0x0C => Ok(Opcode::Event),
+            0x0D => Ok(Opcode::Batch),
+            0x0E => Ok(Opcode::AuthChallenge),
+            0x0F => Ok(Opcode::AuthResponse),
+            0x10 => Ok(Opcode::AuthSuccess),
+            _ => Err(error::Error::General(format!("Unknown opcode: {}", value))),
         }
     }
 }
@@ -524,21 +530,21 @@ mod tests {
 
     #[test]
     fn test_opcode_from() {
-        assert_eq!(Opcode::from(0x00), Opcode::Error);
-        assert_eq!(Opcode::from(0x01), Opcode::Startup);
-        assert_eq!(Opcode::from(0x02), Opcode::Ready);
-        assert_eq!(Opcode::from(0x03), Opcode::Authenticate);
-        assert_eq!(Opcode::from(0x05), Opcode::Options);
-        assert_eq!(Opcode::from(0x06), Opcode::Supported);
-        assert_eq!(Opcode::from(0x07), Opcode::Query);
-        assert_eq!(Opcode::from(0x08), Opcode::Result);
-        assert_eq!(Opcode::from(0x09), Opcode::Prepare);
-        assert_eq!(Opcode::from(0x0A), Opcode::Execute);
-        assert_eq!(Opcode::from(0x0B), Opcode::Register);
-        assert_eq!(Opcode::from(0x0C), Opcode::Event);
-        assert_eq!(Opcode::from(0x0D), Opcode::Batch);
-        assert_eq!(Opcode::from(0x0E), Opcode::AuthChallenge);
-        assert_eq!(Opcode::from(0x0F), Opcode::AuthResponse);
-        assert_eq!(Opcode::from(0x10), Opcode::AuthSuccess);
+        assert_eq!(Opcode::try_from(0x00).unwrap(), Opcode::Error);
+        assert_eq!(Opcode::try_from(0x01).unwrap(), Opcode::Startup);
+        assert_eq!(Opcode::try_from(0x02).unwrap(), Opcode::Ready);
+        assert_eq!(Opcode::try_from(0x03).unwrap(), Opcode::Authenticate);
+        assert_eq!(Opcode::try_from(0x05).unwrap(), Opcode::Options);
+        assert_eq!(Opcode::try_from(0x06).unwrap(), Opcode::Supported);
+        assert_eq!(Opcode::try_from(0x07).unwrap(), Opcode::Query);
+        assert_eq!(Opcode::try_from(0x08).unwrap(), Opcode::Result);
+        assert_eq!(Opcode::try_from(0x09).unwrap(), Opcode::Prepare);
+        assert_eq!(Opcode::try_from(0x0A).unwrap(), Opcode::Execute);
+        assert_eq!(Opcode::try_from(0x0B).unwrap(), Opcode::Register);
+        assert_eq!(Opcode::try_from(0x0C).unwrap(), Opcode::Event);
+        assert_eq!(Opcode::try_from(0x0D).unwrap(), Opcode::Batch);
+        assert_eq!(Opcode::try_from(0x0E).unwrap(), Opcode::AuthChallenge);
+        assert_eq!(Opcode::try_from(0x0F).unwrap(), Opcode::AuthResponse);
+        assert_eq!(Opcode::try_from(0x10).unwrap(), Opcode::AuthSuccess);
     }
 }

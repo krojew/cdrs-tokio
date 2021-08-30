@@ -24,15 +24,17 @@ e2e-tests = []
 unstable-dynamic-cluster = []
 
 [dependencies]
+arrayref = "0.3"
 async-trait = "0.1"
-byteorder = "1"
 chrono = "0.4"
 float_eq = "0.6"
 fxhash = "0.2"
+num = "0.4"
 log = "0.4.1"
 lz4_flex = "0.8"
 rand = "0.8"
 snap = "1.0"
+thiserror = "1"
 time = "0.2"
 tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
 tokio-rustls = { version = "0.22", optional = true }

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 
 use crate::error;
 use crate::frame::FromCursor;
-use crate::types::{cursor_fill_value, try_from_bytes, CString, CStringList, SHORT_LEN};
+use crate::types::{CString, CStringList, SHORT_LEN};
 
 #[derive(Debug)]
 pub struct BodyResSupported {
@@ -11,12 +11,15 @@ pub struct BodyResSupported {
 }
 
 impl FromCursor for BodyResSupported {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResSupported> {
-        let l = try_from_bytes(cursor_fill_value(&mut cursor, &mut [0; SHORT_LEN])?)? as usize;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResSupported> {
+        let mut buff = [0; SHORT_LEN];
+        cursor.read_exact(&mut buff)?;
+
+        let l = i16::from_be_bytes(buff) as usize;
         let mut data: HashMap<String, Vec<String>> = HashMap::with_capacity(l);
         for _ in 0..l {
-            let name = CString::from_cursor(&mut cursor)?.into_plain();
-            let val = CStringList::from_cursor(&mut cursor)?.into_plain();
+            let name = CString::from_cursor(cursor)?.into_plain();
+            let val = CStringList::from_cursor(cursor)?.into_plain();
             data.insert(name, val);
         }
 

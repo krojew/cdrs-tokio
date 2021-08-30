@@ -17,14 +17,14 @@ impl BodyReqPrepare {
 }
 
 impl AsBytes for BodyReqPrepare {
+    #[inline]
     fn as_bytes(&self) -> Vec<u8> {
         self.query.as_bytes()
     }
 }
 
 impl Frame {
-    /// **Note:** This function should be used internally for building query request frames.
-    pub fn new_req_prepare(query: String, flags: Vec<Flag>) -> Frame {
+    pub(crate) fn new_req_prepare(query: String, flags: Vec<Flag>) -> Frame {
         let version = Version::Request;
         let opcode = Opcode::Prepare;
         let body = BodyReqPrepare::new(query);

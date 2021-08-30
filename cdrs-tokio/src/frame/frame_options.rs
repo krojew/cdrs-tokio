@@ -5,6 +5,7 @@ use crate::frame::*;
 pub struct BodyReqOptions;
 
 impl AsBytes for BodyReqOptions {
+    #[inline]
     fn as_bytes(&self) -> Vec<u8> {
         vec![]
     }
