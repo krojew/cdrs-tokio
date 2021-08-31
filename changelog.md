@@ -12,6 +12,7 @@
   involves changing a large portion of public API related to transport and server events.
 * Changed `Target` and `ChangeType` enums to `SchemaChangeTarget` and `SchemaChangeType`.
 * The `varint` type now uses `num::BigInt` representation (this implies `Decimal` also uses "big" types).
+* Removed `unstable-dynamic-cluster` feature, since it wasn't working as expected and introduced performance penalty.
 
 ## 5.0.0
 
