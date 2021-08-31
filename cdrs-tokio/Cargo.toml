@@ -19,9 +19,6 @@ v4 = []
 # enable v5 feature when it's actually implemented
 # v5 = []
 e2e-tests = []
-# enables dynamic cluster adjustments basing on status
-# changes server events
-unstable-dynamic-cluster = []
 
 [dependencies]
 arrayref = "0.3"
@@ -51,7 +48,3 @@ env_logger = "0.8"
 maplit = "1.0.0"
 regex = "1.4"
 cdrs-tokio-helpers-derive = { version = "3.0", path = "../cdrs-tokio-helpers-derive" }
-
-[[example]]
-name = "dynamic_cluster"
-required-features = ["unstable-dynamic-cluster"]

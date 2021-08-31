@@ -16,11 +16,4 @@ pub trait LoadBalancingStrategy<N> {
     fn find<F>(&self, _filter: F) -> Option<Arc<N>>
     where
         F: FnMut(&N) -> bool;
-
-    fn remove_node<F>(&mut self, _filter: F)
-    where
-        F: FnMut(&N) -> bool,
-    {
-        // default implementation does nothing
-    }
 }

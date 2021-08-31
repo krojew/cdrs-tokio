@@ -53,15 +53,6 @@ where
     {
         self.cluster.iter().find(|node| filter(*node)).cloned()
     }
-
-    fn remove_node<F>(&mut self, mut filter: F)
-    where
-        F: FnMut(&N) -> bool,
-    {
-        if let Some(i) = self.cluster.iter().position(|node| filter(node)) {
-            self.cluster.remove(i);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -81,23 +72,5 @@ mod tests {
             let s = load_balancer.next();
             assert!(s.is_some());
         }
-    }
-
-    #[test]
-    fn remove_from_random() {
-        let nodes = vec!["a"];
-        let mut load_balancer = Random::from(
-            nodes
-                .iter()
-                .map(|value| Arc::new(*value))
-                .collect::<Vec<Arc<&str>>>(),
-        );
-
-        let s = load_balancer.next();
-        assert!(s.is_some());
-
-        load_balancer.remove_node(|n| n == &"a");
-        let s = load_balancer.next();
-        assert!(s.is_none());
     }
 }

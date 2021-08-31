@@ -20,8 +20,6 @@ pub use crate::cluster::config_rustls::{
 pub use crate::cluster::config_tcp::{ClusterTcpConfig, NodeTcpConfig, NodeTcpConfigBuilder};
 pub use crate::cluster::keyspace_holder::KeyspaceHolder;
 pub use crate::cluster::pager::{ExecPager, PagerState, QueryPager, SessionPager};
-#[cfg(feature = "unstable-dynamic-cluster")]
-pub use crate::cluster::session::connect_generic_dynamic;
 pub use crate::cluster::session::connect_generic_static;
 
 pub use crate::cluster::connection_manager::{startup, ConnectionManager};
