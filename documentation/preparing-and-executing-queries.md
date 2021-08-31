@@ -1,7 +1,5 @@
 ### Preparing queries
 
-_TODO: provide more details_
-
 During preparing a query a server parses the query, saves parsing result into cache and returns back to a client an ID that could be further used for executing prepared statement with different parameters (such as values, consistency etc.). When a server executes prepared query it doesn't need to parse it so parsing step will be skipped.
 
 CDRS `Session` implements `cdrs_tokio::query::PrepareExecutor` trait that provides few option for preparing query:

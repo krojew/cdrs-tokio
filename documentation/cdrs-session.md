@@ -2,23 +2,8 @@
 
 `Session` is a structure that holds as set pools of connections authorised by a Cluster. As well it provides data decompressing and load balancing mechanisms used for Cassandra frame exchange, or querying in other words.
 
-```rust
-use cdrs_tokio::load_balancing::RoundRobin;
-use cdrs_tokio::cluster::session::{new as new_session};
-
-
-let load_balancing = RoundRobin::new();
-let session = new_session(&cluster_config, RoundRobin::new())
-  .expect("session should be created");
-```
-
-Here, in order to create new session a [cluster config](./cluster-configuration.md) and a load balancing strategy must be provided. Load balancing strategy is used when some query should be performed by driver. At that moment load balancer returns a pool of connections for a node that was picked up in accordance to a strategy. After that CDRS gets from bb8 pool one of available connections, and then this connection will be used for frames exchange. Such logic guarantees that nodes' loads are balanced and there is no need to establish new connection if there is a one that is released after previous query.
-
-This is how the architecture looks like:
-
-<p align="center">
-  <img src="./schemes/cdrs-load-balancing.png" alt="CDRS load balancing architecture"/>
-</p>
+In order to create new session a [cluster config](./cluster-configuration.md) and a load balancing strategy must be provided. Load balancing strategy is used when some query should be performed by driver. At that moment load balancer returns a connection for a node that was picked up in accordance to a strategy.
+Such logic guarantees that nodes' loads are balanced and there is no need to establish new connection if there is a one that is released after previous query.
 
 ## Load balancing
 
@@ -28,9 +13,9 @@ CDRS provides few strategies out of the box so no additional development may not
 
 - `cdrs_tokio::load_balancing::Random` randomly picks up a node from a cluster.
 
-- `cdrs_tokio::load_balancing::RoundRobinSync` thread safe round robin balancing strategy.
+- `cdrs_tokio::load_balancing::RoundRobinSync` thread safe round-robin balancing strategy.
 
-- `cdrs_tokio::load_balancing::RoundRobin` light weight round robin strategy that is not thread safe though. So it should be used in mono thread apps only.
+- `cdrs_tokio::load_balancing::RoundRobin` light weight round-robin strategy that is not thread safe though. So it should be used in mono thread apps only.
 
 Along with that any custom load balancing strategy may be implemented and used with CDRS. The only requirement is the structure must implement `LoadBalancingStrategy` trait.
 

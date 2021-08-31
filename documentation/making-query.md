@@ -1,6 +1,6 @@
 # Making queries
 
-By default `Session` structure doesn't provide an API for making queries. Query functionality bacomes enabled after importing one or few of following traits:
+By default `Session` structure doesn't provide an API for making queries. Query functionality becomes enabled after importing one or few of following traits:
 
 ```rust
 use cdrs_tokio::query::QueryExecutor;
@@ -12,13 +12,13 @@ This trait provides an API for making plain queries and immediately receiving re
 use cdrs_tokio::query::PrepareExecutor;
 ```
 
-This trait enables query preparation on the server. After query preparation it's enough to exectute query via `cdrs_tokio::query::ExecExecutor` API prviding a query ID returned by `cdrs_tokio::query::PrepareExecutor`
+This trait enables query preparation on the server. After query preparation it's enough to execute query via `cdrs_tokio::query::ExecExecutor` API providing a query ID returned by `cdrs_tokio::query::PrepareExecutor`
 
 ```rust
 use cdrs_tokio::query::ExecExecutor;
 ```
 
-This trait provides an API for query exectution. `PrepareExecutor` and `ExecExecutor` APIs are considered in [next sections](./preparing-and-executing-queries.md).
+This trait provides an API for query execution. `PrepareExecutor` and `ExecExecutor` APIs are considered in [next sections](./preparing-and-executing-queries.md).
 
 ```rust
 use cdrs_tokio::query::BatchExecutor;
@@ -28,26 +28,7 @@ use cdrs_tokio::query::BatchExecutor;
 
 ### `CdrsSession` trait
 
-Each of traits enumerated beyond provides just a piece of full query API. They can be used independently one from another though. However if the whole query functionality is needed in a programm `use cdrs_tokio::cluster::CdrsSession` should be considered instead.
-
-`CdrsSession` source code looks following
-
-```rust
-pub trait CdrsSession<
-  'a,
-  T: CdrsTransport + 'static,
-  M: bb8::ManageConnection<Connection = cell::RefCell<T>, Error = error::Error>,
->:
-  GetConnection<T, M>
-  + QueryExecutor<T, M>
-  + PrepareExecutor<T, M>
-  + ExecExecutor<T, M>
-  + BatchExecutor<T, M>
-{
-}
-```
-
-It includes all the functionality related to making queries.
+Each of traits enumerated beyond provides just a piece of full query API. They can be used independently one from another though. However, if the whole query functionality is needed in a program `use cdrs_tokio::cluster::CdrsSession` should be considered instead.
 
 ### `QueryExecutor` API
 
@@ -59,7 +40,7 @@ session.query("INSERT INTO my.numbers (my_int, my_bigint) VALUES (1, 2)").unwrap
 
 `query` method receives a single argument which is a CQL query string. It returns `cdrs_tokio::error::Result` that in case of `SELECT` query can be mapped on corresponded Rust structure. See [CRUD example](../examples/crud_operations.rs) for details.
 
-The same query could be made leveraging something that is called Values. It allows to have generic query strings independent from actuall values.
+The same query could be made leveraging something that is called Values. It allows to have generic query strings independent of actual values.
 
 ```rust
 #[macro_use]
@@ -72,9 +53,9 @@ let values = query_values!(1 as i32, 1 as i64);
 session.query_with_values(INSERT_NUMBERS_QUERY, values).unwrap();
 ```
 
-Here we've provided a generic query string for inserting numbers into `my.numbers` table. This query string doesn't have actual values hardcoded so exactly the same query can be used for multiple insert operations. Such sort of query strings can be used for Prepare-and-Execute operations when a query string is sent just once during Prepare step and then Execution operation is performed each time new values should be inserted. For more detailes see [Preparing and Executing](./preparing-and-executing-queries.md) section.
+Here we've provided a generic query string for inserting numbers into `my.numbers` table. This query string doesn't have actual values hardcoded so exactly the same query can be used for multiple insert operations. Such sort of query strings can be used for Prepare-and-Execute operations when a query string is sent just once during Prepare step and then Execution operation is performed each time new values should be inserted. For more details see [Preparing and Executing](./preparing-and-executing-queries.md) section.
 
-However the full controll over the query can be achieved via `cdrs_tokio::query::QueryParamsBuilder`:
+However, the full control over the query can be achieved via `cdrs_tokio::query::QueryParamsBuilder`:
 
 ```rust
 use cdrs_tokio::query::QueryParamsBuilder;

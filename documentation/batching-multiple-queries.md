@@ -1,7 +1,5 @@
 ### Batch queries
 
-_TODO: rework this section_
-
 CDRS `Session` supports batching few queries in a single request to Apache Cassandra via implementing `cdrs_tokio::query::BatchExecutor` trait:
 
 ```rust

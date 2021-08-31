@@ -35,11 +35,7 @@ CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u*
 
 ## Getting started
 
-Add CDRS tokio to your `Cargo.toml` file as a dependency:
-
-```toml
-cdrs-tokio = "desired version"
-```
+This example configures a cluster consisting of a single node, and uses round-robin load balancing.
 
 ```rust
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
@@ -72,8 +68,6 @@ async fn main() {
         .expect("Keyspace create error");
 }
 ```
-
-This example configures a cluster consisting of a single node, and uses round robin load balancing and default `bb8` values for connection pool.
 
 ## License
 
