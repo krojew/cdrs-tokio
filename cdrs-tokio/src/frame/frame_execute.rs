@@ -1,4 +1,3 @@
-use log::*;
 use std::io::Cursor;
 
 use crate::frame::*;
@@ -36,12 +35,6 @@ impl Frame {
     ) -> Frame {
         let version = Version::Request;
         let opcode = Opcode::Execute;
-
-        trace!(
-            "prepared statement id{:?} getting executed with parameters {:?}",
-            id,
-            query_parameters
-        );
 
         let body = BodyReqExecute::new(id, query_parameters);
 
