@@ -476,7 +476,7 @@ impl<
             .await?;
 
         let query_frame = Frame::new_req_register(events);
-        transport.write_frame(query_frame).await?;
+        transport.write_frame(&query_frame).await?;
 
         let (sender, receiver) = std_channel();
         Ok((
@@ -508,7 +508,7 @@ impl<
             .await?;
 
         let query_frame = Frame::new_req_register(events);
-        transport.write_frame(query_frame).await?;
+        transport.write_frame(&query_frame).await?;
 
         let (sender, receiver) = std_channel();
         Ok((

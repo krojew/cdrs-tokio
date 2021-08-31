@@ -105,23 +105,29 @@ impl Frame {
         &self.warnings
     }
 
-    pub fn encode_with(self, compressor: Compression) -> error::Result<Vec<u8>> {
+    pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
         let version_byte = self.version.as_byte();
         let flag_byte = Flag::many_to_cbytes(&self.flags);
         let opcode_byte = self.opcode.as_byte();
-        let mut encoded_body = compressor.encode(self.body)?;
-        let body_len = encoded_body.len();
 
-        let mut v = Vec::with_capacity(9 + body_len);
+        let mut v = Vec::with_capacity(9);
 
         v.push(version_byte);
         v.push(flag_byte);
         v.extend_from_slice(&self.stream.to_be_bytes());
         v.push(opcode_byte);
 
-        let body_len = body_len as i32;
-        v.extend_from_slice(&body_len.to_be_bytes());
-        v.append(&mut encoded_body);
+        if compressor.is_compressed() {
+            let mut encoded_body = compressor.encode(&self.body)?;
+
+            let body_len = encoded_body.len() as i32;
+            v.extend_from_slice(&body_len.to_be_bytes());
+            v.append(&mut encoded_body);
+        } else {
+            let body_len = self.body.len() as i32;
+            v.extend_from_slice(&body_len.to_be_bytes());
+            v.extend_from_slice(&self.body);
+        }
 
         Ok(v)
     }

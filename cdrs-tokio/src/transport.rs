@@ -37,7 +37,7 @@ use crate::Result;
 #[async_trait]
 pub trait CdrsTransport: Sized + Send + Sync {
     /// Schedules data frame for writing and waits for a response
-    async fn write_frame(&self, frame: Frame) -> Result<Frame>;
+    async fn write_frame(&self, frame: &Frame) -> Result<Frame>;
 
     /// Checks if the connection is broken (e.g. after read or write errors)
     fn is_broken(&self) -> bool;
@@ -78,7 +78,7 @@ impl TransportTcp {
 #[async_trait]
 impl CdrsTransport for TransportTcp {
     #[inline]
-    async fn write_frame(&self, frame: Frame) -> Result<Frame> {
+    async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
         self.inner.write_frame(frame).await
     }
 
@@ -131,7 +131,7 @@ impl TransportRustls {
 #[async_trait]
 impl CdrsTransport for TransportRustls {
     #[inline]
-    async fn write_frame(&self, frame: Frame) -> Result<Frame> {
+    async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
         self.inner.write_frame(frame).await
     }
 
@@ -193,7 +193,7 @@ impl AsyncTransport {
         &self.addr
     }
 
-    pub async fn write_frame(&self, frame: Frame) -> Result<Frame> {
+    pub async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
         let (sender, receiver) = oneshot::channel();
         let stream_id = frame.stream;
 

@@ -71,16 +71,22 @@ impl Compression {
     ///
     ///   let snappy_compression = Compression::Snappy;
     ///   let bytes = String::from("Hello World").into_bytes().to_vec();
-    ///   let encoded = snappy_compression.encode(bytes.clone()).unwrap();
+    ///   let encoded = snappy_compression.encode(&bytes).unwrap();
     ///   assert_eq!(snappy_compression.decode(encoded).unwrap(), bytes);
     ///
     /// ```
-    pub fn encode(&self, bytes: Vec<u8>) -> Result<Vec<u8>> {
+    pub fn encode(&self, bytes: &[u8]) -> Result<Vec<u8>> {
         match *self {
             Compression::Lz4 => Compression::encode_lz4(bytes),
             Compression::Snappy => Compression::encode_snappy(bytes),
-            Compression::None => Ok(bytes),
+            Compression::None => Ok(bytes.into()),
         }
+    }
+
+    /// Checks if current compression actually compresses data.
+    #[inline]
+    pub fn is_compressed(self) -> bool {
+        self != Compression::None
     }
 
     /// It decodes `bytes` basing on type of compression.
@@ -101,10 +107,10 @@ impl Compression {
         }
     }
 
-    fn encode_snappy(bytes: Vec<u8>) -> Result<Vec<u8>> {
+    fn encode_snappy(bytes: &[u8]) -> Result<Vec<u8>> {
         let mut encoder = Encoder::new();
         encoder
-            .compress_vec(bytes.as_slice())
+            .compress_vec(bytes)
             .map_err(CompressionError::Snappy)
     }
 
@@ -115,7 +121,7 @@ impl Compression {
             .map_err(CompressionError::Snappy)
     }
 
-    fn encode_lz4(bytes: Vec<u8>) -> Result<Vec<u8>> {
+    fn encode_lz4(bytes: &[u8]) -> Result<Vec<u8>> {
         let len = 4 + lz4_flex::block::get_maximum_output_size(bytes.len());
         assert!(len <= i32::MAX as usize);
 
@@ -124,7 +130,7 @@ impl Compression {
         let len = bytes.len() as i32;
         result[..4].copy_from_slice(&len.to_be_bytes());
 
-        let compressed_len = lz4_flex::compress_into(&bytes, &mut result, 4)
+        let compressed_len = lz4_flex::compress_into(bytes, &mut result, 4)
             .map_err(|error| CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error)))?;
 
         result.truncate(4 + compressed_len);
@@ -190,7 +196,7 @@ mod tests {
         let snappy_compression = Compression::Snappy;
         let bytes = String::from("Hello World").into_bytes().to_vec();
         snappy_compression
-            .encode(bytes)
+            .encode(&bytes)
             .expect("Should work without exceptions");
     }
 
@@ -198,7 +204,7 @@ mod tests {
     fn test_compression_decode_snappy() {
         let snappy_compression = Compression::Snappy;
         let bytes = String::from("Hello World").into_bytes().to_vec();
-        let encoded = snappy_compression.encode(bytes.clone()).unwrap();
+        let encoded = snappy_compression.encode(&bytes).unwrap();
         assert_eq!(snappy_compression.decode(encoded).unwrap(), bytes);
     }
 
@@ -207,7 +213,7 @@ mod tests {
         let snappy_compression = Compression::Lz4;
         let bytes = String::from("Hello World").into_bytes().to_vec();
         snappy_compression
-            .encode(bytes)
+            .encode(&bytes)
             .expect("Should work without exceptions");
     }
 
@@ -215,7 +221,7 @@ mod tests {
     fn test_compression_decode_lz4() {
         let lz4_compression = Compression::Lz4;
         let bytes = String::from("Hello World").into_bytes().to_vec();
-        let encoded = lz4_compression.encode(bytes.clone()).unwrap();
+        let encoded = lz4_compression.encode(&bytes).unwrap();
         assert_eq!(lz4_compression.decode(encoded).unwrap(), bytes);
     }
 
@@ -224,7 +230,7 @@ mod tests {
         let none_compression = Compression::None;
         let bytes = String::from("Hello World").into_bytes().to_vec();
         none_compression
-            .encode(bytes)
+            .encode(&bytes)
             .expect("Should work without exceptions");
     }
 
@@ -232,7 +238,7 @@ mod tests {
     fn test_compression_decode_none() {
         let none_compression = Compression::None;
         let bytes = String::from("Hello World").into_bytes().to_vec();
-        let encoded = none_compression.encode(bytes.clone()).unwrap();
+        let encoded = none_compression.encode(&bytes).unwrap();
         assert_eq!(none_compression.decode(encoded).unwrap(), bytes);
     }
 
@@ -248,7 +254,7 @@ mod tests {
         let snappy_compression = Compression::Snappy;
         let v = vec![0xff, 0xff];
         let encoded = snappy_compression
-            .encode(v.clone())
+            .encode(&v)
             .expect("Should work without exceptions");
         assert_eq!(snappy_compression.decode(encoded).unwrap(), v);
     }

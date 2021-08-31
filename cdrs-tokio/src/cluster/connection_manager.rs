@@ -40,7 +40,7 @@ pub async fn startup<
     compression: Compression,
 ) -> Result<()> {
     let startup_frame = Frame::new_req_startup(compression.as_str());
-    let start_response = transport.write_frame(startup_frame).await?;
+    let start_response = transport.write_frame(&startup_frame).await?;
 
     if start_response.opcode == Opcode::Ready {
         return set_keyspace(transport, keyspace_holder).await;
@@ -83,7 +83,7 @@ pub async fn startup<
         let authenticator = session_authenticator.create_authenticator();
         let response = authenticator.initial_response();
         let mut frame = transport
-            .write_frame(Frame::new_req_auth_response(response))
+            .write_frame(&Frame::new_req_auth_response(response))
             .await?;
 
         loop {
@@ -92,7 +92,7 @@ pub async fn startup<
                     let response = authenticator.evaluate_challenge(challenge.data)?;
 
                     frame = transport
-                        .write_frame(Frame::new_req_auth_response(response))
+                        .write_frame(&Frame::new_req_auth_response(response))
                         .await?;
                 }
                 ResponseBody::AuthSuccess(..) => break,
@@ -124,7 +124,7 @@ async fn set_keyspace<T: CdrsTransport>(
             false,
         );
 
-        transport.write_frame(use_frame).await.map(|_| ())
+        transport.write_frame(&use_frame).await.map(|_| ())
     } else {
         Ok(())
     }

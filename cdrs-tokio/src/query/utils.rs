@@ -37,7 +37,7 @@ where
             .ok_or_else(|| Error::from("Unable to get transport"))??;
 
         loop {
-            match transport.write_frame(frame.clone()).await {
+            match transport.write_frame(&frame).await {
                 Ok(frame) => return Ok(frame),
                 Err(error) => {
                     let query_info = QueryInfo {
