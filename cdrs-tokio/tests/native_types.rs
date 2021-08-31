@@ -29,8 +29,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[cfg(feature = "e2e-tests")]
 use std::str::FromStr;
 #[cfg(feature = "e2e-tests")]
-use std::time::SystemTime;
-#[cfg(feature = "e2e-tests")]
 use time::PrimitiveDateTime;
 
 #[tokio::test]
@@ -343,7 +341,7 @@ async fn time() {
                (my_timestamp timestamp PRIMARY KEY)";
     let session = setup(cql).await.expect("setup");
 
-    let my_timestamp: PrimitiveDateTime = SystemTime::now().into();
+    let my_timestamp: PrimitiveDateTime = time::macros::datetime!(2019-01-01 0:00);
     let values = query_values!(my_timestamp);
 
     let query = "INSERT INTO cdrs_test.test_time (my_timestamp) VALUES (?)";

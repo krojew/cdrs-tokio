@@ -24,7 +24,10 @@ use std::io::Cursor;
 #[cfg(feature = "e2e-tests")]
 use std::str::FromStr;
 #[cfg(feature = "e2e-tests")]
-use time::{date, time, PrimitiveDateTime};
+use time::{
+    macros::{date, time},
+    PrimitiveDateTime,
+};
 #[cfg(feature = "e2e-tests")]
 use uuid::Uuid;
 

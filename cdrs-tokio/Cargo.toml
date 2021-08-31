@@ -31,7 +31,7 @@ lz4_flex = "0.8"
 rand = "0.8"
 snap = "1.0"
 thiserror = "1"
-time = "0.2"
+time = { version = "0.3", features = ["std", "macros"] }
 tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
 tokio-rustls = { version = "0.22", optional = true }
 uuid = "0.8"
@@ -43,7 +43,6 @@ optional = true
 default-features = false
 
 [dev-dependencies]
-env_logger = "0.8"
 maplit = "1.0.0"
-regex = "1.4"
+regex = "1.5"
 cdrs-tokio-helpers-derive = { version = "3.0", path = "../cdrs-tokio-helpers-derive" }

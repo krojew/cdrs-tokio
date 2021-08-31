@@ -660,7 +660,7 @@ macro_rules! as_rust_type {
             ColType::Timestamp => match $data_value.as_slice() {
                 Some(ref bytes) => decode_timestamp(bytes)
                     .map(|ts| {
-                        let unix_epoch = time::date!(1970 - 01 - 01).midnight();
+                        let unix_epoch = time::macros::date!(1970 - 01 - 01).midnight();
                         let tm = unix_epoch
                             + time::Duration::new(ts / 1_000, (ts % 1_000 * 1_000_000) as i32);
                         Some(tm)
