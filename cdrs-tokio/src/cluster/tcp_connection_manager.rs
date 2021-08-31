@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 use tokio::time::sleep;
 
 use crate::cluster::connection_manager::{
@@ -20,7 +20,7 @@ pub struct TcpConnectionManager {
     keyspace_holder: Arc<KeyspaceHolder>,
     compression: Compression,
     event_handler: Option<Sender<Frame>>,
-    connection: Mutex<Option<Arc<TransportTcp>>>,
+    connection: RwLock<Option<Arc<TransportTcp>>>,
 }
 
 #[async_trait]
@@ -29,9 +29,19 @@ impl ConnectionManager<TransportTcp> for TcpConnectionManager {
         &self,
         reconnection_policy: &ThreadSafeReconnectionPolicy,
     ) -> Result<Arc<TransportTcp>> {
-        let mut connection = self.connection.lock().await;
+        {
+            let connection = self.connection.read().await;
+            if let Some(connection) = connection.deref() {
+                if !connection.is_broken() {
+                    return Ok(connection.clone());
+                }
+            }
+        }
+
+        let mut connection = self.connection.write().await;
         if let Some(connection) = connection.deref() {
             if !connection.is_broken() {
+                // somebody established connection in the meantime
                 return Ok(connection.clone());
             }
         }
