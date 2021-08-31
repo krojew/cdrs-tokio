@@ -14,7 +14,7 @@ use crate::into_cdrs_value::impl_into_cdrs_value;
 use crate::try_from_row::impl_try_from_row;
 use crate::try_from_udt::impl_try_from_udt;
 
-#[proc_macro_derive(DBMirror)]
+#[proc_macro_derive(DbMirror)]
 pub fn db_mirror(input: TokenStream) -> TokenStream {
     // Parse the string representation
     let ast = parse_macro_input!(input as DeriveInput);
