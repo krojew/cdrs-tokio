@@ -203,43 +203,24 @@ impl AsByte for Version {
     }
 }
 
-impl From<Vec<u8>> for Version {
-    fn from(v: Vec<u8>) -> Version {
-        if v.len() != Self::BYTE_LENGTH {
-            error!(
-                "Unexpected Cassandra verion. Should has {} byte(-s), got {:?}",
-                Self::BYTE_LENGTH,
-                v
-            );
-            panic!(
-                "Unexpected Cassandra verion. Should has {} byte(-s), got {:?}",
-                Self::BYTE_LENGTH,
-                v
-            );
-        }
-        let version = v[0];
+impl TryFrom<u8> for Version {
+    type Error = error::Error;
+
+    fn try_from(version: u8) -> Result<Self, Self::Error> {
         let req = Version::request_version();
         let res = Version::response_version();
 
         if version == req {
-            Version::Request
+            Ok(Version::Request)
         } else if version == res {
-            Version::Response
+            Ok(Version::Response)
         } else {
-            error!(
-                "Unexpected Cassandra version {:?}, either {:?} or {:?} is expected",
-                version, req, res
-            );
-            panic!(
-                "Unexpected Cassandra version {:?}, either {:?} or {:?} is expected",
-                version, req, res
-            );
+            Err(format!("Unexpected Cassandra version: {}", version).into())
         }
     }
 }
 
-/// Frame's flag
-// Is not implemented functionality. Only Igonore works for now
+/// Frame's flags
 #[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
 pub enum Flag {
     Compression,
@@ -250,7 +231,6 @@ pub enum Flag {
 }
 
 impl Flag {
-    /// Number of flag bytes in accordance to protocol.
     const BYTE_LENGTH: usize = 1;
 
     /// It returns selected flags collection.
@@ -438,10 +418,8 @@ mod tests {
     #[test]
     #[cfg(feature = "v3")]
     fn test_frame_version_from_v3() {
-        let request: Vec<u8> = vec![0x03];
-        assert_eq!(Version::from(request), Version::Request);
-        let response: Vec<u8> = vec![0x83];
-        assert_eq!(Version::from(response), Version::Response);
+        assert_eq!(Version::try_from(0x03).unwrap(), Version::Request);
+        assert_eq!(Version::try_from(0x83).unwrap(), Version::Response);
     }
 
     #[test]

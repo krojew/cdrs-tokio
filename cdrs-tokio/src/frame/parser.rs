@@ -25,7 +25,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     cursor.read_exact(&mut opcode_bytes).await?;
     cursor.read_exact(&mut length_bytes).await?;
 
-    let version = Version::from(version_bytes.to_vec());
+    let version = Version::try_from(version_bytes[0])?;
     let flags = Flag::collection(flag_bytes[0]);
     let stream = try_i16_from_bytes(&stream_bytes)?;
     let opcode = Opcode::try_from(opcode_bytes[0])?;
