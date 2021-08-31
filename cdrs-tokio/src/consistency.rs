@@ -6,8 +6,9 @@ use std::io;
 use std::str::FromStr;
 
 use crate::error;
-use crate::frame::{AsBytes, FromBytes, FromCursor};
+use crate::frame::{FromBytes, FromCursor, Serialize};
 use crate::types::*;
+use std::io::Cursor;
 
 /// `Consistency` is an enum which represents Cassandra's consistency levels.
 /// To find more details about each consistency level please refer to the following documentation:
@@ -109,10 +110,10 @@ impl FromStr for Consistency {
     }
 }
 
-impl AsBytes for Consistency {
-    fn as_bytes(&self) -> Vec<u8> {
+impl Serialize for Consistency {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         let value: i16 = (*self).into();
-        to_short(value)
+        value.serialize(cursor)
     }
 }
 
@@ -172,23 +173,23 @@ impl FromCursor for Consistency {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::{AsBytes, FromBytes, FromCursor};
+    use crate::frame::traits::{FromBytes, FromCursor};
     use std::io::Cursor;
 
     #[test]
     fn test_consistency_into_cbytes() {
-        assert_eq!(Consistency::Any.as_bytes(), &[0, 0]);
-        assert_eq!(Consistency::One.as_bytes(), &[0, 1]);
-        assert_eq!(Consistency::Two.as_bytes(), &[0, 2]);
-        assert_eq!(Consistency::Three.as_bytes(), &[0, 3]);
-        assert_eq!(Consistency::Quorum.as_bytes(), &[0, 4]);
-        assert_eq!(Consistency::All.as_bytes(), &[0, 5]);
-        assert_eq!(Consistency::LocalQuorum.as_bytes(), &[0, 6]);
-        assert_eq!(Consistency::EachQuorum.as_bytes(), &[0, 7]);
-        assert_eq!(Consistency::Serial.as_bytes(), &[0, 8]);
-        assert_eq!(Consistency::LocalSerial.as_bytes(), &[0, 9]);
-        assert_eq!(Consistency::LocalOne.as_bytes(), &[0, 10]);
-        assert_eq!(Consistency::Unknown.as_bytes(), &[0, 99]);
+        assert_eq!(Consistency::Any.serialize_to_vec(), &[0, 0]);
+        assert_eq!(Consistency::One.serialize_to_vec(), &[0, 1]);
+        assert_eq!(Consistency::Two.serialize_to_vec(), &[0, 2]);
+        assert_eq!(Consistency::Three.serialize_to_vec(), &[0, 3]);
+        assert_eq!(Consistency::Quorum.serialize_to_vec(), &[0, 4]);
+        assert_eq!(Consistency::All.serialize_to_vec(), &[0, 5]);
+        assert_eq!(Consistency::LocalQuorum.serialize_to_vec(), &[0, 6]);
+        assert_eq!(Consistency::EachQuorum.serialize_to_vec(), &[0, 7]);
+        assert_eq!(Consistency::Serial.serialize_to_vec(), &[0, 8]);
+        assert_eq!(Consistency::LocalSerial.serialize_to_vec(), &[0, 9]);
+        assert_eq!(Consistency::LocalOne.serialize_to_vec(), &[0, 10]);
+        assert_eq!(Consistency::Unknown.serialize_to_vec(), &[0, 99]);
     }
 
     #[test]

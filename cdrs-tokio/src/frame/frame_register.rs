@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use crate::frame::events::SimpleServerEvent;
 use crate::frame::*;
 use crate::types::{CString, CStringList};
@@ -7,8 +9,8 @@ pub struct BodyReqRegister {
     pub events: Vec<SimpleServerEvent>,
 }
 
-impl AsBytes for BodyReqRegister {
-    fn as_bytes(&self) -> Vec<u8> {
+impl Serialize for BodyReqRegister {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         let events_string_list = CStringList {
             list: self
                 .events
@@ -16,7 +18,8 @@ impl AsBytes for BodyReqRegister {
                 .map(|event| CString::new(event.as_string()))
                 .collect(),
         };
-        events_string_list.as_bytes()
+
+        events_string_list.serialize(cursor)
     }
 }
 
@@ -34,7 +37,7 @@ impl Frame {
             version,
             vec![flag],
             opcode,
-            register_body.as_bytes(),
+            register_body.serialize_to_vec(),
             None,
             vec![],
         )

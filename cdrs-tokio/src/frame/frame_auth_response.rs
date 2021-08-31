@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use crate::frame::*;
 use crate::types::CBytes;
 
@@ -13,10 +15,10 @@ impl BodyReqAuthResponse {
     }
 }
 
-impl AsBytes for BodyReqAuthResponse {
+impl Serialize for BodyReqAuthResponse {
     #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        self.data.as_bytes()
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.data.serialize(cursor);
     }
 }
 
@@ -30,21 +32,27 @@ impl Frame {
         let opcode = Opcode::AuthResponse;
         let body = BodyReqAuthResponse::new(token_bytes);
 
-        Frame::new(version, vec![flag], opcode, body.as_bytes(), None, vec![])
+        Frame::new(
+            version,
+            vec![flag],
+            opcode,
+            body.serialize_to_vec(),
+            None,
+            vec![],
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::AsBytes;
     use crate::types::CBytes;
 
     #[test]
     fn body_req_auth_response() {
         let bytes = CBytes::new(vec![1, 2, 3]);
         let body = BodyReqAuthResponse::new(bytes);
-        assert_eq!(body.as_bytes(), vec![0, 0, 0, 3, 1, 2, 3]);
+        assert_eq!(body.serialize_to_vec(), vec![0, 0, 0, 3, 1, 2, 3]);
     }
 
     #[test]

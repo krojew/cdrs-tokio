@@ -1,12 +1,22 @@
-use std::io::Cursor;
+use num::BigInt;
+use std::io::{Cursor, Write};
 
 use crate::error;
 use crate::query;
 
-/// `AsBytes` should be used to convert a structure into array of bytes.
-pub trait AsBytes {
-    /// It should convert a struct into an array of bytes.
-    fn as_bytes(&self) -> Vec<u8>;
+/// Trait that should be implemented by all types that wish to be serialized to a buffer.
+pub trait Serialize {
+    /// Serializes given value using the cursor.
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>);
+
+    /// Wrapper for easily starting hierarchical serialization.
+    fn serialize_to_vec(&self) -> Vec<u8> {
+        let mut buf = vec![];
+
+        // ignore error, since it can only happen when going over 2^64 bytes size
+        let _ = self.serialize(&mut Cursor::new(&mut buf));
+        buf
+    }
 }
 
 /// `FromBytes` should be used to parse an array of bytes into a structure.
@@ -51,3 +61,64 @@ pub trait TryFromRow: Sized {
 pub trait TryFromUdt: Sized {
     fn try_from_udt(udt: crate::types::udt::Udt) -> error::Result<Self>;
 }
+
+impl<const S: usize> Serialize for [u8; S] {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let _ = cursor.write(self);
+    }
+}
+
+impl Serialize for &[u8] {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let _ = cursor.write(self);
+    }
+}
+
+impl Serialize for Vec<u8> {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let _ = cursor.write(self);
+    }
+}
+
+impl Serialize for String {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let _ = cursor.write(self.as_bytes());
+    }
+}
+
+impl Serialize for &str {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let _ = cursor.write(self.as_bytes());
+    }
+}
+
+impl Serialize for BigInt {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let _ = cursor.write(&self.to_signed_bytes_be());
+    }
+}
+
+macro_rules! impl_serialized {
+    ($t:ty) => {
+        impl Serialize for $t {
+            #[inline]
+            fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+                let _ = cursor.write(&self.to_be_bytes());
+            }
+        }
+    };
+}
+
+impl_serialized!(i8);
+impl_serialized!(i16);
+impl_serialized!(i32);
+impl_serialized!(i64);
+impl_serialized!(u8);
+impl_serialized!(u16);
+impl_serialized!(u32);
+impl_serialized!(u64);

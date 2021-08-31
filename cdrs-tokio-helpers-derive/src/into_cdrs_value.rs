@@ -14,17 +14,17 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
           match value.#field_ident {
             Some(ref val) => {
               let field_bytes: Self = val.clone().into();
-              bytes.append(&mut cdrs_tokio::types::value::Value::new_normal(field_bytes).as_bytes());
+              cdrs_tokio::types::value::Value::new_normal(field_bytes).serialize(&mut cursor);
             },
             None => {
-              bytes.append(&mut cdrs_tokio::types::value::Value::new_not_set().as_bytes());
+              cdrs_tokio::types::value::Value::new_not_set().serialize(&mut cursor);
             }
           }
         }
       } else {
         quote! {
           let field_bytes: Self = value.#field_ident.into();
-          bytes.append(&mut cdrs_tokio::types::value::Value::new_normal(field_bytes).as_bytes());
+          cdrs_tokio::types::value::Value::new_normal(field_bytes).serialize(&mut cursor);
         }
       }
     });
@@ -35,6 +35,7 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
             impl From<#name> for cdrs_tokio::types::value::Bytes {
               fn from(value: #name) -> Self {
                 let mut bytes: Vec<u8> = Vec::new();
+                let mut cursor = std::io::Cursor::new(&mut bytes);
                 #(#convert_into_bytes)*
                 Self::new(bytes)
               }

@@ -26,8 +26,8 @@ use crate::cluster::KeyspaceHolder;
 use crate::compression::Compression;
 use crate::frame::frame_result::ResultKind;
 use crate::frame::parser::parse_frame;
-use crate::frame::{AsBytes, FromBytes, Opcode, EVENT_STREAM_ID};
 use crate::frame::{Frame, StreamId};
+use crate::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
 use crate::types::INT_LEN;
 use crate::Error;
 use crate::Result;
@@ -201,7 +201,7 @@ impl AsyncTransport {
         let data = if frame.opcode != Opcode::Startup {
             frame.encode_with(self.compression)?
         } else {
-            frame.as_bytes()
+            frame.encode_with(Compression::None)?
         };
 
         self.write_sender

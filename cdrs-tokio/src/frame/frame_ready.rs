@@ -1,44 +1,28 @@
-use std::convert::From;
+use std::io::Cursor;
 
-use crate::frame::AsBytes;
+use crate::frame::Serialize;
 
 #[derive(Debug, PartialEq, Default)]
 pub struct BodyResReady;
 
-impl From<Vec<u8>> for BodyResReady {
+impl Serialize for BodyResReady {
     #[inline]
-    fn from(_: Vec<u8>) -> BodyResReady {
-        BodyResReady {}
-    }
-}
-
-impl AsBytes for BodyResReady {
-    #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        vec![]
-    }
+    fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {}
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::AsBytes;
 
     #[test]
     fn body_res_ready_new() {
         let body: BodyResReady = Default::default();
-        assert_eq!(body, BodyResReady {});
+        assert_eq!(body, BodyResReady);
     }
 
     #[test]
     fn body_res_ready_into_cbytes() {
-        let body = BodyResReady {};
-        assert_eq!(body.as_bytes(), vec![] as Vec<u8>);
-    }
-
-    #[test]
-    fn body_res_ready_from() {
-        let body = BodyResReady::from(vec![]);
-        assert_eq!(body, BodyResReady {});
+        let body = BodyResReady;
+        assert_eq!(body.serialize_to_vec(), vec![]);
     }
 }

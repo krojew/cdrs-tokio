@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::io::Cursor;
 
-use crate::frame::AsBytes;
+use crate::frame::Serialize;
 use crate::types::value::Value;
-use crate::types::CStringRef;
+use crate::types::CIntShort;
 
 /// Enum that represents two types of query values:
 /// * values without name
@@ -33,20 +34,6 @@ impl QueryValues {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-
-    fn named_value_into_bytes_fold(mut bytes: Vec<u8>, values: (&String, &Value)) -> Vec<u8> {
-        let mut name_bytes = CStringRef::new(values.0).as_bytes();
-        let mut values_bytes = values.1.as_bytes();
-        bytes.append(&mut name_bytes);
-        bytes.append(&mut values_bytes);
-        bytes
-    }
-
-    fn value_into_bytes_fold(mut bytes: Vec<u8>, val: &Value) -> Vec<u8> {
-        let mut val_bytes = val.as_bytes();
-        bytes.append(&mut val_bytes);
-        bytes
-    }
 }
 
 impl<T: Into<Value> + Clone> From<Vec<T>> for QueryValues {
@@ -60,8 +47,8 @@ impl<T: Into<Value> + Clone> From<Vec<T>> for QueryValues {
 impl<'a, T: Into<Value> + Clone> From<&'a [T]> for QueryValues {
     /// It converts values from `Vec` to query values without names `QueryValues::SimpleValues`.
     fn from(values: &'a [T]) -> QueryValues {
-        let vals = values.iter().map(|v| v.clone().into());
-        QueryValues::SimpleValues(vals.collect())
+        let values = values.iter().map(|v| v.clone().into());
+        QueryValues::SimpleValues(values.collect())
     }
 }
 
@@ -79,16 +66,22 @@ impl<S: ToString + Hash + Eq, V: Into<Value> + Clone> From<HashMap<S, V>> for Qu
     }
 }
 
-impl AsBytes for QueryValues {
-    fn as_bytes(&self) -> Vec<u8> {
-        let bytes: Vec<u8> = vec![];
+impl Serialize for QueryValues {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         match self {
             QueryValues::SimpleValues(v) => {
-                v.iter().fold(bytes, QueryValues::value_into_bytes_fold)
+                for value in v {
+                    value.serialize(cursor);
+                }
             }
-            QueryValues::NamedValues(v) => v
-                .iter()
-                .fold(bytes, QueryValues::named_value_into_bytes_fold),
+            QueryValues::NamedValues(v) => {
+                for (key, value) in v {
+                    let len = key.len() as CIntShort;
+                    len.serialize(cursor);
+                    key.serialize(cursor);
+                    value.serialize(cursor);
+                }
+            }
         }
     }
 }

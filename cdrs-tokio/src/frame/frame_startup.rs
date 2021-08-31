@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::io::Cursor;
 
 use crate::frame::*;
-use crate::types::SHORT_LEN;
+use crate::types::*;
 
 const CQL_VERSION: &str = "CQL_VERSION";
 const CQL_VERSION_VAL: &str = "3.0.0";
@@ -23,25 +24,20 @@ impl<'a> BodyReqStartup<'a> {
     }
 }
 
-impl<'a> AsBytes for BodyReqStartup<'a> {
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(SHORT_LEN);
-        // push number of key-value pairs
-        let num = self.map.len() as i16;
-        v.extend_from_slice(&num.to_be_bytes());
-        for (key, val) in self.map.iter() {
-            // push key len
-            let key_len = key.len() as i16;
-            v.extend_from_slice(&key_len.to_be_bytes());
-            // push key itself
-            v.extend_from_slice(key.as_bytes());
-            // push val len
-            let val_len = val.len() as i16;
-            v.extend_from_slice(&val_len.to_be_bytes());
-            // push val itself
-            v.extend_from_slice(val.as_bytes());
+impl<'a> Serialize for BodyReqStartup<'a> {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let num = self.map.len() as CIntShort;
+        num.serialize(cursor);
+
+        for (key, val) in &self.map {
+            let key_len = key.len() as CIntShort;
+            key_len.serialize(cursor);
+            key.serialize(cursor);
+
+            let val_len = val.len() as CIntShort;
+            val_len.serialize(cursor);
+            val.serialize(cursor);
         }
-        v
     }
 }
 
@@ -55,7 +51,14 @@ impl Frame {
         let opcode = Opcode::Startup;
         let body = BodyReqStartup::new(compression);
 
-        Frame::new(version, vec![flag], opcode, body.as_bytes(), None, vec![])
+        Frame::new(
+            version,
+            vec![flag],
+            opcode,
+            body.serialize_to_vec(),
+            None,
+            vec![],
+        )
     }
 }
 

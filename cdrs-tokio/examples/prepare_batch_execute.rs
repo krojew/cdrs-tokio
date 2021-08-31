@@ -8,11 +8,10 @@ use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
 use cdrs_tokio::retry::{DefaultRetryPolicy, NeverReconnectionPolicy};
 
-use cdrs_tokio::frame::AsBytes;
+use cdrs_tokio::frame::Serialize;
+use cdrs_tokio::transport::TransportTcp;
 use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 use cdrs_tokio::types::prelude::*;
-
-use cdrs_tokio::transport::TransportTcp;
 use cdrs_tokio_helpers_derive::*;
 
 type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;

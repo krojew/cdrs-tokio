@@ -13,6 +13,7 @@
 * Changed `Target` and `ChangeType` enums to `SchemaChangeTarget` and `SchemaChangeType`.
 * The `varint` type now uses `num::BigInt` representation (this implies `Decimal` also uses "big" types).
 * Removed `unstable-dynamic-cluster` feature, since it wasn't working as expected and introduced performance penalty.
+* Removed `AsBytes` in favor of new `Serialize` trait due to performance penalty.
 
 ## 5.0.0
 

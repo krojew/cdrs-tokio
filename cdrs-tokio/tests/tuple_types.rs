@@ -6,7 +6,7 @@ use common::*;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::frame::AsBytes;
+use cdrs_tokio::frame::Serialize;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
@@ -20,12 +20,13 @@ use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::{IntoRustByIndex, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
+use std::io::Cursor;
+#[cfg(feature = "e2e-tests")]
+use std::str::FromStr;
+#[cfg(feature = "e2e-tests")]
 use time::{date, time, PrimitiveDateTime};
 #[cfg(feature = "e2e-tests")]
 use uuid::Uuid;
-
-#[cfg(feature = "e2e-tests")]
-use std::str::FromStr;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
@@ -51,10 +52,11 @@ async fn simple_tuple() {
     impl From<MyTuple> for Bytes {
         fn from(value: MyTuple) -> Bytes {
             let mut bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = value.my_int.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -121,12 +123,13 @@ async fn nested_tuples() {
     impl From<MyInnerTuple> for Bytes {
         fn from(value: MyInnerTuple) -> Bytes {
             let mut bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = value.my_int.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = value.my_timestamp.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -155,12 +158,13 @@ async fn nested_tuples() {
     impl From<MyOuterTuple> for Bytes {
         fn from(value: MyOuterTuple) -> Bytes {
             let mut bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_uuid.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = Bytes::new(value.my_blob);
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = value.my_inner_tuple.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }

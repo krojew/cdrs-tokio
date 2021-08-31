@@ -4,7 +4,7 @@ use std::io::{Cursor, Error as IoError, Read};
 use crate::error;
 use crate::error::Error;
 use crate::frame::events::SchemaChange;
-use crate::frame::{AsBytes, FromBytes, FromCursor};
+use crate::frame::{FromBytes, FromCursor, Serialize};
 use crate::types::rows::Row;
 use crate::types::*;
 
@@ -23,15 +23,10 @@ pub enum ResultKind {
     SchemaChange,
 }
 
-impl AsBytes for ResultKind {
-    fn as_bytes(&self) -> Vec<u8> {
-        match *self {
-            ResultKind::Void => to_int(0x0001),
-            ResultKind::Rows => to_int(0x0002),
-            ResultKind::SetKeyspace => to_int(0x0003),
-            ResultKind::Prepared => to_int(0x0004),
-            ResultKind::SchemaChange => to_int(0x0005),
-        }
+impl Serialize for ResultKind {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        i32::from(*self).serialize(cursor);
     }
 }
 
@@ -40,6 +35,18 @@ impl FromBytes for ResultKind {
         try_i32_from_bytes(bytes)
             .map_err(Into::into)
             .and_then(ResultKind::try_from)
+    }
+}
+
+impl From<ResultKind> for i32 {
+    fn from(value: ResultKind) -> Self {
+        match value {
+            ResultKind::Void => 0x0001,
+            ResultKind::Rows => 0x0002,
+            ResultKind::SetKeyspace => 0x0003,
+            ResultKind::Prepared => 0x0004,
+            ResultKind::SchemaChange => 0x0005,
+        }
     }
 }
 
@@ -279,6 +286,7 @@ const HAS_MORE_PAGES: i32 = 0x0002;
 const NO_METADATA: i32 = 0x0004;
 
 /// Enum that represent a set of possible row metadata flags that could be set.
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum RowsMetadataFlag {
     GlobalTableSpace,
     HasMorePages,
@@ -323,12 +331,19 @@ impl RowsMetadataFlag {
     }
 }
 
-impl AsBytes for RowsMetadataFlag {
-    fn as_bytes(&self) -> Vec<u8> {
-        match *self {
-            RowsMetadataFlag::GlobalTableSpace => to_int(GLOBAL_TABLE_SPACE),
-            RowsMetadataFlag::HasMorePages => to_int(HAS_MORE_PAGES),
-            RowsMetadataFlag::NoMetadata => to_int(NO_METADATA),
+impl Serialize for RowsMetadataFlag {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        i32::from(*self).serialize(cursor)
+    }
+}
+
+impl From<RowsMetadataFlag> for i32 {
+    fn from(value: RowsMetadataFlag) -> Self {
+        match value {
+            RowsMetadataFlag::GlobalTableSpace => GLOBAL_TABLE_SPACE,
+            RowsMetadataFlag::HasMorePages => HAS_MORE_PAGES,
+            RowsMetadataFlag::NoMetadata => NO_METADATA,
         }
     }
 }

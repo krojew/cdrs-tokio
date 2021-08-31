@@ -149,7 +149,7 @@ macro_rules! into_rust_by_index {
 
 macro_rules! as_res_opt {
     ($data_value:ident, $deserialize:expr) => {
-        match $data_value.as_plain() {
+        match $data_value.as_slice() {
             Some(ref bytes) => ($deserialize)(bytes).map(Some).map_err(Into::into),
             None => Ok(None),
         }

@@ -6,8 +6,6 @@ use common::*;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::frame::AsBytes;
-#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query_values;
@@ -25,7 +23,11 @@ use maplit::hashmap;
 use time::PrimitiveDateTime;
 
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::frame::Serialize;
+#[cfg(feature = "e2e-tests")]
 use std::collections::HashMap;
+#[cfg(feature = "e2e-tests")]
+use std::io::Cursor;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
@@ -52,8 +54,9 @@ async fn simple_udt() {
     impl From<MyUdt> for Bytes {
         fn from(value: MyUdt) -> Bytes {
             let mut bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -115,8 +118,9 @@ async fn nested_udt() {
     impl From<MyInnerUdt> for Bytes {
         fn from(value: MyInnerUdt) -> Bytes {
             let mut bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -137,8 +141,9 @@ async fn nested_udt() {
     impl From<MyOuterUdt> for Bytes {
         fn from(value: MyOuterUdt) -> Bytes {
             let mut bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_inner_udt.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -199,8 +204,9 @@ async fn alter_udt_add() {
     impl From<MyUdtA> for Bytes {
         fn from(value: MyUdtA) -> Bytes {
             let mut bytes = Vec::new();
+            let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            bytes.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            Value::new_normal(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }

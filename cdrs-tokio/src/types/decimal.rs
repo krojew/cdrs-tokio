@@ -1,9 +1,8 @@
 use float_eq::*;
 use num::BigInt;
+use std::io::Cursor;
 
-use super::{to_int, to_varint};
-use crate::frame::traits::AsBytes;
-use crate::types::INT_LEN;
+use crate::frame::Serialize;
 
 /// Cassandra Decimal type
 #[derive(Debug, Clone, PartialEq)]
@@ -23,13 +22,10 @@ impl Decimal {
     }
 }
 
-impl AsBytes for Decimal {
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(INT_LEN);
-        bytes.extend(to_int(self.scale));
-        bytes.extend(to_varint(self.unscaled.clone()));
-
-        bytes
+impl Serialize for Decimal {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.scale.serialize(cursor);
+        self.unscaled.to_signed_bytes_be().serialize(cursor);
     }
 }
 
@@ -92,20 +88,23 @@ mod test {
     #[test]
     fn into_cbytes_test() {
         assert_eq!(
-            Decimal::new(129.into(), 0).as_bytes(),
+            Decimal::new(129.into(), 0).serialize_to_vec(),
             vec![0, 0, 0, 0, 0x00, 0x81]
         );
 
         assert_eq!(
-            Decimal::new(BigInt::from(-129), 0).as_bytes(),
+            Decimal::new(BigInt::from(-129), 0).serialize_to_vec(),
             vec![0, 0, 0, 0, 0xFF, 0x7F]
         );
 
         let expected: Vec<u8> = vec![0, 0, 0, 1, 0x00, 0x81];
-        assert_eq!(Decimal::new(129.into(), 1).as_bytes(), expected);
+        assert_eq!(Decimal::new(129.into(), 1).serialize_to_vec(), expected);
 
         let expected: Vec<u8> = vec![0, 0, 0, 1, 0xFF, 0x7F];
-        assert_eq!(Decimal::new(BigInt::from(-129), 1).as_bytes(), expected);
+        assert_eq!(
+            Decimal::new(BigInt::from(-129), 1).serialize_to_vec(),
+            expected
+        );
     }
 
     #[test]

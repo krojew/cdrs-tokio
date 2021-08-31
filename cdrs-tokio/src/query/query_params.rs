@@ -1,9 +1,10 @@
+use std::io::Cursor;
+
 use crate::consistency::Consistency;
-use crate::frame::AsByte;
-use crate::frame::AsBytes;
+use crate::frame::{AsByte, Serialize};
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
-use crate::types::{CBytes, SHORT_LEN};
+use crate::types::{CBytes, CIntShort};
 
 /// Parameters of Query for query operation.
 #[derive(Debug, Default, Clone)]
@@ -69,49 +70,45 @@ impl QueryParams {
     }
 }
 
-impl AsBytes for QueryParams {
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(SHORT_LEN + 1);
+impl Serialize for QueryParams {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let consistency: CIntShort = self.consistency.into();
+        consistency.serialize(cursor);
 
-        let consistency: i16 = self.consistency.into();
         let flags = self.flags_as_byte();
-
-        v.extend_from_slice(&consistency.to_be_bytes());
-        v.push(flags);
+        flags.serialize(cursor);
 
         if QueryFlags::has_value(flags) {
             if let Some(values) = &self.values {
-                let len = values.len() as i16;
-                v.extend_from_slice(&len.to_be_bytes());
-                v.append(&mut values.as_bytes());
+                let len = values.len() as CIntShort;
+                len.serialize(cursor);
+                values.serialize(cursor);
             }
         }
 
         if QueryFlags::has_page_size(flags) {
             if let Some(page_size) = self.page_size {
-                v.extend_from_slice(&page_size.to_be_bytes());
+                page_size.serialize(cursor);
             }
         }
 
         if QueryFlags::has_with_paging_state(flags) {
             if let Some(paging_state) = &self.paging_state {
-                v.append(&mut paging_state.as_bytes());
+                paging_state.serialize(cursor);
             }
         }
 
         if QueryFlags::has_with_serial_consistency(flags) {
             if let Some(serial_consistency) = self.serial_consistency {
-                let serial_consistency: i16 = serial_consistency.into();
-                v.extend_from_slice(&serial_consistency.to_be_bytes());
+                let serial_consistency: CIntShort = serial_consistency.into();
+                serial_consistency.serialize(cursor);
             }
         }
 
         if QueryFlags::has_with_default_timestamp(flags) {
             if let Some(timestamp) = self.timestamp {
-                v.extend_from_slice(&timestamp.to_be_bytes());
+                timestamp.serialize(cursor);
             }
         }
-
-        v
     }
 }

@@ -1,11 +1,11 @@
-use num::BigInt;
 use std::convert::TryInto;
 use std::io;
 use std::io::{Cursor, Read};
 use std::net::SocketAddr;
 
 use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
-use crate::frame::traits::{AsBytes, FromCursor};
+use crate::frame::traits::FromCursor;
+use crate::frame::Serialize;
 use crate::types::data_serialization_types::decode_inet;
 
 pub const LONG_STR_LEN: usize = 4;
@@ -181,11 +181,6 @@ pub(crate) fn to_bigint(int: i64) -> Vec<u8> {
 }
 
 #[inline]
-pub(crate) fn to_varint(int: BigInt) -> Vec<u8> {
-    int.to_signed_bytes_be()
-}
-
-#[inline]
 pub(crate) fn to_u_short(int: u16) -> Vec<u8> {
     int.to_be_bytes().into()
 }
@@ -208,29 +203,6 @@ pub(crate) fn to_float(f: f32) -> Vec<u8> {
 #[inline]
 pub(crate) fn to_float_big(f: f64) -> Vec<u8> {
     f.to_be_bytes().into()
-}
-
-pub struct CStringRef<'a> {
-    string: &'a str,
-}
-
-impl<'a> CStringRef<'a> {
-    #[inline]
-    pub fn new(string: &'a str) -> Self {
-        CStringRef { string }
-    }
-}
-
-impl<'a> AsBytes for CStringRef<'a> {
-    fn as_bytes(&self) -> Vec<u8> {
-        let l = self.string.len();
-        let mut v = Vec::with_capacity(SHORT_LEN + l);
-
-        let l = l as i16;
-        v.extend_from_slice(&l.to_be_bytes());
-        v.extend_from_slice(self.string.as_bytes());
-        v
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -263,17 +235,11 @@ impl CString {
     }
 }
 
-// Implementation for Rust std types
-// Use extended Rust string as Cassandra [string]
-impl AsBytes for CString {
-    fn as_bytes(&self) -> Vec<u8> {
-        let l = self.string.len();
-        let mut v = Vec::with_capacity(SHORT_LEN + l);
-
-        let l = l as i16;
-        v.extend_from_slice(&l.to_be_bytes());
-        v.extend_from_slice(self.string.as_bytes());
-        v
+impl Serialize for CString {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let len = self.string.len() as CIntShort;
+        len.serialize(cursor);
+        self.string.serialize(cursor);
     }
 }
 
@@ -313,25 +279,13 @@ impl CStringLong {
     pub fn into_plain(self) -> String {
         self.string
     }
-
-    /// Return string length.
-    #[inline]
-    pub fn serialized_len(&self) -> usize {
-        self.string.len() + INT_LEN
-    }
 }
 
-// Implementation for Rust std types
-// Use extended Rust string as Cassandra [string]
-impl AsBytes for CStringLong {
-    fn as_bytes(&self) -> Vec<u8> {
-        let l = self.string.len();
-        let mut v = Vec::with_capacity(INT_LEN + l);
-
-        let l = l as i32;
-        v.extend_from_slice(&l.to_be_bytes());
-        v.extend_from_slice(self.string.as_bytes());
-        v
+impl Serialize for CStringLong {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let len = self.string.len() as CInt;
+        len.serialize(cursor);
+        self.string.serialize(cursor);
     }
 }
 
@@ -363,20 +317,14 @@ impl CStringList {
     }
 }
 
-impl AsBytes for CStringList {
-    fn as_bytes(&self) -> Vec<u8> {
-        let l = self.list.len();
-        let mut bytes = Vec::with_capacity(l);
+impl Serialize for CStringList {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let len = self.list.len() as CIntShort;
+        len.serialize(cursor);
 
-        let l = l as i16;
-        bytes.extend_from_slice(&l.to_be_bytes());
-
-        bytes = self.list.iter().fold(bytes, |mut bytes, cstring| {
-            bytes.append(&mut cstring.as_bytes());
-            bytes
-        });
-
-        bytes
+        for string in &self.list {
+            string.serialize(cursor);
+        }
     }
 }
 
@@ -421,12 +369,6 @@ impl CBytes {
         self.bytes
     }
 
-    // TODO: try to replace usage of `as_plain` by `as_slice`
-    #[inline]
-    pub fn as_plain(&self) -> Option<Vec<u8>> {
-        self.bytes.clone()
-    }
-
     #[inline]
     pub fn as_slice(&self) -> Option<&[u8]> {
         self.bytes.as_deref()
@@ -460,20 +402,15 @@ impl FromCursor for CBytes {
     }
 }
 
-// Use extended Rust Vec<u8> as Cassandra [bytes]
-impl AsBytes for CBytes {
-    fn as_bytes(&self) -> Vec<u8> {
+impl Serialize for CBytes {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         match &self.bytes {
-            Some(b) => {
-                let l = b.len();
-                let mut v = Vec::with_capacity(INT_LEN + l);
-
-                let l = l as CInt;
-                v.extend_from_slice(&l.to_be_bytes());
-                v.extend_from_slice(b.as_slice());
-                v
+            Some(bytes) => {
+                let len = bytes.len() as CInt;
+                len.serialize(cursor);
+                bytes.serialize(cursor);
             }
-            None => to_int(NULL_INT_LEN),
+            None => NULL_INT_LEN.serialize(cursor),
         }
     }
 }
@@ -523,20 +460,15 @@ impl FromCursor for CBytesShort {
     }
 }
 
-// Use extended Rust Vec<u8> as Cassandra [bytes]
-impl AsBytes for CBytesShort {
-    fn as_bytes(&self) -> Vec<u8> {
+impl Serialize for CBytesShort {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         match &self.bytes {
-            Some(b) => {
-                let l = b.len();
-                let mut v = Vec::with_capacity(SHORT_LEN + l);
-
-                let l = l as CIntShort;
-                v.extend_from_slice(&l.to_be_bytes());
-                v.extend_from_slice(b.as_slice());
-                v
+            Some(bytes) => {
+                let len = bytes.len() as CIntShort;
+                len.serialize(cursor);
+                bytes.serialize(cursor);
             }
-            None => to_short(NULL_SHORT_LEN),
+            None => NULL_SHORT_LEN.serialize(cursor),
         }
     }
 }
@@ -599,7 +531,8 @@ pub fn cursor_next_value(cursor: &mut Cursor<&[u8]>, len: usize) -> CDRSResult<V
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::{AsBytes, FromCursor};
+    use crate::frame::traits::FromCursor;
+    use num::BigInt;
     use std::io::Cursor;
     use std::mem::transmute;
 
@@ -609,6 +542,10 @@ mod tests {
 
     fn try_u16_from_bytes(bytes: &[u8]) -> Result<u16, io::Error> {
         Ok(u16::from_be_bytes(convert_to_array(bytes)?))
+    }
+
+    fn to_varint(int: BigInt) -> Vec<u8> {
+        int.to_signed_bytes_be()
     }
 
     // CString
@@ -639,7 +576,7 @@ mod tests {
         let value = "foo".to_string();
         let cstring = CString::new(value);
 
-        assert_eq!(cstring.as_bytes(), &[0, 3, 102, 111, 111]);
+        assert_eq!(cstring.serialize_to_vec(), &[0, 3, 102, 111, 111]);
     }
 
     #[test]
@@ -678,7 +615,7 @@ mod tests {
         let value = "foo".to_string();
         let cstring = CStringLong::new(value);
 
-        assert_eq!(cstring.as_bytes(), &[0, 0, 0, 3, 102, 111, 111]);
+        assert_eq!(cstring.serialize_to_vec(), &[0, 0, 0, 3, 102, 111, 111]);
     }
 
     #[test]
@@ -727,7 +664,7 @@ mod tests {
     fn test_cbytes_into_cbytes() {
         let bytes_vec = vec![1, 2, 3];
         let cbytes = CBytes::new(bytes_vec);
-        assert_eq!(cbytes.as_bytes(), vec![0, 0, 0, 3, 1, 2, 3]);
+        assert_eq!(cbytes.serialize_to_vec(), vec![0, 0, 0, 3, 1, 2, 3]);
     }
 
     // CBytesShort
@@ -755,7 +692,7 @@ mod tests {
     fn test_cbytesshort_into_cbytes() {
         let bytes_vec: Vec<u8> = vec![1, 2, 3];
         let cbytes = CBytesShort::new(bytes_vec);
-        assert_eq!(cbytes.as_bytes(), vec![0, 3, 1, 2, 3]);
+        assert_eq!(cbytes.serialize_to_vec(), vec![0, 3, 1, 2, 3]);
     }
 
     // CInt

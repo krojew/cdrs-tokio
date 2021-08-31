@@ -1,9 +1,8 @@
-#![warn(missing_docs)]
-//! Contains Query Frame related functionality.
 use crate::consistency::Consistency;
 use crate::frame::*;
 use crate::query::{Query, QueryFlags, QueryParams, QueryValues};
 use crate::types::*;
+use std::io::Cursor;
 
 /// Structure which represents body of Query request
 #[derive(Debug)]
@@ -72,16 +71,13 @@ impl BodyReqQuery {
     }
 }
 
-impl AsBytes for BodyReqQuery {
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(self.query.serialized_len());
-        v.append(&mut self.query.as_bytes());
-        v.append(&mut self.query_params.as_bytes());
-        v
+impl Serialize for BodyReqQuery {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.query.serialize(cursor);
+        self.query_params.serialize(cursor);
     }
 }
-
-// Frame implementation related to BodyReqStartup
 
 impl Frame {
     #[allow(clippy::too_many_arguments)]
@@ -111,7 +107,14 @@ impl Frame {
             is_idempotent,
         );
 
-        Frame::new(version, flags, opcode, body.as_bytes(), None, vec![])
+        Frame::new(
+            version,
+            flags,
+            opcode,
+            body.serialize_to_vec(),
+            None,
+            vec![],
+        )
     }
 
     #[inline]

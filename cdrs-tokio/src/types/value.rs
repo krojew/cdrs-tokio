@@ -10,8 +10,6 @@ use chrono::prelude::*;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
-use crate::frame::AsBytes;
-
 use super::blob::Blob;
 use super::decimal::Decimal;
 use super::*;
@@ -27,13 +25,11 @@ pub enum ValueType {
     NotSet,
 }
 
-impl AsBytes for ValueType {
-    fn as_bytes(&self) -> Vec<u8> {
-        match *self {
-            ValueType::Normal(n) => to_int(n),
-            ValueType::Null => to_int(NULL_INT_VALUE),
-            ValueType::NotSet => to_int(NOT_SET_INT_VALUE),
-        }
+impl Serialize for ValueType {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let value_type: i32 = (*self).into();
+        value_type.serialize(cursor);
     }
 }
 
@@ -85,16 +81,14 @@ impl Value {
     }
 }
 
-impl AsBytes for Value {
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(INT_LEN + self.body.len());
-        let value_int: i32 = self.value_type.into();
-        v.extend_from_slice(&value_int.to_be_bytes());
-        if let ValueType::Normal(_) = &self.value_type {
-            v.extend_from_slice(self.body.as_slice());
-        }
+impl Serialize for Value {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let value_int: CInt = self.value_type.into();
+        value_int.serialize(cursor);
 
-        v
+        if let ValueType::Normal(_) = &self.value_type {
+            self.body.serialize(cursor);
+        }
     }
 }
 
@@ -281,7 +275,7 @@ impl From<Blob> for Bytes {
 impl From<Decimal> for Bytes {
     #[inline]
     fn from(value: Decimal) -> Self {
-        Bytes(value.as_bytes())
+        Bytes(value.serialize_to_vec())
     }
 }
 
@@ -302,10 +296,12 @@ impl From<DateTime<Utc>> for Bytes {
 impl<T: Into<Bytes> + Clone + Debug> From<Vec<T>> for Bytes {
     fn from(vec: Vec<T>) -> Bytes {
         let mut bytes: Vec<u8> = vec![];
-        bytes.extend_from_slice(to_int(vec.len() as i32).as_slice());
+        let len = vec.len() as i32;
+
+        bytes.extend_from_slice(&len.to_be_bytes());
         bytes = vec.iter().fold(bytes, |mut acc, v| {
             let b: Bytes = v.clone().into();
-            acc.extend_from_slice(Value::new_normal(b).as_bytes().as_slice());
+            acc.append(&mut Value::new_normal(b).serialize_to_vec());
             acc
         });
         Bytes(bytes)
@@ -319,12 +315,14 @@ where
 {
     fn from(map: HashMap<K, V>) -> Bytes {
         let mut bytes: Vec<u8> = vec![];
-        bytes.extend_from_slice(to_int(map.len() as i32).as_slice());
+        let len = map.len() as i32;
+
+        bytes.extend_from_slice(&len.to_be_bytes());
         bytes = map.iter().fold(bytes, |mut acc, (k, v)| {
             let key_bytes: Bytes = k.clone().into();
             let val_bytes: Bytes = v.clone().into();
-            acc.extend_from_slice(Value::new_normal(key_bytes).as_bytes().as_slice());
-            acc.extend_from_slice(Value::new_normal(val_bytes).as_bytes().as_slice());
+            acc.append(&mut Value::new_normal(key_bytes).serialize_to_vec());
+            acc.append(&mut Value::new_normal(val_bytes).serialize_to_vec());
             acc
         });
         Bytes(bytes)
@@ -333,21 +331,19 @@ where
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
-    use crate::frame::traits::AsBytes;
 
     #[test]
     fn test_value_type_into_cbytes() {
         // normal value types
         let normal_type = ValueType::Normal(1);
-        assert_eq!(normal_type.as_bytes(), vec![0, 0, 0, 1]);
+        assert_eq!(normal_type.serialize_to_vec(), vec![0, 0, 0, 1]);
         // null value types
         let null_type = ValueType::Null;
-        assert_eq!(null_type.as_bytes(), vec![255, 255, 255, 255]);
+        assert_eq!(null_type.serialize_to_vec(), vec![255, 255, 255, 255]);
         // not set value types
         let not_set = ValueType::NotSet;
-        assert_eq!(not_set.as_bytes(), vec![255, 255, 255, 254])
+        assert_eq!(not_set.serialize_to_vec(), vec![255, 255, 255, 254])
     }
 
     #[test]
@@ -394,6 +390,6 @@ mod tests {
     #[test]
     fn test_value_into_cbytes() {
         let value = Value::new_normal(1_u8);
-        assert_eq!(value.as_bytes(), vec![0, 0, 0, 1, 1]);
+        assert_eq!(value.serialize_to_vec(), vec![0, 0, 0, 1, 1]);
     }
 }

@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicI16, Ordering};
 use crate::compression::Compression;
 use crate::frame::frame_response::ResponseBody;
 pub use crate::frame::traits::*;
-use log::*;
 use uuid::Uuid;
 
 /// Number of stream bytes in accordance to protocol.
@@ -125,28 +124,6 @@ impl Frame {
         v.append(&mut encoded_body);
 
         Ok(v)
-    }
-}
-
-impl AsBytes for Frame {
-    fn as_bytes(&self) -> Vec<u8> {
-        let version_byte = self.version.as_byte();
-        let flag_byte = Flag::many_to_cbytes(&self.flags);
-        let opcode_byte = self.opcode.as_byte();
-        let body_len = self.body.len();
-
-        let mut v = Vec::with_capacity(9 + body_len);
-
-        v.push(version_byte);
-        v.push(flag_byte);
-        v.extend_from_slice(&self.stream.to_be_bytes());
-        v.push(opcode_byte);
-
-        let body_len = body_len as i32;
-        v.extend_from_slice(&body_len.to_be_bytes());
-        v.extend_from_slice(self.body.as_slice());
-
-        v
     }
 }
 
@@ -409,10 +386,8 @@ mod tests {
     #[test]
     #[cfg(not(feature = "v3"))]
     fn test_frame_version_from() {
-        let request: Vec<u8> = vec![0x04];
-        assert_eq!(Version::from(request), Version::Request);
-        let response: Vec<u8> = vec![0x84];
-        assert_eq!(Version::from(response), Version::Response);
+        assert_eq!(Version::try_from(0x04).unwrap(), Version::Request);
+        assert_eq!(Version::try_from(0x84).unwrap(), Version::Response);
     }
 
     #[test]

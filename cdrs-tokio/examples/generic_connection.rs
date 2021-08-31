@@ -10,7 +10,6 @@ use cdrs_tokio::{
     cluster::session::Session,
     cluster::{GenericClusterConfig, TcpConnectionManager},
     error::Result,
-    frame::AsBytes,
     load_balancing::RoundRobin,
     query::*,
     query_values,
@@ -26,6 +25,7 @@ use async_trait::async_trait;
 use cdrs_tokio::cluster::session::{ReconnectionPolicyWrapper, RetryPolicyWrapper};
 use cdrs_tokio::cluster::{KeyspaceHolder, NodeTcpConfigBuilder};
 use cdrs_tokio::compression::Compression;
+use cdrs_tokio::frame::Serialize;
 use cdrs_tokio::retry::ConstantReconnectionPolicy;
 use maplit::hashmap;
 

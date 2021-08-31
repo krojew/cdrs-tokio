@@ -1,4 +1,5 @@
 use log::*;
+use std::io::Cursor;
 
 use crate::frame::*;
 use crate::query::QueryParams;
@@ -20,12 +21,10 @@ impl<'a> BodyReqExecute<'a> {
     }
 }
 
-impl<'a> AsBytes for BodyReqExecute<'a> {
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut v = Vec::with_capacity(self.id.serialized_len());
-        v.append(&mut self.id.as_bytes());
-        v.append(&mut self.query_parameters.as_bytes());
-        v
+impl<'a> Serialize for BodyReqExecute<'a> {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.id.serialize(cursor);
+        self.query_parameters.serialize(cursor);
     }
 }
 
@@ -46,6 +45,13 @@ impl Frame {
 
         let body = BodyReqExecute::new(id, query_parameters);
 
-        Frame::new(version, flags, opcode, body.as_bytes(), None, vec![])
+        Frame::new(
+            version,
+            flags,
+            opcode,
+            body.serialize_to_vec(),
+            None,
+            vec![],
+        )
     }
 }

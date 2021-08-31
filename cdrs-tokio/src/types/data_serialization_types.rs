@@ -6,9 +6,12 @@ use std::string::FromUtf8Error;
 
 use super::blob::Blob;
 use super::decimal::Decimal;
-use super::*;
 use crate::error;
 use crate::frame::FromCursor;
+use crate::types::{
+    try_f32_from_bytes, try_f64_from_bytes, try_i16_from_bytes, try_i32_from_bytes,
+    try_i64_from_bytes, u16_from_bytes, CBytes, CInt, INT_LEN,
+};
 
 // https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L813
 
@@ -242,6 +245,7 @@ mod tests {
     use super::super::super::error::*;
     use super::super::super::frame::frame_result::*;
     use super::*;
+    use crate::types::{to_float, to_float_big, CString};
     use float_eq::*;
     use std::net::IpAddr;
 
@@ -334,22 +338,22 @@ mod tests {
     fn decode_list_test() {
         let results = decode_list(&[0, 0, 0, 1, 0, 0, 0, 2, 1, 2]).unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].as_plain().unwrap(), vec![1, 2]);
+        assert_eq!(results[0].as_slice().unwrap(), &[1, 2]);
     }
 
     #[test]
     fn decode_set_test() {
         let results = decode_set(&[0, 0, 0, 1, 0, 0, 0, 2, 1, 2]).unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].as_plain().unwrap(), vec![1, 2]);
+        assert_eq!(results[0].as_slice().unwrap(), &[1, 2]);
     }
 
     #[test]
     fn decode_map_test() {
         let results = decode_map(&[0, 0, 0, 1, 0, 0, 0, 2, 1, 2, 0, 0, 0, 2, 2, 1]).unwrap();
         assert_eq!(results.len(), 1);
-        assert_eq!(results[0].0.as_plain().unwrap(), vec![1, 2]);
-        assert_eq!(results[0].1.as_plain().unwrap(), vec![2, 1]);
+        assert_eq!(results[0].0.as_slice().unwrap(), &[1, 2]);
+        assert_eq!(results[0].1.as_slice().unwrap(), &[2, 1]);
     }
 
     #[test]
@@ -426,7 +430,7 @@ mod tests {
     fn decode_udt_test() {
         let udt = decode_udt(&[0, 0, 0, 2, 1, 2], 1).unwrap();
         assert_eq!(udt.len(), 1);
-        assert_eq!(udt[0].as_plain().unwrap(), vec![1, 2]);
+        assert_eq!(udt[0].as_slice().unwrap(), &[1, 2]);
     }
 
     #[test]

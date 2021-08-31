@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use crate::frame::*;
 use crate::types::*;
 
@@ -16,10 +18,10 @@ impl BodyReqPrepare {
     }
 }
 
-impl AsBytes for BodyReqPrepare {
+impl Serialize for BodyReqPrepare {
     #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        self.query.as_bytes()
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.query.serialize(cursor);
     }
 }
 
@@ -29,6 +31,13 @@ impl Frame {
         let opcode = Opcode::Prepare;
         let body = BodyReqPrepare::new(query);
 
-        Frame::new(version, flags, opcode, body.as_bytes(), None, vec![])
+        Frame::new(
+            version,
+            flags,
+            opcode,
+            body.serialize_to_vec(),
+            None,
+            vec![],
+        )
     }
 }

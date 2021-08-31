@@ -1,14 +1,14 @@
+use std::io::Cursor;
+
 use crate::frame::*;
 
 /// The structure which represents a body of a frame of type `options`.
 #[derive(Debug, Default)]
 pub struct BodyReqOptions;
 
-impl AsBytes for BodyReqOptions {
+impl Serialize for BodyReqOptions {
     #[inline]
-    fn as_bytes(&self) -> Vec<u8> {
-        vec![]
-    }
+    fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {}
 }
 
 // Frame implementation related to BodyReqStartup
@@ -21,7 +21,14 @@ impl Frame {
         let opcode = Opcode::Options;
         let body: BodyReqOptions = Default::default();
 
-        Frame::new(version, vec![flag], opcode, body.as_bytes(), None, vec![])
+        Frame::new(
+            version,
+            vec![flag],
+            opcode,
+            body.serialize_to_vec(),
+            None,
+            vec![],
+        )
     }
 }
 

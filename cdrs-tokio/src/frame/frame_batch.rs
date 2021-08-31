@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use crate::consistency::Consistency;
 use crate::frame::*;
 use crate::query::QueryValues;
@@ -18,37 +20,33 @@ pub struct BodyReqBatch {
     pub is_idempotent: bool,
 }
 
-impl AsBytes for BodyReqBatch {
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = vec![self.batch_type.as_byte()];
+impl Serialize for BodyReqBatch {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let len = self.queries.len() as CIntShort;
+        len.serialize(cursor);
 
-        let len = self.queries.len() as i16;
-        bytes.extend_from_slice(&len.to_be_bytes());
-
-        bytes = self.queries.iter().fold(bytes, |mut bytes, q| {
-            bytes.append(&mut q.as_bytes());
-            bytes
-        });
+        for query in &self.queries {
+            query.serialize(cursor);
+        }
 
         let consistency: i16 = self.consistency.into();
-        bytes.extend_from_slice(&consistency.to_be_bytes());
+        consistency.serialize(cursor);
 
         let flag_byte = self
             .query_flags
             .iter()
             .fold(0, |bytes, f| bytes | f.as_byte());
-        bytes.push(flag_byte);
+
+        flag_byte.serialize(cursor);
 
         if let Some(serial_consistency) = self.serial_consistency {
             let serial_consistency: i16 = serial_consistency.into();
-            bytes.extend_from_slice(&serial_consistency.to_be_bytes());
+            serial_consistency.serialize(cursor);
         }
 
         if let Some(timestamp) = self.timestamp {
-            bytes.extend_from_slice(&timestamp.to_be_bytes());
+            timestamp.serialize(cursor);
         }
-
-        bytes
     }
 }
 
@@ -110,37 +108,29 @@ pub enum BatchQuerySubj {
     QueryString(CStringLong),
 }
 
-impl AsBytes for BatchQuery {
-    fn as_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(1 + INT_LEN + SHORT_LEN);
-
+impl Serialize for BatchQuery {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         // kind
         if self.is_prepared {
-            bytes.push(1);
+            1u8.serialize(cursor);
         } else {
-            bytes.push(0);
+            0u8.serialize(cursor);
         }
 
         match &self.subject {
             BatchQuerySubj::PreparedId(s) => {
-                bytes.append(
-                    &mut s
-                        .id
-                        .read()
-                        .expect("Cannot read prepared query id!")
-                        .as_bytes(),
-                );
+                s.id.read()
+                    .expect("Cannot read prepared query id!")
+                    .serialize(cursor);
             }
             BatchQuerySubj::QueryString(s) => {
-                bytes.append(&mut s.as_bytes());
+                s.serialize(cursor);
             }
         }
 
-        let len = self.values.len() as i16;
-        bytes.extend_from_slice(&len.to_be_bytes());
-        bytes.append(&mut self.values.as_bytes());
-
-        bytes
+        let len = self.values.len() as CIntShort;
+        len.serialize(cursor);
+        self.values.serialize(cursor);
     }
 }
 
@@ -150,6 +140,13 @@ impl Frame {
         let version = Version::Request;
         let opcode = Opcode::Batch;
 
-        Frame::new(version, flags, opcode, query.as_bytes(), None, vec![])
+        Frame::new(
+            version,
+            flags,
+            opcode,
+            query.serialize_to_vec(),
+            None,
+            vec![],
+        )
     }
 }
