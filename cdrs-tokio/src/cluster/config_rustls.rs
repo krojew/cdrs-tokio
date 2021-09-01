@@ -1,9 +1,10 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::authenticators::SaslAuthenticatorProvider;
+use crate::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider};
 
 /// Cluster configuration that holds per node SSL configs
+#[derive(Clone, Default)]
 pub struct ClusterRustlsConfig(pub Vec<NodeRustlsConfig>);
 
 /// Single node TLS connection config.
@@ -11,7 +12,7 @@ pub struct ClusterRustlsConfig(pub Vec<NodeRustlsConfig>);
 pub struct NodeRustlsConfig {
     pub addr: SocketAddr,
     pub dns_name: webpki::DNSName,
-    pub authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+    pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub config: Arc<rustls::ClientConfig>,
 }
 
@@ -19,7 +20,7 @@ pub struct NodeRustlsConfig {
 pub struct NodeRustlsConfigBuilder {
     addr: SocketAddr,
     dns_name: webpki::DNSName,
-    authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+    authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<rustls::ClientConfig>,
 }
 
@@ -27,23 +28,31 @@ impl NodeRustlsConfigBuilder {
     pub fn new(
         addr: SocketAddr,
         dns_name: webpki::DNSName,
-        authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
         config: Arc<rustls::ClientConfig>,
     ) -> Self {
         NodeRustlsConfigBuilder {
             addr,
             dns_name,
-            authenticator,
+            authenticator_provider: Arc::new(NoneAuthenticatorProvider),
             config,
         }
     }
 
     /// Sets new authenticator.
+    #[deprecated(note = "Use with_authenticator_provider().")]
     pub fn authenticator(
-        mut self,
+        self,
         authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     ) -> Self {
-        self.authenticator = authenticator;
+        self.with_authenticator_provider(authenticator)
+    }
+
+    /// Sets new authenticator.
+    pub fn with_authenticator_provider(
+        mut self,
+        authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+    ) -> Self {
+        self.authenticator_provider = authenticator_provider;
         self
     }
 
@@ -52,7 +61,7 @@ impl NodeRustlsConfigBuilder {
         NodeRustlsConfig {
             addr: self.addr,
             dns_name: self.dns_name,
-            authenticator: self.authenticator,
+            authenticator_provider: self.authenticator_provider,
             config: self.config,
         }
     }

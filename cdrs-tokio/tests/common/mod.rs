@@ -4,7 +4,9 @@ use std::sync::Arc;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::cluster::session::{new as new_session, Session};
+use cdrs_tokio::cluster::session::Session;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::TcpConnectionManager;
 #[cfg(feature = "e2e-tests")]
@@ -15,8 +17,6 @@ use cdrs_tokio::error::Result;
 use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::retry::DefaultRetryPolicy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -38,19 +38,13 @@ pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
 
 #[cfg(feature = "e2e-tests")]
 pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSession> {
-    let node =
-        NodeTcpConfigBuilder::new(ADDR.parse().unwrap(), Arc::new(NoneAuthenticatorProvider))
-            .build();
+    let node = NodeTcpConfigBuilder::new(ADDR.parse().unwrap())
+        .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+        .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
-    let lb = RoundRobin::new();
-    let session = new_session(
-        &cluster_config,
-        lb,
-        Box::new(DefaultRetryPolicy::default()),
-        Box::new(NeverReconnectionPolicy::default()),
-    )
-    .await
-    .expect("session should be created");
+    let session = TcpSessionBuilder::new(RoundRobin::new(), cluster_config)
+        .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
+        .build();
     let re_table_name = Regex::new(r"CREATE TABLE IF NOT EXISTS (\w+\.\w+)").unwrap();
 
     let create_keyspace_query = "CREATE KEYSPACE IF NOT EXISTS cdrs_test WITH \

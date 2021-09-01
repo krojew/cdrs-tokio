@@ -1,13 +1,13 @@
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::retry::DefaultRetryPolicy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -16,20 +16,13 @@ use std::sync::Arc;
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn multithread() {
-    let node = NodeTcpConfigBuilder::new(
-        "127.0.0.1:9042".parse().unwrap(),
-        Arc::new(NoneAuthenticatorProvider),
-    )
-    .build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap())
+        .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+        .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
-    let no_compression = cdrs_tokio::cluster::session::new(
-        &cluster_config,
-        RoundRobin::new(),
-        Box::new(DefaultRetryPolicy::default()),
-        Box::new(NeverReconnectionPolicy::default()),
-    )
-    .await
-    .expect("session should be created");
+    let no_compression = TcpSessionBuilder::new(RoundRobin::new(), cluster_config)
+        .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
+        .build();
 
     no_compression.query("CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };").await.expect("Could not create ks");
     no_compression

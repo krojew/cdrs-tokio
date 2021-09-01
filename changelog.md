@@ -5,6 +5,7 @@
 * New `listen_tls` and `listen_tls_blocking` functions for listening for server events.
 * New `ReconnectionPolicy` used when trying to re-establish connections to downed nodes.
 * `Error` now implements standard `Error`.
+* `SessionBuilder` introduced as the preferred way to create a session.
 
 ### Changed
 

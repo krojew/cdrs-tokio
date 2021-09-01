@@ -1,32 +1,21 @@
-use std::iter::Iterator;
 use std::sync::Arc;
 
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
-use cdrs_tokio::cluster::session::new as new_session;
+use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 use cdrs_tokio::frame::events::{
     SchemaChangeTarget, SchemaChangeType, ServerEvent, SimpleServerEvent,
 };
 use cdrs_tokio::load_balancing::RoundRobin;
-use cdrs_tokio::retry::{DefaultRetryPolicy, NeverReconnectionPolicy};
 
 #[tokio::main]
 async fn main() {
-    let node = NodeTcpConfigBuilder::new(
-        "127.0.0.1:9042".parse().unwrap(),
-        Arc::new(NoneAuthenticatorProvider),
-    )
-    .build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap())
+        .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+        .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let no_compression = new_session(
-        &cluster_config,
-        lb,
-        Box::new(DefaultRetryPolicy::default()),
-        Box::new(NeverReconnectionPolicy::default()),
-    )
-    .await
-    .expect("session should be created");
+    let no_compression = TcpSessionBuilder::new(lb, cluster_config).build();
 
     let (listener, stream) = no_compression
         .listen(

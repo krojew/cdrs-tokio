@@ -6,15 +6,15 @@ use std::sync::Arc;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::cluster::session::new as new_session;
+use cdrs_tokio::cluster::session::SessionBuilder;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::cluster::session::TcpSessionBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryExecutor;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::retry::DefaultRetryPolicy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -26,25 +26,18 @@ use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn create_keyspace() {
-    let node = NodeTcpConfigBuilder::new(
-        "127.0.0.1:9042".parse().unwrap(),
-        Arc::new(NoneAuthenticatorProvider),
-    )
-    .build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap())
+        .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+        .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(
-        &cluster_config,
-        lb,
-        Box::new(DefaultRetryPolicy::default()),
-        Box::new(NeverReconnectionPolicy::default()),
-    )
-    .await
-    .expect("session should be created");
+    let session = TcpSessionBuilder::new(lb, cluster_config)
+        .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
+        .build();
 
     let drop_query = "DROP KEYSPACE IF EXISTS create_ks_test";
-    let keyspace_droped = session.query(drop_query).await.is_ok();
-    assert!(keyspace_droped, "Should drop new keyspace without errors");
+    let keyspace_dropped = session.query(drop_query).await.is_ok();
+    assert!(keyspace_dropped, "Should drop new keyspace without errors");
 
     let create_query = "CREATE KEYSPACE IF NOT EXISTS create_ks_test WITH \
                         replication = {'class': 'SimpleStrategy', 'replication_factor': 1} \
@@ -91,7 +84,7 @@ async fn create_keyspace() {
     );
     let strategy_options: HashMap<String, String> = keyspace
         .r_by_name::<Map>("replication")
-        .expect("strategy optioins into rust error")
+        .expect("strategy options into rust error")
         .as_r_rust()
         .expect("uuid_key_map");
     assert_eq!(
@@ -103,25 +96,18 @@ async fn create_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn alter_keyspace() {
-    let node = NodeTcpConfigBuilder::new(
-        "127.0.0.1:9042".parse().unwrap(),
-        Arc::new(NoneAuthenticatorProvider),
-    )
-    .build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap())
+        .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+        .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(
-        &cluster_config,
-        lb,
-        Box::new(DefaultRetryPolicy::default()),
-        Box::new(NeverReconnectionPolicy::default()),
-    )
-    .await
-    .expect("session should be created");
+    let session = TcpSessionBuilder::new(lb, cluster_config)
+        .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
+        .build();
 
     let drop_query = "DROP KEYSPACE IF EXISTS alter_ks_test";
-    let keyspace_droped = session.query(drop_query).await.is_ok();
-    assert!(keyspace_droped, "Should drop new keyspace without errors");
+    let keyspace_dropped = session.query(drop_query).await.is_ok();
+    assert!(keyspace_dropped, "Should drop new keyspace without errors");
 
     let create_query = "CREATE KEYSPACE IF NOT EXISTS alter_ks_test WITH \
                         replication = {'class': 'SimpleStrategy', 'replication_factor': 1} \
@@ -156,7 +142,7 @@ async fn alter_keyspace() {
 
     let strategy_options: HashMap<String, String> = keyspace
         .r_by_name::<Map>("replication")
-        .expect("strategy optioins into rust error")
+        .expect("strategy options into rust error")
         .as_r_rust()
         .expect("uuid_key_map");
 
@@ -171,21 +157,14 @@ async fn alter_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn use_keyspace() {
-    let node = NodeTcpConfigBuilder::new(
-        "127.0.0.1:9042".parse().unwrap(),
-        Arc::new(NoneAuthenticatorProvider),
-    )
-    .build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap())
+        .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+        .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(
-        &cluster_config,
-        lb,
-        Box::new(DefaultRetryPolicy::default()),
-        Box::new(NeverReconnectionPolicy::default()),
-    )
-    .await
-    .expect("session should be created");
+    let session = TcpSessionBuilder::new(lb, cluster_config)
+        .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
+        .build();
 
     let create_query = "CREATE KEYSPACE IF NOT EXISTS use_ks_test WITH \
                         replication = {'class': 'SimpleStrategy', 'replication_factor': 1} \
@@ -212,21 +191,14 @@ async fn use_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn drop_keyspace() {
-    let node = NodeTcpConfigBuilder::new(
-        "127.0.0.1:9042".parse().unwrap(),
-        Arc::new(NoneAuthenticatorProvider),
-    )
-    .build();
+    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap())
+        .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+        .build();
     let cluster_config = ClusterTcpConfig(vec![node]);
     let lb = RoundRobin::new();
-    let session = new_session(
-        &cluster_config,
-        lb,
-        Box::new(DefaultRetryPolicy::default()),
-        Box::new(NeverReconnectionPolicy::default()),
-    )
-    .await
-    .expect("session should be created");
+    let session = TcpSessionBuilder::new(lb, cluster_config)
+        .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
+        .build();
 
     let create_query = "CREATE KEYSPACE IF NOT EXISTS drop_ks_test WITH \
                         replication = {'class': 'SimpleStrategy', 'replication_factor': 1} \
@@ -238,6 +210,6 @@ async fn drop_keyspace() {
     );
 
     let drop_query = "DROP KEYSPACE drop_ks_test";
-    let keyspace_droped = session.query(drop_query).await.is_ok();
-    assert!(keyspace_droped, "Should drop new keyspace without errors");
+    let keyspace_dropped = session.query(drop_query).await.is_ok();
+    assert!(keyspace_dropped, "Should drop new keyspace without errors");
 }

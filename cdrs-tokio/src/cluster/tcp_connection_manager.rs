@@ -97,7 +97,7 @@ impl TcpConnectionManager {
 
         startup(
             &transport,
-            self.config.authenticator.deref(),
+            self.config.authenticator_provider.deref(),
             self.keyspace_holder.deref(),
             self.compression,
         )

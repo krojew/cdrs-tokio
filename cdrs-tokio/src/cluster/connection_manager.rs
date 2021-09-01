@@ -35,7 +35,7 @@ pub async fn startup<
     A: SaslAuthenticatorProvider + Send + Sync + ?Sized + 'static,
 >(
     transport: &T,
-    session_authenticator: &A,
+    authenticator_provider: &A,
     keyspace_holder: &KeyspaceHolder,
     compression: Compression,
 ) -> Result<()> {
@@ -58,7 +58,7 @@ pub async fn startup<
         //      the server and client are same if not send error back
         // 3. if it falls through it means the preliminary conditions are true
 
-        let auth_check = session_authenticator
+        let auth_check = authenticator_provider
             .name()
             .ok_or_else(|| Error::General("No authenticator was provided".to_string()))
             .map(|auth| {
@@ -80,7 +80,7 @@ pub async fn startup<
             return Err(err);
         }
 
-        let authenticator = session_authenticator.create_authenticator();
+        let authenticator = authenticator_provider.create_authenticator();
         let response = authenticator.initial_response();
         let mut frame = transport
             .write_frame(&Frame::new_req_auth_response(response))
