@@ -39,6 +39,8 @@ use crate::transport::{CdrsTransport, TransportTcp};
 
 static NEVER_RECONNECTION_POLICY: NeverReconnectionPolicy = NeverReconnectionPolicy;
 
+pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
+
 /// CDRS session that holds a pool of connections to nodes.
 pub struct Session<
     T: CdrsTransport + Send + Sync + 'static,
@@ -47,6 +49,7 @@ pub struct Session<
 > {
     load_balancing: LB,
     compression: Compression,
+    transport_buffer_size: usize,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
     _transport: PhantomData<T>,
@@ -72,12 +75,14 @@ impl<
     fn new(
         load_balancing: LB,
         compression: Compression,
+        transport_buffer_size: usize,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self {
         Session {
             load_balancing,
             compression,
+            transport_buffer_size,
             retry_policy,
             reconnection_policy,
             _transport: Default::default(),
@@ -239,6 +244,7 @@ where
     Ok(Session {
         load_balancing,
         compression,
+        transport_buffer_size: DEFAULT_TRANSPORT_BUFFER_SIZE,
         retry_policy: retry_policy.0,
         reconnection_policy: reconnection_policy.0,
         _transport: Default::default(),
@@ -407,6 +413,7 @@ impl<
             config,
             keyspace_holder,
             self.compression,
+            self.transport_buffer_size,
             Some(event_sender),
         );
         let transport = connection_manager
@@ -441,6 +448,7 @@ impl<
             config,
             keyspace_holder,
             self.compression,
+            self.transport_buffer_size,
             Some(event_sender),
         );
         let transport = connection_manager
@@ -489,6 +497,7 @@ impl<
 
 struct SessionConfig<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> {
     compression: Compression,
+    transport_buffer_size: usize,
     load_balancing: LB,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
@@ -498,12 +507,14 @@ struct SessionConfig<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> {
 impl<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> SessionConfig<CM, LB> {
     fn new(
         compression: Compression,
+        transport_buffer_size: usize,
         load_balancing: LB,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self {
         SessionConfig {
             compression,
+            transport_buffer_size,
             load_balancing,
             retry_policy,
             reconnection_policy,
@@ -533,6 +544,10 @@ pub trait SessionBuilder<
         reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self;
 
+    /// Sets new transport buffer size. High values are recommended with large amounts of in flight
+    /// queries.
+    fn with_transport_buffer_size(self, transport_buffer_size: usize) -> Self;
+
     /// Builds the resulting session.
     fn build(self) -> Session<T, CM, LB>;
 }
@@ -549,6 +564,7 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync> TcpSessionBu
         TcpSessionBuilder {
             config: SessionConfig::new(
                 Compression::None,
+                DEFAULT_TRANSPORT_BUFFER_SIZE,
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Box::new(ExponentialReconnectionPolicy::default()),
@@ -579,6 +595,11 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
         self
     }
 
+    fn with_transport_buffer_size(mut self, transport_buffer_size: usize) -> Self {
+        self.config.transport_buffer_size = transport_buffer_size;
+        self
+    }
+
     fn build(mut self) -> Session<TransportTcp, TcpConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let mut nodes = Vec::with_capacity(self.node_configs.0.len());
@@ -588,6 +609,7 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
                 node_config,
                 keyspace_holder.clone(),
                 self.config.compression,
+                self.config.transport_buffer_size,
                 None,
             );
             nodes.push(Arc::new(connection_manager));
@@ -598,6 +620,7 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
         Session::new(
             self.config.load_balancing,
             self.config.compression,
+            self.config.transport_buffer_size,
             self.config.retry_policy,
             self.config.reconnection_policy,
         )
@@ -618,6 +641,7 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync> RustlsSes
         RustlsSessionBuilder {
             config: SessionConfig::new(
                 Compression::None,
+                DEFAULT_TRANSPORT_BUFFER_SIZE,
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Box::new(ExponentialReconnectionPolicy::default()),
@@ -649,6 +673,11 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync>
         self
     }
 
+    fn with_transport_buffer_size(mut self, transport_buffer_size: usize) -> Self {
+        self.config.transport_buffer_size = transport_buffer_size;
+        self
+    }
+
     fn build(mut self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let mut nodes = Vec::with_capacity(self.node_configs.0.len());
@@ -658,6 +687,7 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync>
                 node_config,
                 keyspace_holder.clone(),
                 self.config.compression,
+                self.config.transport_buffer_size,
                 None,
             );
             nodes.push(Arc::new(connection_manager));
@@ -668,6 +698,7 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync>
         Session::new(
             self.config.load_balancing,
             self.config.compression,
+            self.config.transport_buffer_size,
             self.config.retry_policy,
             self.config.reconnection_policy,
         )

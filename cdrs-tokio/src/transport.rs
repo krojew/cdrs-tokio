@@ -58,6 +58,7 @@ impl TransportTcp {
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Frame>>,
         compression: Compression,
+        buffer_size: usize,
     ) -> io::Result<TransportTcp> {
         TcpStream::connect(addr).await.map(move |socket| {
             let (read_half, write_half) = split(socket);
@@ -65,6 +66,7 @@ impl TransportTcp {
                 inner: AsyncTransport::new(
                     addr,
                     compression,
+                    buffer_size,
                     read_half,
                     write_half,
                     event_handler,
@@ -108,6 +110,7 @@ impl TransportRustls {
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Frame>>,
         compression: Compression,
+        buffer_size: usize,
     ) -> io::Result<Self> {
         let stream = TcpStream::connect(addr).await?;
         let connector = RustlsConnector::from(config.clone());
@@ -118,6 +121,7 @@ impl TransportRustls {
             inner: AsyncTransport::new(
                 addr,
                 compression,
+                buffer_size,
                 read_half,
                 write_half,
                 event_handler,
@@ -157,12 +161,13 @@ impl AsyncTransport {
     pub fn new<T: AsyncRead + AsyncWrite + Send + 'static>(
         addr: SocketAddr,
         compression: Compression,
+        buffer_size: usize,
         read_half: ReadHalf<T>,
         write_half: WriteHalf<T>,
         event_handler: Option<mpsc::Sender<Frame>>,
         keyspace_holder: Arc<KeyspaceHolder>,
     ) -> Self {
-        let (write_sender, write_receiver) = mpsc::channel(256);
+        let (write_sender, write_receiver) = mpsc::channel(buffer_size);
         let is_broken = Arc::new(AtomicBool::new(false));
 
         tokio::spawn(Self::start_processing(

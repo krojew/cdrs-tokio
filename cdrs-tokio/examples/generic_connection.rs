@@ -22,7 +22,9 @@ use cdrs_tokio::{
 use cdrs_tokio_helpers_derive::*;
 
 use async_trait::async_trait;
-use cdrs_tokio::cluster::session::{ReconnectionPolicyWrapper, RetryPolicyWrapper};
+use cdrs_tokio::cluster::session::{
+    ReconnectionPolicyWrapper, RetryPolicyWrapper, DEFAULT_TRANSPORT_BUFFER_SIZE,
+};
 use cdrs_tokio::cluster::{KeyspaceHolder, NodeTcpConfigBuilder};
 use cdrs_tokio::compression::Compression;
 use cdrs_tokio::frame::Serialize;
@@ -82,6 +84,7 @@ impl GenericClusterConfig<TransportTcp, TcpConnectionManager> for VirtualCluster
                 .build(),
             self.keyspace_holder.clone(),
             Compression::None,
+            DEFAULT_TRANSPORT_BUFFER_SIZE,
             None,
         ))
     }

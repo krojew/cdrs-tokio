@@ -19,6 +19,7 @@ pub struct RustlsConnectionManager {
     config: NodeRustlsConfig,
     keyspace_holder: Arc<KeyspaceHolder>,
     compression: Compression,
+    buffer_size: usize,
     event_handler: Option<Sender<Frame>>,
     connection: RwLock<Option<Arc<TransportRustls>>>,
 }
@@ -75,12 +76,14 @@ impl RustlsConnectionManager {
         config: NodeRustlsConfig,
         keyspace_holder: Arc<KeyspaceHolder>,
         compression: Compression,
+        buffer_size: usize,
         event_handler: Option<Sender<Frame>>,
     ) -> Self {
         RustlsConnectionManager {
             config,
             keyspace_holder,
             compression,
+            buffer_size,
             event_handler,
             connection: Default::default(),
         }
@@ -94,6 +97,7 @@ impl RustlsConnectionManager {
             self.keyspace_holder.clone(),
             self.event_handler.clone(),
             self.compression,
+            self.buffer_size,
         )
         .await?;
 
