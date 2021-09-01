@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use super::LoadBalancingStrategy;
 
+/// Load balancing strategy based on round-robin.
 #[derive(Debug)]
 pub struct RoundRobin<N> {
     cluster: Vec<Arc<N>>,

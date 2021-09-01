@@ -21,6 +21,12 @@ impl From<String> for NodeAddress {
     }
 }
 
+impl From<&String> for NodeAddress {
+    fn from(value: &String) -> Self {
+        NodeAddress::Hostname(value.clone())
+    }
+}
+
 impl From<&str> for NodeAddress {
     fn from(value: &str) -> Self {
         NodeAddress::Hostname(value.to_string())

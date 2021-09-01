@@ -8,6 +8,7 @@ use crate::transport::CdrsTransport;
 
 use super::utils::{prepare_flags, send_frame};
 
+/// Trait for types capable of executing batch queries.
 #[async_trait]
 pub trait BatchExecutor<T: CdrsTransport + 'static>:
     GetConnection<T> + GetRetryPolicy + Sync

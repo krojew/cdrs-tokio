@@ -8,6 +8,7 @@ use crate::transport::CdrsTransport;
 
 use super::utils::{prepare_flags, send_frame};
 
+/// Trait for types capable of executing simple queries.
 #[async_trait]
 pub trait QueryExecutor<T: CdrsTransport + 'static>:
     GetConnection<T> + GetRetryPolicy + Sync

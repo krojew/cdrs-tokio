@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use super::LoadBalancingStrategy;
 
+/// Load balancing strategy always returning the first node.
 pub struct SingleNode<N> {
     cluster: Vec<Arc<N>>,
 }

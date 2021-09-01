@@ -1,7 +1,9 @@
+use rand::prelude::*;
 use std::sync::Arc;
 
 use super::LoadBalancingStrategy;
 
+/// Load balancing based on selecting a random node.
 pub struct Random<N> {
     pub cluster: Vec<Arc<N>>,
 }
@@ -9,14 +11,6 @@ pub struct Random<N> {
 impl<N> Random<N> {
     pub fn new(cluster: Vec<Arc<N>>) -> Self {
         Random { cluster }
-    }
-
-    /// Returns a random number from a range
-    fn rnd_idx(bounds: (usize, usize)) -> usize {
-        let min = bounds.0;
-        let max = bounds.1;
-        let rnd = rand::random::<usize>();
-        rnd % (max - min) + min
     }
 }
 
@@ -40,7 +34,7 @@ where
         if len == 0 {
             return None;
         }
-        self.cluster.get(Self::rnd_idx((0, len))).cloned()
+        self.cluster.choose(&mut thread_rng()).cloned()
     }
 
     fn size(&self) -> usize {

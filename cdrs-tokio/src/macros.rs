@@ -1,4 +1,6 @@
 #[macro_export]
+
+/// Transforms arguments to values consumed by queries.
 macro_rules! query_values {
     ($($value:expr),*) => {
         {

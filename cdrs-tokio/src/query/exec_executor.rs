@@ -9,6 +9,7 @@ use crate::transport::CdrsTransport;
 use super::utils::{prepare_flags, send_frame};
 use std::ops::Deref;
 
+/// Trait for types capable of executing prepared queries.
 #[async_trait]
 pub trait ExecExecutor<T: CdrsTransport + 'static>:
     GetConnection<T> + PrepareExecutor<T> + GetRetryPolicy + Sync
