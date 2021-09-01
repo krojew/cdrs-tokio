@@ -12,7 +12,7 @@ use std::io::Cursor;
 
 /// `Consistency` is an enum which represents Cassandra's consistency levels.
 /// To find more details about each consistency level please refer to the following documentation:
-/// https://docs.datastax.com/en/cql-oss/3.x/cql/cql_reference/cqlshConsistency.html
+/// <https://docs.datastax.com/en/cql-oss/3.x/cql/cql_reference/cqlshConsistency.html>
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Consistency {
     /// Closest replica, as determined by the snitch.

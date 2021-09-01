@@ -6,7 +6,7 @@ use crate::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider
 use crate::cluster::NodeAddress;
 use crate::error::Result;
 
-/// Cluster configuration that holds per node SSL configs
+/// Cluster configuration that holds per node TLS configs
 #[derive(Clone, Default)]
 pub struct ClusterRustlsConfig(pub Vec<NodeRustlsConfig>);
 

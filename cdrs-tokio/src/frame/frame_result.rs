@@ -241,7 +241,7 @@ impl FromCursor for BodyResResultRows {
 pub struct RowsMetadata {
     /// Flags.
     /// [Read more...]
-    /// (https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L541)
+    /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
     pub flags: i32,
     /// Number of columns.
     pub columns_count: i32,

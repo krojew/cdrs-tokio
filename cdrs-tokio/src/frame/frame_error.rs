@@ -1,5 +1,5 @@
 //! This modules contains [Cassandra's errors]
-//! (https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1011)
+//! (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 //! which server could respond to client.
 
 use std::io;
@@ -47,7 +47,7 @@ impl FromCursor for CdrsError {
 
 /// Additional error info in accordance to
 /// [Cassandra protocol v4]
-/// (https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1011).
+/// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
 #[derive(Debug)]
 pub enum AdditionalErrorInfo {
     Server(SimpleError),
@@ -147,7 +147,7 @@ impl FromCursor for SimpleError {
 
 /// Additional info about
 /// [unavailable exception]
-/// (https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1025)
+/// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 #[derive(Debug)]
 pub struct UnavailableError {
     /// Consistency level of query.
@@ -402,7 +402,7 @@ impl FromCursor for AlreadyExistsError {
 /// Can be thrown while a prepared statement tries to be
 /// executed if the provided prepared statement ID is not known by
 /// this host. [Read more...]
-/// (https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1150)
+/// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 #[derive(Debug)]
 pub struct UnpreparedError {
     /// Unknown ID.

@@ -104,6 +104,7 @@ pub struct TransportRustls {
 
 #[cfg(feature = "rust-tls")]
 impl TransportRustls {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         addr: SocketAddr,
         dns_name: webpki::DNSName,

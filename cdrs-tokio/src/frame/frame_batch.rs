@@ -13,7 +13,7 @@ pub struct BodyReqBatch {
     pub queries: Vec<BatchQuery>,
     pub consistency: Consistency,
     /// **IMPORTANT NOTE:** with names flag does not work and should not be used.
-    /// https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L413
+    /// <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L413>
     pub query_flags: Vec<QueryFlags>,
     pub serial_consistency: Option<Consistency>,
     pub timestamp: Option<i64>,
@@ -96,7 +96,7 @@ pub struct BatchQuery {
     /// **Important note:** this feature does not work and should not be
     /// used. It is specified in a way that makes it impossible for the server
     /// to implement. This will be fixed in a future version of the native
-    /// protocol. See https://issues.apache.org/jira/browse/CASSANDRA-10246 for
+    /// protocol. See <https://issues.apache.org/jira/browse/CASSANDRA-10246> for
     /// more details
     pub values: QueryValues,
 }

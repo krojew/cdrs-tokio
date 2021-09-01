@@ -205,7 +205,7 @@ impl<
 {
 }
 
-/// Workaround for https://github.com/rust-lang/rust/issues/63033
+/// Workaround for <https://github.com/rust-lang/rust/issues/63033>
 #[repr(transparent)]
 pub struct RetryPolicyWrapper(pub Box<dyn RetryPolicy + Send + Sync>);
 

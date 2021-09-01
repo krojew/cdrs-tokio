@@ -52,6 +52,7 @@ impl SaslAuthenticator for StaticPasswordAuthenticator {
     }
 }
 
+/// Authentication provider with a username and password.
 #[derive(Debug, Clone)]
 pub struct StaticPasswordAuthenticatorProvider {
     username: String,
@@ -93,6 +94,7 @@ impl SaslAuthenticator for NoneAuthenticator {
     }
 }
 
+/// Provider for no authentication.
 #[derive(Debug, Clone)]
 pub struct NoneAuthenticatorProvider;
 
