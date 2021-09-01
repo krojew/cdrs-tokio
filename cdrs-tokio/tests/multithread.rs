@@ -16,10 +16,13 @@ use std::sync::Arc;
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn multithread() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap())
+    let nodes = NodeTcpConfigBuilder::new()
+        .with_node_address("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
-        .build();
-    let cluster_config = ClusterTcpConfig(vec![node]);
+        .build()
+        .await
+        .unwrap();
+    let cluster_config = ClusterTcpConfig(nodes);
     let no_compression = TcpSessionBuilder::new(RoundRobin::new(), cluster_config)
         .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
         .build();

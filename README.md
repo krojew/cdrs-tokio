@@ -46,9 +46,12 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
-    let node =
-        NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap()).build();
-    let cluster_config = ClusterTcpConfig(vec![node]);
+    let nodes = NodeTcpConfigBuilder::new()
+        .with_node_address("127.0.0.1:9042".into())
+        .build()
+        .await
+        .unwrap();
+    let cluster_config = ClusterTcpConfig(nodes);
     let session = TcpSessionBuilder::new(RoundRobin::new(), cluster_config).build();
 
     let create_ks = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \

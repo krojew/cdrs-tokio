@@ -405,12 +405,17 @@ impl<
         events: Vec<SimpleServerEvent>,
     ) -> error::Result<(Listener, EventStream)> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
-        let config = NodeTcpConfigBuilder::new(node)
+        let config = NodeTcpConfigBuilder::new()
+            .with_node_address(node.into())
             .with_authenticator_provider(authenticator)
-            .build();
+            .build()
+            .await?;
         let (event_sender, event_receiver) = channel(256);
         let connection_manager = TcpConnectionManager::new(
-            config,
+            config
+                .get(0)
+                .ok_or_else(|| error::Error::General("Empty node list!".into()))?
+                .clone(),
             keyspace_holder,
             self.compression,
             self.transport_buffer_size,
@@ -440,12 +445,17 @@ impl<
         config: Arc<rustls::ClientConfig>,
     ) -> error::Result<(Listener, EventStream)> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
-        let config = NodeRustlsConfigBuilder::new(node, dns_name, config)
+        let config = NodeRustlsConfigBuilder::new(dns_name, config)
+            .with_node_address(node.into())
             .with_authenticator_provider(authenticator)
-            .build();
+            .build()
+            .await?;
         let (event_sender, event_receiver) = channel(256);
         let connection_manager = RustlsConnectionManager::new(
-            config,
+            config
+                .get(0)
+                .ok_or_else(|| error::Error::General("Empty node list!".into()))?
+                .clone(),
             keyspace_holder,
             self.compression,
             self.transport_buffer_size,

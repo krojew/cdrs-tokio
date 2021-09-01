@@ -38,10 +38,13 @@ pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
 
 #[cfg(feature = "e2e-tests")]
 pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSession> {
-    let node = NodeTcpConfigBuilder::new(ADDR.parse().unwrap())
+    let nodes = NodeTcpConfigBuilder::new()
+        .with_node_address(ADDR.into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
-        .build();
-    let cluster_config = ClusterTcpConfig(vec![node]);
+        .build()
+        .await
+        .unwrap();
+    let cluster_config = ClusterTcpConfig(nodes);
     let session = TcpSessionBuilder::new(RoundRobin::new(), cluster_config)
         .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
         .build();

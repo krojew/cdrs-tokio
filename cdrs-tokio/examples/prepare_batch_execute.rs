@@ -30,10 +30,13 @@ impl RowStruct {
 
 #[tokio::main]
 async fn main() {
-    let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap())
+    let nodes = NodeTcpConfigBuilder::new()
+        .with_node_address("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
-        .build();
-    let cluster_config = ClusterTcpConfig(vec![node]);
+        .build()
+        .await
+        .unwrap();
+    let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobin::new();
     let mut no_compression = TcpSessionBuilder::new(lb, cluster_config).build();
 

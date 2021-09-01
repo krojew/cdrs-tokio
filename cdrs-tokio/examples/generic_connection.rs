@@ -79,9 +79,15 @@ impl GenericClusterConfig<TransportTcp, TcpConnectionManager> for VirtualCluster
         // create a connection manager that points at the rewritten address so that's where it connects, but
         // then return a manager with the 'virtual' address for internal purposes.
         Ok(TcpConnectionManager::new(
-            NodeTcpConfigBuilder::new(addr.rewrite(&self.mask, &self.actual))
+            NodeTcpConfigBuilder::new()
+                .with_node_address(addr.rewrite(&self.mask, &self.actual).into())
                 .with_authenticator_provider(self.authenticator.clone())
-                .build(),
+                .build()
+                .await
+                .unwrap()
+                .get(0)
+                .cloned()
+                .unwrap(),
             self.keyspace_holder.clone(),
             Compression::None,
             DEFAULT_TRANSPORT_BUFFER_SIZE,

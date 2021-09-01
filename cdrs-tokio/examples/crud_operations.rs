@@ -24,10 +24,13 @@ async fn main() {
     let user = "user";
     let password = "password";
     let auth = StaticPasswordAuthenticatorProvider::new(&user, &password);
-    let node = NodeTcpConfigBuilder::new("localhost:9042".parse().unwrap())
+    let nodes = NodeTcpConfigBuilder::new()
+        .with_node_address("localhost:9042".into())
         .with_authenticator_provider(Arc::new(auth))
-        .build();
-    let cluster_config = ClusterTcpConfig(vec![node]);
+        .build()
+        .await
+        .unwrap();
+    let cluster_config = ClusterTcpConfig(nodes);
     let mut no_compression: CurrentSession =
         TcpSessionBuilder::new(RoundRobin::new(), cluster_config).build();
 

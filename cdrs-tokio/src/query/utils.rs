@@ -47,10 +47,11 @@ where
 
                     match retry_session.decide(query_info) {
                         RetryDecision::RetrySameNode => {
-                            transport = sender
-                                .node_connection(transport.addr())
-                                .await
-                                .ok_or_else(|| Error::from("Unable to get transport"))??;
+                            let new_transport = sender.node_connection(transport.addr()).await;
+                            match new_transport {
+                                Some(new_transport) => transport = new_transport?,
+                                None => continue 'next_node,
+                            }
                         }
                         RetryDecision::RetryNextNode => continue 'next_node,
                         RetryDecision::DontRetry => return Err(error),

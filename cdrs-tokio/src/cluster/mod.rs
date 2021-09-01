@@ -7,6 +7,7 @@ mod config_rustls;
 mod config_tcp;
 mod connection_manager;
 mod keyspace_holder;
+mod node_address;
 mod pager;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_manager;
@@ -19,6 +20,7 @@ pub use crate::cluster::config_rustls::{
 };
 pub use crate::cluster::config_tcp::{ClusterTcpConfig, NodeTcpConfig, NodeTcpConfigBuilder};
 pub use crate::cluster::keyspace_holder::KeyspaceHolder;
+pub use crate::cluster::node_address::NodeAddress;
 pub use crate::cluster::pager::{ExecPager, PagerState, QueryPager, SessionPager};
 pub use crate::cluster::session::connect_generic_static;
 
