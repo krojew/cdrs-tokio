@@ -20,6 +20,7 @@ pub struct TcpConnectionManager {
     keyspace_holder: Arc<KeyspaceHolder>,
     compression: Compression,
     buffer_size: usize,
+    tcp_nodelay: bool,
     event_handler: Option<Sender<Frame>>,
     connection: RwLock<Option<Arc<TransportTcp>>>,
 }
@@ -77,6 +78,7 @@ impl TcpConnectionManager {
         keyspace_holder: Arc<KeyspaceHolder>,
         compression: Compression,
         buffer_size: usize,
+        tcp_nodelay: bool,
         event_handler: Option<Sender<Frame>>,
     ) -> Self {
         TcpConnectionManager {
@@ -84,6 +86,7 @@ impl TcpConnectionManager {
             keyspace_holder,
             compression,
             buffer_size,
+            tcp_nodelay,
             event_handler,
             connection: Default::default(),
         }
@@ -96,6 +99,7 @@ impl TcpConnectionManager {
             self.event_handler.clone(),
             self.compression,
             self.buffer_size,
+            self.tcp_nodelay,
         )
         .await?;
 

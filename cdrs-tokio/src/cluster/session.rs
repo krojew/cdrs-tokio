@@ -50,6 +50,7 @@ pub struct Session<
     load_balancing: LB,
     compression: Compression,
     transport_buffer_size: usize,
+    tcp_nodelay: bool,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
     _transport: PhantomData<T>,
@@ -76,6 +77,7 @@ impl<
         load_balancing: LB,
         compression: Compression,
         transport_buffer_size: usize,
+        tcp_nodelay: bool,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self {
@@ -83,6 +85,7 @@ impl<
             load_balancing,
             compression,
             transport_buffer_size,
+            tcp_nodelay,
             retry_policy,
             reconnection_policy,
             _transport: Default::default(),
@@ -245,6 +248,7 @@ where
         load_balancing,
         compression,
         transport_buffer_size: DEFAULT_TRANSPORT_BUFFER_SIZE,
+        tcp_nodelay: true,
         retry_policy: retry_policy.0,
         reconnection_policy: reconnection_policy.0,
         _transport: Default::default(),
@@ -419,6 +423,7 @@ impl<
             keyspace_holder,
             self.compression,
             self.transport_buffer_size,
+            self.tcp_nodelay,
             Some(event_sender),
         );
         let transport = connection_manager
@@ -459,6 +464,7 @@ impl<
             keyspace_holder,
             self.compression,
             self.transport_buffer_size,
+            self.tcp_nodelay,
             Some(event_sender),
         );
         let transport = connection_manager
@@ -508,6 +514,7 @@ impl<
 struct SessionConfig<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> {
     compression: Compression,
     transport_buffer_size: usize,
+    tcp_nodelay: bool,
     load_balancing: LB,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
@@ -518,6 +525,7 @@ impl<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> SessionConfig<CM, LB> {
     fn new(
         compression: Compression,
         transport_buffer_size: usize,
+        tcp_nodelay: bool,
         load_balancing: LB,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
@@ -525,6 +533,7 @@ impl<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> SessionConfig<CM, LB> {
         SessionConfig {
             compression,
             transport_buffer_size,
+            tcp_nodelay,
             load_balancing,
             retry_policy,
             reconnection_policy,
@@ -558,6 +567,9 @@ pub trait SessionBuilder<
     /// queries.
     fn with_transport_buffer_size(self, transport_buffer_size: usize) -> Self;
 
+    /// Sets NODELAY for given session connections.
+    fn with_tcp_nodelay(self, tcp_nodelay: bool) -> Self;
+
     /// Builds the resulting session.
     fn build(self) -> Session<T, CM, LB>;
 }
@@ -575,6 +587,7 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync> TcpSessionBu
             config: SessionConfig::new(
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
+                true,
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Box::new(ExponentialReconnectionPolicy::default()),
@@ -610,6 +623,11 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
         self
     }
 
+    fn with_tcp_nodelay(mut self, tcp_nodelay: bool) -> Self {
+        self.config.tcp_nodelay = tcp_nodelay;
+        self
+    }
+
     fn build(mut self) -> Session<TransportTcp, TcpConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let mut nodes = Vec::with_capacity(self.node_configs.0.len());
@@ -620,6 +638,7 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
                 keyspace_holder.clone(),
                 self.config.compression,
                 self.config.transport_buffer_size,
+                self.config.tcp_nodelay,
                 None,
             );
             nodes.push(Arc::new(connection_manager));
@@ -631,6 +650,7 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
             self.config.load_balancing,
             self.config.compression,
             self.config.transport_buffer_size,
+            self.config.tcp_nodelay,
             self.config.retry_policy,
             self.config.reconnection_policy,
         )
@@ -652,6 +672,7 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync> RustlsSes
             config: SessionConfig::new(
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
+                true,
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Box::new(ExponentialReconnectionPolicy::default()),
@@ -688,6 +709,11 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync>
         self
     }
 
+    fn with_tcp_nodelay(mut self, tcp_nodelay: bool) -> Self {
+        self.config.tcp_nodelay = tcp_nodelay;
+        self
+    }
+
     fn build(mut self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let mut nodes = Vec::with_capacity(self.node_configs.0.len());
@@ -698,6 +724,7 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync>
                 keyspace_holder.clone(),
                 self.config.compression,
                 self.config.transport_buffer_size,
+                self.config.tcp_nodelay,
                 None,
             );
             nodes.push(Arc::new(connection_manager));
@@ -709,6 +736,7 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync>
             self.config.load_balancing,
             self.config.compression,
             self.config.transport_buffer_size,
+            self.config.tcp_nodelay,
             self.config.retry_policy,
             self.config.reconnection_policy,
         )

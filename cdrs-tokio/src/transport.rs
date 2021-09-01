@@ -52,17 +52,19 @@ pub struct TransportTcp {
 }
 
 impl TransportTcp {
-    /// Constructs a new `TransportTcp`.
     pub async fn new(
         addr: SocketAddr,
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Frame>>,
         compression: Compression,
         buffer_size: usize,
+        tcp_nodelay: bool,
     ) -> io::Result<TransportTcp> {
-        TcpStream::connect(addr).await.map(move |socket| {
+        TcpStream::connect(addr).await.and_then(move |socket| {
+            socket.set_nodelay(tcp_nodelay)?;
+
             let (read_half, write_half) = split(socket);
-            TransportTcp {
+            Ok(TransportTcp {
                 inner: AsyncTransport::new(
                     addr,
                     compression,
@@ -72,7 +74,7 @@ impl TransportTcp {
                     event_handler,
                     keyspace_holder,
                 ),
-            }
+            })
         })
     }
 }
@@ -102,7 +104,6 @@ pub struct TransportRustls {
 
 #[cfg(feature = "rust-tls")]
 impl TransportRustls {
-    ///Creates new instance with provided configuration
     pub async fn new(
         addr: SocketAddr,
         dns_name: webpki::DNSName,
@@ -111,8 +112,11 @@ impl TransportRustls {
         event_handler: Option<mpsc::Sender<Frame>>,
         compression: Compression,
         buffer_size: usize,
+        tcp_nodelay: bool,
     ) -> io::Result<Self> {
         let stream = TcpStream::connect(addr).await?;
+        stream.set_nodelay(tcp_nodelay)?;
+
         let connector = RustlsConnector::from(config.clone());
         let stream = connector.connect(dns_name.as_ref(), stream).await?;
         let (read_half, write_half) = split(stream);

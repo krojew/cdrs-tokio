@@ -91,6 +91,7 @@ impl GenericClusterConfig<TransportTcp, TcpConnectionManager> for VirtualCluster
             self.keyspace_holder.clone(),
             Compression::None,
             DEFAULT_TRANSPORT_BUFFER_SIZE,
+            true,
             None,
         ))
     }
