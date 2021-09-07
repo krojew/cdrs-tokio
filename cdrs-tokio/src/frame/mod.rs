@@ -106,9 +106,9 @@ impl Frame {
     }
 
     pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
-        let version_byte = self.version.as_byte();
+        let version_byte = u8::from(self.version);
         let flag_byte = Flag::many_to_cbytes(&self.flags);
-        let opcode_byte = self.opcode.as_byte();
+        let opcode_byte = u8::from(self.opcode);
 
         let mut v = Vec::with_capacity(9);
 
@@ -177,9 +177,9 @@ impl Version {
     }
 }
 
-impl AsByte for Version {
-    fn as_byte(&self) -> u8 {
-        match self {
+impl From<Version> for u8 {
+    fn from(value: Version) -> Self {
+        match value {
             Version::Request => Version::request_version(),
             Version::Response => Version::response_version(),
         }
@@ -243,33 +243,33 @@ impl Flag {
     pub fn many_to_cbytes(flags: &[Flag]) -> u8 {
         flags
             .iter()
-            .fold(Flag::Ignore.as_byte(), |acc, f| acc | f.as_byte())
+            .fold(u8::from(Flag::Ignore), |acc, f| acc | u8::from(*f))
     }
 
     /// Indicates if flags contains `Flag::Compression`
     pub fn has_compression(flags: u8) -> bool {
-        (flags & Flag::Compression.as_byte()) > 0
+        (flags & u8::from(Flag::Compression)) > 0
     }
 
     /// Indicates if flags contains `Flag::Tracing`
     pub fn has_tracing(flags: u8) -> bool {
-        (flags & Flag::Tracing.as_byte()) > 0
+        (flags & u8::from(Flag::Tracing)) > 0
     }
 
     /// Indicates if flags contains `Flag::CustomPayload`
     pub fn has_custom_payload(flags: u8) -> bool {
-        (flags & Flag::CustomPayload.as_byte()) > 0
+        (flags & u8::from(Flag::CustomPayload)) > 0
     }
 
     /// Indicates if flags contains `Flag::Warning`
     pub fn has_warning(flags: u8) -> bool {
-        (flags & Flag::Warning.as_byte()) > 0
+        (flags & u8::from(Flag::Warning)) > 0
     }
 }
 
-impl AsByte for Flag {
-    fn as_byte(&self) -> u8 {
-        match self {
+impl From<Flag> for u8 {
+    fn from(value: Flag) -> Self {
+        match value {
             Flag::Compression => 0x01,
             Flag::Tracing => 0x02,
             Flag::CustomPayload => 0x04,
@@ -317,9 +317,9 @@ impl Opcode {
     pub const BYTE_LENGTH: usize = 1;
 }
 
-impl AsByte for Opcode {
-    fn as_byte(&self) -> u8 {
-        match self {
+impl From<Opcode> for u8 {
+    fn from(value: Opcode) -> Self {
+        match value {
             Opcode::Error => 0x00,
             Opcode::Startup => 0x01,
             Opcode::Ready => 0x02,
@@ -369,24 +369,23 @@ impl TryFrom<u8> for Opcode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::traits::AsByte;
 
     #[test]
     #[cfg(not(feature = "v3"))]
     fn test_frame_version_as_byte() {
         let request_version = Version::Request;
-        assert_eq!(request_version.as_byte(), 0x04);
+        assert_eq!(u8::from(request_version), 0x04);
         let response_version = Version::Response;
-        assert_eq!(response_version.as_byte(), 0x84);
+        assert_eq!(u8::from(response_version), 0x84);
     }
 
     #[test]
     #[cfg(feature = "v3")]
     fn test_frame_version_as_byte_v3() {
         let request_version = Version::Request;
-        assert_eq!(request_version.as_byte(), 0x03);
+        assert_eq!(u8::from(request_version), 0x03);
         let response_version = Version::Response;
-        assert_eq!(response_version.as_byte(), 0x83);
+        assert_eq!(u8::from(response_version), 0x83);
     }
 
     #[test]
@@ -416,10 +415,10 @@ mod tests {
 
     #[test]
     fn test_flag_as_byte() {
-        assert_eq!(Flag::Compression.as_byte(), 0x01);
-        assert_eq!(Flag::Tracing.as_byte(), 0x02);
-        assert_eq!(Flag::CustomPayload.as_byte(), 0x04);
-        assert_eq!(Flag::Warning.as_byte(), 0x08);
+        assert_eq!(u8::from(Flag::Compression), 0x01);
+        assert_eq!(u8::from(Flag::Tracing), 0x02);
+        assert_eq!(u8::from(Flag::CustomPayload), 0x04);
+        assert_eq!(u8::from(Flag::Warning), 0x08);
     }
 
     #[test]
@@ -469,22 +468,22 @@ mod tests {
 
     #[test]
     fn test_opcode_as_byte() {
-        assert_eq!(Opcode::Error.as_byte(), 0x00);
-        assert_eq!(Opcode::Startup.as_byte(), 0x01);
-        assert_eq!(Opcode::Ready.as_byte(), 0x02);
-        assert_eq!(Opcode::Authenticate.as_byte(), 0x03);
-        assert_eq!(Opcode::Options.as_byte(), 0x05);
-        assert_eq!(Opcode::Supported.as_byte(), 0x06);
-        assert_eq!(Opcode::Query.as_byte(), 0x07);
-        assert_eq!(Opcode::Result.as_byte(), 0x08);
-        assert_eq!(Opcode::Prepare.as_byte(), 0x09);
-        assert_eq!(Opcode::Execute.as_byte(), 0x0A);
-        assert_eq!(Opcode::Register.as_byte(), 0x0B);
-        assert_eq!(Opcode::Event.as_byte(), 0x0C);
-        assert_eq!(Opcode::Batch.as_byte(), 0x0D);
-        assert_eq!(Opcode::AuthChallenge.as_byte(), 0x0E);
-        assert_eq!(Opcode::AuthResponse.as_byte(), 0x0F);
-        assert_eq!(Opcode::AuthSuccess.as_byte(), 0x10);
+        assert_eq!(u8::from(Opcode::Error), 0x00);
+        assert_eq!(u8::from(Opcode::Startup), 0x01);
+        assert_eq!(u8::from(Opcode::Ready), 0x02);
+        assert_eq!(u8::from(Opcode::Authenticate), 0x03);
+        assert_eq!(u8::from(Opcode::Options), 0x05);
+        assert_eq!(u8::from(Opcode::Supported), 0x06);
+        assert_eq!(u8::from(Opcode::Query), 0x07);
+        assert_eq!(u8::from(Opcode::Result), 0x08);
+        assert_eq!(u8::from(Opcode::Prepare), 0x09);
+        assert_eq!(u8::from(Opcode::Execute), 0x0A);
+        assert_eq!(u8::from(Opcode::Register), 0x0B);
+        assert_eq!(u8::from(Opcode::Event), 0x0C);
+        assert_eq!(u8::from(Opcode::Batch), 0x0D);
+        assert_eq!(u8::from(Opcode::AuthChallenge), 0x0E);
+        assert_eq!(u8::from(Opcode::AuthResponse), 0x0F);
+        assert_eq!(u8::from(Opcode::AuthSuccess), 0x10);
     }
 
     #[test]

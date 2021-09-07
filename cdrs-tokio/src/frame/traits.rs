@@ -27,19 +27,6 @@ pub trait FromBytes {
         Self: Sized;
 }
 
-/// `AsByte` should be used to convert a value into a single byte.
-pub trait AsByte {
-    /// It should represent a struct as a single byte.
-    fn as_byte(&self) -> u8;
-}
-
-/// `FromSingleByte` should be used to convert a single byte into a value.
-/// It is opposite to `AsByte`.
-pub trait FromSingleByte {
-    /// It should convert a single byte into an implementor struct.
-    fn from_byte(byte: u8) -> Self;
-}
-
 /// `FromCursor` should be used to get parsed structure from an `io:Cursor`
 /// which bound to an array of bytes.
 pub trait FromCursor {

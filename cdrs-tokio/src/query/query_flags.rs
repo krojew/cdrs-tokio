@@ -1,5 +1,3 @@
-use crate::frame::AsByte;
-
 const FLAGS_VALUE: u8 = 0x01;
 const FLAGS_SKIP_METADATA: u8 = 0x02;
 const WITH_PAGE_SIZE: u8 = 0x04;
@@ -9,7 +7,7 @@ const WITH_DEFAULT_TIMESTAMP: u8 = 0x20;
 const WITH_NAME_FOR_VALUES: u8 = 0x40;
 
 /// Cassandra Query Flags.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum QueryFlags {
     /// If set indicates that Query Params contains value.
     Value,
@@ -64,9 +62,9 @@ impl QueryFlags {
     }
 }
 
-impl AsByte for QueryFlags {
-    fn as_byte(&self) -> u8 {
-        match *self {
+impl From<QueryFlags> for u8 {
+    fn from(value: QueryFlags) -> Self {
+        match value {
             QueryFlags::Value => FLAGS_VALUE,
             QueryFlags::SkipMetadata => FLAGS_SKIP_METADATA,
             QueryFlags::PageSize => WITH_PAGE_SIZE,
@@ -256,43 +254,43 @@ mod tests {
     #[test]
     fn as_byte_test() {
         assert_eq!(
-            QueryFlags::Value.as_byte(),
+            u8::from(QueryFlags::Value),
             FLAGS_VALUE,
             "should propery convert values flag"
         );
 
         assert_eq!(
-            QueryFlags::SkipMetadata.as_byte(),
+            u8::from(QueryFlags::SkipMetadata),
             FLAGS_SKIP_METADATA,
             "should propery convert skip metadata flag"
         );
 
         assert_eq!(
-            QueryFlags::PageSize.as_byte(),
+            u8::from(QueryFlags::PageSize),
             WITH_PAGE_SIZE,
             "should propery convert with page size flag"
         );
 
         assert_eq!(
-            QueryFlags::WithPagingState.as_byte(),
+            u8::from(QueryFlags::WithPagingState),
             WITH_PAGING_STATE,
             "should propery convert with paging state flag"
         );
 
         assert_eq!(
-            QueryFlags::WithSerialConsistency.as_byte(),
+            u8::from(QueryFlags::WithSerialConsistency),
             WITH_SERIAL_CONSISTENCY,
             "should propery convert with serial consistency flag"
         );
 
         assert_eq!(
-            QueryFlags::WithDefaultTimestamp.as_byte(),
+            u8::from(QueryFlags::WithDefaultTimestamp),
             WITH_DEFAULT_TIMESTAMP,
             "should propery convert with default timestamp flag"
         );
 
         assert_eq!(
-            QueryFlags::WithNamesForValues.as_byte(),
+            u8::from(QueryFlags::WithNamesForValues),
             WITH_NAME_FOR_VALUES,
             "should propery convert with name for values flag"
         );

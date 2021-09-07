@@ -5,6 +5,7 @@ use crate::frame::*;
 use crate::query::QueryValues;
 use crate::query::{PreparedQuery, QueryFlags};
 use crate::types::*;
+use crate::Error;
 
 /// `BodyResReady`
 #[derive(Debug, Clone)]
@@ -22,6 +23,9 @@ pub struct BodyReqBatch {
 
 impl Serialize for BodyReqBatch {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        let batch_type = u8::from(self.batch_type);
+        batch_type.serialize(cursor);
+
         let len = self.queries.len() as CIntShort;
         len.serialize(cursor);
 
@@ -35,7 +39,7 @@ impl Serialize for BodyReqBatch {
         let flag_byte = self
             .query_flags
             .iter()
-            .fold(0, |bytes, f| bytes | f.as_byte());
+            .fold(0, |bytes, f| bytes | u8::from(*f));
 
         flag_byte.serialize(cursor);
 
@@ -51,7 +55,7 @@ impl Serialize for BodyReqBatch {
 }
 
 /// Batch type
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub enum BatchType {
     /// The batch will be "logged". This is equivalent to a
     /// normal CQL3 batch statement.
@@ -63,20 +67,22 @@ pub enum BatchType {
     Counter,
 }
 
-impl FromSingleByte for BatchType {
-    fn from_byte(byte: u8) -> BatchType {
-        match byte {
-            0 => BatchType::Logged,
-            1 => BatchType::Unlogged,
-            2 => BatchType::Counter,
-            _ => unreachable!(),
+impl TryFrom<u8> for BatchType {
+    type Error = Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(BatchType::Logged),
+            1 => Ok(BatchType::Unlogged),
+            2 => Ok(BatchType::Counter),
+            _ => Err(Error::General(format!("Unknown batch type: {}", value))),
         }
     }
 }
 
-impl AsByte for BatchType {
-    fn as_byte(&self) -> u8 {
-        match *self {
+impl From<BatchType> for u8 {
+    fn from(value: BatchType) -> Self {
+        match value {
             BatchType::Logged => 0,
             BatchType::Unlogged => 1,
             BatchType::Counter => 2,

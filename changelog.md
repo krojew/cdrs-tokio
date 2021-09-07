@@ -6,6 +6,7 @@
 * New `ReconnectionPolicy` used when trying to re-establish connections to downed nodes.
 * `Error` now implements standard `Error`.
 * `SessionBuilder` introduced as the preferred way to create a session.
+* Added missing traits for `BatchType` and `QueryFlags`.
 
 ### Changed
 
@@ -15,6 +16,7 @@
 * The `varint` type now uses `num::BigInt` representation (this implies `Decimal` also uses "big" types).
 * Removed `unstable-dynamic-cluster` feature, since it wasn't working as expected and introduced performance penalty.
 * Removed `AsBytes` in favor of new `Serialize` trait due to performance penalty.
+* Removed `FromSingleByte` and `AsByte` in favor of `From`/`TryFrom`.
 
 ## 5.0.0
 

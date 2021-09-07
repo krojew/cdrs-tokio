@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use crate::consistency::Consistency;
-use crate::frame::{AsByte, Serialize};
+use crate::frame::Serialize;
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
 use crate::types::{CBytes, CIntShort};
@@ -37,7 +37,7 @@ impl QueryParams {
     }
 
     fn flags_as_byte(&self) -> u8 {
-        self.flags.iter().fold(0, |acc, flag| acc | flag.as_byte())
+        self.flags.iter().fold(0, |acc, flag| acc | u8::from(*flag))
     }
 
     #[allow(dead_code)]
