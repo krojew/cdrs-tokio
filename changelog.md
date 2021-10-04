@@ -17,6 +17,8 @@
 * Removed `unstable-dynamic-cluster` feature, since it wasn't working as expected and introduced performance penalty.
 * Removed `AsBytes` in favor of new `Serialize` trait due to performance penalty.
 * Removed `FromSingleByte` and `AsByte` in favor of `From`/`TryFrom`.
+* Removed traits along with `async-trait` dependency: `BatchExecutor`, `ExecExecutor`, `PrepareExecutor`, 
+  `QueryExecutor`, `GetConnection` and `CdrsSession`. Everything is now embedded directly in `Session`.
 
 ## 5.0.0
 

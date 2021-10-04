@@ -1,7 +1,9 @@
-use crate::cluster::{GetConnection, GetRetryPolicy};
+use crate::cluster::session::Session;
+use crate::cluster::{ConnectionManager, GetRetryPolicy};
 use crate::error;
 use crate::error::Error;
 use crate::frame::{Flag, Frame};
+use crate::load_balancing::LoadBalancingStrategy;
 use crate::retry::{QueryInfo, RetryDecision};
 use crate::transport::CdrsTransport;
 
@@ -19,15 +21,15 @@ pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
     flags
 }
 
-pub async fn send_frame<S: ?Sized, T>(
-    sender: &S,
+pub(crate) async fn send_frame<
+    T: CdrsTransport + Send + Sync + 'static,
+    CM: ConnectionManager<T>,
+    LB: LoadBalancingStrategy<CM> + Send + Sync,
+>(
+    sender: &Session<T, CM, LB>,
     frame: Frame,
     is_idempotent: bool,
-) -> error::Result<Frame>
-where
-    S: GetConnection<T> + GetRetryPolicy,
-    T: CdrsTransport + 'static,
-{
+) -> error::Result<Frame> {
     let mut retry_session = sender.retry_policy().new_session();
 
     'next_node: loop {

@@ -1,11 +1,10 @@
-use async_trait::async_trait;
 use std::marker::PhantomData;
 #[cfg(feature = "rust-tls")]
 use std::net;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::mpsc::channel as std_channel;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::sync::mpsc::channel;
 
 use crate::authenticators::SaslAuthenticatorProvider;
@@ -17,18 +16,19 @@ use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::cluster::ClusterRustlsConfig;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::NodeRustlsConfigBuilder;
-use crate::cluster::{
-    CdrsSession, ClusterTcpConfig, GenericClusterConfig, GetConnection, GetRetryPolicy,
-    KeyspaceHolder,
-};
+use crate::cluster::{ClusterTcpConfig, GenericClusterConfig, GetRetryPolicy, KeyspaceHolder};
 use crate::cluster::{NodeTcpConfigBuilder, SessionPager};
 use crate::compression::Compression;
 use crate::error;
 use crate::events::{new_listener, EventStream, EventStreamNonBlocking, Listener};
 use crate::frame::events::SimpleServerEvent;
+use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::Frame;
 use crate::load_balancing::LoadBalancingStrategy;
-use crate::query::{BatchExecutor, ExecExecutor, PrepareExecutor, QueryExecutor};
+use crate::query::utils::{prepare_flags, send_frame};
+use crate::query::{
+    PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
+};
 use crate::retry::{
     DefaultRetryPolicy, ExponentialReconnectionPolicy, NeverReconnectionPolicy, ReconnectionPolicy,
     RetryPolicy,
@@ -66,42 +66,256 @@ impl<
 {
     /// Basing on current session returns new `SessionPager` that can be used
     /// for performing paged queries.
-    pub fn paged(&'a self, page_size: i32) -> SessionPager<'a, Session<T, CM, LB>, T>
-    where
-        Session<T, CM, LB>: CdrsSession<T>,
-    {
+    pub fn paged(&'a self, page_size: i32) -> SessionPager<'a, T, CM, LB> {
         SessionPager::new(self, page_size)
     }
 
-    fn new(
-        load_balancing: LB,
-        compression: Compression,
-        transport_buffer_size: usize,
-        tcp_nodelay: bool,
-        retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-        reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
-    ) -> Self {
-        Session {
-            load_balancing,
-            compression,
-            transport_buffer_size,
-            tcp_nodelay,
-            retry_policy,
-            reconnection_policy,
-            _transport: Default::default(),
-            _connection_manager: Default::default(),
-        }
-    }
-}
+    /// Executes given prepared query with query parameters and optional tracing, and warnings.
+    pub async fn exec_with_params_tw(
+        &self,
+        prepared: &PreparedQuery,
+        query_parameters: QueryParams,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<Frame> {
+        let flags = prepare_flags(with_tracing, with_warnings);
+        let options_frame = Frame::new_req_execute(
+            prepared
+                .id
+                .read()
+                .expect("Cannot read prepared query id!")
+                .deref(),
+            &query_parameters,
+            flags,
+        );
 
-#[async_trait]
-impl<
-        T: CdrsTransport + Send + Sync + 'static,
-        CM: ConnectionManager<T> + Send + Sync,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
-    > GetConnection<T> for Session<T, CM, LB>
-{
-    async fn load_balanced_connection(&self) -> Option<error::Result<Arc<T>>> {
+        let mut result = send_frame(self, options_frame, query_parameters.is_idempotent).await;
+
+        if let Err(error::Error::Server(error)) = &result {
+            // if query is unprepared
+            if error.error_code == 0x2500 {
+                if let Ok(new) = self.prepare_raw(&prepared.query).await {
+                    *prepared
+                        .id
+                        .write()
+                        .expect("Cannot write prepared query id!") = new.id.clone();
+                    let flags = prepare_flags(with_tracing, with_warnings);
+                    let options_frame = Frame::new_req_execute(&new.id, &query_parameters, flags);
+                    result = send_frame(self, options_frame, query_parameters.is_idempotent).await;
+                }
+            }
+        }
+        result
+    }
+
+    /// Executes given prepared query with query parameters.
+    pub async fn exec_with_params(
+        &self,
+        prepared: &PreparedQuery,
+        query_parameters: QueryParams,
+    ) -> error::Result<Frame> {
+        self.exec_with_params_tw(prepared, query_parameters, false, false)
+            .await
+    }
+
+    /// Executes given prepared query with query values and optional tracing, and warnings.
+    pub async fn exec_with_values_tw<V: Into<QueryValues> + Sync + Send>(
+        &self,
+        prepared: &PreparedQuery,
+        values: V,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<Frame> {
+        let query_params_builder = QueryParamsBuilder::new();
+        let query_params = query_params_builder.values(values.into()).finalize();
+        self.exec_with_params_tw(prepared, query_params, with_tracing, with_warnings)
+            .await
+    }
+
+    /// Executes given prepared query with query values.
+    pub async fn exec_with_values<V: Into<QueryValues> + Sync + Send>(
+        &self,
+        prepared: &PreparedQuery,
+        values: V,
+    ) -> error::Result<Frame> {
+        self.exec_with_values_tw(prepared, values, false, false)
+            .await
+    }
+
+    /// Executes given prepared query with optional tracing and warnings.
+    pub async fn exec_tw(
+        &self,
+        prepared: &PreparedQuery,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<Frame> {
+        let query_params = QueryParamsBuilder::new().finalize();
+        self.exec_with_params_tw(prepared, query_params, with_tracing, with_warnings)
+            .await
+    }
+
+    /// Executes given prepared query.
+    pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Frame>
+    where
+        Self: Sync,
+    {
+        self.exec_tw(prepared, false, false).await
+    }
+
+    /// Prepares a query for execution. Along with query itself, the
+    /// method takes `with_tracing` and `with_warnings` flags to get
+    /// tracing information and warnings. Returns the raw prepared
+    /// query result.
+    pub async fn prepare_raw_tw<Q: ToString + Sync + Send>(
+        &self,
+        query: Q,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<BodyResResultPrepared> {
+        let flags = prepare_flags(with_tracing, with_warnings);
+
+        let query_frame = Frame::new_req_prepare(query.to_string(), flags);
+
+        send_frame(self, query_frame, false)
+            .await
+            .and_then(|response| response.body())
+            .and_then(|body| {
+                body.into_prepared()
+                    .ok_or_else(|| "CDRS BUG: cannot convert frame into prepared".into())
+            })
+    }
+
+    /// Prepares query without additional tracing information and warnings.
+    /// Returns the raw prepared query result.
+    pub async fn prepare_raw<Q: ToString + Sync + Send>(
+        &self,
+        query: Q,
+    ) -> error::Result<BodyResResultPrepared> {
+        self.prepare_raw_tw(query, false, false).await
+    }
+
+    /// Prepares a query for execution. Along with query itself,
+    /// the method takes `with_tracing` and `with_warnings` flags
+    /// to get tracing information and warnings. Returns the prepared
+    /// query.
+    pub async fn prepare_tw<Q: ToString + Sync + Send>(
+        &self,
+        query: Q,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<PreparedQuery> {
+        let s = query.to_string();
+        self.prepare_raw_tw(query, with_tracing, with_warnings)
+            .await
+            .map(|x| PreparedQuery {
+                id: RwLock::new(x.id),
+                query: s,
+            })
+    }
+
+    /// It prepares query without additional tracing information and warnings.
+    /// Returns the prepared query.
+    pub async fn prepare<Q: ToString + Sync + Send>(&self, query: Q) -> error::Result<PreparedQuery>
+    where
+        Self: Sync,
+    {
+        self.prepare_tw(query, false, false).await
+    }
+
+    /// Executes batch query with optional tracing and warnings.
+    pub async fn batch_with_params_tw(
+        &self,
+        batch: QueryBatch,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<Frame> {
+        let flags = prepare_flags(with_tracing, with_warnings);
+        let is_idempotent = batch.is_idempotent;
+
+        let query_frame = Frame::new_req_batch(batch, flags);
+
+        send_frame(self, query_frame, is_idempotent).await
+    }
+
+    /// Executes batch query.
+    pub async fn batch_with_params(&self, batch: QueryBatch) -> error::Result<Frame> {
+        self.batch_with_params_tw(batch, false, false).await
+    }
+
+    /// Executes a query with parameters and ability to trace it and see warnings.
+    pub async fn query_with_params_tw<Q: ToString + Send>(
+        &self,
+        query: Q,
+        query_params: QueryParams,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<Frame> {
+        let is_idempotent = query_params.is_idempotent;
+        let query = Query {
+            query: query.to_string(),
+            params: query_params,
+        };
+
+        let flags = prepare_flags(with_tracing, with_warnings);
+
+        let query_frame = Frame::new_query(query, flags);
+
+        send_frame(self, query_frame, is_idempotent).await
+    }
+
+    /// Executes a query.
+    pub async fn query<Q: ToString + Send>(&self, query: Q) -> error::Result<Frame> {
+        self.query_tw(query, false, false).await
+    }
+
+    /// Executes a query with ability to trace it and see warnings.
+    pub async fn query_tw<Q: ToString + Send>(
+        &self,
+        query: Q,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<Frame> {
+        let query_params = QueryParamsBuilder::new().finalize();
+        self.query_with_params_tw(query, query_params, with_tracing, with_warnings)
+            .await
+    }
+
+    /// Executes a query with bounded values (either with or without names).
+    pub async fn query_with_values<Q: ToString + Send, V: Into<QueryValues> + Send>(
+        &self,
+        query: Q,
+        values: V,
+    ) -> error::Result<Frame> {
+        self.query_with_values_tw(query, values, false, false).await
+    }
+
+    /// Executes a query with bounded values (either with or without names)
+    /// and ability to see warnings, trace a request and default parameters.
+    pub async fn query_with_values_tw<Q: ToString + Send, V: Into<QueryValues> + Send>(
+        &self,
+        query: Q,
+        values: V,
+        with_tracing: bool,
+        with_warnings: bool,
+    ) -> error::Result<Frame> {
+        let query_params_builder = QueryParamsBuilder::new();
+        let query_params = query_params_builder.values(values.into()).finalize();
+        self.query_with_params_tw(query, query_params, with_tracing, with_warnings)
+            .await
+    }
+
+    /// Executes a query with query params without warnings and tracing.
+    pub async fn query_with_params<Q: ToString + Send>(
+        &self,
+        query: Q,
+        query_params: QueryParams,
+    ) -> error::Result<Frame> {
+        self.query_with_params_tw(query, query_params, false, false)
+            .await
+    }
+
+    /// Returns connection from a load balancer.
+    pub async fn load_balanced_connection(&self) -> Option<error::Result<Arc<T>>> {
         // when using a load balancer with > 1 node, don't use reconnection policy for a given node,
         // but jump to the next one
 
@@ -135,7 +349,8 @@ impl<
         }
     }
 
-    async fn node_connection(&self, node: &SocketAddr) -> Option<error::Result<Arc<T>>> {
+    /// Returns connection to the desired node.
+    pub async fn node_connection(&self, node: &SocketAddr) -> Option<error::Result<Arc<T>>> {
         let connection_manager = self.load_balancing.find(|cm| cm.addr() == *node)?;
 
         Some(
@@ -144,46 +359,26 @@ impl<
                 .await,
         )
     }
-}
 
-#[async_trait]
-impl<
-        'a,
-        T: CdrsTransport + 'static,
-        CM: ConnectionManager<T> + Send + Sync,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
-    > QueryExecutor<T> for Session<T, CM, LB>
-{
-}
-
-#[async_trait]
-impl<
-        'a,
-        T: CdrsTransport + 'static,
-        CM: ConnectionManager<T> + Send + Sync,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
-    > PrepareExecutor<T> for Session<T, CM, LB>
-{
-}
-
-#[async_trait]
-impl<
-        'a,
-        T: CdrsTransport + 'static,
-        CM: ConnectionManager<T> + Send + Sync,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
-    > ExecExecutor<T> for Session<T, CM, LB>
-{
-}
-
-#[async_trait]
-impl<
-        'a,
-        T: CdrsTransport + 'static,
-        CM: ConnectionManager<T> + Send + Sync,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
-    > BatchExecutor<T> for Session<T, CM, LB>
-{
+    fn new(
+        load_balancing: LB,
+        compression: Compression,
+        transport_buffer_size: usize,
+        tcp_nodelay: bool,
+        retry_policy: Box<dyn RetryPolicy + Send + Sync>,
+        reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
+    ) -> Self {
+        Session {
+            load_balancing,
+            compression,
+            transport_buffer_size,
+            tcp_nodelay,
+            retry_policy,
+            reconnection_policy,
+            _transport: Default::default(),
+            _connection_manager: Default::default(),
+        }
+    }
 }
 
 impl<
@@ -195,14 +390,6 @@ impl<
     fn retry_policy(&self) -> &dyn RetryPolicy {
         self.retry_policy.as_ref()
     }
-}
-
-impl<
-        T: CdrsTransport + 'static,
-        CM: ConnectionManager<T> + Send + Sync,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
-    > CdrsSession<T> for Session<T, CM, LB>
-{
 }
 
 /// Workaround for <https://github.com/rust-lang/rust/issues/63033>

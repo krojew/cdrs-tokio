@@ -21,14 +21,15 @@ use cdrs_tokio::{
 
 use cdrs_tokio_helpers_derive::*;
 
-use async_trait::async_trait;
 use cdrs_tokio::cluster::session::{
     ReconnectionPolicyWrapper, RetryPolicyWrapper, DEFAULT_TRANSPORT_BUFFER_SIZE,
 };
 use cdrs_tokio::cluster::{KeyspaceHolder, NodeTcpConfigBuilder};
 use cdrs_tokio::compression::Compression;
 use cdrs_tokio::frame::Serialize;
+use cdrs_tokio::future::BoxFuture;
 use cdrs_tokio::retry::ConstantReconnectionPolicy;
+use futures::FutureExt;
 use maplit::hashmap;
 
 type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;
@@ -71,29 +72,34 @@ impl VirtualConnectionAddress {
     }
 }
 
-#[async_trait]
 impl GenericClusterConfig<TransportTcp, TcpConnectionManager> for VirtualClusterConfig {
     type Address = VirtualConnectionAddress;
 
-    async fn create_manager(&self, addr: VirtualConnectionAddress) -> Result<TcpConnectionManager> {
-        // create a connection manager that points at the rewritten address so that's where it connects, but
-        // then return a manager with the 'virtual' address for internal purposes.
-        Ok(TcpConnectionManager::new(
-            NodeTcpConfigBuilder::new()
-                .with_node_address(addr.rewrite(&self.mask, &self.actual).into())
-                .with_authenticator_provider(self.authenticator.clone())
-                .build()
-                .await
-                .unwrap()
-                .get(0)
-                .cloned()
-                .unwrap(),
-            self.keyspace_holder.clone(),
-            Compression::None,
-            DEFAULT_TRANSPORT_BUFFER_SIZE,
-            true,
-            None,
-        ))
+    fn create_manager(
+        &self,
+        addr: VirtualConnectionAddress,
+    ) -> BoxFuture<Result<TcpConnectionManager>> {
+        async move {
+            // create a connection manager that points at the rewritten address so that's where it connects, but
+            // then return a manager with the 'virtual' address for internal purposes.
+            Ok(TcpConnectionManager::new(
+                NodeTcpConfigBuilder::new()
+                    .with_node_address(addr.rewrite(&self.mask, &self.actual).into())
+                    .with_authenticator_provider(self.authenticator.clone())
+                    .build()
+                    .await
+                    .unwrap()
+                    .get(0)
+                    .cloned()
+                    .unwrap(),
+                self.keyspace_holder.clone(),
+                Compression::None,
+                DEFAULT_TRANSPORT_BUFFER_SIZE,
+                true,
+                None,
+            ))
+        }
+        .boxed()
     }
 }
 

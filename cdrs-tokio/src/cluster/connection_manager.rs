@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -9,6 +8,7 @@ use crate::compression::Compression;
 use crate::error::{Error, Result};
 use crate::frame::frame_response::ResponseBody;
 use crate::frame::{Frame, Opcode};
+use crate::future::BoxFuture;
 use crate::retry::ReconnectionPolicy;
 use crate::transport::CdrsTransport;
 
@@ -16,14 +16,13 @@ pub type ThreadSafeReconnectionPolicy = dyn ReconnectionPolicy + Send + Sync;
 
 /// Manages a connection to a single node. Should create a new one, if there's no present already or
 /// a previous one has broken.
-#[async_trait]
 pub trait ConnectionManager<T: CdrsTransport> {
     /// Tries to establish a new, ready to use connection. Given reconnection policy should be used
     /// if the connection cannot be established to given node.
-    async fn connection(
-        &self,
-        reconnection_policy: &ThreadSafeReconnectionPolicy,
-    ) -> Result<Arc<T>>;
+    fn connection<'a>(
+        &'a self,
+        reconnection_policy: &'a ThreadSafeReconnectionPolicy,
+    ) -> BoxFuture<Result<Arc<T>>>;
 
     // Returns associated address.
     fn addr(&self) -> SocketAddr;

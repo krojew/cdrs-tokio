@@ -16,8 +16,6 @@ use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::load_balancing::RoundRobin;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::query::QueryExecutor;
-#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::transport::TransportTcp;

@@ -1,21 +1,13 @@
-mod batch_executor;
 mod batch_query_builder;
-mod exec_executor;
-mod prepare_executor;
 mod prepared_query;
-mod query_executor;
 mod query_flags;
 mod query_params;
 mod query_params_builder;
 mod query_values;
-mod utils;
+pub(crate) mod utils;
 
-pub use crate::query::batch_executor::BatchExecutor;
 pub use crate::query::batch_query_builder::{BatchQueryBuilder, QueryBatch};
-pub use crate::query::exec_executor::ExecExecutor;
-pub use crate::query::prepare_executor::PrepareExecutor;
 pub use crate::query::prepared_query::PreparedQuery;
-pub use crate::query::query_executor::QueryExecutor;
 pub use crate::query::query_flags::QueryFlags;
 pub use crate::query::query_params::QueryParams;
 pub use crate::query::query_params_builder::QueryParamsBuilder;

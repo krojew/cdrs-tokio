@@ -10,7 +10,7 @@
 //! * [`TransportRustls`] is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
-use async_trait::async_trait;
+use futures::FutureExt;
 use fxhash::FxHashMap;
 use std::io;
 use std::net::SocketAddr;
@@ -28,16 +28,16 @@ use crate::frame::frame_result::ResultKind;
 use crate::frame::parser::parse_frame;
 use crate::frame::{Frame, StreamId};
 use crate::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
+use crate::future::BoxFuture;
 use crate::types::INT_LEN;
 use crate::Error;
 use crate::Result;
 
 ///General CDRS transport trait. Both [`TransportTcp`]
 ///and [`TransportRustls`] has their own implementations of this trait.
-#[async_trait]
 pub trait CdrsTransport: Sized + Send + Sync {
     /// Schedules data frame for writing and waits for a response
-    async fn write_frame(&self, frame: &Frame) -> Result<Frame>;
+    fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>>;
 
     /// Checks if the connection is broken (e.g. after read or write errors)
     fn is_broken(&self) -> bool;
@@ -79,11 +79,10 @@ impl TransportTcp {
     }
 }
 
-#[async_trait]
 impl CdrsTransport for TransportTcp {
     #[inline]
-    async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
-        self.inner.write_frame(frame).await
+    fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>> {
+        self.inner.write_frame(frame).boxed()
     }
 
     #[inline]
@@ -137,11 +136,10 @@ impl TransportRustls {
 }
 
 #[cfg(feature = "rust-tls")]
-#[async_trait]
 impl CdrsTransport for TransportRustls {
     #[inline]
-    async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
-        self.inner.write_frame(frame).await
+    fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>> {
+        self.inner.write_frame(frame).boxed()
     }
 
     #[inline]

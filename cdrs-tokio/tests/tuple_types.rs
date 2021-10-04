@@ -8,8 +8,6 @@ use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::frame::Serialize;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::query::QueryExecutor;
-#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::blob::Blob;

@@ -10,8 +10,6 @@ use cdrs_tokio::frame::Serialize;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::frame::{TryFromRow, TryFromUdt};
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::query::QueryExecutor;
-#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryValues;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::*;

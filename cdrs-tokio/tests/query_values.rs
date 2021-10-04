@@ -4,8 +4,6 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::query::QueryExecutor;
-#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::IntoRustByName;

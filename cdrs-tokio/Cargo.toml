@@ -22,14 +22,14 @@ e2e-tests = []
 
 [dependencies]
 arrayref = "0.3"
-async-trait = "0.1"
 chrono = "0.4"
 float_eq = "0.6"
+futures = { version = "0.3", default_features = false, features = ["alloc"] }
 fxhash = "0.2"
 num = "0.4"
 lz4_flex = "0.8"
 rand = "0.8"
-snap = "1.0"
+snap = "1"
 thiserror = "1"
 time = { version = "0.3", features = ["std", "macros"] }
 tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }

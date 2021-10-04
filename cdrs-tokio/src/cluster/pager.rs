@@ -1,34 +1,40 @@
-use std::marker::PhantomData;
-
-use crate::cluster::CdrsSession;
+use crate::cluster::session::Session;
+use crate::cluster::ConnectionManager;
 use crate::consistency::Consistency;
 use crate::error;
 use crate::frame::frame_result::{RowsMetadata, RowsMetadataFlag};
+use crate::load_balancing::LoadBalancingStrategy;
 use crate::query::{PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
 use crate::transport::CdrsTransport;
 use crate::types::rows::Row;
 use crate::types::CBytes;
 
-pub struct SessionPager<'a, S: CdrsSession<T> + 'a, T: CdrsTransport + 'static> {
+pub struct SessionPager<
+    'a,
+    T: CdrsTransport + 'static,
+    CM: ConnectionManager<T>,
+    LB: LoadBalancingStrategy<CM> + Send + Sync,
+> {
     page_size: i32,
-    session: &'a S,
-    transport_type: PhantomData<&'a T>,
+    session: &'a Session<T, CM, LB>,
 }
 
-impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + 'static> SessionPager<'a, S, T> {
-    pub fn new(session: &'b S, page_size: i32) -> SessionPager<'a, S, T> {
-        SessionPager {
-            session,
-            page_size,
-            transport_type: PhantomData,
-        }
+impl<
+        'a,
+        T: CdrsTransport + 'static,
+        CM: ConnectionManager<T>,
+        LB: LoadBalancingStrategy<CM> + Send + Sync,
+    > SessionPager<'a, T, CM, LB>
+{
+    pub fn new(session: &'a Session<T, CM, LB>, page_size: i32) -> SessionPager<'a, T, CM, LB> {
+        SessionPager { session, page_size }
     }
 
     pub fn query_with_pager_state<Q>(
         &'a mut self,
         query: Q,
         state: PagerState,
-    ) -> QueryPager<'a, Q, SessionPager<'a, S, T>>
+    ) -> QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
     where
         Q: ToString,
     {
@@ -40,7 +46,7 @@ impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + 'static> SessionPager<'a,
         query: Q,
         state: PagerState,
         qp: QueryParams,
-    ) -> QueryPager<'a, Q, SessionPager<'a, S, T>>
+    ) -> QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
     where
         Q: ToString,
     {
@@ -53,7 +59,7 @@ impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + 'static> SessionPager<'a,
         }
     }
 
-    pub fn query<Q>(&'a mut self, query: Q) -> QueryPager<'a, Q, SessionPager<'a, S, T>>
+    pub fn query<Q>(&'a mut self, query: Q) -> QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
     where
         Q: ToString,
     {
@@ -69,7 +75,7 @@ impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + 'static> SessionPager<'a,
         &'a mut self,
         query: Q,
         qp: QueryParams,
-    ) -> QueryPager<'a, Q, SessionPager<'a, S, T>>
+    ) -> QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
     where
         Q: ToString,
     {
@@ -80,7 +86,7 @@ impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + 'static> SessionPager<'a,
         &'a mut self,
         query: &'a PreparedQuery,
         state: PagerState,
-    ) -> ExecPager<'a, SessionPager<'a, S, T>> {
+    ) -> ExecPager<'a, SessionPager<'a, T, CM, LB>> {
         ExecPager {
             pager: self,
             pager_state: state,
@@ -88,7 +94,10 @@ impl<'a, 'b: 'a, S: CdrsSession<T>, T: CdrsTransport + 'static> SessionPager<'a,
         }
     }
 
-    pub fn exec(&'a mut self, query: &'a PreparedQuery) -> ExecPager<'a, SessionPager<'a, S, T>> {
+    pub fn exec(
+        &'a mut self,
+        query: &'a PreparedQuery,
+    ) -> ExecPager<'a, SessionPager<'a, T, CM, LB>> {
         self.exec_with_pager_state(query, PagerState::new())
     }
 }
@@ -101,8 +110,13 @@ pub struct QueryPager<'a, Q: ToString, P: 'a> {
     consistency: Consistency,
 }
 
-impl<'a, Q: ToString, T: CdrsTransport + 'static, S: CdrsSession<T> + Sync + Send>
-    QueryPager<'a, Q, SessionPager<'a, S, T>>
+impl<
+        'a,
+        Q: ToString,
+        T: CdrsTransport + 'static,
+        CM: ConnectionManager<T>,
+        LB: LoadBalancingStrategy<CM> + Send + Sync,
+    > QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
 {
     pub fn into_pager_state(self) -> PagerState {
         self.pager_state
@@ -157,8 +171,12 @@ pub struct ExecPager<'a, P: 'a> {
     query: &'a PreparedQuery,
 }
 
-impl<'a, T: CdrsTransport + 'static, S: CdrsSession<T> + Sync + Send>
-    ExecPager<'a, SessionPager<'a, S, T>>
+impl<
+        'a,
+        T: CdrsTransport + 'static,
+        CM: ConnectionManager<T>,
+        LB: LoadBalancingStrategy<CM> + Send + Sync,
+    > ExecPager<'a, SessionPager<'a, T, CM, LB>>
 {
     pub fn into_pager_state(self) -> PagerState {
         self.pager_state
