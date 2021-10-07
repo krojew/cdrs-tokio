@@ -6,6 +6,7 @@ use crate::types::CBytesShort;
 pub struct PreparedQuery {
     pub(crate) id: RwLock<CBytesShort>,
     pub(crate) query: String,
+    pub(crate) keyspace: Option<String>,
 }
 
 impl Clone for PreparedQuery {
@@ -18,6 +19,7 @@ impl Clone for PreparedQuery {
                     .clone(),
             ),
             query: self.query.clone(),
+            keyspace: self.keyspace.clone(),
         }
     }
 }

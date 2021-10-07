@@ -5,7 +5,7 @@ use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::load_balancing::RoundRobin;
+use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -21,7 +21,7 @@ async fn multithread() {
         .await
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
-    let no_compression = TcpSessionBuilder::new(RoundRobin::new(), cluster_config)
+    let no_compression = TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config)
         .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
         .build();
 

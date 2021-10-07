@@ -1,70 +1,41 @@
-use rand::prelude::*;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use super::LoadBalancingStrategy;
+use rand::prelude::*;
+use rand::thread_rng;
 
-/// Load balancing based on selecting a random node.
-pub struct Random<N> {
-    pub cluster: Vec<Arc<N>>,
+use crate::cluster::{ConnectionManager, Node};
+use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
+use crate::transport::CdrsTransport;
+
+/// Pure random load balancing.
+#[derive(Default)]
+pub struct RandomLoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
+    cluster: Vec<Arc<Node<T, CM>>>,
+    _transport: PhantomData<T>,
 }
 
-impl<N> Random<N> {
-    pub fn new(cluster: Vec<Arc<N>>) -> Self {
-        Random { cluster }
-    }
-}
-
-impl<N> From<Vec<Arc<N>>> for Random<N> {
-    fn from(cluster: Vec<Arc<N>>) -> Random<N> {
-        Random { cluster }
-    }
-}
-
-impl<N> LoadBalancingStrategy<N> for Random<N>
-where
-    N: Sync,
-{
-    fn init(&mut self, cluster: Vec<Arc<N>>) {
-        self.cluster = cluster;
-    }
-
-    /// Returns next random node from a cluster
-    fn next(&self) -> Option<Arc<N>> {
-        let len = self.cluster.len();
-        if len == 0 {
-            return None;
+impl<T: CdrsTransport, CM: ConnectionManager<T>> RandomLoadBalancingStrategy<T, CM> {
+    pub fn new() -> Self {
+        RandomLoadBalancingStrategy {
+            cluster: Default::default(),
+            _transport: Default::default(),
         }
-        self.cluster.choose(&mut thread_rng()).cloned()
-    }
-
-    fn size(&self) -> usize {
-        self.cluster.len()
-    }
-
-    fn find<F>(&self, mut filter: F) -> Option<Arc<N>>
-    where
-        F: FnMut(&N) -> bool,
-    {
-        self.cluster.iter().find(|node| filter(*node)).cloned()
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
+    for RandomLoadBalancingStrategy<T, CM>
+{
+    fn init(&mut self, connection_managers: Vec<Arc<Node<T, CM>>>) {
+        self.cluster = connection_managers;
+    }
 
-    #[test]
-    fn next_random() {
-        let nodes = vec!["a", "b", "c", "d", "e", "f", "g"];
-        let load_balancer = Random::from(
-            nodes
-                .iter()
-                .map(|value| Arc::new(*value))
-                .collect::<Vec<Arc<&str>>>(),
-        );
-        for _ in 0..100 {
-            let s = load_balancer.next();
-            assert!(s.is_some());
+    fn query_plan(&self, _request: Request) -> QueryPlan<T, CM> {
+        if let Some(node) = self.cluster.choose(&mut thread_rng()) {
+            vec![node.clone()]
+        } else {
+            vec![]
         }
     }
 }

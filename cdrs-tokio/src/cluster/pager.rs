@@ -13,7 +13,7 @@ pub struct SessionPager<
     'a,
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T>,
-    LB: LoadBalancingStrategy<CM> + Send + Sync,
+    LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
     page_size: i32,
     session: &'a Session<T, CM, LB>,
@@ -23,7 +23,7 @@ impl<
         'a,
         T: CdrsTransport + 'static,
         CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > SessionPager<'a, T, CM, LB>
 {
     pub fn new(session: &'a Session<T, CM, LB>, page_size: i32) -> SessionPager<'a, T, CM, LB> {
@@ -115,7 +115,7 @@ impl<
         Q: ToString,
         T: CdrsTransport + 'static,
         CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
 {
     pub fn into_pager_state(self) -> PagerState {
@@ -175,7 +175,7 @@ impl<
         'a,
         T: CdrsTransport + 'static,
         CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > ExecPager<'a, SessionPager<'a, T, CM, LB>>
 {
     pub fn into_pager_state(self) -> PagerState {

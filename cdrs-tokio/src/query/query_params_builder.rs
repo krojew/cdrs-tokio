@@ -13,11 +13,11 @@ pub struct QueryParamsBuilder {
     serial_consistency: Option<Consistency>,
     timestamp: Option<i64>,
     is_idempotent: bool,
+    keyspace: Option<String>,
 }
 
 impl QueryParamsBuilder {
     /// Factory function that returns new `QueryBuilder`.
-    /// Default consistency level is `One`
     pub fn new() -> QueryParamsBuilder {
         Default::default()
     }
@@ -25,7 +25,6 @@ impl QueryParamsBuilder {
     /// Sets new query consistency
     pub fn consistency(mut self, consistency: Consistency) -> Self {
         self.consistency = consistency;
-
         self
     }
 
@@ -48,7 +47,6 @@ impl QueryParamsBuilder {
         self
     }
 
-    // Sets new with_names parameter value.
     builder_opt_field!(with_names, bool);
 
     /// Sets new query consistency
@@ -73,11 +71,9 @@ impl QueryParamsBuilder {
         self
     }
 
-    // Sets new serial_consistency value.
     builder_opt_field!(serial_consistency, Consistency);
-
-    // Sets new timestamp value.
     builder_opt_field!(timestamp, i64);
+    builder_opt_field!(keyspace, String);
 
     /// Marks the query as idempotent or not
     pub fn idempotent(mut self, value: bool) -> Self {
@@ -97,6 +93,7 @@ impl QueryParamsBuilder {
             serial_consistency: self.serial_consistency,
             timestamp: self.timestamp,
             is_idempotent: self.is_idempotent,
+            keyspace: self.keyspace,
         }
     }
 }

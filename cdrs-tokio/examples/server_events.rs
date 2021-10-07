@@ -6,7 +6,7 @@ use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 use cdrs_tokio::frame::events::{
     SchemaChangeTarget, SchemaChangeType, ServerEvent, SimpleServerEvent,
 };
-use cdrs_tokio::load_balancing::RoundRobin;
+use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
 
 #[tokio::main]
 async fn main() {
@@ -17,7 +17,7 @@ async fn main() {
         .await
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
-    let lb = RoundRobin::new();
+    let lb = RoundRobinBalancingStrategy::new();
     let no_compression = TcpSessionBuilder::new(lb, cluster_config).build();
 
     let (listener, stream) = no_compression

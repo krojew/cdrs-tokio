@@ -14,7 +14,7 @@ use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::load_balancing::RoundRobin;
+use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -26,7 +26,11 @@ use regex::Regex;
 const ADDR: &str = "127.0.0.1:9042";
 
 #[cfg(feature = "e2e-tests")]
-type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;
+type CurrentSession = Session<
+    TransportTcp,
+    TcpConnectionManager,
+    RoundRobinBalancingStrategy<TransportTcp, TcpConnectionManager>,
+>;
 
 #[cfg(feature = "e2e-tests")]
 #[allow(dead_code)]
@@ -43,7 +47,7 @@ pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSessi
         .await
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
-    let session = TcpSessionBuilder::new(RoundRobin::new(), cluster_config)
+    let session = TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config)
         .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
         .build();
     let re_table_name = Regex::new(r"CREATE TABLE IF NOT EXISTS (\w+\.\w+)").unwrap();

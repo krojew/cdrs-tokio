@@ -66,6 +66,7 @@ impl BodyReqQuery {
                 serial_consistency,
                 timestamp,
                 is_idempotent,
+                keyspace: None,
             },
         }
     }

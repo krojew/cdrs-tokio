@@ -14,6 +14,7 @@ pub struct BatchQueryBuilder {
     serial_consistency: Option<Consistency>,
     timestamp: Option<i64>,
     is_idempotent: bool,
+    keyspace: Option<String>,
 }
 
 impl Default for BatchQueryBuilder {
@@ -25,6 +26,7 @@ impl Default for BatchQueryBuilder {
             serial_consistency: None,
             timestamp: None,
             is_idempotent: false,
+            keyspace: None,
         }
     }
 }
@@ -69,15 +71,9 @@ impl BatchQueryBuilder {
         self
     }
 
-    pub fn serial_consistency(mut self, serial_consistency: Option<Consistency>) -> Self {
-        self.serial_consistency = serial_consistency;
-        self
-    }
-
-    pub fn timestamp(mut self, timestamp: Option<i64>) -> Self {
-        self.timestamp = timestamp;
-        self
-    }
+    builder_opt_field!(serial_consistency, Consistency);
+    builder_opt_field!(timestamp, i64);
+    builder_opt_field!(keyspace, String);
 
     pub fn idempotent(mut self, value: bool) -> Self {
         self.is_idempotent = value;
@@ -120,6 +116,7 @@ impl BatchQueryBuilder {
             serial_consistency: self.serial_consistency,
             timestamp: self.timestamp,
             is_idempotent: self.is_idempotent,
+            keyspace: self.keyspace,
         })
     }
 }

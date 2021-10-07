@@ -40,7 +40,7 @@ This example configures a cluster consisting of a single node, and uses round-ro
 ```rust
 use cdrs_tokio::cluster::session::{TcpSessionBuilder, SessionBuilder};
 use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
-use cdrs_tokio::load_balancing::RoundRobin;
+use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
 use cdrs_tokio::query::*;
 use std::sync::Arc;
 
@@ -52,7 +52,7 @@ async fn main() {
         .await
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
-    let session = TcpSessionBuilder::new(RoundRobin::new(), cluster_config).build();
+    let session = TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config).build();
 
     let create_ks = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
                      'class' : 'SimpleStrategy', 'replication_factor' : 1 };";

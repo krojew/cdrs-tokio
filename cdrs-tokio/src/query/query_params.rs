@@ -27,6 +27,10 @@ pub struct QueryParams {
     pub timestamp: Option<i64>,
     /// Is the query idempotent.
     pub is_idempotent: bool,
+    /// Query keyspace. If not using a global one, setting it explicitly might help the load
+    /// balancer use more appropriate nodes. Note: prepared statements with keyspace information
+    /// take precedence over this field.
+    pub keyspace: Option<String>,
 }
 
 impl QueryParams {

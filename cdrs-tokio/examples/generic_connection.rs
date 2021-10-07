@@ -10,7 +10,7 @@ use cdrs_tokio::{
     cluster::session::Session,
     cluster::{GenericClusterConfig, TcpConnectionManager},
     error::Result,
-    load_balancing::RoundRobin,
+    load_balancing::RoundRobinBalancingStrategy,
     query::*,
     query_values,
     retry::DefaultRetryPolicy,
@@ -32,7 +32,11 @@ use cdrs_tokio::retry::ConstantReconnectionPolicy;
 use futures::FutureExt;
 use maplit::hashmap;
 
-type CurrentSession = Session<TransportTcp, TcpConnectionManager, RoundRobin<TcpConnectionManager>>;
+type CurrentSession = Session<
+    TransportTcp,
+    TcpConnectionManager,
+    RoundRobinBalancingStrategy<TransportTcp, TcpConnectionManager>,
+>;
 
 /// Implements a cluster configuration where the addresses to
 /// connect to are different from the ones configured by replacing
@@ -121,7 +125,7 @@ async fn main() {
         VirtualConnectionAddress(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 9042)),
         VirtualConnectionAddress(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 9043)),
     ];
-    let load_balancing = RoundRobin::new();
+    let load_balancing = RoundRobinBalancingStrategy::new();
     let compression = Compression::None;
 
     let mut no_compression = cdrs_tokio::cluster::connect_generic_static(

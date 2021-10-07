@@ -109,7 +109,7 @@ async fn set_keyspace<T: CdrsTransport>(
     transport: &T,
     keyspace_holder: &KeyspaceHolder,
 ) -> Result<()> {
-    if let Some(current_keyspace) = keyspace_holder.current_keyspace().await {
+    if let Some(current_keyspace) = keyspace_holder.current_keyspace() {
         let use_frame = Frame::new_req_query(
             format!("USE {}", current_keyspace),
             Default::default(),

@@ -1,9 +1,10 @@
+use std::ops::Deref;
+
 use crate::cluster::session::Session;
 use crate::cluster::{ConnectionManager, GetRetryPolicy};
 use crate::error;
-use crate::error::Error;
 use crate::frame::{Flag, Frame};
-use crate::load_balancing::LoadBalancingStrategy;
+use crate::load_balancing::{LoadBalancingStrategy, Request};
 use crate::retry::{QueryInfo, RetryDecision};
 use crate::transport::CdrsTransport;
 
@@ -24,21 +25,23 @@ pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
 pub(crate) async fn send_frame<
     T: CdrsTransport + Send + Sync + 'static,
     CM: ConnectionManager<T>,
-    LB: LoadBalancingStrategy<CM> + Send + Sync,
+    LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 >(
-    sender: &Session<T, CM, LB>,
+    session: &Session<T, CM, LB>,
     frame: Frame,
     is_idempotent: bool,
+    keyspace: Option<&str>,
 ) -> error::Result<Frame> {
-    let mut retry_session = sender.retry_policy().new_session();
+    let mut retry_session = session.retry_policy().new_session();
 
-    'next_node: loop {
-        let mut transport = sender
-            .load_balanced_connection()
-            .await
-            .ok_or_else(|| Error::from("Unable to get transport"))??;
+    let current_keyspace = session.current_keyspace();
+    let request =
+        Request::new(keyspace.or_else(|| current_keyspace.as_ref().map(|keyspace| &***keyspace)));
+    let query_plan = session.query_plan(request);
 
+    'next_node: for node in query_plan {
         loop {
+            let transport = session.connection(node.deref()).await?;
             match transport.write_frame(&frame).await {
                 Ok(frame) => return Ok(frame),
                 Err(error) => {
@@ -48,13 +51,7 @@ pub(crate) async fn send_frame<
                     };
 
                     match retry_session.decide(query_info) {
-                        RetryDecision::RetrySameNode => {
-                            let new_transport = sender.node_connection(transport.addr()).await;
-                            match new_transport {
-                                Some(new_transport) => transport = new_transport?,
-                                None => continue 'next_node,
-                            }
-                        }
+                        RetryDecision::RetrySameNode => continue,
                         RetryDecision::RetryNextNode => continue 'next_node,
                         RetryDecision::DontRetry => return Err(error),
                     }
@@ -62,6 +59,8 @@ pub(crate) async fn send_frame<
             }
         }
     }
+
+    Err("No nodes in query plan!".into())
 }
 
 #[cfg(test)]

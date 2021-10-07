@@ -1,18 +1,21 @@
-use tokio::sync::Mutex;
+use std::sync::Arc;
 
-/// Cassandra tracks current keyspace per connection, so we need to remember it across all
-/// connections in the pool.
+use arc_swap::ArcSwapOption;
+
+/// Holds currently set global keyspace.
 #[derive(Default, Debug)]
 pub struct KeyspaceHolder {
-    current_keyspace: Mutex<Option<String>>,
+    current_keyspace: ArcSwapOption<String>,
 }
 
 impl KeyspaceHolder {
-    pub async fn current_keyspace(&self) -> Option<String> {
-        self.current_keyspace.lock().await.clone()
+    #[inline]
+    pub fn current_keyspace(&self) -> Option<Arc<String>> {
+        self.current_keyspace.load().clone()
     }
 
-    pub async fn update_current_keyspace(&self, keyspace: &str) {
-        *self.current_keyspace.lock().await = Some(keyspace.into());
+    #[inline]
+    pub fn update_current_keyspace(&self, keyspace: String) {
+        self.current_keyspace.store(Some(Arc::new(keyspace)));
     }
 }

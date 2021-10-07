@@ -16,7 +16,9 @@ use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::cluster::ClusterRustlsConfig;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::NodeRustlsConfigBuilder;
-use crate::cluster::{ClusterTcpConfig, GenericClusterConfig, GetRetryPolicy, KeyspaceHolder};
+use crate::cluster::{
+    ClusterTcpConfig, GenericClusterConfig, GetRetryPolicy, KeyspaceHolder, Node,
+};
 use crate::cluster::{NodeTcpConfigBuilder, SessionPager};
 use crate::compression::Compression;
 use crate::error;
@@ -24,7 +26,7 @@ use crate::events::{new_listener, EventStream, EventStreamNonBlocking, Listener}
 use crate::frame::events::SimpleServerEvent;
 use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::Frame;
-use crate::load_balancing::LoadBalancingStrategy;
+use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
 use crate::query::utils::{prepare_flags, send_frame};
 use crate::query::{
     PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
@@ -37,17 +39,16 @@ use crate::retry::{
 use crate::transport::TransportRustls;
 use crate::transport::{CdrsTransport, TransportTcp};
 
-static NEVER_RECONNECTION_POLICY: NeverReconnectionPolicy = NeverReconnectionPolicy;
-
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 
 /// CDRS session that holds a pool of connections to nodes.
 pub struct Session<
     T: CdrsTransport + Send + Sync + 'static,
     CM: ConnectionManager<T>,
-    LB: LoadBalancingStrategy<CM> + Send + Sync,
+    LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
     load_balancing: LB,
+    keyspace_holder: Arc<KeyspaceHolder>,
     compression: Compression,
     transport_buffer_size: usize,
     tcp_nodelay: bool,
@@ -58,15 +59,14 @@ pub struct Session<
 }
 
 impl<
-        'a,
         T: CdrsTransport + Send + Sync + 'static,
         CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > Session<T, CM, LB>
 {
     /// Basing on current session returns new `SessionPager` that can be used
     /// for performing paged queries.
-    pub fn paged(&'a self, page_size: i32) -> SessionPager<'a, T, CM, LB> {
+    pub fn paged(&self, page_size: i32) -> SessionPager<T, CM, LB> {
         SessionPager::new(self, page_size)
     }
 
@@ -89,7 +89,18 @@ impl<
             flags,
         );
 
-        let mut result = send_frame(self, options_frame, query_parameters.is_idempotent).await;
+        let keyspace = prepared
+            .keyspace
+            .as_deref()
+            .or_else(|| query_parameters.keyspace.as_deref());
+
+        let mut result = send_frame(
+            self,
+            options_frame,
+            query_parameters.is_idempotent,
+            keyspace,
+        )
+        .await;
 
         if let Err(error::Error::Server(error)) = &result {
             // if query is unprepared
@@ -101,7 +112,13 @@ impl<
                         .expect("Cannot write prepared query id!") = new.id.clone();
                     let flags = prepare_flags(with_tracing, with_warnings);
                     let options_frame = Frame::new_req_execute(&new.id, &query_parameters, flags);
-                    result = send_frame(self, options_frame, query_parameters.is_idempotent).await;
+                    result = send_frame(
+                        self,
+                        options_frame,
+                        query_parameters.is_idempotent,
+                        keyspace,
+                    )
+                    .await;
                 }
             }
         }
@@ -166,7 +183,7 @@ impl<
     /// method takes `with_tracing` and `with_warnings` flags to get
     /// tracing information and warnings. Returns the raw prepared
     /// query result.
-    pub async fn prepare_raw_tw<Q: ToString + Sync + Send>(
+    pub async fn prepare_raw_tw<Q: ToString>(
         &self,
         query: Q,
         with_tracing: bool,
@@ -176,7 +193,7 @@ impl<
 
         let query_frame = Frame::new_req_prepare(query.to_string(), flags);
 
-        send_frame(self, query_frame, false)
+        send_frame(self, query_frame, false, None)
             .await
             .and_then(|response| response.body())
             .and_then(|body| {
@@ -187,10 +204,7 @@ impl<
 
     /// Prepares query without additional tracing information and warnings.
     /// Returns the raw prepared query result.
-    pub async fn prepare_raw<Q: ToString + Sync + Send>(
-        &self,
-        query: Q,
-    ) -> error::Result<BodyResResultPrepared> {
+    pub async fn prepare_raw<Q: ToString>(&self, query: Q) -> error::Result<BodyResResultPrepared> {
         self.prepare_raw_tw(query, false, false).await
     }
 
@@ -198,7 +212,7 @@ impl<
     /// the method takes `with_tracing` and `with_warnings` flags
     /// to get tracing information and warnings. Returns the prepared
     /// query.
-    pub async fn prepare_tw<Q: ToString + Sync + Send>(
+    pub async fn prepare_tw<Q: ToString>(
         &self,
         query: Q,
         with_tracing: bool,
@@ -207,15 +221,19 @@ impl<
         let s = query.to_string();
         self.prepare_raw_tw(query, with_tracing, with_warnings)
             .await
-            .map(|x| PreparedQuery {
-                id: RwLock::new(x.id),
+            .map(|result| PreparedQuery {
+                id: RwLock::new(result.id),
                 query: s,
+                keyspace: result
+                    .metadata
+                    .global_table_spec
+                    .map(|(keyspace, _)| keyspace.as_plain()),
             })
     }
 
     /// It prepares query without additional tracing information and warnings.
     /// Returns the prepared query.
-    pub async fn prepare<Q: ToString + Sync + Send>(&self, query: Q) -> error::Result<PreparedQuery>
+    pub async fn prepare<Q: ToString>(&self, query: Q) -> error::Result<PreparedQuery>
     where
         Self: Sync,
     {
@@ -225,16 +243,17 @@ impl<
     /// Executes batch query with optional tracing and warnings.
     pub async fn batch_with_params_tw(
         &self,
-        batch: QueryBatch,
+        mut batch: QueryBatch,
         with_tracing: bool,
         with_warnings: bool,
     ) -> error::Result<Frame> {
         let flags = prepare_flags(with_tracing, with_warnings);
         let is_idempotent = batch.is_idempotent;
+        let keyspace = batch.keyspace.take();
 
         let query_frame = Frame::new_req_batch(batch, flags);
 
-        send_frame(self, query_frame, is_idempotent).await
+        send_frame(self, query_frame, is_idempotent, keyspace.as_deref()).await
     }
 
     /// Executes batch query.
@@ -243,33 +262,34 @@ impl<
     }
 
     /// Executes a query with parameters and ability to trace it and see warnings.
-    pub async fn query_with_params_tw<Q: ToString + Send>(
+    pub async fn query_with_params_tw<Q: ToString>(
         &self,
         query: Q,
-        query_params: QueryParams,
+        mut query_params: QueryParams,
         with_tracing: bool,
         with_warnings: bool,
     ) -> error::Result<Frame> {
         let is_idempotent = query_params.is_idempotent;
+        let keyspace = query_params.keyspace.take();
+
         let query = Query {
             query: query.to_string(),
             params: query_params,
         };
 
         let flags = prepare_flags(with_tracing, with_warnings);
-
         let query_frame = Frame::new_query(query, flags);
 
-        send_frame(self, query_frame, is_idempotent).await
+        send_frame(self, query_frame, is_idempotent, keyspace.as_deref()).await
     }
 
     /// Executes a query.
-    pub async fn query<Q: ToString + Send>(&self, query: Q) -> error::Result<Frame> {
+    pub async fn query<Q: ToString>(&self, query: Q) -> error::Result<Frame> {
         self.query_tw(query, false, false).await
     }
 
     /// Executes a query with ability to trace it and see warnings.
-    pub async fn query_tw<Q: ToString + Send>(
+    pub async fn query_tw<Q: ToString>(
         &self,
         query: Q,
         with_tracing: bool,
@@ -281,7 +301,7 @@ impl<
     }
 
     /// Executes a query with bounded values (either with or without names).
-    pub async fn query_with_values<Q: ToString + Send, V: Into<QueryValues> + Send>(
+    pub async fn query_with_values<Q: ToString, V: Into<QueryValues> + Send>(
         &self,
         query: Q,
         values: V,
@@ -291,7 +311,7 @@ impl<
 
     /// Executes a query with bounded values (either with or without names)
     /// and ability to see warnings, trace a request and default parameters.
-    pub async fn query_with_values_tw<Q: ToString + Send, V: Into<QueryValues> + Send>(
+    pub async fn query_with_values_tw<Q: ToString, V: Into<QueryValues> + Send>(
         &self,
         query: Q,
         values: V,
@@ -305,7 +325,7 @@ impl<
     }
 
     /// Executes a query with query params without warnings and tracing.
-    pub async fn query_with_params<Q: ToString + Send>(
+    pub async fn query_with_params<Q: ToString>(
         &self,
         query: Q,
         query_params: QueryParams,
@@ -314,54 +334,27 @@ impl<
             .await
     }
 
-    /// Returns connection from a load balancer.
-    pub async fn load_balanced_connection(&self) -> Option<error::Result<Arc<T>>> {
-        // when using a load balancer with > 1 node, don't use reconnection policy for a given node,
-        // but jump to the next one
-
-        let connection_manager = {
-            if self.load_balancing.size() < 2 {
-                self.load_balancing.next()
-            } else {
-                None
-            }
-        };
-
-        if let Some(connection_manager) = connection_manager {
-            let connection = connection_manager
-                .connection(self.reconnection_policy.deref())
-                .await;
-
-            return match connection {
-                Ok(connection) => Some(Ok(connection)),
-                Err(error) => Some(Err(error)),
-            };
-        }
-
-        loop {
-            let connection_manager = self.load_balancing.next()?;
-            let connection = connection_manager
-                .connection(&NEVER_RECONNECTION_POLICY)
-                .await;
-            if let Ok(connection) = connection {
-                return Some(Ok(connection));
-            }
-        }
+    // Returns currently set global keyspace.
+    #[inline]
+    pub fn current_keyspace(&self) -> Option<Arc<String>> {
+        self.keyspace_holder.current_keyspace()
     }
 
-    /// Returns connection to the desired node.
-    pub async fn node_connection(&self, node: &SocketAddr) -> Option<error::Result<Arc<T>>> {
-        let connection_manager = self.load_balancing.find(|cm| cm.addr() == *node)?;
+    /// Returns connection to given node.
+    #[inline]
+    pub async fn connection(&self, node: &Node<T, CM>) -> error::Result<Arc<T>> {
+        node.connection(self.reconnection_policy.deref()).await
+    }
 
-        Some(
-            connection_manager
-                .connection(self.reconnection_policy.deref())
-                .await,
-        )
+    /// Returns query plan for given request.
+    #[inline]
+    pub fn query_plan(&self, request: Request) -> QueryPlan<T, CM> {
+        self.load_balancing.query_plan(request)
     }
 
     fn new(
         load_balancing: LB,
+        keyspace_holder: Arc<KeyspaceHolder>,
         compression: Compression,
         transport_buffer_size: usize,
         tcp_nodelay: bool,
@@ -370,6 +363,7 @@ impl<
     ) -> Self {
         Session {
             load_balancing,
+            keyspace_holder,
             compression,
             transport_buffer_size,
             tcp_nodelay,
@@ -384,7 +378,7 @@ impl<
 impl<
         T: CdrsTransport + 'static,
         CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > GetRetryPolicy for Session<T, CM, LB>
 {
     fn retry_policy(&self) -> &dyn RetryPolicy {
@@ -404,7 +398,7 @@ pub struct ReconnectionPolicyWrapper(pub Box<dyn ReconnectionPolicy + Send + Syn
 /// balancing mechanisms in order to support unusual node discovery mechanisms
 /// or configuration needs.
 ///
-/// The config object supplied differs from the ClusterTcpConfig and ClusterRustlsConfig
+/// The config object supplied differs from the [`ClusterTcpConfig`] and [`ClusterRustlsConfig`]
 /// objects in that it is not expected to include an address. Instead the same configuration
 /// will be applied to all connections across the cluster.
 pub async fn connect_generic_static<T, C, A, CM, LB>(
@@ -420,19 +414,20 @@ where
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T>,
     C: GenericClusterConfig<T, CM, Address = A>,
-    LB: LoadBalancingStrategy<CM> + Sized + Send + Sync,
+    LB: LoadBalancingStrategy<T, CM> + Sized + Send + Sync,
 {
     let mut nodes = Vec::with_capacity(initial_nodes.len());
 
     for node in initial_nodes {
         let connection_manager = config.create_manager(node.clone()).await?;
-        nodes.push(Arc::new(connection_manager));
+        nodes.push(Arc::new(Node::new(connection_manager)));
     }
 
     load_balancing.init(nodes);
 
     Ok(Session {
         load_balancing,
+        keyspace_holder: Default::default(),
         compression,
         transport_buffer_size: DEFAULT_TRANSPORT_BUFFER_SIZE,
         tcp_nodelay: true,
@@ -456,7 +451,7 @@ pub async fn new<LB>(
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
 ) -> error::Result<Session<TransportTcp, TcpConnectionManager, LB>>
 where
-    LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync,
+    LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync,
 {
     Ok(TcpSessionBuilder::new(load_balancing, node_configs.clone())
         .with_retry_policy(retry_policy)
@@ -477,7 +472,7 @@ pub async fn new_snappy<LB>(
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
 ) -> error::Result<Session<TransportTcp, TcpConnectionManager, LB>>
 where
-    LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync,
+    LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync,
 {
     Ok(TcpSessionBuilder::new(load_balancing, node_configs.clone())
         .with_compression(Compression::Snappy)
@@ -499,7 +494,7 @@ pub async fn new_lz4<LB>(
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
 ) -> error::Result<Session<TransportTcp, TcpConnectionManager, LB>>
 where
-    LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync,
+    LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync,
 {
     Ok(TcpSessionBuilder::new(load_balancing, node_configs.clone())
         .with_compression(Compression::Lz4)
@@ -522,7 +517,7 @@ pub async fn new_tls<LB>(
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
 ) -> error::Result<Session<TransportRustls, RustlsConnectionManager, LB>>
 where
-    LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync,
+    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync,
 {
     Ok(
         RustlsSessionBuilder::new(load_balancing, node_configs.clone())
@@ -546,7 +541,7 @@ pub async fn new_snappy_tls<LB>(
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
 ) -> error::Result<Session<TransportRustls, RustlsConnectionManager, LB>>
 where
-    LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync,
+    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync,
 {
     Ok(
         RustlsSessionBuilder::new(load_balancing, node_configs.clone())
@@ -571,7 +566,7 @@ pub async fn new_lz4_tls<LB>(
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
 ) -> error::Result<Session<TransportRustls, RustlsConnectionManager, LB>>
 where
-    LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync,
+    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync,
 {
     Ok(
         RustlsSessionBuilder::new(load_balancing, node_configs.clone())
@@ -585,7 +580,7 @@ where
 impl<
         T: CdrsTransport + 'static,
         CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<CM> + Send + Sync,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > Session<T, CM, LB>
 {
     /// Returns new event listener.
@@ -698,7 +693,11 @@ impl<
     }
 }
 
-struct SessionConfig<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> {
+struct SessionConfig<
+    T: CdrsTransport,
+    CM: ConnectionManager<T>,
+    LB: LoadBalancingStrategy<T, CM> + Send + Sync,
+> {
     compression: Compression,
     transport_buffer_size: usize,
     tcp_nodelay: bool,
@@ -706,9 +705,15 @@ struct SessionConfig<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> {
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Box<dyn ReconnectionPolicy + Send + Sync>,
     _connection_manager: PhantomData<CM>,
+    _transport: PhantomData<T>,
 }
 
-impl<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> SessionConfig<CM, LB> {
+impl<
+        T: CdrsTransport,
+        CM: ConnectionManager<T>,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
+    > SessionConfig<T, CM, LB>
+{
     fn new(
         compression: Compression,
         transport_buffer_size: usize,
@@ -725,6 +730,7 @@ impl<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> SessionConfig<CM, LB> {
             retry_policy,
             reconnection_policy,
             _connection_manager: Default::default(),
+            _transport: Default::default(),
         }
     }
 }
@@ -735,7 +741,7 @@ impl<CM, LB: LoadBalancingStrategy<CM> + Send + Sync> SessionConfig<CM, LB> {
 pub trait SessionBuilder<
     T: CdrsTransport + Send + Sync + 'static,
     CM: ConnectionManager<T>,
-    LB: LoadBalancingStrategy<CM> + Send + Sync,
+    LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 >
 {
     /// Sets new compression.
@@ -762,12 +768,16 @@ pub trait SessionBuilder<
 }
 
 /// Builder for non-TLS sessions.
-pub struct TcpSessionBuilder<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync> {
-    config: SessionConfig<TcpConnectionManager, LB>,
+pub struct TcpSessionBuilder<
+    LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync,
+> {
+    config: SessionConfig<TransportTcp, TcpConnectionManager, LB>,
     node_configs: ClusterTcpConfig,
 }
 
-impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync> TcpSessionBuilder<LB> {
+impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync>
+    TcpSessionBuilder<LB>
+{
     /// Creates a new builder with default session configuration.
     pub fn new(load_balancing: LB, node_configs: ClusterTcpConfig) -> Self {
         TcpSessionBuilder {
@@ -784,7 +794,7 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync> TcpSessionBu
     }
 }
 
-impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
+impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync>
     SessionBuilder<TransportTcp, TcpConnectionManager, LB> for TcpSessionBuilder<LB>
 {
     fn with_compression(mut self, compression: Compression) -> Self {
@@ -828,13 +838,14 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
                 self.config.tcp_nodelay,
                 None,
             );
-            nodes.push(Arc::new(connection_manager));
+            nodes.push(Arc::new(Node::new(connection_manager)));
         }
 
         self.config.load_balancing.init(nodes);
 
         Session::new(
             self.config.load_balancing,
+            keyspace_holder,
             self.config.compression,
             self.config.transport_buffer_size,
             self.config.tcp_nodelay,
@@ -846,13 +857,17 @@ impl<LB: LoadBalancingStrategy<TcpConnectionManager> + Send + Sync>
 
 #[cfg(feature = "rust-tls")]
 /// Builder for TLS sessions.
-pub struct RustlsSessionBuilder<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync> {
-    config: SessionConfig<RustlsConnectionManager, LB>,
+pub struct RustlsSessionBuilder<
+    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync,
+> {
+    config: SessionConfig<TransportRustls, RustlsConnectionManager, LB>,
     node_configs: ClusterRustlsConfig,
 }
 
 #[cfg(feature = "rust-tls")]
-impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync> RustlsSessionBuilder<LB> {
+impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync>
+    RustlsSessionBuilder<LB>
+{
     /// Creates a new builder with default session configuration.
     pub fn new(load_balancing: LB, node_configs: ClusterRustlsConfig) -> Self {
         RustlsSessionBuilder {
@@ -870,7 +885,7 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync> RustlsSes
 }
 
 #[cfg(feature = "rust-tls")]
-impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync>
+impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync>
     SessionBuilder<TransportRustls, RustlsConnectionManager, LB> for RustlsSessionBuilder<LB>
 {
     fn with_compression(mut self, compression: Compression) -> Self {
@@ -914,13 +929,14 @@ impl<LB: LoadBalancingStrategy<RustlsConnectionManager> + Send + Sync>
                 self.config.tcp_nodelay,
                 None,
             );
-            nodes.push(Arc::new(connection_manager));
+            nodes.push(Arc::new(Node::new(connection_manager)));
         }
 
         self.config.load_balancing.init(nodes);
 
         Session::new(
             self.config.load_balancing,
+            keyspace_holder,
             self.config.compression,
             self.config.transport_buffer_size,
             self.config.tcp_nodelay,

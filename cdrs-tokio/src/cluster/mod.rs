@@ -3,6 +3,7 @@ mod config_rustls;
 mod config_tcp;
 mod connection_manager;
 mod keyspace_holder;
+mod node;
 mod node_address;
 mod pager;
 #[cfg(feature = "rust-tls")]
@@ -24,6 +25,8 @@ pub use crate::cluster::connection_manager::{startup, ConnectionManager};
 #[cfg(feature = "rust-tls")]
 pub use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
 pub use crate::cluster::tcp_connection_manager::TcpConnectionManager;
+
+pub use crate::cluster::node::Node;
 
 use crate::error::Result;
 use crate::future::BoxFuture;
