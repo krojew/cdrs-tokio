@@ -32,10 +32,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
     }
 
     fn query_plan(&self, _request: Request) -> QueryPlan<T, CM> {
-        if let Some(node) = self.cluster.choose(&mut thread_rng()) {
-            vec![node.clone()]
-        } else {
-            vec![]
-        }
+        let mut result = self.cluster.clone();
+        result.shuffle(&mut thread_rng());
+        result
     }
 }
