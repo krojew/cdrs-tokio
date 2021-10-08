@@ -1,11 +1,10 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::mpsc::{channel, Receiver};
 use tokio::time::sleep;
 
-use crate::cluster::ConnectionManager;
+use crate::cluster::{ClusterMetadataManager, ConnectionManager};
 use crate::events::{ServerEvent, SimpleServerEvent};
 use crate::frame::Frame;
 use crate::load_balancing::LoadBalancingStrategy;
@@ -22,9 +21,9 @@ pub struct ControlConnection<
 > {
     load_balancing: Arc<LB>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+    cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
     event_sender: Sender<ServerEvent>,
     current_connection: Option<T>,
-    _connection_manager: PhantomData<CM>,
 }
 
 impl<
@@ -36,14 +35,15 @@ impl<
     pub fn new(
         load_balancing: Arc<LB>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+        cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
         event_sender: Sender<ServerEvent>,
     ) -> Self {
         ControlConnection {
             load_balancing,
             reconnection_policy,
+            cluster_metadata_manager,
             event_sender,
             current_connection: None,
-            _connection_manager: Default::default(),
         }
     }
 
@@ -71,7 +71,9 @@ impl<
                 let mut schedule = self.reconnection_policy.new_node_schedule();
 
                 loop {
-                    let nodes = self.load_balancing.query_plan(None);
+                    let nodes = self
+                        .load_balancing
+                        .query_plan(None, self.cluster_metadata_manager.metadata().as_ref());
                     if nodes.is_empty() {
                         // as long as the session is alive, try establishing control connection
                         let delay = schedule.next_delay().unwrap_or(DEFAULT_RECONNECT_DELAY);

@@ -1,3 +1,5 @@
+mod cluster_metadata;
+mod cluster_metadata_manager;
 #[cfg(feature = "rust-tls")]
 mod config_rustls;
 mod config_tcp;
@@ -12,6 +14,8 @@ mod rustls_connection_manager;
 pub mod session;
 mod tcp_connection_manager;
 
+pub use crate::cluster::cluster_metadata::ClusterMetadata;
+pub(crate) use crate::cluster::cluster_metadata_manager::ClusterMetadataManager;
 #[cfg(feature = "rust-tls")]
 pub use crate::cluster::config_rustls::{
     ClusterRustlsConfig, NodeRustlsConfig, NodeRustlsConfigBuilder,

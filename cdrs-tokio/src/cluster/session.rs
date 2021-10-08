@@ -12,6 +12,7 @@ use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::ClusterRustlsConfig;
 use crate::cluster::SessionPager;
+use crate::cluster::{ClusterMetadata, ClusterMetadataManager};
 use crate::cluster::{
     ClusterTcpConfig, GenericClusterConfig, GetRetryPolicy, KeyspaceHolder, Node,
 };
@@ -46,6 +47,7 @@ pub struct Session<
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     control_connection_handle: AbortHandle,
     event_sender: Sender<ServerEvent>,
+    cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
     _transport: PhantomData<T>,
     _connection_manager: PhantomData<CM>,
 }
@@ -337,17 +339,24 @@ impl<
             .await
     }
 
-    // Returns currently set global keyspace.
+    /// Returns currently set global keyspace.
     #[inline]
     pub fn current_keyspace(&self) -> Option<Arc<String>> {
         self.keyspace_holder.current_keyspace()
+    }
+
+    /// Returns current cluster metadata.
+    #[inline]
+    pub fn cluster_metadata(&self) -> Arc<ClusterMetadata<T, CM>> {
+        self.cluster_metadata_manager.metadata()
     }
 
     /// Returns query plan for given request. If no request is given, return a generic plan for
     /// establishing connection(s) to node(s).
     #[inline]
     pub fn query_plan(&self, request: Option<Request>) -> QueryPlan<T, CM> {
-        self.load_balancing.query_plan(request)
+        self.load_balancing
+            .query_plan(request, self.cluster_metadata().as_ref())
     }
 
     /// Creates a new server event receiver. You can use multiple receivers at the same time.
@@ -361,13 +370,18 @@ impl<
         keyspace_holder: Arc<KeyspaceHolder>,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+        contact_points: Vec<Arc<Node<T, CM>>>,
     ) -> Self {
         let load_balancing = Arc::new(load_balancing);
-        let (event_sender, _) = channel(EVENT_CHANNEL_CAPACITY);
+        let (event_sender, event_receiver) = channel(EVENT_CHANNEL_CAPACITY);
+
+        let cluster_metadata_manager =
+            Arc::new(ClusterMetadataManager::new(event_receiver, contact_points));
 
         let control_connection = ControlConnection::new(
             load_balancing.clone(),
             reconnection_policy.clone(),
+            cluster_metadata_manager.clone(),
             event_sender.clone(),
         );
 
@@ -382,6 +396,7 @@ impl<
             retry_policy,
             control_connection_handle,
             event_sender,
+            cluster_metadata_manager,
             _transport: Default::default(),
             _connection_manager: Default::default(),
         }
@@ -417,7 +432,7 @@ pub struct ReconnectionPolicyWrapper(pub Arc<dyn ReconnectionPolicy + Send + Syn
 pub async fn connect_generic_static<T, C, A, CM, LB>(
     config: &C,
     initial_nodes: &[A],
-    mut load_balancing: LB,
+    load_balancing: LB,
     retry_policy: RetryPolicyWrapper,
     reconnection_policy: ReconnectionPolicyWrapper,
 ) -> error::Result<Session<T, CM, LB>>
@@ -435,13 +450,12 @@ where
         nodes.push(Arc::new(Node::new(connection_manager)));
     }
 
-    load_balancing.init(nodes);
-
     Ok(Session::new(
         load_balancing,
         Default::default(),
         retry_policy.0,
         reconnection_policy.0,
+        nodes,
     ))
 }
 
@@ -716,7 +730,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         self
     }
 
-    fn build(mut self) -> Session<TransportTcp, TcpConnectionManager, LB> {
+    fn build(self) -> Session<TransportTcp, TcpConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let mut nodes = Vec::with_capacity(self.node_configs.0.len());
 
@@ -732,13 +746,12 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             nodes.push(Arc::new(Node::new(connection_manager)));
         }
 
-        self.config.load_balancing.init(nodes);
-
         Session::new(
             self.config.load_balancing,
             keyspace_holder,
             self.config.retry_policy,
             self.config.reconnection_policy,
+            nodes,
         )
     }
 }
@@ -805,7 +818,7 @@ impl<
         self
     }
 
-    fn build(mut self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
+    fn build(self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let mut nodes = Vec::with_capacity(self.node_configs.0.len());
 
@@ -821,13 +834,12 @@ impl<
             nodes.push(Arc::new(Node::new(connection_manager)));
         }
 
-        self.config.load_balancing.init(nodes);
-
         Session::new(
             self.config.load_balancing,
             keyspace_holder,
             self.config.retry_policy,
             self.config.reconnection_policy,
+            nodes,
         )
     }
 }

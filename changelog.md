@@ -21,7 +21,7 @@
 * Removed `FromSingleByte` and `AsByte` in favor of `From`/`TryFrom`.
 * Removed traits along with `async-trait` dependency: `BatchExecutor`, `ExecExecutor`, `PrepareExecutor`, 
   `QueryExecutor`, `GetConnection` and `CdrsSession`. Everything is now embedded directly in `Session`.
-* Load balancing strategy now returns query plans, rather than individual nodes.
+* Load balancing strategy now returns query plans, rather than individual nodes, and operates on cluster metadata.
 * Removed `SingleNode` load balancing strategy.
 
 ## 5.0.0

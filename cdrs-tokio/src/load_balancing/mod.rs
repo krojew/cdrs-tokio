@@ -4,7 +4,7 @@ mod round_robin;
 
 use std::sync::Arc;
 
-use crate::cluster::{ConnectionManager, Node};
+use crate::cluster::{ClusterMetadata, ConnectionManager, Node};
 pub use crate::load_balancing::random::RandomLoadBalancingStrategy;
 pub use crate::load_balancing::request::Request;
 pub use crate::load_balancing::round_robin::RoundRobinBalancingStrategy;
@@ -14,10 +14,11 @@ pub type QueryPlan<T, CM> = Vec<Arc<Node<T, CM>>>;
 
 /// Load balancing strategy, usually used for managing target node connections.
 pub trait LoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
-    /// Initializes the strategy with given connection managers to nodes.
-    fn init(&mut self, connection_managers: Vec<Arc<Node<T, CM>>>);
-
     /// Returns query plan for given request.  If no request is given, return a generic plan for
     /// establishing connection(s) to node(s).
-    fn query_plan(&self, request: Option<Request>) -> QueryPlan<T, CM>;
+    fn query_plan(
+        &self,
+        request: Option<Request>,
+        cluster: &ClusterMetadata<T, CM>,
+    ) -> QueryPlan<T, CM>;
 }
