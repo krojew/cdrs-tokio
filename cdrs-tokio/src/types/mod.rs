@@ -499,7 +499,7 @@ impl FromCursor for CIntShort {
 
 /// The structure which represents Cassandra inet
 /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CInet {
     pub addr: SocketAddr,
 }

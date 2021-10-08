@@ -4,7 +4,7 @@ use crate::error;
 use crate::frame::events::ServerEvent;
 use crate::frame::FromCursor;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BodyResEvent {
     pub event: ServerEvent,
 }

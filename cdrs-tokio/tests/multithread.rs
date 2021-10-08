@@ -22,7 +22,7 @@ async fn multithread() {
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
     let no_compression = TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config)
-        .with_reconnection_policy(Box::new(NeverReconnectionPolicy::default()))
+        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build();
 
     no_compression.query("CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };").await.expect("Could not create ks");

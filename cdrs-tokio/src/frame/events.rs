@@ -50,6 +50,12 @@ impl SimpleServerEvent {
     }
 }
 
+impl ToString for SimpleServerEvent {
+    fn to_string(&self) -> String {
+        self.as_string()
+    }
+}
+
 impl From<ServerEvent> for SimpleServerEvent {
     fn from(event: ServerEvent) -> SimpleServerEvent {
         match event {
@@ -57,6 +63,12 @@ impl From<ServerEvent> for SimpleServerEvent {
             ServerEvent::StatusChange(_) => SimpleServerEvent::StatusChange,
             ServerEvent::SchemaChange(_) => SimpleServerEvent::SchemaChange,
         }
+    }
+}
+
+impl From<SimpleServerEvent> for String {
+    fn from(event: SimpleServerEvent) -> Self {
+        event.to_string()
     }
 }
 
@@ -77,7 +89,7 @@ impl PartialEq<ServerEvent> for SimpleServerEvent {
 }
 
 /// Full server event that contains all details about a concrete change.
-#[derive(Debug)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum ServerEvent {
     /// Events related to change in the cluster topology
     TopologyChange(TopologyChange),
@@ -113,7 +125,7 @@ impl FromCursor for ServerEvent {
 }
 
 /// Events related to change in the cluster topology
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TopologyChange {
     pub change_type: TopologyChangeType,
     pub addr: CInet,
@@ -128,7 +140,7 @@ impl FromCursor for TopologyChange {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub enum TopologyChangeType {
     NewNode,
     RemovedNode,
@@ -152,7 +164,7 @@ impl FromCursor for TopologyChangeType {
 }
 
 /// Events related to change of node status.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StatusChange {
     pub change_type: StatusChangeType,
     pub addr: CInet,
@@ -167,7 +179,7 @@ impl FromCursor for StatusChange {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum StatusChangeType {
     Up,
     Down,
@@ -187,7 +199,7 @@ impl FromCursor for StatusChangeType {
 }
 
 /// Events related to schema change.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct SchemaChange {
     pub change_type: SchemaChangeType,
     pub target: SchemaChangeTarget,
@@ -209,7 +221,7 @@ impl FromCursor for SchemaChange {
 }
 
 /// Represents type of changes.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SchemaChangeType {
     Created,
     Updated,
@@ -231,7 +243,7 @@ impl FromCursor for SchemaChangeType {
 }
 
 /// Refers to a target of changes were made.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum SchemaChangeTarget {
     Keyspace,
     Table,
@@ -257,14 +269,14 @@ impl FromCursor for SchemaChangeTarget {
 }
 
 /// Option that contains an information about changes were made.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum ChangeSchemeOptions {
     /// Changes related to keyspaces. Contains keyspace name.
     Keyspace(String),
     /// Changes related to tables. Contains keyspace and table names.
     TableType(String, String),
     /// Changes related to functions and aggregations. Contains:
-    /// * keyspace containing the user defined function / aggregate
+    /// * keyspace containing the user defined function/aggregate
     /// * the function/aggregate name
     /// * list of strings, one string for each argument type (as CQL type)
     FunctionAggregate(String, String, Vec<String>),

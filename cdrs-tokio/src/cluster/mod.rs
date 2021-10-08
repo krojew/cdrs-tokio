@@ -2,6 +2,7 @@
 mod config_rustls;
 mod config_tcp;
 mod connection_manager;
+mod control_connection;
 mod keyspace_holder;
 mod node;
 mod node_address;

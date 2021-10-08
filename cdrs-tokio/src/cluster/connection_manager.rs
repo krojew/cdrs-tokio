@@ -1,6 +1,6 @@
 use std::io;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 
 use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::KeyspaceHolder;
@@ -9,20 +9,13 @@ use crate::error::{Error, Result};
 use crate::frame::frame_response::ResponseBody;
 use crate::frame::{Frame, Opcode};
 use crate::future::BoxFuture;
-use crate::retry::ReconnectionPolicy;
 use crate::transport::CdrsTransport;
-
-pub type ThreadSafeReconnectionPolicy = dyn ReconnectionPolicy + Send + Sync;
 
 /// Manages a connection to a single node. Should create a new one, if there's no present already or
 /// a previous one has broken.
 pub trait ConnectionManager<T: CdrsTransport> {
-    /// Tries to establish a new, ready to use connection. Given reconnection policy should be used
-    /// if the connection cannot be established to given node.
-    fn connection<'a>(
-        &'a self,
-        reconnection_policy: &'a ThreadSafeReconnectionPolicy,
-    ) -> BoxFuture<Result<Arc<T>>>;
+    /// Tries to establish a new, ready to use connection with optional server event handler.
+    fn connection(&self, event_handler: Option<Sender<Frame>>) -> BoxFuture<Result<T>>;
 
     // Returns associated address.
     fn addr(&self) -> SocketAddr;

@@ -28,7 +28,7 @@ use cdrs_tokio::cluster::{KeyspaceHolder, NodeTcpConfigBuilder};
 use cdrs_tokio::compression::Compression;
 use cdrs_tokio::frame::Serialize;
 use cdrs_tokio::future::BoxFuture;
-use cdrs_tokio::retry::ConstantReconnectionPolicy;
+use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
 use futures::FutureExt;
 use maplit::hashmap;
 
@@ -54,6 +54,7 @@ struct VirtualClusterConfig {
     mask: Ipv4Addr,
     actual: Ipv4Addr,
     keyspace_holder: Arc<KeyspaceHolder>,
+    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
 }
 
 #[derive(Clone)]
@@ -97,10 +98,10 @@ impl GenericClusterConfig<TransportTcp, TcpConnectionManager> for VirtualCluster
                     .cloned()
                     .unwrap(),
                 self.keyspace_holder.clone(),
+                self.reconnection_policy.clone(),
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
                 true,
-                None,
             ))
         }
         .boxed()
@@ -115,37 +116,38 @@ async fn main() {
     let mask = Ipv4Addr::new(255, 255, 255, 0);
     let actual = Ipv4Addr::new(127, 0, 0, 0);
 
+    let reconnection_policy = Arc::new(ConstantReconnectionPolicy::default());
+
     let cluster_config = VirtualClusterConfig {
         authenticator,
         mask,
         actual,
         keyspace_holder: Default::default(),
+        reconnection_policy: reconnection_policy.clone(),
     };
     let nodes = [
         VirtualConnectionAddress(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 9042)),
         VirtualConnectionAddress(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 9043)),
     ];
     let load_balancing = RoundRobinBalancingStrategy::new();
-    let compression = Compression::None;
 
-    let mut no_compression = cdrs_tokio::cluster::connect_generic_static(
+    let mut session = cdrs_tokio::cluster::connect_generic_static(
         &cluster_config,
         &nodes,
         load_balancing,
-        compression,
         RetryPolicyWrapper(Box::new(DefaultRetryPolicy::default())),
-        ReconnectionPolicyWrapper(Box::new(ConstantReconnectionPolicy::default())),
+        ReconnectionPolicyWrapper(reconnection_policy),
     )
     .await
     .expect("session should be created");
 
-    create_keyspace(&mut no_compression).await;
-    create_udt(&mut no_compression).await;
-    create_table(&mut no_compression).await;
-    insert_struct(&mut no_compression).await;
-    select_struct(&mut no_compression).await;
-    update_struct(&mut no_compression).await;
-    delete_struct(&mut no_compression).await;
+    create_keyspace(&mut session).await;
+    create_udt(&mut session).await;
+    create_table(&mut session).await;
+    insert_struct(&mut session).await;
+    select_struct(&mut session).await;
+    update_struct(&mut session).await;
+    delete_struct(&mut session).await;
 }
 
 #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]

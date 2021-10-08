@@ -35,21 +35,21 @@ async fn main() {
         .await
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
-    let mut no_compression: CurrentSession =
+    let mut session: CurrentSession =
         TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config).build();
 
-    create_keyspace(&mut no_compression).await;
-    create_udt(&mut no_compression).await;
-    create_table(&mut no_compression).await;
+    create_keyspace(&mut session).await;
+    create_udt(&mut session).await;
+    create_table(&mut session).await;
 
-    insert_struct(&mut no_compression).await;
-    append_list(&mut no_compression).await;
-    prepend_list(&mut no_compression).await;
-    append_set(&mut no_compression).await;
-    append_map(&mut no_compression).await;
+    insert_struct(&mut session).await;
+    append_list(&mut session).await;
+    prepend_list(&mut session).await;
+    append_set(&mut session).await;
+    append_map(&mut session).await;
 
-    select_struct(&mut no_compression).await;
-    delete_struct(&mut no_compression).await;
+    select_struct(&mut session).await;
+    delete_struct(&mut session).await;
 }
 
 #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]

@@ -113,9 +113,9 @@ pub struct QueryPager<'a, Q: ToString, P: 'a> {
 impl<
         'a,
         Q: ToString,
-        T: CdrsTransport + 'static,
-        CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
+        T: CdrsTransport + Send + Sync + 'static,
+        CM: ConnectionManager<T> + Send + Sync + 'static,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
     > QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
 {
     pub fn into_pager_state(self) -> PagerState {
@@ -173,9 +173,9 @@ pub struct ExecPager<'a, P: 'a> {
 
 impl<
         'a,
-        T: CdrsTransport + 'static,
-        CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
+        T: CdrsTransport + Send + Sync + 'static,
+        CM: ConnectionManager<T> + Send + Sync + 'static,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
     > ExecPager<'a, SessionPager<'a, T, CM, LB>>
 {
     pub fn into_pager_state(self) -> PagerState {

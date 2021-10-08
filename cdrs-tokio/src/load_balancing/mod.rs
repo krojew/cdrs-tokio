@@ -17,6 +17,7 @@ pub trait LoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
     /// Initializes the strategy with given connection managers to nodes.
     fn init(&mut self, connection_managers: Vec<Arc<Node<T, CM>>>);
 
-    /// Returns query plan for given request.
-    fn query_plan(&self, request: Request) -> QueryPlan<T, CM>;
+    /// Returns query plan for given request.  If no request is given, return a generic plan for
+    /// establishing connection(s) to node(s).
+    fn query_plan(&self, request: Option<Request>) -> QueryPlan<T, CM>;
 }

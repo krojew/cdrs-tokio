@@ -31,7 +31,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         self.cluster = connection_managers;
     }
 
-    fn query_plan(&self, _request: Request) -> QueryPlan<T, CM> {
+    fn query_plan(&self, _request: Option<Request>) -> QueryPlan<T, CM> {
         let mut result = self.cluster.clone();
         result.shuffle(&mut thread_rng());
         result

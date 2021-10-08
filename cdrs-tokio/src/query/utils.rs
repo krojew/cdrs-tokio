@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::cluster::session::Session;
 use crate::cluster::{ConnectionManager, GetRetryPolicy};
 use crate::error;
@@ -24,8 +22,8 @@ pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
 
 pub(crate) async fn send_frame<
     T: CdrsTransport + Send + Sync + 'static,
-    CM: ConnectionManager<T>,
-    LB: LoadBalancingStrategy<T, CM> + Send + Sync,
+    CM: ConnectionManager<T> + Send + Sync + 'static,
+    LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
 >(
     session: &Session<T, CM, LB>,
     frame: Frame,
@@ -37,11 +35,11 @@ pub(crate) async fn send_frame<
     let current_keyspace = session.current_keyspace();
     let request =
         Request::new(keyspace.or_else(|| current_keyspace.as_ref().map(|keyspace| &***keyspace)));
-    let query_plan = session.query_plan(request);
+    let query_plan = session.query_plan(Some(request));
 
     'next_node: for node in query_plan {
         loop {
-            let transport = session.connection(node.deref()).await?;
+            let transport = node.persistent_connection().await?;
             match transport.write_frame(&frame).await {
                 Ok(frame) => return Ok(frame),
                 Err(error) => {

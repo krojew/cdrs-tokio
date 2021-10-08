@@ -57,20 +57,20 @@ async fn main() {
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobinBalancingStrategy::new();
-    let no_compression = TcpSessionBuilder::new(lb, cluster_config).build();
+    let session = TcpSessionBuilder::new(lb, cluster_config).build();
 
-    create_keyspace(&no_compression).await;
-    create_udt(&no_compression).await;
-    create_table(&no_compression).await;
-    fill_table(&no_compression).await;
+    create_keyspace(&session).await;
+    create_udt(&session).await;
+    create_table(&session).await;
+    fill_table(&session).await;
     println!("Internal pager state\n");
-    paged_selection_query(&no_compression).await;
+    paged_selection_query(&session).await;
     println!("\n\nExternal pager state for stateless executions\n");
-    paged_selection_query_with_state(&no_compression, PagerState::new()).await;
+    paged_selection_query_with_state(&session, PagerState::new()).await;
     println!("\n\nPager with query values (list)\n");
-    paged_with_values_list(&no_compression).await;
+    paged_with_values_list(&session).await;
     println!("\n\nPager with query value (no list)\n");
-    paged_with_value(&no_compression).await;
+    paged_with_value(&session).await;
     println!("\n\nFinished paged query tests\n");
 }
 

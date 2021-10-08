@@ -29,20 +29,19 @@ async fn main() {
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobinBalancingStrategy::new();
-    let no_compression: Arc<CurrentSession> =
-        Arc::new(TcpSessionBuilder::new(lb, cluster_config).build());
+    let session: Arc<CurrentSession> = Arc::new(TcpSessionBuilder::new(lb, cluster_config).build());
 
-    create_keyspace(no_compression.clone()).await;
-    create_table(no_compression.clone()).await;
+    create_keyspace(session.clone()).await;
+    create_table(session.clone()).await;
 
     for i in 0..20 {
-        let thread_session = no_compression.clone();
+        let thread_session = session.clone();
         tokio::spawn(insert_struct(thread_session, i))
             .await
             .expect("thread error");
     }
 
-    select_struct(no_compression).await;
+    select_struct(session).await;
 }
 
 #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]

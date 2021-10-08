@@ -42,13 +42,13 @@ async fn main() {
         .unwrap();
     let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobinBalancingStrategy::new();
-    let mut no_compression = TcpSessionBuilder::new(lb, cluster_config).build();
+    let mut session = TcpSessionBuilder::new(lb, cluster_config).build();
 
-    create_keyspace(&mut no_compression).await;
-    create_table(&mut no_compression).await;
+    create_keyspace(&mut session).await;
+    create_table(&mut session).await;
 
     let insert_struct_cql = "INSERT INTO test_ks.my_test_table (key) VALUES (?)";
-    let prepared_query = no_compression
+    let prepared_query = session
         .prepare(insert_struct_cql)
         .await
         .expect("Prepare query error");
@@ -56,10 +56,10 @@ async fn main() {
     for k in 100..110 {
         let row = RowStruct { key: k as i32 };
 
-        insert_row(&mut no_compression, row, &prepared_query).await;
+        insert_row(&mut session, row, &prepared_query).await;
     }
 
-    batch_few_queries(&mut no_compression, insert_struct_cql).await;
+    batch_few_queries(&mut session, insert_struct_cql).await;
 }
 
 async fn create_keyspace(session: &mut CurrentSession) {

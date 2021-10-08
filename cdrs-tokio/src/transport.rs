@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{split, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::TlsConnector as RustlsConnector;
 
@@ -35,7 +36,7 @@ use crate::Result;
 
 ///General CDRS transport trait. Both [`TransportTcp`]
 ///and [`TransportRustls`] has their own implementations of this trait.
-pub trait CdrsTransport: Sized + Send + Sync {
+pub trait CdrsTransport: Send + Sync {
     /// Schedules data frame for writing and waits for a response
     fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>>;
 
@@ -44,6 +45,10 @@ pub trait CdrsTransport: Sized + Send + Sync {
 
     /// Returns associated node address
     fn addr(&self) -> &SocketAddr;
+
+    /// Starts reading frames from the node until the connection is broken. Intended to use outside
+    /// normal request-response flow.
+    fn read_frames(self) -> BoxFuture<'static, ()>;
 }
 
 /// Default Tcp transport.
@@ -93,6 +98,11 @@ impl CdrsTransport for TransportTcp {
     #[inline]
     fn addr(&self) -> &SocketAddr {
         self.inner.addr()
+    }
+
+    #[inline]
+    fn read_frames(self) -> BoxFuture<'static, ()> {
+        self.inner.read_frames().boxed()
     }
 }
 
@@ -151,6 +161,11 @@ impl CdrsTransport for TransportRustls {
     fn addr(&self) -> &SocketAddr {
         self.inner.addr()
     }
+
+    #[inline]
+    fn read_frames(self) -> BoxFuture<'static, ()> {
+        self.inner.read_frames().boxed()
+    }
 }
 
 struct AsyncTransport {
@@ -158,10 +173,11 @@ struct AsyncTransport {
     compression: Compression,
     write_sender: mpsc::Sender<Request>,
     is_broken: Arc<AtomicBool>,
+    processing_handle: JoinHandle<()>,
 }
 
 impl AsyncTransport {
-    pub fn new<T: AsyncRead + AsyncWrite + Send + 'static>(
+    fn new<T: AsyncRead + AsyncWrite + Send + 'static>(
         addr: SocketAddr,
         compression: Compression,
         buffer_size: usize,
@@ -173,7 +189,7 @@ impl AsyncTransport {
         let (write_sender, write_receiver) = mpsc::channel(buffer_size);
         let is_broken = Arc::new(AtomicBool::new(false));
 
-        tokio::spawn(Self::start_processing(
+        let processing_handle = tokio::spawn(Self::start_processing(
             write_receiver,
             event_handler,
             read_half,
@@ -188,11 +204,12 @@ impl AsyncTransport {
             compression,
             write_sender,
             is_broken,
+            processing_handle,
         }
     }
 
     #[inline]
-    pub fn is_broken(&self) -> bool {
+    fn is_broken(&self) -> bool {
         self.is_broken.load(Ordering::Relaxed)
     }
 
@@ -201,7 +218,7 @@ impl AsyncTransport {
         &self.addr
     }
 
-    pub async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
+    async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
         let (sender, receiver) = oneshot::channel();
         let stream_id = frame.stream;
 
@@ -220,6 +237,10 @@ impl AsyncTransport {
         receiver
             .await
             .map_err(|_| Error::General("Connection closed while waiting for response!".into()))?
+    }
+
+    async fn read_frames(self) {
+        let _ = self.processing_handle.await;
     }
 
     async fn start_processing<T: AsyncRead + AsyncWrite>(
