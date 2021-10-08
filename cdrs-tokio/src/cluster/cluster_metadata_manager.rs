@@ -10,6 +10,7 @@ use crate::transport::CdrsTransport;
 
 // TODO: handle topology changes
 pub struct ClusterMetadataManager<T: CdrsTransport, CM: ConnectionManager<T>> {
+    #[allow(dead_code)]
     event_receiver: Receiver<ServerEvent>,
     metadata: ArcSwap<ClusterMetadata<T, CM>>,
 }
