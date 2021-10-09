@@ -13,6 +13,7 @@ mod pager;
 mod rustls_connection_manager;
 pub mod session;
 mod tcp_connection_manager;
+mod topology;
 
 pub use crate::cluster::cluster_metadata::ClusterMetadata;
 pub(crate) use crate::cluster::cluster_metadata_manager::ClusterMetadataManager;

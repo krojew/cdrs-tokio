@@ -15,13 +15,13 @@ const DEFAULT_RECONNECT_DELAY: Duration = Duration::from_secs(10);
 const EVENT_CHANNEL_CAPACITY: usize = 32;
 
 pub struct ControlConnection<
-    T: CdrsTransport + Send + Sync,
+    T: CdrsTransport + Send + Sync + 'static,
     CM: ConnectionManager<T> + Send + Sync,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
     load_balancing: Arc<LB>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-    cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
+    cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM, LB>>,
     event_sender: Sender<ServerEvent>,
     current_connection: Option<T>,
 }
@@ -35,7 +35,7 @@ impl<
     pub fn new(
         load_balancing: Arc<LB>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-        cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
+        cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM, LB>>,
         event_sender: Sender<ServerEvent>,
     ) -> Self {
         ControlConnection {

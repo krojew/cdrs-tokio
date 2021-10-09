@@ -33,13 +33,15 @@ use crate::retry::{
 use crate::transport::TransportRustls;
 use crate::transport::{CdrsTransport, TransportTcp};
 
+use super::topology::TopologyReader;
+
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const EVENT_CHANNEL_CAPACITY: usize = 32;
 
 /// CDRS session that holds a pool of connections to nodes.
 pub struct Session<
     T: CdrsTransport + Send + Sync + 'static,
-    CM: ConnectionManager<T>,
+    CM: ConnectionManager<T> + Send + Sync,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
     load_balancing: Arc<LB>,
@@ -47,14 +49,15 @@ pub struct Session<
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     control_connection_handle: AbortHandle,
     event_sender: Sender<ServerEvent>,
-    cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
+    cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM, LB>>,
     _transport: PhantomData<T>,
     _connection_manager: PhantomData<CM>,
 }
 
 impl<
+        'a,
         T: CdrsTransport + Send + Sync + 'static,
-        CM: ConnectionManager<T>,
+        CM: ConnectionManager<T> + Send + Sync,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > Drop for Session<T, CM, LB>
 {
@@ -375,8 +378,13 @@ impl<
         let load_balancing = Arc::new(load_balancing);
         let (event_sender, event_receiver) = channel(EVENT_CHANNEL_CAPACITY);
 
-        let cluster_metadata_manager =
-            Arc::new(ClusterMetadataManager::new(event_receiver, contact_points));
+        let topology_reader = TopologyReader::new();
+
+        let cluster_metadata_manager = Arc::new(ClusterMetadataManager::new(
+            contact_points,
+            event_receiver,
+            topology_reader,
+        ));
 
         let control_connection = ControlConnection::new(
             load_balancing.clone(),
@@ -405,7 +413,7 @@ impl<
 
 impl<
         T: CdrsTransport + 'static,
-        CM: ConnectionManager<T>,
+        CM: ConnectionManager<T> + Send + Sync,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > GetRetryPolicy for Session<T, CM, LB>
 {
@@ -645,7 +653,7 @@ impl<
 /// sessions.
 pub trait SessionBuilder<
     T: CdrsTransport + Send + Sync + 'static,
-    CM: ConnectionManager<T>,
+    CM: ConnectionManager<T> + Send + Sync,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
 >
 {

@@ -12,7 +12,7 @@ use crate::types::CBytes;
 pub struct SessionPager<
     'a,
     T: CdrsTransport + 'static,
-    CM: ConnectionManager<T>,
+    CM: ConnectionManager<T> + Send + Sync,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
     page_size: i32,
@@ -22,7 +22,7 @@ pub struct SessionPager<
 impl<
         'a,
         T: CdrsTransport + 'static,
-        CM: ConnectionManager<T>,
+        CM: ConnectionManager<T> + Send + Sync,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > SessionPager<'a, T, CM, LB>
 {
