@@ -55,7 +55,6 @@ pub struct Session<
 }
 
 impl<
-        'a,
         T: CdrsTransport + Send + Sync + 'static,
         CM: ConnectionManager<T> + Send + Sync,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,

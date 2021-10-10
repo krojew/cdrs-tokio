@@ -37,7 +37,6 @@ tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "
 tokio-rustls = { version = "0.22", optional = true }
 uuid = "0.8"
 webpki = { version = "0.21", optional = true }
-cdrs-tokio-helpers-derive = { version = "3.0", path = "../cdrs-tokio-helpers-derive" }
 
 [dependencies.rustls]
 version = "0.19"
@@ -47,3 +46,4 @@ default-features = false
 [dev-dependencies]
 maplit = "1.0.0"
 regex = "1.5"
+cdrs-tokio-helpers-derive = { version = "3.0", path = "../cdrs-tokio-helpers-derive" }
