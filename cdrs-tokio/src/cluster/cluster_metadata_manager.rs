@@ -56,20 +56,15 @@ impl<
 
     #[allow(dead_code)]
     pub async fn work(mut self) {
-        use tokio::time::{Duration, Instant};
+        use tokio::time::Duration;
 
         let refresh_duration = Duration::from_secs(60); // Refresh topology every 60 seconds
-        let mut last_refresh_time = Instant::now();
 
         loop {
             //let mut cur_request: Option<RefreshRequest> = None;
 
             // Wait until it's time for the next refresh
-            let sleep_until: Instant = last_refresh_time
-                .checked_add(refresh_duration)
-                .unwrap_or_else(Instant::now);
-
-            let sleep_future = tokio::time::sleep_until(sleep_until);
+            let sleep_future = tokio::time::sleep(refresh_duration);
             tokio::pin!(sleep_future);
 
             tokio::select! {
@@ -108,7 +103,6 @@ impl<
 
             // Perform the refresh
             //debug!("Requesting topology refresh");
-            last_refresh_time = Instant::now();
             let _refresh_res = self.perform_refresh().await;
 
             // Send refresh result if there was a request
