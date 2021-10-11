@@ -383,6 +383,7 @@ impl<
         let topology_reader = TopologyReader::new();
 
         let cluster_metadata_manager = Arc::new(ClusterMetadataManager::new(
+            load_balancing.clone(),
             contact_points,
             event_receiver,
             topology_reader,

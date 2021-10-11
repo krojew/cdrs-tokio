@@ -20,9 +20,10 @@ pub struct ClusterMetadataManager<
     CM: ConnectionManager<T> + Send + Sync,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
+    load_balancing: Arc<LB>,
     event_receiver: Receiver<ServerEvent>,
     metadata: ArcSwap<ClusterMetadata<T, CM>>,
-    topology_reader: TopologyReader<T, CM, LB>,
+    topology_reader: TopologyReader<T>,
     refresh_duration: tokio::time::Duration,
     _transport: PhantomData<T>,
 }
@@ -34,12 +35,14 @@ impl<
     > ClusterMetadataManager<T, CM, LB>
 {
     pub fn new(
+        load_balancing: Arc<LB>,
         contact_points: Vec<Arc<Node<T, CM>>>,
         event_receiver: Receiver<ServerEvent>,
-        topology_reader: TopologyReader<T, CM, LB>,
+        topology_reader: TopologyReader<T>,
         refresh_duration: tokio::time::Duration,
     ) -> Self {
         ClusterMetadataManager {
+            load_balancing,
             event_receiver,
             metadata: ArcSwap::from_pointee(ClusterMetadata::new(contact_points)),
             topology_reader,
@@ -54,8 +57,22 @@ impl<
     }
 
     async fn perform_refresh(&mut self) {
-        let topo_info = self.topology_reader.read_topology_info().await;
-        println!("{:?}", topo_info);
+        let nodes = self
+            .load_balancing
+            .query_plan(None, self.metadata().as_ref());
+
+        if nodes.is_empty() {
+            println!("handle an error here ?");
+            return;
+        }
+
+        for node in nodes {
+            if let Ok(connection) = node.new_connection(None).await {
+                let topo_info = self.topology_reader.read_topology_info(connection).await;
+                println!("{:?}", topo_info);
+                return;
+            }
+        }
     }
 
     #[allow(dead_code)]
