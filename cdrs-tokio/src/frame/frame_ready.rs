@@ -23,6 +23,6 @@ mod tests {
     #[test]
     fn body_res_ready_into_cbytes() {
         let body = BodyResReady;
-        assert_eq!(body.serialize_to_vec(), vec![]);
+        assert_eq!(body.serialize_to_vec(), Vec::<u8>::new());
     }
 }

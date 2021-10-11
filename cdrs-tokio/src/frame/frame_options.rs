@@ -41,6 +41,6 @@ mod tests {
         let frame = Frame::new_req_options();
         assert_eq!(frame.version, Version::Request);
         assert_eq!(frame.opcode, Opcode::Options);
-        assert_eq!(frame.body, vec![]);
+        assert_eq!(frame.body, Vec::<u8>::new());
     }
 }

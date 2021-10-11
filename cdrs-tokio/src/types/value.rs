@@ -376,14 +376,14 @@ mod tests {
     #[test]
     fn test_new_null_value() {
         let null_value = Value::new_null();
-        assert_eq!(null_value.body, vec![]);
+        assert_eq!(null_value.body, Vec::<u8>::new());
         assert_eq!(null_value.value_type, ValueType::Null);
     }
 
     #[test]
     fn test_new_not_set_value() {
         let not_set_value = Value::new_not_set();
-        assert_eq!(not_set_value.body, vec![]);
+        assert_eq!(not_set_value.body, Vec::<u8>::new());
         assert_eq!(not_set_value.value_type, ValueType::NotSet);
     }
 
