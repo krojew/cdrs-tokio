@@ -6,11 +6,11 @@ That's why CDRS driver was designed with multi-node support in mind. In order to
 
 ```rust
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 
 fn main() {
-  let node = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap(), Arc::new(NoneAuthenticatorProvider)).build();
-  let cluster_config = ClusterTcpConfig(vec![node]);
+  let cluster_config = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap(), Arc::new(NoneAuthenticatorProvider)).build();
+  // ...
 }
 ```
 
