@@ -22,6 +22,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::TlsConnector as RustlsConnector;
+use tracing::*;
 
 use crate::cluster::KeyspaceHolder;
 use crate::compression::Compression;
@@ -265,6 +266,8 @@ impl AsyncTransport {
 
         let result = tokio::try_join!(writer, reader);
         if let Err(error) = result {
+            error!(%error, "Transport error!");
+
             is_broken.store(true, Ordering::Relaxed);
             response_handler_map.signal_general_error(&error.to_string());
         }
