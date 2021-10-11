@@ -51,6 +51,7 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
 }
 
 impl RustlsConnectionManager {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         dns_name: webpki::DNSName,
         authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
