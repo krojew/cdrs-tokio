@@ -2,6 +2,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
+use tracing::*;
 
 use crate::cluster::ConnectionManager;
 use crate::error::Result;
@@ -49,6 +50,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
 
     /// Creates a new connection to the node with optional event sender.
     pub async fn new_connection(&self, event_handler: Option<Sender<Frame>>) -> Result<T> {
+        debug!("Establishing new connection to node...");
         self.connection_manager.connection(event_handler).await
     }
 }

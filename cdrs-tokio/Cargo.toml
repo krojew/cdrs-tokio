@@ -35,6 +35,7 @@ thiserror = "1"
 time = { version = "0.3", features = ["std", "macros"] }
 tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
 tokio-rustls = { version = "0.22", optional = true }
+tracing = "0.1"
 uuid = "0.8"
 webpki = { version = "0.21", optional = true }
 

@@ -3,6 +3,7 @@ use std::time::Duration;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::mpsc::{channel, Receiver};
 use tokio::time::sleep;
+use tracing::*;
 
 use crate::cluster::{ClusterMetadataManager, ConnectionManager};
 use crate::events::{ServerEvent, SimpleServerEvent};
@@ -68,6 +69,8 @@ impl<
                     current_connection.read_frames().await;
                 }
             } else {
+                debug!("Establishing new control connection...");
+
                 let mut schedule = self.reconnection_policy.new_node_schedule();
 
                 loop {
@@ -75,6 +78,8 @@ impl<
                         .load_balancing
                         .query_plan(None, self.cluster_metadata_manager.metadata().as_ref());
                     if nodes.is_empty() {
+                        warn!("No nodes found for control connection!");
+
                         // as long as the session is alive, try establishing control connection
                         let delay = schedule.next_delay().unwrap_or(DEFAULT_RECONNECT_DELAY);
                         sleep(delay).await;
@@ -85,6 +90,8 @@ impl<
                         if let Ok(connection) =
                             node.new_connection(Some(event_frame_sender.clone())).await
                         {
+                            debug!("Established new control connection.");
+
                             self.current_connection = Some(connection);
                             continue 'listen;
                         }
