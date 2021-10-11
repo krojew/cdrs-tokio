@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
+use futures::future::abortable;
 use tokio::sync::broadcast::Receiver;
 
 use crate::cluster::{ClusterMetadata, ConnectionManager, Node};
@@ -63,7 +64,7 @@ impl<
             //let mut cur_request: Option<RefreshRequest> = None;
 
             // Wait until it's time for the next refresh
-            let sleep_future = tokio::time::sleep(self.refresh_duration);
+            let (sleep_future, _handle) = abortable(tokio::time::sleep(self.refresh_duration));
             tokio::pin!(sleep_future);
 
             tokio::select! {
