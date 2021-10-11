@@ -22,6 +22,7 @@ pub struct ClusterMetadataManager<
     event_receiver: Receiver<ServerEvent>,
     metadata: ArcSwap<ClusterMetadata<T, CM>>,
     topology_reader: TopologyReader<T, CM, LB>,
+    refresh_duration: tokio::time::Duration,
     _transport: PhantomData<T>,
 }
 
@@ -35,11 +36,13 @@ impl<
         contact_points: Vec<Arc<Node<T, CM>>>,
         event_receiver: Receiver<ServerEvent>,
         topology_reader: TopologyReader<T, CM, LB>,
+        refresh_duration: tokio::time::Duration,
     ) -> Self {
         ClusterMetadataManager {
             event_receiver,
             metadata: ArcSwap::from_pointee(ClusterMetadata::new(contact_points)),
             topology_reader,
+            refresh_duration,
             _transport: Default::default(),
         }
     }
@@ -56,15 +59,11 @@ impl<
 
     #[allow(dead_code)]
     pub async fn work(mut self) {
-        use tokio::time::Duration;
-
-        let refresh_duration = Duration::from_secs(60); // Refresh topology every 60 seconds
-
         loop {
             //let mut cur_request: Option<RefreshRequest> = None;
 
             // Wait until it's time for the next refresh
-            let sleep_future = tokio::time::sleep(refresh_duration);
+            let sleep_future = tokio::time::sleep(self.refresh_duration);
             tokio::pin!(sleep_future);
 
             tokio::select! {

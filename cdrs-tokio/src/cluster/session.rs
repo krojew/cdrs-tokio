@@ -2,6 +2,7 @@ use futures::future::{abortable, AbortHandle};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 
 use crate::cluster::connection_manager::ConnectionManager;
@@ -37,6 +38,7 @@ use super::topology::TopologyReader;
 
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const EVENT_CHANNEL_CAPACITY: usize = 32;
+const DEFAULT_REFRESH_DURATION: u64 = 60;
 
 /// CDRS session that holds a pool of connections to nodes.
 pub struct Session<
@@ -373,6 +375,7 @@ impl<
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         contact_points: Vec<Arc<Node<T, CM>>>,
+        refresh_duration: Duration,
     ) -> Self {
         let load_balancing = Arc::new(load_balancing);
         let (event_sender, event_receiver) = channel(EVENT_CHANNEL_CAPACITY);
@@ -383,6 +386,7 @@ impl<
             contact_points,
             event_receiver,
             topology_reader,
+            refresh_duration,
         ));
 
         let control_connection = ControlConnection::new(
@@ -463,6 +467,7 @@ where
         retry_policy.0,
         reconnection_policy.0,
         nodes,
+        Duration::from_secs(DEFAULT_REFRESH_DURATION),
     ))
 }
 
@@ -616,6 +621,7 @@ struct SessionConfig<
     load_balancing: LB,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+    refresh_duration: tokio::time::Duration,
     _connection_manager: PhantomData<CM>,
     _transport: PhantomData<T>,
 }
@@ -633,6 +639,7 @@ impl<
         load_balancing: LB,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+        refresh_duration: tokio::time::Duration,
     ) -> Self {
         SessionConfig {
             compression,
@@ -641,6 +648,7 @@ impl<
             load_balancing,
             retry_policy,
             reconnection_policy,
+            refresh_duration,
             _connection_manager: Default::default(),
             _transport: Default::default(),
         }
@@ -675,6 +683,9 @@ pub trait SessionBuilder<
     /// Sets NODELAY for given session connections.
     fn with_tcp_nodelay(self, tcp_nodelay: bool) -> Self;
 
+    /// Sets refresh duration
+    fn with_refresh_duration(self, refresh_duration: tokio::time::Duration) -> Self;
+
     /// Builds the resulting session.
     fn build(self) -> Session<T, CM, LB>;
 }
@@ -700,6 +711,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Arc::new(ExponentialReconnectionPolicy::default()),
+                tokio::time::Duration::from_secs(DEFAULT_REFRESH_DURATION),
             ),
             node_configs,
         }
@@ -737,6 +749,11 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         self
     }
 
+    fn with_refresh_duration(mut self, refresh_duration: tokio::time::Duration) -> Self {
+        self.config.refresh_duration = refresh_duration;
+        self
+    }
+
     fn build(self) -> Session<TransportTcp, TcpConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let mut nodes = Vec::with_capacity(self.node_configs.0.len());
@@ -759,6 +776,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             self.config.retry_policy,
             self.config.reconnection_policy,
             nodes,
+            self.config.refresh_duration,
         )
     }
 }
@@ -786,6 +804,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Arc::new(ExponentialReconnectionPolicy::default()),
+                tokio::time::Duration::from_secs(DEFAULT_REFRESH_DURATION),
             ),
             node_configs,
         }
@@ -825,6 +844,11 @@ impl<
         self
     }
 
+    fn with_refresh_duration(mut self, refresh_duration: tokio::time::Duration) -> Self {
+        self.config.refresh_duration = refresh_duration;
+        self
+    }
+
     fn build(self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let mut nodes = Vec::with_capacity(self.node_configs.0.len());
@@ -847,6 +871,7 @@ impl<
             self.config.retry_policy,
             self.config.reconnection_policy,
             nodes,
+            self.config.refresh_duration,
         )
     }
 }
