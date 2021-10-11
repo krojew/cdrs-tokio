@@ -38,7 +38,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 32;
 
 /// CDRS session that holds a pool of connections to nodes.
 pub struct Session<
-    T: CdrsTransport + Send + Sync + 'static,
+    T: CdrsTransport + 'static,
     CM: ConnectionManager<T>,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
@@ -53,7 +53,7 @@ pub struct Session<
 }
 
 impl<
-        T: CdrsTransport + Send + Sync + 'static,
+        T: CdrsTransport + 'static,
         CM: ConnectionManager<T>,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > Drop for Session<T, CM, LB>
@@ -64,7 +64,7 @@ impl<
 }
 
 impl<
-        T: CdrsTransport + Send + Sync + 'static,
+        T: CdrsTransport + 'static,
         CM: ConnectionManager<T> + Send + Sync + 'static,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
     > Session<T, CM, LB>
@@ -438,7 +438,7 @@ pub async fn connect_generic_static<T, C, A, CM, LB>(
 ) -> error::Result<Session<T, CM, LB>>
 where
     A: IntoIterator<Item = SocketAddr>,
-    T: CdrsTransport + Send + Sync + 'static,
+    T: CdrsTransport + 'static,
     CM: ConnectionManager<T> + Send + Sync + 'static,
     C: GenericClusterConfig<T, CM>,
     LB: LoadBalancingStrategy<T, CM> + Sized + Send + Sync + 'static,
@@ -508,7 +508,7 @@ impl<
 /// configuration parameters can be dynamically set. Use concrete implementers to create specific
 /// sessions.
 pub trait SessionBuilder<
-    T: CdrsTransport + Send + Sync + 'static,
+    T: CdrsTransport + 'static,
     CM: ConnectionManager<T>,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
 >

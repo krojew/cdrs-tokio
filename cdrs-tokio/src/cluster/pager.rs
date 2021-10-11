@@ -113,7 +113,7 @@ pub struct QueryPager<'a, Q: ToString, P: 'a> {
 impl<
         'a,
         Q: ToString,
-        T: CdrsTransport + Send + Sync + 'static,
+        T: CdrsTransport + 'static,
         CM: ConnectionManager<T> + Send + Sync + 'static,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
     > QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
@@ -173,7 +173,7 @@ pub struct ExecPager<'a, P: 'a> {
 
 impl<
         'a,
-        T: CdrsTransport + Send + Sync + 'static,
+        T: CdrsTransport + 'static,
         CM: ConnectionManager<T> + Send + Sync + 'static,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
     > ExecPager<'a, SessionPager<'a, T, CM, LB>>

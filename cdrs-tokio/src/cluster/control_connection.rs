@@ -16,7 +16,7 @@ const DEFAULT_RECONNECT_DELAY: Duration = Duration::from_secs(10);
 const EVENT_CHANNEL_CAPACITY: usize = 32;
 
 pub struct ControlConnection<
-    T: CdrsTransport + Send + Sync,
+    T: CdrsTransport,
     CM: ConnectionManager<T> + Send + Sync,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
@@ -28,7 +28,7 @@ pub struct ControlConnection<
 }
 
 impl<
-        T: CdrsTransport + Send + Sync,
+        T: CdrsTransport,
         CM: ConnectionManager<T> + Send + Sync,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > ControlConnection<T, CM, LB>

@@ -21,7 +21,7 @@ pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
 }
 
 pub(crate) async fn send_frame<
-    T: CdrsTransport + Send + Sync + 'static,
+    T: CdrsTransport + 'static,
     CM: ConnectionManager<T> + Send + Sync + 'static,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
 >(
