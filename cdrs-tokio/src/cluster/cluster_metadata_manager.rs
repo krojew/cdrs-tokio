@@ -9,10 +9,11 @@ use crate::cluster::{ClusterMetadata, ConnectionManager, Node};
 
 use crate::events::ServerEvent;
 
+use crate::error;
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::transport::CdrsTransport;
 
-use super::topology::TopologyReader;
+use super::topology::{TopologyInfo, TopologyReader};
 
 // TODO: handle topology changes
 pub struct ClusterMetadataManager<
@@ -66,13 +67,28 @@ impl<
             return;
         }
 
-        for node in nodes {
+        let _info = self.get_topology_info(&nodes);
+    }
+
+    pub async fn get_topology_info(
+        &mut self,
+        nodes: &[Arc<Node<T, CM>>],
+    ) -> error::Result<TopologyInfo> {
+        for node in nodes.iter() {
             if let Ok(connection) = node.new_connection(None).await {
-                let topo_info = self.topology_reader.read_topology_info(connection).await;
-                println!("{:?}", topo_info);
-                return;
+                let result = self.topology_reader.read_topology_info(connection).await;
+
+                if let Ok(info) = result {
+                    return Ok(info);
+                } else {
+                    continue;
+                }
             }
         }
+
+        Err(error::Error::General(
+            "Was not able to get topology info".to_string(),
+        ))
     }
 
     #[allow(dead_code)]

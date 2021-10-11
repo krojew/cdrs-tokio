@@ -23,6 +23,7 @@ e2e-tests = []
 [dependencies]
 arc-swap ="1.4"
 arrayref = "0.3"
+cdrs-tokio-helpers-derive = { version = "3.0", path = "../cdrs-tokio-helpers-derive" }
 chrono = "0.4"
 float_eq = "0.6"
 futures = { version = "0.3", default_features = false, features = ["alloc"] }
@@ -37,6 +38,7 @@ tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "
 tokio-rustls = { version = "0.22", optional = true }
 uuid = "0.8"
 webpki = { version = "0.21", optional = true }
+serde_json = "1.0.68"
 
 [dependencies.rustls]
 version = "0.19"
@@ -46,4 +48,3 @@ default-features = false
 [dev-dependencies]
 maplit = "1.0.0"
 regex = "1.5"
-cdrs-tokio-helpers-derive = { version = "3.0", path = "../cdrs-tokio-helpers-derive" }

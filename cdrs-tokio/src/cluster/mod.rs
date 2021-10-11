@@ -9,6 +9,7 @@ mod keyspace_holder;
 mod node;
 mod node_address;
 mod pager;
+mod routing;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_manager;
 pub mod session;
