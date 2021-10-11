@@ -29,6 +29,7 @@ futures = { version = "0.3", default_features = false, features = ["alloc"] }
 fxhash = "0.2"
 num = "0.4"
 lz4_flex = "0.8"
+itertools = "0.10"
 rand = "0.8"
 snap = "1"
 thiserror = "1"

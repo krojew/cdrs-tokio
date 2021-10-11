@@ -4,7 +4,8 @@ mod round_robin;
 
 use std::sync::Arc;
 
-use crate::cluster::{ClusterMetadata, ConnectionManager, Node};
+use crate::cluster::topology::Node;
+use crate::cluster::{ClusterMetadata, ConnectionManager};
 pub use crate::load_balancing::random::RandomLoadBalancingStrategy;
 pub use crate::load_balancing::request::Request;
 pub use crate::load_balancing::round_robin::RoundRobinBalancingStrategy;

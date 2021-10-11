@@ -9,13 +9,12 @@ use crate::cluster::control_connection::ControlConnection;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
 use crate::cluster::tcp_connection_manager::TcpConnectionManager;
+use crate::cluster::topology::Node;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::ClusterRustlsConfig;
 use crate::cluster::SessionPager;
 use crate::cluster::{ClusterMetadata, ClusterMetadataManager};
-use crate::cluster::{
-    ClusterTcpConfig, GenericClusterConfig, GetRetryPolicy, KeyspaceHolder, Node,
-};
+use crate::cluster::{ClusterTcpConfig, GenericClusterConfig, GetRetryPolicy, KeyspaceHolder};
 use crate::compression::Compression;
 use crate::error;
 use crate::events::ServerEvent;

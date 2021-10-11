@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::cluster::{ConnectionManager, Node};
+use crate::cluster::topology::node::Node;
+use crate::cluster::ConnectionManager;
 use crate::transport::CdrsTransport;
 
 /// Immutable metadata of the Cassandra cluster that this driver instance is connected to.

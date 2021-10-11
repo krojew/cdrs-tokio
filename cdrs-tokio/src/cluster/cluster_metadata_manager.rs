@@ -3,7 +3,8 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use tokio::sync::broadcast::Receiver;
 
-use crate::cluster::{ClusterMetadata, ConnectionManager, Node};
+use crate::cluster::topology::Node;
+use crate::cluster::{ClusterMetadata, ConnectionManager};
 
 use crate::events::ServerEvent;
 use crate::transport::CdrsTransport;

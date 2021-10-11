@@ -4,6 +4,7 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
 use tracing::*;
 
+use crate::cluster::topology::NodeDistance;
 use crate::cluster::ConnectionManager;
 use crate::error::Result;
 use crate::frame::Frame;
@@ -13,6 +14,7 @@ use crate::transport::CdrsTransport;
 pub struct Node<T: CdrsTransport, CM: ConnectionManager<T>> {
     connection_manager: CM,
     connection: RwLock<Option<Arc<T>>>,
+    distance: NodeDistance,
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
@@ -20,6 +22,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         Node {
             connection_manager,
             connection: Default::default(),
+            distance: NodeDistance::Ignored,
         }
     }
 
@@ -52,5 +55,16 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     pub async fn new_connection(&self, event_handler: Option<Sender<Frame>>) -> Result<T> {
         debug!("Establishing new connection to node...");
         self.connection_manager.connection(event_handler).await
+    }
+
+    #[inline]
+    pub fn distance(&self) -> NodeDistance {
+        self.distance
+    }
+
+    /// This node should be ignored from establishing connections.
+    #[inline]
+    pub fn is_ignored(&self) -> bool {
+        self.distance == NodeDistance::Ignored
     }
 }

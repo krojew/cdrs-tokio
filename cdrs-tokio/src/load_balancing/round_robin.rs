@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -31,7 +32,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         _request: Option<Request>,
         cluster: &ClusterMetadata<T, CM>,
     ) -> QueryPlan<T, CM> {
-        let mut nodes = cluster.all_nodes().clone();
+        let mut nodes = cluster
+            .all_nodes()
+            .iter()
+            .filter(|node| !node.is_ignored())
+            .cloned()
+            .collect_vec();
+
         if nodes.is_empty() {
             return nodes;
         }
