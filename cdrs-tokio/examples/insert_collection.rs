@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use cdrs_tokio::authenticators::StaticPasswordAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionManager};
+use cdrs_tokio::cluster::{NodeTcpConfigBuilder, TcpConnectionManager};
 use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
@@ -28,13 +28,12 @@ async fn main() {
     let user = "user";
     let password = "password";
     let auth = StaticPasswordAuthenticatorProvider::new(&user, &password);
-    let nodes = NodeTcpConfigBuilder::new()
-        .with_node_address("127.0.0.1:9042".into())
+    let cluster_config = NodeTcpConfigBuilder::new()
+        .with_contact_point("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(auth))
         .build()
         .await
         .unwrap();
-    let cluster_config = ClusterTcpConfig(nodes);
     let mut session: CurrentSession =
         TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config).build();
 

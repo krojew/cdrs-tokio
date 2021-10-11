@@ -2,10 +2,8 @@ pub use topology::cluster_metadata::ClusterMetadata;
 
 pub(crate) use crate::cluster::cluster_metadata_manager::ClusterMetadataManager;
 #[cfg(feature = "rust-tls")]
-pub use crate::cluster::config_rustls::{
-    ClusterRustlsConfig, NodeRustlsConfig, NodeRustlsConfigBuilder,
-};
-pub use crate::cluster::config_tcp::{ClusterTcpConfig, NodeTcpConfig, NodeTcpConfigBuilder};
+pub use crate::cluster::config_rustls::{NodeRustlsConfig, NodeRustlsConfigBuilder};
+pub use crate::cluster::config_tcp::{NodeTcpConfig, NodeTcpConfigBuilder};
 pub use crate::cluster::connection_manager::{startup, ConnectionManager};
 pub use crate::cluster::keyspace_holder::KeyspaceHolder;
 pub use crate::cluster::node_address::NodeAddress;
@@ -37,9 +35,7 @@ pub mod topology;
 /// Generic connection configuration trait that can be used to create user-supplied
 /// connection objects that can be used with the `session::connect()` function.
 pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send + Sync {
-    type Address: Clone;
-
-    fn create_manager(&self, addr: Self::Address) -> BoxFuture<Result<CM>>;
+    fn create_manager(&self) -> BoxFuture<Result<CM>>;
 }
 
 /// `GetRetryPolicy` trait provides a unified interface for Session to get current retry policy.

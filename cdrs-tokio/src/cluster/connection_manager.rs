@@ -11,14 +11,14 @@ use crate::frame::{Frame, Opcode};
 use crate::future::BoxFuture;
 use crate::transport::CdrsTransport;
 
-/// Manages a connection to a single node. Should create a new one, if there's no present already or
-/// a previous one has broken.
+/// Manages establishing connections to nodes.
 pub trait ConnectionManager<T: CdrsTransport> {
     /// Tries to establish a new, ready to use connection with optional server event handler.
-    fn connection(&self, event_handler: Option<Sender<Frame>>) -> BoxFuture<Result<T>>;
-
-    // Returns associated address.
-    fn addr(&self) -> SocketAddr;
+    fn connection(
+        &self,
+        event_handler: Option<Sender<Frame>>,
+        addr: SocketAddr,
+    ) -> BoxFuture<Result<T>>;
 }
 
 /// Establishes Cassandra connection with given authentication, last used keyspace and compression.

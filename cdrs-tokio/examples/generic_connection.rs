@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     net::IpAddr,
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+    net::{Ipv4Addr, SocketAddr},
     sync::Arc,
 };
 
@@ -24,18 +24,19 @@ use cdrs_tokio_helpers_derive::*;
 use cdrs_tokio::cluster::session::{
     ReconnectionPolicyWrapper, RetryPolicyWrapper, DEFAULT_TRANSPORT_BUFFER_SIZE,
 };
-use cdrs_tokio::cluster::{KeyspaceHolder, NodeTcpConfigBuilder};
+use cdrs_tokio::cluster::{ConnectionManager, KeyspaceHolder};
 use cdrs_tokio::compression::Compression;
-use cdrs_tokio::frame::Serialize;
+use cdrs_tokio::frame::{Frame, Serialize};
 use cdrs_tokio::future::BoxFuture;
 use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
 use futures::FutureExt;
 use maplit::hashmap;
+use tokio::sync::mpsc::Sender;
 
 type CurrentSession = Session<
     TransportTcp,
-    TcpConnectionManager,
-    RoundRobinBalancingStrategy<TransportTcp, TcpConnectionManager>,
+    VirtualConnectionManager,
+    RoundRobinBalancingStrategy<TransportTcp, VirtualConnectionManager>,
 >;
 
 /// Implements a cluster configuration where the addresses to
@@ -57,54 +58,67 @@ struct VirtualClusterConfig {
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
 }
 
-#[derive(Clone)]
-struct VirtualConnectionAddress(SocketAddrV4);
-
-impl VirtualConnectionAddress {
-    fn rewrite(&self, mask: &Ipv4Addr, actual: &Ipv4Addr) -> SocketAddr {
-        let virt = self.0.ip().octets();
-        let mask = mask.octets();
-        let actual = actual.octets();
-        SocketAddr::new(
-            IpAddr::V4(Ipv4Addr::new(
-                (virt[0] & !mask[0]) | (actual[0] & mask[0]),
-                (virt[1] & !mask[1]) | (actual[1] & mask[1]),
-                (virt[2] & !mask[2]) | (actual[2] & mask[2]),
-                (virt[3] & !mask[3]) | (actual[3] & mask[3]),
-            )),
-            self.0.port(),
-        )
+fn rewrite(addr: SocketAddr, mask: &Ipv4Addr, actual: &Ipv4Addr) -> SocketAddr {
+    match addr {
+        SocketAddr::V4(addr) => {
+            let virt = addr.ip().octets();
+            let mask = mask.octets();
+            let actual = actual.octets();
+            SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(
+                    (virt[0] & !mask[0]) | (actual[0] & mask[0]),
+                    (virt[1] & !mask[1]) | (actual[1] & mask[1]),
+                    (virt[2] & !mask[2]) | (actual[2] & mask[2]),
+                    (virt[3] & !mask[3]) | (actual[3] & mask[3]),
+                )),
+                addr.port(),
+            )
+        }
+        SocketAddr::V6(_) => {
+            panic!("IpV6 is unsupported!");
+        }
     }
 }
 
-impl GenericClusterConfig<TransportTcp, TcpConnectionManager> for VirtualClusterConfig {
-    type Address = VirtualConnectionAddress;
+struct VirtualConnectionManager {
+    inner: TcpConnectionManager,
+    mask: Ipv4Addr,
+    actual: Ipv4Addr,
+}
 
-    fn create_manager(
+impl ConnectionManager<TransportTcp> for VirtualConnectionManager {
+    fn connection(
         &self,
-        addr: VirtualConnectionAddress,
-    ) -> BoxFuture<Result<TcpConnectionManager>> {
-        async move {
-            // create a connection manager that points at the rewritten address so that's where it connects, but
-            // then return a manager with the 'virtual' address for internal purposes.
-            Ok(TcpConnectionManager::new(
-                NodeTcpConfigBuilder::new()
-                    .with_node_address(addr.rewrite(&self.mask, &self.actual).into())
-                    .with_authenticator_provider(self.authenticator.clone())
-                    .build()
-                    .await
-                    .unwrap()
-                    .get(0)
-                    .cloned()
-                    .unwrap(),
-                self.keyspace_holder.clone(),
-                self.reconnection_policy.clone(),
+        event_handler: Option<Sender<Frame>>,
+        addr: SocketAddr,
+    ) -> BoxFuture<Result<TransportTcp>> {
+        self.inner
+            .connection(event_handler, rewrite(addr, &self.mask, &self.actual))
+    }
+}
+
+impl VirtualConnectionManager {
+    async fn new(config: &VirtualClusterConfig) -> Result<Self> {
+        Ok(VirtualConnectionManager {
+            inner: TcpConnectionManager::new(
+                config.authenticator.clone(),
+                config.keyspace_holder.clone(),
+                config.reconnection_policy.clone(),
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
                 true,
-            ))
-        }
-        .boxed()
+            ),
+            mask: config.mask,
+            actual: config.actual,
+        })
+    }
+}
+
+impl GenericClusterConfig<TransportTcp, VirtualConnectionManager> for VirtualClusterConfig {
+    fn create_manager(&self) -> BoxFuture<Result<VirtualConnectionManager>> {
+        // create a connection manager that points at the rewritten address so that's where it connects, but
+        // then return a manager with the 'virtual' address for internal purposes.
+        VirtualConnectionManager::new(self).boxed()
     }
 }
 
@@ -126,14 +140,14 @@ async fn main() {
         reconnection_policy: reconnection_policy.clone(),
     };
     let nodes = [
-        VirtualConnectionAddress(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 9042)),
-        VirtualConnectionAddress(SocketAddrV4::new(Ipv4Addr::new(192, 168, 1, 1), 9043)),
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 9042),
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 9043),
     ];
     let load_balancing = RoundRobinBalancingStrategy::new();
 
     let mut session = cdrs_tokio::cluster::connect_generic_static(
         &cluster_config,
-        &nodes,
+        nodes,
         load_balancing,
         RetryPolicyWrapper(Box::new(DefaultRetryPolicy::default())),
         ReconnectionPolicyWrapper(reconnection_policy),

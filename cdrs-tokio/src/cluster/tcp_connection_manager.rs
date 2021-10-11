@@ -5,8 +5,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
 
+use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::connection_manager::{startup, ConnectionManager};
-use crate::cluster::{KeyspaceHolder, NodeTcpConfig};
+use crate::cluster::KeyspaceHolder;
 use crate::compression::Compression;
 use crate::error::Result;
 use crate::frame::Frame;
@@ -15,7 +16,7 @@ use crate::retry::ReconnectionPolicy;
 use crate::transport::TransportTcp;
 
 pub struct TcpConnectionManager {
-    config: NodeTcpConfig,
+    authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     compression: Compression,
@@ -24,12 +25,16 @@ pub struct TcpConnectionManager {
 }
 
 impl ConnectionManager<TransportTcp> for TcpConnectionManager {
-    fn connection(&self, event_handler: Option<Sender<Frame>>) -> BoxFuture<Result<TransportTcp>> {
+    fn connection(
+        &self,
+        event_handler: Option<Sender<Frame>>,
+        addr: SocketAddr,
+    ) -> BoxFuture<Result<TransportTcp>> {
         async move {
             let mut schedule = self.reconnection_policy.new_node_schedule();
 
             loop {
-                let transport = self.establish_connection(event_handler.clone()).await;
+                let transport = self.establish_connection(event_handler.clone(), addr).await;
                 match transport {
                     Ok(transport) => return Ok(transport),
                     Err(error) => {
@@ -41,16 +46,11 @@ impl ConnectionManager<TransportTcp> for TcpConnectionManager {
         }
         .boxed()
     }
-
-    #[inline]
-    fn addr(&self) -> SocketAddr {
-        self.config.addr
-    }
 }
 
 impl TcpConnectionManager {
     pub fn new(
-        config: NodeTcpConfig,
+        authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
         keyspace_holder: Arc<KeyspaceHolder>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         compression: Compression,
@@ -58,7 +58,7 @@ impl TcpConnectionManager {
         tcp_nodelay: bool,
     ) -> Self {
         TcpConnectionManager {
-            config,
+            authenticator_provider,
             keyspace_holder,
             reconnection_policy,
             compression,
@@ -70,9 +70,10 @@ impl TcpConnectionManager {
     async fn establish_connection(
         &self,
         event_handler: Option<Sender<Frame>>,
+        addr: SocketAddr,
     ) -> Result<TransportTcp> {
         let transport = TransportTcp::new(
-            self.config.addr,
+            addr,
             self.keyspace_holder.clone(),
             event_handler,
             self.compression,
@@ -83,7 +84,7 @@ impl TcpConnectionManager {
 
         startup(
             &transport,
-            self.config.authenticator_provider.deref(),
+            self.authenticator_provider.deref(),
             self.keyspace_holder.deref(),
             self.compression,
         )

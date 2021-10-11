@@ -1,5 +1,6 @@
 use futures::future::{abortable, AbortHandle};
 use std::marker::PhantomData;
+use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast::{channel, Receiver, Sender};
@@ -11,10 +12,10 @@ use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
 use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::cluster::topology::Node;
 #[cfg(feature = "rust-tls")]
-use crate::cluster::ClusterRustlsConfig;
-use crate::cluster::SessionPager;
+use crate::cluster::NodeRustlsConfig;
 use crate::cluster::{ClusterMetadata, ClusterMetadataManager};
-use crate::cluster::{ClusterTcpConfig, GenericClusterConfig, GetRetryPolicy, KeyspaceHolder};
+use crate::cluster::{GenericClusterConfig, GetRetryPolicy, KeyspaceHolder};
+use crate::cluster::{NodeTcpConfig, SessionPager};
 use crate::compression::Compression;
 use crate::error;
 use crate::events::ServerEvent;
@@ -425,28 +426,31 @@ pub struct ReconnectionPolicyWrapper(pub Arc<dyn ReconnectionPolicy + Send + Syn
 /// balancing mechanisms in order to support unusual node discovery mechanisms
 /// or configuration needs.
 ///
-/// The config object supplied differs from the [`ClusterTcpConfig`] and [`ClusterRustlsConfig`]
+/// The config object supplied differs from the [`NodeTcpConfig`] and [`NodeRustlsConfig`]
 /// objects in that it is not expected to include an address. Instead the same configuration
 /// will be applied to all connections across the cluster.
 pub async fn connect_generic_static<T, C, A, CM, LB>(
     config: &C,
-    initial_nodes: &[A],
+    initial_nodes: A,
     load_balancing: LB,
     retry_policy: RetryPolicyWrapper,
     reconnection_policy: ReconnectionPolicyWrapper,
 ) -> error::Result<Session<T, CM, LB>>
 where
-    A: Clone,
+    A: IntoIterator<Item = SocketAddr>,
     T: CdrsTransport + Send + Sync + 'static,
     CM: ConnectionManager<T> + Send + Sync + 'static,
-    C: GenericClusterConfig<T, CM, Address = A>,
+    C: GenericClusterConfig<T, CM>,
     LB: LoadBalancingStrategy<T, CM> + Sized + Send + Sync + 'static,
 {
-    let mut nodes = Vec::with_capacity(initial_nodes.len());
+    let connection_manager = Arc::new(config.create_manager().await?);
 
-    for node in initial_nodes {
-        let connection_manager = config.create_manager(node.clone()).await?;
-        nodes.push(Arc::new(Node::new(connection_manager)));
+    let mut nodes = vec![];
+    for node in initial_nodes.into_iter() {
+        nodes.push(Arc::new(Node::new_contact_point(
+            connection_manager.clone(),
+            node,
+        )));
     }
 
     Ok(Session::new(
@@ -456,145 +460,6 @@ where
         reconnection_policy.0,
         nodes,
     ))
-}
-
-/// Creates new session that will perform queries without any compression. `Compression` type
-/// can be changed at any time.
-/// As a parameter it takes:
-/// * cluster config
-/// * load balancing strategy (cannot be changed during `Session` life time).
-#[deprecated(note = "Use SessionBuilder instead.")]
-pub async fn new<LB>(
-    node_configs: &ClusterTcpConfig,
-    load_balancing: LB,
-    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-) -> error::Result<Session<TransportTcp, TcpConnectionManager, LB>>
-where
-    LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync + 'static,
-{
-    Ok(TcpSessionBuilder::new(load_balancing, node_configs.clone())
-        .with_retry_policy(retry_policy)
-        .with_reconnection_policy(reconnection_policy)
-        .build())
-}
-
-/// Creates new session that will perform queries with Snappy compression. `Compression` type
-/// can be changed at any time.
-/// As a parameter it takes:
-/// * cluster config
-/// * load balancing strategy (cannot be changed during `Session` life time).
-#[deprecated(note = "Use SessionBuilder instead.")]
-pub async fn new_snappy<LB>(
-    node_configs: &ClusterTcpConfig,
-    load_balancing: LB,
-    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-) -> error::Result<Session<TransportTcp, TcpConnectionManager, LB>>
-where
-    LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync + 'static,
-{
-    Ok(TcpSessionBuilder::new(load_balancing, node_configs.clone())
-        .with_compression(Compression::Snappy)
-        .with_retry_policy(retry_policy)
-        .with_reconnection_policy(reconnection_policy)
-        .build())
-}
-
-/// Creates new session that will perform queries with LZ4 compression. `Compression` type
-/// can be changed at any time.
-/// As a parameter it takes:
-/// * cluster config
-/// * load balancing strategy (cannot be changed during `Session` life time).
-#[deprecated(note = "Use SessionBuilder instead.")]
-pub async fn new_lz4<LB>(
-    node_configs: &ClusterTcpConfig,
-    load_balancing: LB,
-    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-) -> error::Result<Session<TransportTcp, TcpConnectionManager, LB>>
-where
-    LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync + 'static,
-{
-    Ok(TcpSessionBuilder::new(load_balancing, node_configs.clone())
-        .with_compression(Compression::Lz4)
-        .with_retry_policy(retry_policy)
-        .with_reconnection_policy(reconnection_policy)
-        .build())
-}
-
-/// Creates new TLS session that will perform queries without any compression. `Compression` type
-/// can be changed at any time.
-/// As a parameter it takes:
-/// * cluster config
-/// * load balancing strategy (cannot be changed during `Session` life time).
-#[cfg(feature = "rust-tls")]
-#[deprecated(note = "Use SessionBuilder instead.")]
-pub async fn new_tls<LB>(
-    node_configs: &ClusterRustlsConfig,
-    load_balancing: LB,
-    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-) -> error::Result<Session<TransportRustls, RustlsConnectionManager, LB>>
-where
-    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync + 'static,
-{
-    Ok(
-        RustlsSessionBuilder::new(load_balancing, node_configs.clone())
-            .with_retry_policy(retry_policy)
-            .with_reconnection_policy(reconnection_policy)
-            .build(),
-    )
-}
-
-/// Creates new TLS session that will perform queries with Snappy compression. `Compression` type
-/// can be changed at any time.
-/// As a parameter it takes:
-/// * cluster config
-/// * load balancing strategy (cannot be changed during `Session` life time).
-#[cfg(feature = "rust-tls")]
-#[deprecated(note = "Use SessionBuilder instead.")]
-pub async fn new_snappy_tls<LB>(
-    node_configs: &ClusterRustlsConfig,
-    load_balancing: LB,
-    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-) -> error::Result<Session<TransportRustls, RustlsConnectionManager, LB>>
-where
-    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync + 'static,
-{
-    Ok(
-        RustlsSessionBuilder::new(load_balancing, node_configs.clone())
-            .with_compression(Compression::Snappy)
-            .with_retry_policy(retry_policy)
-            .with_reconnection_policy(reconnection_policy)
-            .build(),
-    )
-}
-
-/// Creates new TLS session that will perform queries with LZ4 compression. `Compression` type
-/// can be changed at any time.
-/// As a parameter it takes:
-/// * cluster config
-/// * load balancing strategy (cannot be changed during `Session` life time).
-#[cfg(feature = "rust-tls")]
-#[deprecated(note = "Use SessionBuilder instead.")]
-pub async fn new_lz4_tls<LB>(
-    node_configs: &ClusterRustlsConfig,
-    load_balancing: LB,
-    retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-) -> error::Result<Session<TransportRustls, RustlsConnectionManager, LB>>
-where
-    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync + 'static,
-{
-    Ok(
-        RustlsSessionBuilder::new(load_balancing, node_configs.clone())
-            .with_compression(Compression::Lz4)
-            .with_retry_policy(retry_policy)
-            .with_reconnection_policy(reconnection_policy)
-            .build(),
-    )
 }
 
 struct SessionConfig<
@@ -676,14 +541,14 @@ pub struct TcpSessionBuilder<
     LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync,
 > {
     config: SessionConfig<TransportTcp, TcpConnectionManager, LB>,
-    node_configs: ClusterTcpConfig,
+    node_config: NodeTcpConfig,
 }
 
 impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync>
     TcpSessionBuilder<LB>
 {
     /// Creates a new builder with default session configuration.
-    pub fn new(load_balancing: LB, node_configs: ClusterTcpConfig) -> Self {
+    pub fn new(load_balancing: LB, node_config: NodeTcpConfig) -> Self {
         TcpSessionBuilder {
             config: SessionConfig::new(
                 Compression::None,
@@ -693,7 +558,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
                 Box::new(DefaultRetryPolicy::default()),
                 Arc::new(ExponentialReconnectionPolicy::default()),
             ),
-            node_configs,
+            node_config,
         }
     }
 }
@@ -731,18 +596,21 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
 
     fn build(self) -> Session<TransportTcp, TcpConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
-        let mut nodes = Vec::with_capacity(self.node_configs.0.len());
+        let connection_manager = Arc::new(TcpConnectionManager::new(
+            self.node_config.authenticator_provider,
+            keyspace_holder.clone(),
+            self.config.reconnection_policy.clone(),
+            self.config.compression,
+            self.config.transport_buffer_size,
+            self.config.tcp_nodelay,
+        ));
 
-        for node_config in self.node_configs.0 {
-            let connection_manager = TcpConnectionManager::new(
-                node_config,
-                keyspace_holder.clone(),
-                self.config.reconnection_policy.clone(),
-                self.config.compression,
-                self.config.transport_buffer_size,
-                self.config.tcp_nodelay,
-            );
-            nodes.push(Arc::new(Node::new(connection_manager)));
+        let mut nodes = Vec::with_capacity(self.node_config.contact_points.len());
+        for contact_point in self.node_config.contact_points {
+            nodes.push(Arc::new(Node::new_contact_point(
+                connection_manager.clone(),
+                contact_point,
+            )));
         }
 
         Session::new(
@@ -761,7 +629,7 @@ pub struct RustlsSessionBuilder<
     LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync,
 > {
     config: SessionConfig<TransportRustls, RustlsConnectionManager, LB>,
-    node_configs: ClusterRustlsConfig,
+    node_config: NodeRustlsConfig,
 }
 
 #[cfg(feature = "rust-tls")]
@@ -769,7 +637,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
     RustlsSessionBuilder<LB>
 {
     /// Creates a new builder with default session configuration.
-    pub fn new(load_balancing: LB, node_configs: ClusterRustlsConfig) -> Self {
+    pub fn new(load_balancing: LB, node_config: NodeRustlsConfig) -> Self {
         RustlsSessionBuilder {
             config: SessionConfig::new(
                 Compression::None,
@@ -779,7 +647,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
                 Box::new(DefaultRetryPolicy::default()),
                 Arc::new(ExponentialReconnectionPolicy::default()),
             ),
-            node_configs,
+            node_config,
         }
     }
 }
@@ -819,18 +687,23 @@ impl<
 
     fn build(self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
-        let mut nodes = Vec::with_capacity(self.node_configs.0.len());
+        let connection_manager = Arc::new(RustlsConnectionManager::new(
+            self.node_config.dns_name,
+            self.node_config.authenticator_provider,
+            self.node_config.config,
+            keyspace_holder.clone(),
+            self.config.reconnection_policy.clone(),
+            self.config.compression,
+            self.config.transport_buffer_size,
+            self.config.tcp_nodelay,
+        ));
 
-        for node_config in self.node_configs.0 {
-            let connection_manager = RustlsConnectionManager::new(
-                node_config,
-                keyspace_holder.clone(),
-                self.config.reconnection_policy.clone(),
-                self.config.compression,
-                self.config.transport_buffer_size,
-                self.config.tcp_nodelay,
-            );
-            nodes.push(Arc::new(Node::new(connection_manager)));
+        let mut nodes = Vec::with_capacity(self.node_config.contact_points.len());
+        for contact_point in self.node_config.contact_points {
+            nodes.push(Arc::new(Node::new_contact_point(
+                connection_manager.clone(),
+                contact_point,
+            )));
         }
 
         Session::new(

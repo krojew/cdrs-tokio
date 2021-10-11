@@ -10,7 +10,7 @@ use cdrs_tokio::cluster::session::SessionBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::TcpSessionBuilder;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
@@ -24,13 +24,12 @@ use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn create_keyspace() {
-    let nodes = NodeTcpConfigBuilder::new()
-        .with_node_address("127.0.0.1:9042".into())
+    let cluster_config = NodeTcpConfigBuilder::new()
+        .with_contact_point("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
         .unwrap();
-    let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobinBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
@@ -97,13 +96,12 @@ async fn create_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn alter_keyspace() {
-    let nodes = NodeTcpConfigBuilder::new()
-        .with_node_address("127.0.0.1:9042".into())
+    let cluster_config = NodeTcpConfigBuilder::new()
+        .with_contact_point("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
         .unwrap();
-    let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobinBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
@@ -161,13 +159,12 @@ async fn alter_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn use_keyspace() {
-    let node = NodeTcpConfigBuilder::new()
-        .with_node_address("127.0.0.1:9042".into())
+    let cluster_config = NodeTcpConfigBuilder::new()
+        .with_contact_point("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
         .unwrap();
-    let cluster_config = ClusterTcpConfig(node);
     let lb = RoundRobinBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
@@ -198,13 +195,12 @@ async fn use_keyspace() {
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn drop_keyspace() {
-    let nodes = NodeTcpConfigBuilder::new()
-        .with_node_address("127.0.0.1:9042".into())
+    let cluster_config = NodeTcpConfigBuilder::new()
+        .with_contact_point("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
         .unwrap();
-    let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobinBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))

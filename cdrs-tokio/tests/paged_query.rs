@@ -3,7 +3,7 @@ use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
@@ -14,13 +14,12 @@ use std::sync::Arc;
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn paged_query() {
-    let nodes = NodeTcpConfigBuilder::new()
-        .with_node_address("127.0.0.1:9042".into())
+    let cluster_config = NodeTcpConfigBuilder::new()
+        .with_contact_point("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
         .unwrap();
-    let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobinBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))

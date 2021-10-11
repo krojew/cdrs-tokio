@@ -8,9 +8,9 @@ use cdrs_tokio::cluster::session::Session;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::cluster::TcpConnectionManager;
+use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder};
+use cdrs_tokio::cluster::TcpConnectionManager;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
@@ -40,13 +40,12 @@ pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
 
 #[cfg(feature = "e2e-tests")]
 pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSession> {
-    let nodes = NodeTcpConfigBuilder::new()
-        .with_node_address(ADDR.into())
+    let cluster_config = NodeTcpConfigBuilder::new()
+        .with_contact_point(ADDR.into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
         .unwrap();
-    let cluster_config = ClusterTcpConfig(nodes);
     let session = TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build();

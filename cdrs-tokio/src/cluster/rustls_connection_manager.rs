@@ -5,8 +5,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
 
+use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::connection_manager::{startup, ConnectionManager};
-use crate::cluster::{KeyspaceHolder, NodeRustlsConfig};
+use crate::cluster::KeyspaceHolder;
 use crate::compression::Compression;
 use crate::error::Result;
 use crate::frame::Frame;
@@ -15,7 +16,9 @@ use crate::retry::ReconnectionPolicy;
 use crate::transport::TransportRustls;
 
 pub struct RustlsConnectionManager {
-    config: NodeRustlsConfig,
+    dns_name: webpki::DNSName,
+    authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+    config: Arc<rustls::ClientConfig>,
     keyspace_holder: Arc<KeyspaceHolder>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     compression: Compression,
@@ -27,12 +30,13 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
     fn connection(
         &self,
         event_handler: Option<Sender<Frame>>,
+        addr: SocketAddr,
     ) -> BoxFuture<Result<TransportRustls>> {
         async move {
             let mut schedule = self.reconnection_policy.new_node_schedule();
 
             loop {
-                let transport = self.establish_connection(event_handler.clone()).await;
+                let transport = self.establish_connection(event_handler.clone(), addr).await;
                 match transport {
                     Ok(transport) => return Ok(transport),
                     Err(error) => {
@@ -44,16 +48,13 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
         }
         .boxed()
     }
-
-    #[inline]
-    fn addr(&self) -> SocketAddr {
-        self.config.addr
-    }
 }
 
 impl RustlsConnectionManager {
     pub fn new(
-        config: NodeRustlsConfig,
+        dns_name: webpki::DNSName,
+        authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+        config: Arc<rustls::ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         compression: Compression,
@@ -61,6 +62,8 @@ impl RustlsConnectionManager {
         tcp_nodelay: bool,
     ) -> Self {
         RustlsConnectionManager {
+            dns_name,
+            authenticator_provider,
             config,
             keyspace_holder,
             reconnection_policy,
@@ -73,11 +76,12 @@ impl RustlsConnectionManager {
     async fn establish_connection(
         &self,
         event_handler: Option<Sender<Frame>>,
+        addr: SocketAddr,
     ) -> Result<TransportRustls> {
         let transport = TransportRustls::new(
-            self.config.addr,
-            self.config.dns_name.clone(),
-            self.config.config.clone(),
+            addr,
+            self.dns_name.clone(),
+            self.config.clone(),
             self.keyspace_holder.clone(),
             event_handler,
             self.compression,
@@ -88,7 +92,7 @@ impl RustlsConnectionManager {
 
         startup(
             &transport,
-            self.config.authenticator_provider.deref(),
+            self.authenticator_provider.deref(),
             self.keyspace_holder.deref(),
             self.compression,
         )

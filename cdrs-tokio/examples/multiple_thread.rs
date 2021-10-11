@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};
-use cdrs_tokio::cluster::{ClusterTcpConfig, NodeTcpConfigBuilder, TcpConnectionManager};
+use cdrs_tokio::cluster::{NodeTcpConfigBuilder, TcpConnectionManager};
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
 
@@ -21,13 +21,12 @@ type CurrentSession = Session<
 
 #[tokio::main]
 async fn main() {
-    let nodes = NodeTcpConfigBuilder::new()
-        .with_node_address("127.0.0.1:9042".into())
+    let cluster_config = NodeTcpConfigBuilder::new()
+        .with_contact_point("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
         .unwrap();
-    let cluster_config = ClusterTcpConfig(nodes);
     let lb = RoundRobinBalancingStrategy::new();
     let session: Arc<CurrentSession> = Arc::new(TcpSessionBuilder::new(lb, cluster_config).build());
 
