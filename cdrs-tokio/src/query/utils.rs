@@ -1,20 +1,20 @@
 use crate::cluster::session::Session;
 use crate::cluster::{ConnectionManager, GetRetryPolicy};
 use crate::error;
-use crate::frame::{Flag, Frame};
+use crate::frame::{Flags, Frame};
 use crate::load_balancing::{LoadBalancingStrategy, Request};
 use crate::retry::{QueryInfo, RetryDecision};
 use crate::transport::CdrsTransport;
 
-pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Vec<Flag> {
-    let mut flags = vec![];
+pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Flags {
+    let mut flags = Flags::empty();
 
     if with_tracing {
-        flags.push(Flag::Tracing);
+        flags.insert(Flags::TRACING);
     }
 
     if with_warnings {
-        flags.push(Flag::Warning);
+        flags.insert(Flags::WARNING);
     }
 
     flags
@@ -67,11 +67,11 @@ mod test {
 
     #[test]
     fn prepare_flags_test() {
-        assert_eq!(prepare_flags(true, false), vec![Flag::Tracing]);
-        assert_eq!(prepare_flags(false, true), vec![Flag::Warning]);
-        assert_eq!(
-            prepare_flags(true, true),
-            vec![Flag::Tracing, Flag::Warning]
-        );
+        assert!(prepare_flags(true, false).contains(Flags::TRACING));
+        assert!(prepare_flags(false, true).contains(Flags::WARNING));
+
+        let both = prepare_flags(true, true);
+        assert!(both.contains(Flags::TRACING));
+        assert!(both.contains(Flags::WARNING));
     }
 }

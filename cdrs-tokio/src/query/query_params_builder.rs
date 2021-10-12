@@ -5,7 +5,7 @@ use crate::types::CBytes;
 #[derive(Debug, Default)]
 pub struct QueryParamsBuilder {
     consistency: Consistency,
-    flags: Option<Vec<QueryFlags>>,
+    flags: Option<QueryFlags>,
     values: Option<QueryValues>,
     with_names: Option<bool>,
     page_size: Option<i32>,
@@ -29,19 +29,19 @@ impl QueryParamsBuilder {
     }
 
     // Sets new flags.
-    builder_opt_field!(flags, Vec<QueryFlags>);
+    builder_opt_field!(flags, QueryFlags);
 
     /// Sets new query consistency
     pub fn values(mut self, values: QueryValues) -> Self {
         let with_names = values.has_names();
         self.with_names = Some(with_names);
         self.values = Some(values);
-        self.flags = self.flags.or_else(|| Some(vec![])).map(|mut flags| {
-            flags.push(QueryFlags::Value);
+        self.flags = self.flags.or_else(|| {
+            let mut flags = QueryFlags::VALUE;
             if with_names {
-                flags.push(QueryFlags::WithNamesForValues);
+                flags.insert(QueryFlags::WITH_NAMES_FOR_VALUES);
             }
-            flags
+            Some(flags)
         });
 
         self
@@ -52,10 +52,7 @@ impl QueryParamsBuilder {
     /// Sets new query consistency
     pub fn page_size(mut self, size: i32) -> Self {
         self.page_size = Some(size);
-        self.flags = self.flags.or_else(|| Some(vec![])).map(|mut flags| {
-            flags.push(QueryFlags::PageSize);
-            flags
-        });
+        self.flags = self.flags.or(Some(QueryFlags::PAGE_SIZE));
 
         self
     }
@@ -63,10 +60,7 @@ impl QueryParamsBuilder {
     /// Sets new query consistency
     pub fn paging_state(mut self, state: CBytes) -> Self {
         self.paging_state = Some(state);
-        self.flags = self.flags.or_else(|| Some(vec![])).map(|mut flags| {
-            flags.push(QueryFlags::WithPagingState);
-            flags
-        });
+        self.flags = self.flags.or(Some(QueryFlags::WITH_PAGING_STATE));
 
         self
     }

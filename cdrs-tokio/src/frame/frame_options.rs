@@ -17,13 +17,12 @@ impl Frame {
     /// Creates new frame of type `options`.
     pub fn new_req_options() -> Frame {
         let version = Version::Request;
-        let flag = Flag::Ignore;
         let opcode = Opcode::Options;
         let body: BodyReqOptions = Default::default();
 
         Frame::new(
             version,
-            vec![flag],
+            Flags::empty(),
             opcode,
             body.serialize_to_vec(),
             None,

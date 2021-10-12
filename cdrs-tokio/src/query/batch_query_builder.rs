@@ -81,14 +81,14 @@ impl BatchQueryBuilder {
     }
 
     pub fn finalize(self) -> CResult<BodyReqBatch> {
-        let mut flags = vec![];
+        let mut flags = QueryFlags::empty();
 
         if self.serial_consistency.is_some() {
-            flags.push(QueryFlags::WithSerialConsistency);
+            flags.insert(QueryFlags::WITH_SERIAL_CONSISTENCY);
         }
 
         if self.timestamp.is_some() {
-            flags.push(QueryFlags::WithDefaultTimestamp);
+            flags.insert(QueryFlags::WITH_DEFAULT_TIMESTAMP);
         }
 
         let with_names_for_values = self.queries.iter().all(|q| q.values.has_names());
@@ -105,7 +105,7 @@ impl BatchQueryBuilder {
         }
 
         if with_names_for_values {
-            flags.push(QueryFlags::WithNamesForValues);
+            flags.insert(QueryFlags::WITH_NAMES_FOR_VALUES);
         }
 
         Ok(BodyReqBatch {

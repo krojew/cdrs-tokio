@@ -31,7 +31,7 @@ impl Frame {
     pub(crate) fn new_req_execute(
         id: &CBytesShort,
         query_parameters: &QueryParams,
-        flags: Vec<Flag>,
+        flags: Flags,
     ) -> Frame {
         let version = Version::Request;
         let opcode = Opcode::Execute;

@@ -1,11 +1,12 @@
 //! `frame` module contains general Frame functionality.
+use bitflags::bitflags;
 use std::convert::TryFrom;
 use std::sync::atomic::{AtomicI16, Ordering};
+use uuid::Uuid;
 
 use crate::compression::Compression;
 use crate::frame::frame_response::ResponseBody;
 pub use crate::frame::traits::*;
-use uuid::Uuid;
 
 /// Number of stream bytes in accordance to protocol.
 pub const STREAM_LEN: usize = 2;
@@ -64,7 +65,7 @@ fn next_stream_id() -> StreamId {
 #[derive(Debug, Clone)]
 pub struct Frame {
     pub version: Version,
-    pub flags: Vec<Flag>,
+    pub flags: Flags,
     pub opcode: Opcode,
     pub stream: StreamId,
     pub body: Vec<u8>,
@@ -75,7 +76,7 @@ pub struct Frame {
 impl Frame {
     pub fn new(
         version: Version,
-        flags: Vec<Flag>,
+        flags: Flags,
         opcode: Opcode,
         body: Vec<u8>,
         tracing_id: Option<Uuid>,
@@ -107,7 +108,7 @@ impl Frame {
 
     pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
         let version_byte = u8::from(self.version);
-        let flag_byte = Flag::many_to_cbytes(&self.flags);
+        let flag_byte = self.flags.bits();
         let opcode_byte = u8::from(self.opcode);
 
         let mut v = Vec::with_capacity(9);
@@ -203,93 +204,26 @@ impl TryFrom<u8> for Version {
     }
 }
 
-/// Frame's flags
-#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
-pub enum Flag {
-    Compression,
-    Tracing,
-    CustomPayload,
-    Warning,
-    Ignore,
-}
-
-impl Flag {
-    const BYTE_LENGTH: usize = 1;
-
-    /// It returns selected flags collection.
-    pub fn collection(flags: u8) -> Vec<Flag> {
-        let mut found_flags: Vec<Flag> = vec![];
-
-        if Flag::has_compression(flags) {
-            found_flags.push(Flag::Compression);
-        }
-
-        if Flag::has_tracing(flags) {
-            found_flags.push(Flag::Tracing);
-        }
-
-        if Flag::has_custom_payload(flags) {
-            found_flags.push(Flag::CustomPayload);
-        }
-
-        if Flag::has_warning(flags) {
-            found_flags.push(Flag::Warning);
-        }
-
-        found_flags
-    }
-
-    /// The method converts a series of `Flag`-s into a single byte.
-    pub fn many_to_cbytes(flags: &[Flag]) -> u8 {
-        flags
-            .iter()
-            .fold(u8::from(Flag::Ignore), |acc, f| acc | u8::from(*f))
-    }
-
-    /// Indicates if flags contains `Flag::Compression`
-    pub fn has_compression(flags: u8) -> bool {
-        (flags & u8::from(Flag::Compression)) > 0
-    }
-
-    /// Indicates if flags contains `Flag::Tracing`
-    pub fn has_tracing(flags: u8) -> bool {
-        (flags & u8::from(Flag::Tracing)) > 0
-    }
-
-    /// Indicates if flags contains `Flag::CustomPayload`
-    pub fn has_custom_payload(flags: u8) -> bool {
-        (flags & u8::from(Flag::CustomPayload)) > 0
-    }
-
-    /// Indicates if flags contains `Flag::Warning`
-    pub fn has_warning(flags: u8) -> bool {
-        (flags & u8::from(Flag::Warning)) > 0
+bitflags! {
+    /// Frame's flags
+    pub struct Flags: u8 {
+        const COMPRESSION = 0x01;
+        const TRACING = 0x02;
+        const CUSTOMPAYLOAD = 0x04;
+        const WARNING = 0x08;
     }
 }
 
-impl From<Flag> for u8 {
-    fn from(value: Flag) -> Self {
-        match value {
-            Flag::Compression => 0x01,
-            Flag::Tracing => 0x02,
-            Flag::CustomPayload => 0x04,
-            Flag::Warning => 0x08,
-            Flag::Ignore => 0x00,
-            // assuming that ingoing value would be other than [0x01, 0x02, 0x04, 0x08]
-        }
+impl Default for Flags {
+    #[inline]
+    fn default() -> Self {
+        Flags::empty()
     }
 }
 
-impl From<u8> for Flag {
-    fn from(f: u8) -> Flag {
-        match f {
-            0x01 => Flag::Compression,
-            0x02 => Flag::Tracing,
-            0x04 => Flag::CustomPayload,
-            0x08 => Flag::Warning,
-            _ => Flag::Ignore, // ignore by specification
-        }
-    }
+impl Flags {
+    // Number of opcode bytes in accordance to protocol.
+    pub const BYTE_LENGTH: usize = 1;
 }
 
 #[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
@@ -400,70 +334,6 @@ mod tests {
     fn test_frame_version_from_v3() {
         assert_eq!(Version::try_from(0x03).unwrap(), Version::Request);
         assert_eq!(Version::try_from(0x83).unwrap(), Version::Response);
-    }
-
-    #[test]
-    fn test_flag_from() {
-        assert_eq!(Flag::from(0x01_u8), Flag::Compression);
-        assert_eq!(Flag::from(0x02_u8), Flag::Tracing);
-        assert_eq!(Flag::from(0x04_u8), Flag::CustomPayload);
-        assert_eq!(Flag::from(0x08_u8), Flag::Warning);
-        // rest should be interpreted as Ignore
-        assert_eq!(Flag::from(0x10_u8), Flag::Ignore);
-        assert_eq!(Flag::from(0x31_u8), Flag::Ignore);
-    }
-
-    #[test]
-    fn test_flag_as_byte() {
-        assert_eq!(u8::from(Flag::Compression), 0x01);
-        assert_eq!(u8::from(Flag::Tracing), 0x02);
-        assert_eq!(u8::from(Flag::CustomPayload), 0x04);
-        assert_eq!(u8::from(Flag::Warning), 0x08);
-    }
-
-    #[test]
-    fn test_flag_has_x() {
-        assert!(Flag::has_compression(0x01));
-        assert!(!Flag::has_compression(0x02));
-
-        assert!(Flag::has_tracing(0x02));
-        assert!(!Flag::has_tracing(0x01));
-
-        assert!(Flag::has_custom_payload(0x04));
-        assert!(!Flag::has_custom_payload(0x02));
-
-        assert!(Flag::has_warning(0x08));
-        assert!(!Flag::has_warning(0x01));
-    }
-
-    #[test]
-    fn test_flag_many_to_cbytes() {
-        let all = vec![
-            Flag::Compression,
-            Flag::Tracing,
-            Flag::CustomPayload,
-            Flag::Warning,
-        ];
-        assert_eq!(Flag::many_to_cbytes(&all), 1 | 2 | 4 | 8);
-        let some = vec![Flag::Compression, Flag::Warning];
-        assert_eq!(Flag::many_to_cbytes(&some), 1 | 8);
-        let one = vec![Flag::Compression];
-        assert_eq!(Flag::many_to_cbytes(&one), 1);
-    }
-
-    #[test]
-    fn test_flag_collection() {
-        let all = vec![
-            Flag::Compression,
-            Flag::Tracing,
-            Flag::CustomPayload,
-            Flag::Warning,
-        ];
-        assert_eq!(Flag::collection(1 | 2 | 4 | 8), all);
-        let some = vec![Flag::Compression, Flag::Warning];
-        assert_eq!(Flag::collection(1 | 8), some);
-        let one = vec![Flag::Compression];
-        assert_eq!(Flag::collection(1), one);
     }
 
     #[test]

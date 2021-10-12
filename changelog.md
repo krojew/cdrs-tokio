@@ -14,6 +14,7 @@
 * Rewritten transport layer for massive performance improvements (including removing `bb8`). This
   involves changing a large portion of public API related to transport and server events.
 * Rewritten event mechanism - now you can subscribe to server events via `create_event_receiver()` in `Session`.
+* Replaced `QueryFlags` and `frame::Flags` vectors with bitflags.
 * Changed `Target` and `ChangeType` enums to `SchemaChangeTarget` and `SchemaChangeType`.
 * The `varint` type now uses `num::BigInt` representation (this implies `Decimal` also uses "big" types).
 * Removed `unstable-dynamic-cluster` feature, since it wasn't working as expected and introduced performance penalty.

@@ -47,13 +47,12 @@ impl Frame {
     /// Creates new frame of type `startup`.
     pub fn new_req_startup(compression: Option<&str>) -> Frame {
         let version = Version::Request;
-        let flag = Flag::Ignore;
         let opcode = Opcode::Startup;
         let body = BodyReqStartup::new(compression);
 
         Frame::new(
             version,
-            vec![flag],
+            Flags::empty(),
             opcode,
             body.serialize_to_vec(),
             None,
@@ -65,7 +64,7 @@ impl Frame {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::frame::{Flag, Frame, Opcode, Version};
+    use crate::frame::{Flags, Frame, Opcode, Version};
 
     #[test]
     fn new_body_req_startup_some_compression() {
@@ -88,7 +87,7 @@ mod test {
         let compression = Some("test_compression");
         let frame = Frame::new_req_startup(compression);
         assert_eq!(frame.version, Version::Request);
-        assert_eq!(frame.flags, vec![Flag::Ignore]);
+        assert_eq!(frame.flags, Flags::empty());
         assert_eq!(frame.opcode, Opcode::Startup);
         assert_eq!(frame.tracing_id, None);
         assert_eq!(frame.warnings, vec![] as Vec<String>);

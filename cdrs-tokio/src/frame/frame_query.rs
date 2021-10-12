@@ -28,30 +28,30 @@ impl BodyReqQuery {
         is_idempotent: bool,
     ) -> BodyReqQuery {
         // query flags
-        let mut flags: Vec<QueryFlags> = vec![];
+        let mut flags = QueryFlags::empty();
 
         if values.is_some() {
-            flags.push(QueryFlags::Value);
+            flags.insert(QueryFlags::VALUE);
         }
 
         if with_names.unwrap_or(false) {
-            flags.push(QueryFlags::WithNamesForValues);
+            flags.insert(QueryFlags::WITH_NAMES_FOR_VALUES);
         }
 
         if page_size.is_some() {
-            flags.push(QueryFlags::PageSize);
+            flags.insert(QueryFlags::PAGE_SIZE);
         }
 
         if paging_state.is_some() {
-            flags.push(QueryFlags::WithPagingState);
+            flags.insert(QueryFlags::WITH_PAGING_STATE);
         }
 
         if serial_consistency.is_some() {
-            flags.push(QueryFlags::WithSerialConsistency);
+            flags.insert(QueryFlags::WITH_SERIAL_CONSISTENCY);
         }
 
         if timestamp.is_some() {
-            flags.push(QueryFlags::WithDefaultTimestamp);
+            flags.insert(QueryFlags::WITH_DEFAULT_TIMESTAMP);
         }
 
         BodyReqQuery {
@@ -91,7 +91,7 @@ impl Frame {
         paging_state: Option<CBytes>,
         serial_consistency: Option<Consistency>,
         timestamp: Option<i64>,
-        flags: Vec<Flag>,
+        flags: Flags,
         is_idempotent: bool,
     ) -> Frame {
         let version = Version::Request;
@@ -119,7 +119,7 @@ impl Frame {
     }
 
     #[inline]
-    pub(crate) fn new_query(query: Query, flags: Vec<Flag>) -> Frame {
+    pub(crate) fn new_query(query: Query, flags: Flags) -> Frame {
         Frame::new_req_query(
             query.query,
             query.params.consistency,

@@ -13,7 +13,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     compressor: Compression,
 ) -> error::Result<Frame> {
     let mut version_bytes = [0; Version::BYTE_LENGTH];
-    let mut flag_bytes = [0; Flag::BYTE_LENGTH];
+    let mut flag_bytes = [0; Flags::BYTE_LENGTH];
     let mut opcode_bytes = [0; Opcode::BYTE_LENGTH];
     let mut stream_bytes = [0; STREAM_LEN];
     let mut length_bytes = [0; LENGTH_LEN];
@@ -26,7 +26,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     cursor.read_exact(&mut length_bytes).await?;
 
     let version = Version::try_from(version_bytes[0])?;
-    let flags = Flag::collection(flag_bytes[0]);
+    let flags = Flags::from_bits_truncate(flag_bytes[0]);
     let stream = try_i16_from_bytes(&stream_bytes)?;
     let opcode = Opcode::try_from(opcode_bytes[0])?;
     let length = try_i32_from_bytes(&length_bytes)? as usize;
@@ -38,7 +38,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
 
     cursor.read_exact(&mut body_bytes).await?;
 
-    let full_body = if flags.iter().any(|flag| flag == &Flag::Compression) {
+    let full_body = if flags.contains(Flags::COMPRESSION) {
         compressor.decode(body_bytes)?
     } else {
         Compression::None.decode(body_bytes)?
@@ -47,7 +47,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     // Use cursor to get tracing id, warnings and actual body
     let mut body_cursor = Cursor::new(full_body.as_slice());
 
-    let tracing_id = if flags.iter().any(|flag| flag == &Flag::Tracing) {
+    let tracing_id = if flags.contains(Flags::TRACING) {
         let mut tracing_bytes = Vec::with_capacity(UUID_LEN);
         unsafe {
             tracing_bytes.set_len(UUID_LEN);
@@ -59,7 +59,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
         None
     };
 
-    let warnings = if flags.iter().any(|flag| flag == &Flag::Warning) {
+    let warnings = if flags.contains(Flags::WARNING) {
         CStringList::from_cursor(&mut body_cursor)?.into_plain()
     } else {
         vec![]

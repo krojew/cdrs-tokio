@@ -11,8 +11,8 @@ use crate::types::{CBytes, CIntShort};
 pub struct QueryParams {
     /// Cassandra consistency level.
     pub consistency: Consistency,
-    /// Array of query flags.
-    pub flags: Vec<QueryFlags>,
+    /// Query flags.
+    pub flags: QueryFlags,
     /// Were values provided with names
     pub with_names: Option<bool>,
     /// Array of values.
@@ -36,41 +36,8 @@ pub struct QueryParams {
 impl QueryParams {
     /// Sets values of Query request params.
     pub fn set_values(&mut self, values: QueryValues) {
-        self.flags.push(QueryFlags::Value);
+        self.flags.insert(QueryFlags::VALUE);
         self.values = Some(values);
-    }
-
-    fn flags_as_byte(&self) -> u8 {
-        self.flags.iter().fold(0, |acc, flag| acc | u8::from(*flag))
-    }
-
-    #[allow(dead_code)]
-    fn parse_query_flags(byte: u8) -> Vec<QueryFlags> {
-        let mut flags: Vec<QueryFlags> = vec![];
-
-        if QueryFlags::has_value(byte) {
-            flags.push(QueryFlags::Value);
-        }
-        if QueryFlags::has_skip_metadata(byte) {
-            flags.push(QueryFlags::SkipMetadata);
-        }
-        if QueryFlags::has_page_size(byte) {
-            flags.push(QueryFlags::PageSize);
-        }
-        if QueryFlags::has_with_paging_state(byte) {
-            flags.push(QueryFlags::WithPagingState);
-        }
-        if QueryFlags::has_with_serial_consistency(byte) {
-            flags.push(QueryFlags::WithSerialConsistency);
-        }
-        if QueryFlags::has_with_default_timestamp(byte) {
-            flags.push(QueryFlags::WithDefaultTimestamp);
-        }
-        if QueryFlags::has_with_names_for_values(byte) {
-            flags.push(QueryFlags::WithNamesForValues);
-        }
-
-        flags
     }
 }
 
@@ -79,10 +46,10 @@ impl Serialize for QueryParams {
         let consistency: CIntShort = self.consistency.into();
         consistency.serialize(cursor);
 
-        let flags = self.flags_as_byte();
-        flags.serialize(cursor);
+        let flag_bits = self.flags.bits();
+        flag_bits.serialize(cursor);
 
-        if QueryFlags::has_value(flags) {
+        if self.flags.contains(QueryFlags::VALUE) {
             if let Some(values) = &self.values {
                 let len = values.len() as CIntShort;
                 len.serialize(cursor);
@@ -90,26 +57,26 @@ impl Serialize for QueryParams {
             }
         }
 
-        if QueryFlags::has_page_size(flags) {
+        if self.flags.contains(QueryFlags::PAGE_SIZE) {
             if let Some(page_size) = self.page_size {
                 page_size.serialize(cursor);
             }
         }
 
-        if QueryFlags::has_with_paging_state(flags) {
+        if self.flags.contains(QueryFlags::WITH_PAGING_STATE) {
             if let Some(paging_state) = &self.paging_state {
                 paging_state.serialize(cursor);
             }
         }
 
-        if QueryFlags::has_with_serial_consistency(flags) {
+        if self.flags.contains(QueryFlags::WITH_SERIAL_CONSISTENCY) {
             if let Some(serial_consistency) = self.serial_consistency {
                 let serial_consistency: CIntShort = serial_consistency.into();
                 serial_consistency.serialize(cursor);
             }
         }
 
-        if QueryFlags::has_with_default_timestamp(flags) {
+        if self.flags.contains(QueryFlags::WITH_DEFAULT_TIMESTAMP) {
             if let Some(timestamp) = self.timestamp {
                 timestamp.serialize(cursor);
             }

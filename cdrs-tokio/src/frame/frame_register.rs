@@ -29,13 +29,12 @@ impl Frame {
     /// Creates new frame of type `REGISTER`.
     pub fn new_req_register(events: Vec<SimpleServerEvent>) -> Frame {
         let version = Version::Request;
-        let flag = Flag::Ignore;
         let opcode = Opcode::Register;
         let register_body = BodyReqRegister { events };
 
         Frame::new(
             version,
-            vec![flag],
+            Flags::empty(),
             opcode,
             register_body.serialize_to_vec(),
             None,

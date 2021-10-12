@@ -13,9 +13,8 @@ pub struct BodyReqBatch {
     pub batch_type: BatchType,
     pub queries: Vec<BatchQuery>,
     pub consistency: Consistency,
-    /// **IMPORTANT NOTE:** with names flag does not work and should not be used.
-    /// <https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L413>
-    pub query_flags: Vec<QueryFlags>,
+    // **IMPORTANT NOTE:** with names flag does not work and should not be used.
+    pub query_flags: QueryFlags,
     pub serial_consistency: Option<Consistency>,
     pub timestamp: Option<i64>,
     pub is_idempotent: bool,
@@ -37,10 +36,7 @@ impl Serialize for BodyReqBatch {
         let consistency: i16 = self.consistency.into();
         consistency.serialize(cursor);
 
-        let flag_byte = self
-            .query_flags
-            .iter()
-            .fold(0, |bytes, f| bytes | u8::from(*f));
+        let flag_byte = self.query_flags.bits();
 
         flag_byte.serialize(cursor);
 
@@ -143,7 +139,7 @@ impl Serialize for BatchQuery {
 
 impl Frame {
     /// **Note:** This function should be used internally for building query request frames.
-    pub fn new_req_batch(query: BodyReqBatch, flags: Vec<Flag>) -> Frame {
+    pub fn new_req_batch(query: BodyReqBatch, flags: Flags) -> Frame {
         let version = Version::Request;
         let opcode = Opcode::Batch;
 
