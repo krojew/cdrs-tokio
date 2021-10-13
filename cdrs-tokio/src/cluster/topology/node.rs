@@ -30,20 +30,6 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
-    /// Creates a node from a contact point address. Contact points are implicitly considered local.
-    pub fn new_contact_point(
-        connection_manager: Arc<CM>,
-        broadcast_rpc_address: SocketAddr,
-    ) -> Self {
-        Node {
-            connection_manager,
-            connection: Default::default(),
-            broadcast_rpc_address,
-            // let's assume contact points are local, until first topology refresh
-            distance: NodeDistance::Local,
-        }
-    }
-
     /// Creates a node from an point address. The node is considered ignored until a distance can
     /// be computed.
     pub fn new(connection_manager: Arc<CM>, broadcast_rpc_address: SocketAddr) -> Self {

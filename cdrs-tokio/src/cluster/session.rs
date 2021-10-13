@@ -452,10 +452,7 @@ where
 
     let mut nodes = vec![];
     for node in initial_nodes.into_iter() {
-        nodes.push(Arc::new(Node::new_contact_point(
-            connection_manager.clone(),
-            node,
-        )));
+        nodes.push(Arc::new(Node::new(connection_manager.clone(), node)));
     }
 
     Ok(Session::new(
@@ -613,7 +610,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
 
         let mut nodes = Vec::with_capacity(self.node_config.contact_points.len());
         for contact_point in self.node_config.contact_points {
-            nodes.push(Arc::new(Node::new_contact_point(
+            nodes.push(Arc::new(Node::new(
                 connection_manager.clone(),
                 contact_point,
             )));
@@ -707,7 +704,7 @@ impl<
 
         let mut nodes = Vec::with_capacity(self.node_config.contact_points.len());
         for contact_point in self.node_config.contact_points {
-            nodes.push(Arc::new(Node::new_contact_point(
+            nodes.push(Arc::new(Node::new(
                 connection_manager.clone(),
                 contact_point,
             )));
