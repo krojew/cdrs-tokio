@@ -10,11 +10,10 @@ pub use crate::cluster::node_address::NodeAddress;
 pub use crate::cluster::pager::{ExecPager, PagerState, QueryPager, SessionPager};
 #[cfg(feature = "rust-tls")]
 pub use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
-pub use crate::cluster::session::connect_generic_static;
+pub use crate::cluster::session::connect_generic;
 pub use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::error::Result;
 use crate::future::BoxFuture;
-use crate::retry::RetryPolicy;
 use crate::transport::CdrsTransport;
 
 mod cluster_metadata_manager;
@@ -24,7 +23,9 @@ mod config_tcp;
 mod connection_manager;
 mod control_connection;
 mod keyspace_holder;
+mod metadata_builder;
 mod node_address;
+mod node_info;
 mod pager;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_manager;
@@ -32,13 +33,10 @@ pub mod session;
 mod tcp_connection_manager;
 pub mod topology;
 
+pub(crate) use self::node_info::NodeInfo;
+
 /// Generic connection configuration trait that can be used to create user-supplied
 /// connection objects that can be used with the `session::connect()` function.
 pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send + Sync {
     fn create_manager(&self) -> BoxFuture<Result<CM>>;
-}
-
-/// `GetRetryPolicy` trait provides a unified interface for Session to get current retry policy.
-pub trait GetRetryPolicy {
-    fn retry_policy(&self) -> &dyn RetryPolicy;
 }

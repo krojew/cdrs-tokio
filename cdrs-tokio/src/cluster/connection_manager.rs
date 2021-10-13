@@ -2,6 +2,9 @@ use std::io;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::Sender;
 
+#[cfg(test)]
+use mockall::*;
+
 use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::KeyspaceHolder;
 use crate::compression::Compression;
@@ -19,6 +22,20 @@ pub trait ConnectionManager<T: CdrsTransport> {
         event_handler: Option<Sender<Frame>>,
         addr: SocketAddr,
     ) -> BoxFuture<Result<T>>;
+}
+
+#[cfg(test)]
+mock! {
+    pub ConnectionManager<T: CdrsTransport> {
+    }
+
+    impl<T: CdrsTransport> ConnectionManager<T> for ConnectionManager<T> {
+        fn connection<'a>(
+            &'a self,
+            event_handler: Option<Sender<Frame>>,
+            addr: SocketAddr,
+        ) -> BoxFuture<'a, Result<T>>;
+    }
 }
 
 /// Establishes Cassandra connection with given authentication, last used keyspace and compression.

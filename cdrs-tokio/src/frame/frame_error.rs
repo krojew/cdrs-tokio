@@ -50,22 +50,22 @@ impl FromCursor for CdrsError {
 /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
 #[derive(Debug)]
 pub enum AdditionalErrorInfo {
-    Server(SimpleError),
-    Protocol(SimpleError),
-    Authentication(SimpleError),
+    Server,
+    Protocol,
+    Authentication,
     Unavailable(UnavailableError),
-    Overloaded(SimpleError),
-    IsBootstrapping(SimpleError),
-    Truncate(SimpleError),
+    Overloaded,
+    IsBootstrapping,
+    Truncate,
     WriteTimeout(WriteTimeoutError),
     ReadTimeout(ReadTimeoutError),
     ReadFailure(ReadFailureError),
     FunctionFailure(FunctionFailureError),
     WriteFailure(WriteFailureError),
-    Syntax(SimpleError),
-    Unauthorized(SimpleError),
-    Invalid(SimpleError),
-    Config(SimpleError),
+    Syntax,
+    Unauthorized,
+    Invalid,
+    Config,
     AlreadyExists(AlreadyExistsError),
     Unprepared(UnpreparedError),
 }
@@ -76,27 +76,15 @@ impl AdditionalErrorInfo {
         error_code: CInt,
     ) -> error::Result<AdditionalErrorInfo> {
         match error_code {
-            0x0000 => Ok(AdditionalErrorInfo::Server(SimpleError::from_cursor(
-                cursor,
-            )?)),
-            0x000A => Ok(AdditionalErrorInfo::Protocol(SimpleError::from_cursor(
-                cursor,
-            )?)),
-            0x0100 => Ok(AdditionalErrorInfo::Authentication(
-                SimpleError::from_cursor(cursor)?,
-            )),
+            0x0000 => Ok(AdditionalErrorInfo::Server),
+            0x000A => Ok(AdditionalErrorInfo::Protocol),
+            0x0100 => Ok(AdditionalErrorInfo::Authentication),
             0x1000 => Ok(AdditionalErrorInfo::Unavailable(
                 UnavailableError::from_cursor(cursor)?,
             )),
-            0x1001 => Ok(AdditionalErrorInfo::Overloaded(SimpleError::from_cursor(
-                cursor,
-            )?)),
-            0x1002 => Ok(AdditionalErrorInfo::IsBootstrapping(
-                SimpleError::from_cursor(cursor)?,
-            )),
-            0x1003 => Ok(AdditionalErrorInfo::Truncate(SimpleError::from_cursor(
-                cursor,
-            )?)),
+            0x1001 => Ok(AdditionalErrorInfo::Overloaded),
+            0x1002 => Ok(AdditionalErrorInfo::IsBootstrapping),
+            0x1003 => Ok(AdditionalErrorInfo::Truncate),
             0x1100 => Ok(AdditionalErrorInfo::WriteTimeout(
                 WriteTimeoutError::from_cursor(cursor)?,
             )),
@@ -112,18 +100,10 @@ impl AdditionalErrorInfo {
             0x1500 => Ok(AdditionalErrorInfo::WriteFailure(
                 WriteFailureError::from_cursor(cursor)?,
             )),
-            0x2000 => Ok(AdditionalErrorInfo::Syntax(SimpleError::from_cursor(
-                cursor,
-            )?)),
-            0x2100 => Ok(AdditionalErrorInfo::Unauthorized(SimpleError::from_cursor(
-                cursor,
-            )?)),
-            0x2200 => Ok(AdditionalErrorInfo::Invalid(SimpleError::from_cursor(
-                cursor,
-            )?)),
-            0x2300 => Ok(AdditionalErrorInfo::Config(SimpleError::from_cursor(
-                cursor,
-            )?)),
+            0x2000 => Ok(AdditionalErrorInfo::Syntax),
+            0x2100 => Ok(AdditionalErrorInfo::Unauthorized),
+            0x2200 => Ok(AdditionalErrorInfo::Invalid),
+            0x2300 => Ok(AdditionalErrorInfo::Config),
             0x2400 => Ok(AdditionalErrorInfo::AlreadyExists(
                 AlreadyExistsError::from_cursor(cursor)?,
             )),
@@ -132,16 +112,6 @@ impl AdditionalErrorInfo {
             )),
             _ => Err(format!("Unexpected additional error info: {}", error_code).into()),
         }
-    }
-}
-
-/// Is used if error does not contain any additional info.
-#[derive(Debug)]
-pub struct SimpleError {}
-
-impl FromCursor for SimpleError {
-    fn from_cursor(mut _cursor: &mut io::Cursor<&[u8]>) -> error::Result<SimpleError> {
-        Ok(SimpleError {})
     }
 }
 

@@ -8,6 +8,7 @@
 * Added missing traits for `BatchType` and `QueryFlags`.
 * `ToString` implementation for `SimpleServerEvent`.
 * Standard trait implementations for event frames.
+* `contains_column`, `is_empty_by_name` and `is_empty` functions for `Row`.
 
 ### Changed
 
@@ -24,6 +25,9 @@
   `QueryExecutor`, `GetConnection` and `CdrsSession`. Everything is now embedded directly in `Session`.
 * Load balancing strategy now returns query plans, rather than individual nodes, and operates on cluster metadata.
 * Removed `SingleNode` load balancing strategy.
+* Removed empty `SimpleError`.
+* Renamed `connect_generic_static` to `connect_generic`.
+* Removed `GetRetryPolicy`.
 
 ## 5.0.0
 

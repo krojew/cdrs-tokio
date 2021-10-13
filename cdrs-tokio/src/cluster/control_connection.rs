@@ -92,7 +92,17 @@ impl<
                         {
                             debug!("Established new control connection.");
 
+                            if let Err(error) = self
+                                .cluster_metadata_manager
+                                .refresh_metadata(&connection)
+                                .await
+                            {
+                                error!(%error, "Error refreshing nodes! Trying to refresh control connection.");
+                                continue;
+                            }
+
                             self.current_connection = Some(connection);
+
                             continue 'listen;
                         }
                     }

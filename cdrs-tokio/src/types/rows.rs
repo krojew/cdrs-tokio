@@ -38,6 +38,32 @@ impl Row {
             .collect()
     }
 
+    /// Checks if a column is present in the row.
+    pub fn contains_column(&self, name: &str) -> bool {
+        self.metadata
+            .col_specs
+            .iter()
+            .any(|spec| spec.name.as_str() == name)
+    }
+
+    /// Checks for NULL for a given column. Returns false if given column does not exist.
+    pub fn is_empty(&self, index: usize) -> bool {
+        self.row_content
+            .get(index)
+            .map(|data| data.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// Checks for NULL for a given column. Returns false if given column does not exist.
+    pub fn is_empty_by_name(&self, name: &str) -> bool {
+        self.metadata
+            .col_specs
+            .iter()
+            .position(|spec| spec.name.as_str() == name)
+            .map(|index| self.is_empty(index))
+            .unwrap_or(false)
+    }
+
     fn col_spec_by_name(&self, name: &str) -> Option<(&ColSpec, &CBytes)> {
         self.metadata
             .col_specs

@@ -14,14 +14,16 @@ use crate::cluster::topology::Node;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::NodeRustlsConfig;
 use crate::cluster::{ClusterMetadata, ClusterMetadataManager};
-use crate::cluster::{GenericClusterConfig, GetRetryPolicy, KeyspaceHolder};
+use crate::cluster::{GenericClusterConfig, KeyspaceHolder};
 use crate::cluster::{NodeTcpConfig, SessionPager};
 use crate::compression::Compression;
 use crate::error;
 use crate::events::ServerEvent;
 use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::Frame;
-use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
+use crate::load_balancing::{
+    InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, QueryPlan, Request,
+};
 use crate::query::utils::{prepare_flags, send_frame};
 use crate::query::{
     PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
@@ -42,7 +44,7 @@ pub struct Session<
     CM: ConnectionManager<T>,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
-    load_balancing: Arc<LB>,
+    load_balancing: Arc<InitializingWrapperLoadBalancingStrategy<T, CM, LB>>,
     keyspace_holder: Arc<KeyspaceHolder>,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     control_connection_handle: AbortHandle,
@@ -365,18 +367,32 @@ impl<
         self.event_sender.subscribe()
     }
 
+    /// Returns current retry policy.
+    #[inline]
+    pub fn retry_policy(&self) -> &dyn RetryPolicy {
+        self.retry_policy.as_ref()
+    }
+
     fn new(
         load_balancing: LB,
         keyspace_holder: Arc<KeyspaceHolder>,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         contact_points: Vec<Arc<Node<T, CM>>>,
+        connection_manager: Arc<CM>,
     ) -> Self {
-        let load_balancing = Arc::new(load_balancing);
+        let load_balancing = Arc::new(InitializingWrapperLoadBalancingStrategy::new(
+            load_balancing,
+            contact_points.clone(),
+        ));
+
         let (event_sender, event_receiver) = channel(EVENT_CHANNEL_CAPACITY);
 
-        let cluster_metadata_manager =
-            Arc::new(ClusterMetadataManager::new(event_receiver, contact_points));
+        let cluster_metadata_manager = Arc::new(ClusterMetadataManager::new(
+            event_receiver,
+            contact_points,
+            connection_manager,
+        ));
 
         let control_connection = ControlConnection::new(
             load_balancing.clone(),
@@ -403,17 +419,6 @@ impl<
     }
 }
 
-impl<
-        T: CdrsTransport + 'static,
-        CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
-    > GetRetryPolicy for Session<T, CM, LB>
-{
-    fn retry_policy(&self) -> &dyn RetryPolicy {
-        self.retry_policy.as_ref()
-    }
-}
-
 /// Workaround for <https://github.com/rust-lang/rust/issues/63033>
 #[repr(transparent)]
 pub struct RetryPolicyWrapper(pub Box<dyn RetryPolicy + Send + Sync>);
@@ -429,7 +434,7 @@ pub struct ReconnectionPolicyWrapper(pub Arc<dyn ReconnectionPolicy + Send + Syn
 /// The config object supplied differs from the [`NodeTcpConfig`] and [`NodeRustlsConfig`]
 /// objects in that it is not expected to include an address. Instead the same configuration
 /// will be applied to all connections across the cluster.
-pub async fn connect_generic_static<T, C, A, CM, LB>(
+pub async fn connect_generic<T, C, A, CM, LB>(
     config: &C,
     initial_nodes: A,
     load_balancing: LB,
@@ -459,6 +464,7 @@ where
         retry_policy.0,
         reconnection_policy.0,
         nodes,
+        connection_manager,
     ))
 }
 
@@ -619,6 +625,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             self.config.retry_policy,
             self.config.reconnection_policy,
             nodes,
+            connection_manager,
         )
     }
 }
@@ -712,6 +719,7 @@ impl<
             self.config.retry_policy,
             self.config.reconnection_policy,
             nodes,
+            connection_manager,
         )
     }
 }

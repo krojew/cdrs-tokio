@@ -1,14 +1,16 @@
+mod initializing_wrapper;
 mod random;
 mod request;
 mod round_robin;
 
 use std::sync::Arc;
 
+pub(crate) use self::initializing_wrapper::InitializingWrapperLoadBalancingStrategy;
+pub use self::random::RandomLoadBalancingStrategy;
+pub use self::request::Request;
+pub use self::round_robin::RoundRobinBalancingStrategy;
 use crate::cluster::topology::Node;
 use crate::cluster::{ClusterMetadata, ConnectionManager};
-pub use crate::load_balancing::random::RandomLoadBalancingStrategy;
-pub use crate::load_balancing::request::Request;
-pub use crate::load_balancing::round_robin::RoundRobinBalancingStrategy;
 use crate::transport::CdrsTransport;
 
 pub type QueryPlan<T, CM> = Vec<Arc<Node<T, CM>>>;

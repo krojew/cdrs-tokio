@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -6,7 +7,7 @@ use tokio::sync::RwLock;
 use tracing::*;
 
 use crate::cluster::topology::NodeDistance;
-use crate::cluster::ConnectionManager;
+use crate::cluster::{ConnectionManager, NodeInfo};
 use crate::error::Result;
 use crate::frame::Frame;
 use crate::transport::CdrsTransport;
@@ -15,19 +16,49 @@ use crate::transport::CdrsTransport;
 pub struct Node<T: CdrsTransport, CM: ConnectionManager<T>> {
     connection_manager: Arc<CM>,
     connection: RwLock<Option<Arc<T>>>,
-    addr: SocketAddr,
+    broadcast_rpc_address: SocketAddr,
     distance: NodeDistance,
 }
 
+impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node")
+            .field("broadcast_rpc_address", &self.broadcast_rpc_address)
+            .field("distance", &self.distance)
+            .finish()
+    }
+}
+
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
-    pub fn new_contact_point(connection_manager: Arc<CM>, addr: SocketAddr) -> Self {
+    /// Creates a node from a contact point address. Contact points are implicitly considered local.
+    pub fn new_contact_point(
+        connection_manager: Arc<CM>,
+        broadcast_rpc_address: SocketAddr,
+    ) -> Self {
         Node {
             connection_manager,
             connection: Default::default(),
-            addr,
+            broadcast_rpc_address,
             // let's assume contact points are local, until first topology refresh
             distance: NodeDistance::Local,
         }
+    }
+
+    /// Creates a node from an point address. The node is considered ignored until a distance can
+    /// be computed.
+    pub fn new(connection_manager: Arc<CM>, broadcast_rpc_address: SocketAddr) -> Self {
+        Node {
+            connection_manager,
+            connection: Default::default(),
+            broadcast_rpc_address,
+            distance: NodeDistance::Ignored,
+        }
+    }
+
+    /// Return node address.
+    #[inline]
+    pub fn broadcast_rpc_address(&self) -> SocketAddr {
+        self.broadcast_rpc_address
     }
 
     /// Returns connection to given node.
@@ -59,7 +90,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     pub async fn new_connection(&self, event_handler: Option<Sender<Frame>>) -> Result<T> {
         debug!("Establishing new connection to node...");
         self.connection_manager
-            .connection(event_handler, self.addr)
+            .connection(event_handler, self.broadcast_rpc_address)
             .await
     }
 
@@ -72,5 +103,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     #[inline]
     pub fn is_ignored(&self) -> bool {
         self.distance == NodeDistance::Ignored
+    }
+
+    pub(crate) fn clone_with_node_info(&self, node_info: &NodeInfo) -> Self {
+        Node {
+            connection_manager: self.connection_manager.clone(),
+            connection: Default::default(),
+            broadcast_rpc_address: node_info.broadcast_rpc_address,
+            distance: self.distance,
+        }
     }
 }

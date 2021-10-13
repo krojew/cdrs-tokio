@@ -33,10 +33,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         cluster: &ClusterMetadata<T, CM>,
     ) -> QueryPlan<T, CM> {
         let mut result = cluster
-            .all_nodes()
+            .nodes()
             .iter()
-            .filter(|node| !node.is_ignored())
-            .cloned()
+            .filter_map(|(_, node)| node.is_ignored().then(|| node.clone()))
             .collect_vec();
 
         result.shuffle(&mut thread_rng());

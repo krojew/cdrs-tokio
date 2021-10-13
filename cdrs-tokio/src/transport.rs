@@ -24,6 +24,9 @@ use tokio::task::JoinHandle;
 use tokio_rustls::TlsConnector as RustlsConnector;
 use tracing::*;
 
+#[cfg(test)]
+use mockall::*;
+
 use crate::cluster::KeyspaceHolder;
 use crate::compression::Compression;
 use crate::frame::frame_result::ResultKind;
@@ -35,8 +38,7 @@ use crate::types::INT_LEN;
 use crate::Error;
 use crate::Result;
 
-///General CDRS transport trait. Both [`TransportTcp`]
-///and [`TransportRustls`] has their own implementations of this trait.
+/// General CDRS transport trait.
 pub trait CdrsTransport: Send + Sync {
     /// Schedules data frame for writing and waits for a response
     fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>>;
@@ -45,11 +47,27 @@ pub trait CdrsTransport: Send + Sync {
     fn is_broken(&self) -> bool;
 
     /// Returns associated node address
-    fn addr(&self) -> &SocketAddr;
+    fn addr(&self) -> SocketAddr;
 
     /// Starts reading frames from the node until the connection is broken. Intended to use outside
     /// normal request-response flow.
     fn read_frames(self) -> BoxFuture<'static, ()>;
+}
+
+#[cfg(test)]
+mock! {
+    pub CdrsTransport {
+    }
+
+    impl CdrsTransport for CdrsTransport {
+        fn write_frame(&self, frame: &Frame) -> BoxFuture<'static, Result<Frame>>;
+
+        fn is_broken(&self) -> bool;
+
+        fn addr(&self) -> SocketAddr;
+
+        fn read_frames(self) -> BoxFuture<'static, ()>;
+    }
 }
 
 /// Default Tcp transport.
@@ -97,7 +115,7 @@ impl CdrsTransport for TransportTcp {
     }
 
     #[inline]
-    fn addr(&self) -> &SocketAddr {
+    fn addr(&self) -> SocketAddr {
         self.inner.addr()
     }
 
@@ -159,7 +177,7 @@ impl CdrsTransport for TransportRustls {
     }
 
     #[inline]
-    fn addr(&self) -> &SocketAddr {
+    fn addr(&self) -> SocketAddr {
         self.inner.addr()
     }
 
@@ -215,8 +233,8 @@ impl AsyncTransport {
     }
 
     #[inline]
-    fn addr(&self) -> &SocketAddr {
-        &self.addr
+    fn addr(&self) -> SocketAddr {
+        self.addr
     }
 
     async fn write_frame(&self, frame: &Frame) -> Result<Frame> {

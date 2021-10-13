@@ -209,7 +209,7 @@ bitflags! {
     pub struct Flags: u8 {
         const COMPRESSION = 0x01;
         const TRACING = 0x02;
-        const CUSTOMPAYLOAD = 0x04;
+        const CUSTOM_PAYLOAD = 0x04;
         const WARNING = 0x08;
     }
 }

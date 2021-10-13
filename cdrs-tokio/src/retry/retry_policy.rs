@@ -71,15 +71,15 @@ impl RetrySession for DefaultRetrySession {
             Error::Io(_)
             | Error::General(_)
             | Error::Server(CdrsError {
-                additional_info: AdditionalErrorInfo::Overloaded(_),
+                additional_info: AdditionalErrorInfo::Overloaded,
                 ..
             })
             | Error::Server(CdrsError {
-                additional_info: AdditionalErrorInfo::Server(_),
+                additional_info: AdditionalErrorInfo::Server,
                 ..
             })
             | Error::Server(CdrsError {
-                additional_info: AdditionalErrorInfo::Truncate(_),
+                additional_info: AdditionalErrorInfo::Truncate,
                 ..
             }) => {
                 if query_info.is_idempotent {
@@ -128,7 +128,7 @@ impl RetrySession for DefaultRetrySession {
                 }
             }
             Error::Server(CdrsError {
-                additional_info: AdditionalErrorInfo::IsBootstrapping(_),
+                additional_info: AdditionalErrorInfo::IsBootstrapping,
                 ..
             }) => RetryDecision::RetryNextNode,
             _ => RetryDecision::DontRetry,

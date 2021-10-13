@@ -1,5 +1,5 @@
 use crate::cluster::session::Session;
-use crate::cluster::{ConnectionManager, GetRetryPolicy};
+use crate::cluster::ConnectionManager;
 use crate::error;
 use crate::frame::{Flags, Frame};
 use crate::load_balancing::{LoadBalancingStrategy, Request};

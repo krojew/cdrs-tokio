@@ -145,7 +145,7 @@ async fn main() {
     ];
     let load_balancing = RoundRobinBalancingStrategy::new();
 
-    let mut session = cdrs_tokio::cluster::connect_generic_static(
+    let mut session = cdrs_tokio::cluster::connect_generic(
         &cluster_config,
         nodes,
         load_balancing,

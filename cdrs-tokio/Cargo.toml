@@ -47,6 +47,8 @@ optional = true
 default-features = false
 
 [dev-dependencies]
-maplit = "1.0.0"
-regex = "1.5"
 cdrs-tokio-helpers-derive = { version = "3.0", path = "../cdrs-tokio-helpers-derive" }
+maplit = "1.0.0"
+mockall = "0.10"
+regex = "1.5"
+uuid = { version = "0.8", features = ["v4"] }
