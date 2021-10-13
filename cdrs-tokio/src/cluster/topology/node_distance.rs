@@ -11,7 +11,4 @@ pub enum NodeDistance {
     /// connections may be lower, and that other nodes may have a higher priority for some tasks
     /// (for example, being chosen as the control host).
     Remote,
-    /// An "inactive" distance, that indicates that the driver will not open any connection to the
-    /// node.
-    Ignored,
 }

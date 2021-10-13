@@ -17,7 +17,7 @@ pub struct Node<T: CdrsTransport, CM: ConnectionManager<T>> {
     connection_manager: Arc<CM>,
     connection: RwLock<Option<Arc<T>>>,
     broadcast_rpc_address: SocketAddr,
-    distance: NodeDistance,
+    distance: Option<NodeDistance>,
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
@@ -37,7 +37,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             connection_manager,
             connection: Default::default(),
             broadcast_rpc_address,
-            distance: NodeDistance::Ignored,
+            distance: None,
         }
     }
 
@@ -81,14 +81,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     }
 
     #[inline]
-    pub fn distance(&self) -> NodeDistance {
+    pub fn distance(&self) -> Option<NodeDistance> {
         self.distance
     }
 
     /// This node should be ignored from establishing connections.
     #[inline]
     pub fn is_ignored(&self) -> bool {
-        self.distance == NodeDistance::Ignored
+        self.distance.is_none()
     }
 
     pub(crate) fn clone_with_node_info(&self, node_info: &NodeInfo) -> Self {
