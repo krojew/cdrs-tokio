@@ -15,11 +15,12 @@ use crate::future::BoxFuture;
 use crate::transport::CdrsTransport;
 
 /// Manages establishing connections to nodes.
-pub trait ConnectionManager<T: CdrsTransport> {
+pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {
     /// Tries to establish a new, ready to use connection with optional server event handler.
     fn connection(
         &self,
         event_handler: Option<Sender<Frame>>,
+        error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<Result<T>>;
 }
@@ -33,6 +34,7 @@ mock! {
         fn connection<'a>(
             &'a self,
             event_handler: Option<Sender<Frame>>,
+            error_handler: Option<Sender<Error>>,
             addr: SocketAddr,
         ) -> BoxFuture<'a, Result<T>>;
     }

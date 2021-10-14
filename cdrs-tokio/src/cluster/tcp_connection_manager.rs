@@ -9,7 +9,7 @@ use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::connection_manager::{startup, ConnectionManager};
 use crate::cluster::KeyspaceHolder;
 use crate::compression::Compression;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::frame::Frame;
 use crate::future::BoxFuture;
 use crate::retry::ReconnectionPolicy;
@@ -28,13 +28,16 @@ impl ConnectionManager<TransportTcp> for TcpConnectionManager {
     fn connection(
         &self,
         event_handler: Option<Sender<Frame>>,
+        error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<Result<TransportTcp>> {
         async move {
             let mut schedule = self.reconnection_policy.new_node_schedule();
 
             loop {
-                let transport = self.establish_connection(event_handler.clone(), addr).await;
+                let transport = self
+                    .establish_connection(event_handler.clone(), error_handler.clone(), addr)
+                    .await;
                 match transport {
                     Ok(transport) => return Ok(transport),
                     Err(error) => {
@@ -70,12 +73,14 @@ impl TcpConnectionManager {
     async fn establish_connection(
         &self,
         event_handler: Option<Sender<Frame>>,
+        error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> Result<TransportTcp> {
         let transport = TransportTcp::new(
             addr,
             self.keyspace_holder.clone(),
             event_handler,
+            error_handler,
             self.compression,
             self.buffer_size,
             self.tcp_nodelay,

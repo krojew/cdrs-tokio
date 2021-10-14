@@ -30,13 +30,18 @@ mod pager;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_manager;
 pub mod session;
+mod session_context;
 mod tcp_connection_manager;
 pub mod topology;
 
 pub(crate) use self::node_info::NodeInfo;
+pub(crate) use self::session_context::SessionContext;
 
 /// Generic connection configuration trait that can be used to create user-supplied
 /// connection objects that can be used with the `session::connect()` function.
 pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send + Sync {
     fn create_manager(&self) -> BoxFuture<Result<CM>>;
+
+    /// Returns desired event channel capacity. Take a look at ['Session'] builders for more info.
+    fn event_channel_capacity(&self) -> usize;
 }

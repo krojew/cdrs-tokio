@@ -5,13 +5,19 @@ use uuid::Uuid;
 pub struct NodeInfo {
     pub host_id: Uuid,
     pub broadcast_rpc_address: SocketAddr,
+    pub broadcast_address: Option<SocketAddr>,
 }
 
 impl NodeInfo {
-    pub fn new(host_id: Uuid, broadcast_rpc_address: SocketAddr) -> Self {
+    pub fn new(
+        host_id: Uuid,
+        broadcast_rpc_address: SocketAddr,
+        broadcast_address: Option<SocketAddr>,
+    ) -> Self {
         NodeInfo {
             host_id,
             broadcast_rpc_address,
+            broadcast_address,
         }
     }
 }

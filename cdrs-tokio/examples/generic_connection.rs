@@ -90,10 +90,14 @@ impl ConnectionManager<TransportTcp> for VirtualConnectionManager {
     fn connection(
         &self,
         event_handler: Option<Sender<Frame>>,
+        error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<Result<TransportTcp>> {
-        self.inner
-            .connection(event_handler, rewrite(addr, &self.mask, &self.actual))
+        self.inner.connection(
+            event_handler,
+            error_handler,
+            rewrite(addr, &self.mask, &self.actual),
+        )
     }
 }
 
@@ -119,6 +123,10 @@ impl GenericClusterConfig<TransportTcp, VirtualConnectionManager> for VirtualClu
         // create a connection manager that points at the rewritten address so that's where it connects, but
         // then return a manager with the 'virtual' address for internal purposes.
         VirtualConnectionManager::new(self).boxed()
+    }
+
+    fn event_channel_capacity(&self) -> usize {
+        32
     }
 }
 

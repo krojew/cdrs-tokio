@@ -47,11 +47,7 @@ pub trait CdrsTransport: Send + Sync {
     fn is_broken(&self) -> bool;
 
     /// Returns associated node address
-    fn addr(&self) -> SocketAddr;
-
-    /// Starts reading frames from the node until the connection is broken. Intended to use outside
-    /// normal request-response flow.
-    fn read_frames(self) -> BoxFuture<'static, ()>;
+    fn address(&self) -> SocketAddr;
 }
 
 #[cfg(test)]
@@ -64,9 +60,7 @@ mock! {
 
         fn is_broken(&self) -> bool;
 
-        fn addr(&self) -> SocketAddr;
-
-        fn read_frames(self) -> BoxFuture<'static, ()>;
+        fn address(&self) -> SocketAddr;
     }
 }
 
@@ -80,6 +74,7 @@ impl TransportTcp {
         addr: SocketAddr,
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Frame>>,
+        error_handler: Option<mpsc::Sender<Error>>,
         compression: Compression,
         buffer_size: usize,
         tcp_nodelay: bool,
@@ -96,6 +91,7 @@ impl TransportTcp {
                     read_half,
                     write_half,
                     event_handler,
+                    error_handler,
                     keyspace_holder,
                 ),
             })
@@ -115,13 +111,8 @@ impl CdrsTransport for TransportTcp {
     }
 
     #[inline]
-    fn addr(&self) -> SocketAddr {
+    fn address(&self) -> SocketAddr {
         self.inner.addr()
-    }
-
-    #[inline]
-    fn read_frames(self) -> BoxFuture<'static, ()> {
-        self.inner.read_frames().boxed()
     }
 }
 
@@ -139,6 +130,7 @@ impl TransportRustls {
         config: Arc<rustls::ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Frame>>,
+        error_handler: Option<mpsc::Sender<Error>>,
         compression: Compression,
         buffer_size: usize,
         tcp_nodelay: bool,
@@ -158,6 +150,7 @@ impl TransportRustls {
                 read_half,
                 write_half,
                 event_handler,
+                error_handler,
                 keyspace_holder,
             ),
         })
@@ -177,13 +170,8 @@ impl CdrsTransport for TransportRustls {
     }
 
     #[inline]
-    fn addr(&self) -> SocketAddr {
+    fn address(&self) -> SocketAddr {
         self.inner.addr()
-    }
-
-    #[inline]
-    fn read_frames(self) -> BoxFuture<'static, ()> {
-        self.inner.read_frames().boxed()
     }
 }
 
@@ -195,7 +183,14 @@ struct AsyncTransport {
     processing_handle: JoinHandle<()>,
 }
 
+impl Drop for AsyncTransport {
+    fn drop(&mut self) {
+        self.processing_handle.abort();
+    }
+}
+
 impl AsyncTransport {
+    #[allow(clippy::too_many_arguments)]
     fn new<T: AsyncRead + AsyncWrite + Send + 'static>(
         addr: SocketAddr,
         compression: Compression,
@@ -203,6 +198,7 @@ impl AsyncTransport {
         read_half: ReadHalf<T>,
         write_half: WriteHalf<T>,
         event_handler: Option<mpsc::Sender<Frame>>,
+        error_handler: Option<mpsc::Sender<Error>>,
         keyspace_holder: Arc<KeyspaceHolder>,
     ) -> Self {
         let (write_sender, write_receiver) = mpsc::channel(buffer_size);
@@ -211,6 +207,7 @@ impl AsyncTransport {
         let processing_handle = tokio::spawn(Self::start_processing(
             write_receiver,
             event_handler,
+            error_handler,
             read_half,
             write_half,
             keyspace_holder,
@@ -258,13 +255,11 @@ impl AsyncTransport {
             .map_err(|_| Error::General("Connection closed while waiting for response!".into()))?
     }
 
-    async fn read_frames(self) {
-        let _ = self.processing_handle.await;
-    }
-
+    #[allow(clippy::too_many_arguments)]
     async fn start_processing<T: AsyncRead + AsyncWrite>(
         write_receiver: mpsc::Receiver<Request>,
         event_handler: Option<mpsc::Sender<Frame>>,
+        error_handler: Option<mpsc::Sender<Error>>,
         read_half: ReadHalf<T>,
         write_half: WriteHalf<T>,
         keyspace_holder: Arc<KeyspaceHolder>,
@@ -288,6 +283,10 @@ impl AsyncTransport {
 
             is_broken.store(true, Ordering::Relaxed);
             response_handler_map.signal_general_error(&error.to_string());
+
+            if let Some(error_handler) = error_handler {
+                let _ = error_handler.send(error).await;
+            }
         }
     }
 

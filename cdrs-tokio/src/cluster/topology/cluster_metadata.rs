@@ -1,4 +1,5 @@
 use fxhash::FxHashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -26,6 +27,17 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
         ClusterMetadata { nodes }
     }
 
+    /// Creates a new metadata with a node replaced/added. The node must have a host id.
+    pub fn clone_with_node(&self, node: Node<T, CM>) -> Self {
+        let mut nodes = self.nodes.clone();
+        nodes.insert(
+            node.host_id().expect("Adding a node without host id!"),
+            Arc::new(node),
+        );
+
+        ClusterMetadata { nodes }
+    }
+
     /// Returns all known nodes.
     #[inline]
     pub fn nodes(&self) -> &NodeMap<T, CM> {
@@ -36,6 +48,24 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     #[inline]
     pub fn has_nodes(&self) -> bool {
         !self.nodes.is_empty()
+    }
+
+    /// Finds a node by its address.
+    #[inline]
+    pub fn find_node_by_rpc_address(
+        &self,
+        broadcast_rpc_address: SocketAddr,
+    ) -> Option<Arc<Node<T, CM>>> {
+        self.nodes
+            .iter()
+            .find(|(_, node)| node.broadcast_rpc_address() == broadcast_rpc_address)
+            .map(|(_, node)| node.clone())
+    }
+
+    /// Finds a node by its host id.
+    #[inline]
+    pub fn find_node_by_host_id(&self, host_id: &Uuid) -> Option<Arc<Node<T, CM>>> {
+        self.nodes.get(host_id).cloned()
     }
 }
 

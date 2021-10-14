@@ -1,9 +1,9 @@
-use futures::future::{abortable, AbortHandle};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast::{channel, Receiver, Sender};
+use tokio::task::JoinHandle;
 
 use crate::cluster::connection_manager::ConnectionManager;
 use crate::cluster::control_connection::ControlConnection;
@@ -13,7 +13,7 @@ use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::cluster::topology::Node;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::NodeRustlsConfig;
-use crate::cluster::{ClusterMetadata, ClusterMetadataManager};
+use crate::cluster::{ClusterMetadata, ClusterMetadataManager, SessionContext};
 use crate::cluster::{GenericClusterConfig, KeyspaceHolder};
 use crate::cluster::{NodeTcpConfig, SessionPager};
 use crate::compression::Compression;
@@ -36,18 +36,18 @@ use crate::transport::TransportRustls;
 use crate::transport::{CdrsTransport, TransportTcp};
 
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
-const EVENT_CHANNEL_CAPACITY: usize = 32;
+const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
 
 /// CDRS session that holds a pool of connections to nodes.
 pub struct Session<
     T: CdrsTransport + 'static,
-    CM: ConnectionManager<T>,
+    CM: ConnectionManager<T> + 'static,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
     load_balancing: Arc<InitializingWrapperLoadBalancingStrategy<T, CM, LB>>,
     keyspace_holder: Arc<KeyspaceHolder>,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-    control_connection_handle: AbortHandle,
+    control_connection_handle: JoinHandle<()>,
     event_sender: Sender<ServerEvent>,
     cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
     _transport: PhantomData<T>,
@@ -380,31 +380,36 @@ impl<
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         contact_points: Vec<Arc<Node<T, CM>>>,
         connection_manager: Arc<CM>,
+        event_channel_capacity: usize,
     ) -> Self {
         let load_balancing = Arc::new(InitializingWrapperLoadBalancingStrategy::new(
             load_balancing,
             contact_points.clone(),
         ));
 
-        let (event_sender, event_receiver) = channel(EVENT_CHANNEL_CAPACITY);
+        let (event_sender, event_receiver) = channel(event_channel_capacity);
+
+        let session_context = Arc::new(SessionContext::default());
 
         let cluster_metadata_manager = Arc::new(ClusterMetadataManager::new(
-            event_receiver,
             contact_points,
             connection_manager,
+            session_context.clone(),
         ));
+
+        cluster_metadata_manager
+            .clone()
+            .listen_to_events(event_receiver);
 
         let control_connection = ControlConnection::new(
             load_balancing.clone(),
             reconnection_policy.clone(),
             cluster_metadata_manager.clone(),
             event_sender.clone(),
+            session_context,
         );
 
-        let (control_connection_future, control_connection_handle) =
-            abortable(control_connection.run());
-
-        tokio::spawn(control_connection_future);
+        let control_connection_handle = tokio::spawn(control_connection.run());
 
         Session {
             load_balancing,
@@ -452,7 +457,12 @@ where
 
     let mut nodes = vec![];
     for node in initial_nodes.into_iter() {
-        nodes.push(Arc::new(Node::new(connection_manager.clone(), node)));
+        nodes.push(Arc::new(Node::new(
+            connection_manager.clone(),
+            node,
+            None,
+            None,
+        )));
     }
 
     Ok(Session::new(
@@ -462,6 +472,7 @@ where
         reconnection_policy.0,
         nodes,
         connection_manager,
+        config.event_channel_capacity(),
     ))
 }
 
@@ -476,6 +487,7 @@ struct SessionConfig<
     load_balancing: LB,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+    event_channel_capacity: usize,
     _connection_manager: PhantomData<CM>,
     _transport: PhantomData<T>,
 }
@@ -493,6 +505,7 @@ impl<
         load_balancing: LB,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+        event_channel_capacity: usize,
     ) -> Self {
         SessionConfig {
             compression,
@@ -501,6 +514,7 @@ impl<
             load_balancing,
             retry_policy,
             reconnection_policy,
+            event_channel_capacity,
             _connection_manager: Default::default(),
             _transport: Default::default(),
         }
@@ -535,6 +549,10 @@ pub trait SessionBuilder<
     /// Sets NODELAY for given session connections.
     fn with_tcp_nodelay(self, tcp_nodelay: bool) -> Self;
 
+    /// Sets event channel capacity. If the driver receives more server events than the capacity,
+    /// some events might get dropped. This can result in the driver operating in a sub-optimal way.
+    fn with_event_channel_capacity(self, event_channel_capacity: usize) -> Self;
+
     /// Builds the resulting session.
     fn build(self) -> Session<T, CM, LB>;
 }
@@ -560,6 +578,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Arc::new(ExponentialReconnectionPolicy::default()),
+                DEFAULT_EVENT_CHANNEL_CAPACITY,
             ),
             node_config,
         }
@@ -597,6 +616,11 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         self
     }
 
+    fn with_event_channel_capacity(mut self, event_channel_capacity: usize) -> Self {
+        self.config.event_channel_capacity = event_channel_capacity;
+        self
+    }
+
     fn build(self) -> Session<TransportTcp, TcpConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let connection_manager = Arc::new(TcpConnectionManager::new(
@@ -613,6 +637,8 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             nodes.push(Arc::new(Node::new(
                 connection_manager.clone(),
                 contact_point,
+                None,
+                None,
             )));
         }
 
@@ -623,6 +649,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             self.config.reconnection_policy,
             nodes,
             connection_manager,
+            self.config.event_channel_capacity,
         )
     }
 }
@@ -650,6 +677,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Arc::new(ExponentialReconnectionPolicy::default()),
+                DEFAULT_EVENT_CHANNEL_CAPACITY,
             ),
             node_config,
         }
@@ -689,6 +717,11 @@ impl<
         self
     }
 
+    fn with_event_channel_capacity(mut self, event_channel_capacity: usize) -> Self {
+        self.config.event_channel_capacity = event_channel_capacity;
+        self
+    }
+
     fn build(self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
         let keyspace_holder = Arc::new(KeyspaceHolder::default());
         let connection_manager = Arc::new(RustlsConnectionManager::new(
@@ -707,6 +740,8 @@ impl<
             nodes.push(Arc::new(Node::new(
                 connection_manager.clone(),
                 contact_point,
+                None,
+                None,
             )));
         }
 
@@ -717,6 +752,7 @@ impl<
             self.config.reconnection_policy,
             nodes,
             connection_manager,
+            self.config.event_channel_capacity,
         )
     }
 }
