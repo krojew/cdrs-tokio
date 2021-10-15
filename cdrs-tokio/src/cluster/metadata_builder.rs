@@ -31,7 +31,7 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
-                    node_distance_evaluator.compute_distance(&node_info),
+                    node_distance_evaluator.compute_distance(node_info),
                 ))
             };
 
@@ -82,7 +82,7 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
-                    node_distance_evaluator.compute_distance(&node_info),
+                    node_distance_evaluator.compute_distance(node_info),
                 ));
 
                 added_or_updated.insert(node_info.host_id, node);

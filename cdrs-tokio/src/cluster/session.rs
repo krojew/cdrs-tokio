@@ -376,6 +376,7 @@ impl<
         self.retry_policy.as_ref()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn new(
         load_balancing: LB,
         keyspace_holder: Arc<KeyspaceHolder>,
