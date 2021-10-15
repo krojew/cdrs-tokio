@@ -148,7 +148,11 @@ mod tests {
         )];
 
         let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
-        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(None);
 
         let metadata = build_initial_metadata(
             &node_infos,
@@ -210,7 +214,11 @@ mod tests {
     #[test]
     fn should_replace_old_metadata_nodes_with_new() {
         let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
-        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(None);
 
         let node_infos = [NodeInfo::new(
             Uuid::new_v4(),
