@@ -38,6 +38,23 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
         ClusterMetadata { nodes }
     }
 
+    /// Creates a new metadata with a node removed.
+    pub fn clone_without_node(&self, broadcast_rpc_address: SocketAddr) -> Self {
+        let nodes = self
+            .nodes
+            .iter()
+            .filter_map(|(host_id, node)| {
+                if node.broadcast_rpc_address() != broadcast_rpc_address {
+                    Some((*host_id, node.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        ClusterMetadata { nodes }
+    }
+
     /// Returns all known nodes.
     #[inline]
     pub fn nodes(&self) -> &NodeMap<T, CM> {

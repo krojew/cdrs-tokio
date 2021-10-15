@@ -75,9 +75,9 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     async fn process_topology_event(&self, event: TopologyChange) {
+        let metadata = self.metadata.load().clone();
         match event.change_type {
             TopologyChangeType::NewNode => {
-                let metadata = self.metadata.load().clone();
                 if metadata.has_node_by_rpc_address(event.addr.addr) {
                     debug!(
                         broadcast_rpc_address = %event.addr.addr,
@@ -89,7 +89,17 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 }
             }
             TopologyChangeType::RemovedNode => {
-                // TODO: implement
+                if metadata.has_node_by_rpc_address(event.addr.addr) {
+                    debug!(broadcast_rpc_address = %event.addr.addr, "Removing node from cluster.");
+
+                    self.metadata
+                        .store(Arc::new(metadata.clone_without_node(event.addr.addr)));
+                } else {
+                    debug!(
+                        broadcast_rpc_address = %event.addr.addr,
+                        "Trying to remove a node outside the cluster."
+                    );
+                }
             }
         }
     }
