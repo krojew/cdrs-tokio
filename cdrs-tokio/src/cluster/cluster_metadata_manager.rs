@@ -113,7 +113,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     if node.state() != NodeState::Up {
                         debug!(?node, "Setting existing node state to up.");
 
-                        // node was down or in a unknown state
+                        // node was down or in an unknown state
                         let node = node.clone_with_node_state(NodeState::Up);
                         self.metadata
                             .store(Arc::new(metadata.clone_with_node(node)));
@@ -126,7 +126,20 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 }
             }
             StatusChangeType::Down => {
-                // TODO: implement
+                if let Some(node) = node {
+                    if node.state() != NodeState::Down {
+                        debug!(?node, "Setting existing node state to down.");
+
+                        // node was up or in an unknown state
+                        let node = node.clone_with_node_state(NodeState::Down);
+                        self.metadata
+                            .store(Arc::new(metadata.clone_with_node(node)));
+                    } else {
+                        debug!(?node, "Ignoring down node event for already downed node.");
+                    }
+                } else {
+                    debug!(broadcast_rpc_address = %event.addr.addr, "Unknown node down.");
+                }
             }
         }
     }
