@@ -292,7 +292,7 @@ bitflags! {
 impl Serialize for RowsMetadataFlags {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        i32::from(self.bits()).serialize(cursor)
+        self.bits().serialize(cursor)
     }
 }
 
