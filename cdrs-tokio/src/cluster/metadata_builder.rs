@@ -92,6 +92,7 @@ pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_info: &NodeInfo,
     old_metadata: &ClusterMetadata<T, CM>,
     connection_manager: &Arc<CM>,
+    state: NodeState,
 ) -> ClusterMetadata<T, CM> {
     let old_node = old_metadata.find_node_by_host_id(&node_info.host_id);
     if let Some(old_node) = old_node {
@@ -99,12 +100,12 @@ pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
         // an addition, even though the host_id hasn't changed :(
         if old_node.broadcast_rpc_address() == node_info.broadcast_rpc_address {
             debug!(?old_node, "Ignoring adding an existing node.");
-            return old_metadata.clone_with_node(old_node.clone_with_node_state(NodeState::Up));
+            return old_metadata.clone_with_node(old_node.clone_with_node_state(state));
         }
 
         debug!(?old_node, "Updating old node with new info.");
         return old_metadata
-            .clone_with_node(old_node.clone_with_node_info_and_state(node_info, NodeState::Up));
+            .clone_with_node(old_node.clone_with_node_info_and_state(node_info, state));
     }
 
     old_metadata.clone_with_node(Node::with_state(
@@ -112,7 +113,7 @@ pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
         node_info.broadcast_rpc_address,
         node_info.broadcast_address,
         Some(node_info.host_id),
-        NodeState::Up,
+        state,
     ))
 }
 
@@ -286,7 +287,12 @@ mod tests {
 
         let old_metadata = ClusterMetadata::new(old_nodes);
 
-        let metadata = add_new_node(&node_info, &old_metadata, &connection_manager);
+        let metadata = add_new_node(
+            &node_info,
+            &old_metadata,
+            &connection_manager,
+            NodeState::Up,
+        );
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
@@ -332,7 +338,12 @@ mod tests {
 
         let old_metadata = ClusterMetadata::new(old_nodes);
 
-        let metadata = add_new_node(&node_info, &old_metadata, &connection_manager);
+        let metadata = add_new_node(
+            &node_info,
+            &old_metadata,
+            &connection_manager,
+            NodeState::Up,
+        );
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
@@ -362,7 +373,12 @@ mod tests {
 
         let old_metadata = ClusterMetadata::new(Default::default());
 
-        let metadata = add_new_node(&node_info, &old_metadata, &connection_manager);
+        let metadata = add_new_node(
+            &node_info,
+            &old_metadata,
+            &connection_manager,
+            NodeState::Up,
+        );
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);

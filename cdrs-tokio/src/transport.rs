@@ -10,6 +10,7 @@
 //! * [`TransportRustls`] is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
+use derive_more::Constructor;
 use futures::FutureExt;
 use fxhash::FxHashMap;
 use std::io;
@@ -402,18 +403,9 @@ impl ResponseHandlerMap {
     }
 }
 
+#[derive(Constructor)]
 struct Request {
     data: Vec<u8>,
     stream_id: StreamId,
     handler: ResponseHandler,
-}
-
-impl Request {
-    pub fn new(data: Vec<u8>, stream_id: StreamId, handler: ResponseHandler) -> Self {
-        Request {
-            data,
-            stream_id,
-            handler,
-        }
-    }
 }

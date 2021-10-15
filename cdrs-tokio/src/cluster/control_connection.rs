@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::Sender;
@@ -15,6 +16,7 @@ use crate::transport::CdrsTransport;
 const DEFAULT_RECONNECT_DELAY: Duration = Duration::from_secs(10);
 const EVENT_CHANNEL_CAPACITY: usize = 32;
 
+#[derive(Constructor)]
 pub struct ControlConnection<
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T> + 'static,
@@ -33,22 +35,6 @@ impl<
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > ControlConnection<T, CM, LB>
 {
-    pub fn new(
-        load_balancing: Arc<LB>,
-        reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-        cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
-        event_sender: Sender<ServerEvent>,
-        session_context: Arc<SessionContext<T>>,
-    ) -> Self {
-        ControlConnection {
-            load_balancing,
-            reconnection_policy,
-            cluster_metadata_manager,
-            event_sender,
-            session_context,
-        }
-    }
-
     pub async fn run(self) {
         let (event_frame_sender, event_frame_receiver) = channel(EVENT_CHANNEL_CAPACITY);
         let (error_sender, mut error_receiver) = channel(1);

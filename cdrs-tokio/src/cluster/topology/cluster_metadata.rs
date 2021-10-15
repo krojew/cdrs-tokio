@@ -50,6 +50,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
         !self.nodes.is_empty()
     }
 
+    /// Checks if a node with a given address is present.
+    #[inline]
+    pub fn has_node_by_rpc_address(&self, broadcast_rpc_address: SocketAddr) -> bool {
+        self.nodes
+            .iter()
+            .any(|(_, node)| node.broadcast_rpc_address() == broadcast_rpc_address)
+    }
+
     /// Finds a node by its address.
     #[inline]
     pub fn find_node_by_rpc_address(

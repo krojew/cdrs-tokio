@@ -15,7 +15,7 @@ use crate::cluster::{NodeInfo, SessionContext};
 use crate::error::Error;
 use crate::error::Result;
 use crate::events::ServerEvent;
-use crate::frame::events::{StatusChange, TopologyChange, TopologyChangeType};
+use crate::frame::events::{StatusChange, StatusChangeType, TopologyChange, TopologyChangeType};
 use crate::frame::frame_error::{AdditionalErrorInfo, CdrsError};
 use crate::frame::Frame;
 use crate::query::utils::prepare_flags;
@@ -65,18 +65,40 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     async fn process_event(&self, event: ServerEvent) {
+        trace!(?event);
+
         match event {
             ServerEvent::TopologyChange(event) => self.process_topology_event(event).await,
-            ServerEvent::StatusChange(event) => self.process_status_event(event),
+            ServerEvent::StatusChange(event) => self.process_status_event(event).await,
             _ => {}
         }
     }
 
     async fn process_topology_event(&self, event: TopologyChange) {
+        match event.change_type {
+            TopologyChangeType::NewNode => {
+                let metadata = self.metadata.load().clone();
+                if metadata.has_node_by_rpc_address(event.addr.addr) {
+                    debug!(
+                        broadcast_rpc_address = %event.addr.addr,
+                        "Trying to add already existing node - ignoring."
+                    );
+                } else {
+                    self.add_new_node(event.addr.addr, NodeState::Unknown, metadata)
+                        .await;
+                }
+            }
+            TopologyChangeType::RemovedNode => {
+                // TODO: implement
+            }
+        }
+    }
+
+    async fn process_status_event(&self, event: StatusChange) {
         let metadata = self.metadata.load().clone();
         let node = metadata.find_node_by_rpc_address(event.addr.addr);
         match event.change_type {
-            TopologyChangeType::NewNode => {
+            StatusChangeType::Up => {
                 if let Some(node) = node {
                     if node.state() != NodeState::Up {
                         debug!(?node, "Setting existing node state to up.");
@@ -86,37 +108,44 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                         self.metadata
                             .store(Arc::new(metadata.clone_with_node(node)));
                     } else {
-                        debug!(?node, "Ignoring new node event for already up node.");
+                        debug!(?node, "Ignoring up node event for already up node.");
                     }
                 } else {
-                    debug!(%event.addr.addr, "Adding new node to metadata.");
-
-                    let new_node_info = self.find_new_node_info(event.addr.addr).await;
-                    match new_node_info {
-                        Ok(Some(new_node_info)) => {
-                            self.metadata.store(Arc::new(add_new_node(
-                                &new_node_info,
-                                metadata.as_ref(),
-                                &self.connection_manager,
-                            )));
-                        }
-                        Ok(None) => {
-                            warn!(%event.addr.addr, "Cannot find new node info. Ignoring new node.");
-                        }
-                        Err(error) => {
-                            error!(%error, %event.addr.addr, "Error finding new node info!");
-                        }
-                    }
+                    self.add_new_node(event.addr.addr, NodeState::Up, metadata)
+                        .await;
                 }
             }
-            TopologyChangeType::RemovedNode => {
+            StatusChangeType::Down => {
                 // TODO: implement
             }
         }
     }
 
-    fn process_status_event(&self, _event: StatusChange) {
-        // TODO: implement
+    async fn add_new_node(
+        &self,
+        broadcast_rpc_address: SocketAddr,
+        state: NodeState,
+        metadata: Arc<ClusterMetadata<T, CM>>,
+    ) {
+        debug!(%broadcast_rpc_address, %state, "Adding new node to metadata.");
+
+        let new_node_info = self.find_new_node_info(broadcast_rpc_address).await;
+        match new_node_info {
+            Ok(Some(new_node_info)) => {
+                self.metadata.store(Arc::new(add_new_node(
+                    &new_node_info,
+                    metadata.as_ref(),
+                    &self.connection_manager,
+                    state,
+                )));
+            }
+            Ok(None) => {
+                warn!(%broadcast_rpc_address, "Cannot find new node info. Ignoring new node.");
+            }
+            Err(error) => {
+                error!(%error, %broadcast_rpc_address, "Error finding new node info!");
+            }
+        }
     }
 
     async fn find_new_node_info(
