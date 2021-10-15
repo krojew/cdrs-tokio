@@ -515,6 +515,7 @@ impl<
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > SessionConfig<T, CM, LB>
 {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         compression: Compression,
         transport_buffer_size: usize,
