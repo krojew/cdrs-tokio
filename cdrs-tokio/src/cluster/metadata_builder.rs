@@ -5,12 +5,14 @@ use tracing::*;
 
 use crate::cluster::topology::{Node, NodeState};
 use crate::cluster::{ClusterMetadata, ConnectionManager, NodeInfo};
+use crate::load_balancing::NodeDistanceEvaluator;
 use crate::transport::CdrsTransport;
 
 pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_infos: &[NodeInfo],
     contact_points: &[Arc<Node<T, CM>>],
     connection_manager: &Arc<CM>,
+    node_distance_evaluator: &(dyn NodeDistanceEvaluator + Send + Sync),
 ) -> ClusterMetadata<T, CM> {
     let mut nodes = FxHashMap::with_capacity_and_hasher(node_infos.len(), Default::default());
     for node_info in node_infos {
@@ -29,6 +31,7 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
+                    node_distance_evaluator.compute_distance(&node_info),
                 ))
             };
 
@@ -48,6 +51,7 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_infos: &[NodeInfo],
     old_metadata: &ClusterMetadata<T, CM>,
     connection_manager: &Arc<CM>,
+    node_distance_evaluator: &dyn NodeDistanceEvaluator,
 ) -> ClusterMetadata<T, CM> {
     let old_nodes = old_metadata.nodes();
 
@@ -78,6 +82,7 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
+                    node_distance_evaluator.compute_distance(&node_info),
                 ));
 
                 added_or_updated.insert(node_info.host_id, node);
@@ -131,6 +136,7 @@ mod tests {
     use crate::cluster::topology::cluster_metadata::NodeMap;
     use crate::cluster::topology::{Node, NodeDistance, NodeState};
     use crate::cluster::{ClusterMetadata, NodeInfo};
+    use crate::load_balancing::MockNodeDistanceEvaluator;
     use crate::transport::MockCdrsTransport;
 
     #[tokio::test]
@@ -142,9 +148,15 @@ mod tests {
         )];
 
         let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
 
-        let metadata =
-            build_initial_metadata(&node_infos, &[], &Arc::new(connection_manager)).await;
+        let metadata = build_initial_metadata(
+            &node_infos,
+            &[],
+            &Arc::new(connection_manager),
+            &node_distance_evaluator,
+        )
+        .await;
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
@@ -160,6 +172,7 @@ mod tests {
     #[tokio::test]
     async fn should_copy_old_node() {
         let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
 
         let node_infos = [NodeInfo::new(
             Uuid::new_v4(),
@@ -173,12 +186,18 @@ mod tests {
                 node_infos[0].broadcast_rpc_address,
                 node_infos[0].broadcast_address,
                 Some(node_infos[0].host_id),
+                None,
             )
             .clone_with_node_state(NodeState::Up),
         )];
 
-        let metadata =
-            build_initial_metadata(&node_infos, &contact_points, &connection_manager).await;
+        let metadata = build_initial_metadata(
+            &node_infos,
+            &contact_points,
+            &connection_manager,
+            &node_distance_evaluator,
+        )
+        .await;
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
@@ -191,6 +210,7 @@ mod tests {
     #[test]
     fn should_replace_old_metadata_nodes_with_new() {
         let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
 
         let node_infos = [NodeInfo::new(
             Uuid::new_v4(),
@@ -208,12 +228,18 @@ mod tests {
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 Some(old_host_id),
+                None,
             )),
         );
 
         let old_metadata = ClusterMetadata::new(old_nodes);
 
-        let metadata = refresh_metadata(&node_infos, &old_metadata, &connection_manager);
+        let metadata = refresh_metadata(
+            &node_infos,
+            &old_metadata,
+            &connection_manager,
+            &node_distance_evaluator,
+        );
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
@@ -229,6 +255,7 @@ mod tests {
     #[test]
     fn should_update_old_metadata_nodes_with_new_info() {
         let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
 
         let node_infos = [NodeInfo::new(
             Uuid::new_v4(),
@@ -244,12 +271,18 @@ mod tests {
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 Some(node_infos[0].host_id),
+                None,
             )),
         );
 
         let old_metadata = ClusterMetadata::new(old_nodes);
 
-        let metadata = refresh_metadata(&node_infos, &old_metadata, &connection_manager);
+        let metadata = refresh_metadata(
+            &node_infos,
+            &old_metadata,
+            &connection_manager,
+            &node_distance_evaluator,
+        );
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);

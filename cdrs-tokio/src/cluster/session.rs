@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::ops::Deref;
@@ -10,7 +11,7 @@ use crate::cluster::control_connection::ControlConnection;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
 use crate::cluster::tcp_connection_manager::TcpConnectionManager;
-use crate::cluster::topology::Node;
+use crate::cluster::topology::{Node, NodeDistance};
 #[cfg(feature = "rust-tls")]
 use crate::cluster::NodeRustlsConfig;
 use crate::cluster::{ClusterMetadata, ClusterMetadataManager, SessionContext};
@@ -21,8 +22,10 @@ use crate::error;
 use crate::events::ServerEvent;
 use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::Frame;
+use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use crate::load_balancing::{
-    InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, QueryPlan, Request,
+    InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, NodeDistanceEvaluator,
+    QueryPlan, Request,
 };
 use crate::query::utils::{prepare_flags, send_frame};
 use crate::query::{
@@ -378,10 +381,25 @@ impl<
         keyspace_holder: Arc<KeyspaceHolder>,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-        contact_points: Vec<Arc<Node<T, CM>>>,
+        node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
+        contact_points: Vec<SocketAddr>,
         connection_manager: Arc<CM>,
         event_channel_capacity: usize,
     ) -> Self {
+        let contact_points = contact_points
+            .into_iter()
+            .map(|contact_point| {
+                Arc::new(Node::new(
+                    connection_manager.clone(),
+                    contact_point,
+                    None,
+                    None,
+                    // assume contact points are local until refresh
+                    Some(NodeDistance::Local),
+                ))
+            })
+            .collect_vec();
+
         let load_balancing = Arc::new(InitializingWrapperLoadBalancingStrategy::new(
             load_balancing,
             contact_points.clone(),
@@ -395,6 +413,7 @@ impl<
             contact_points,
             connection_manager,
             session_context.clone(),
+            node_distance_evaluator,
         ));
 
         cluster_metadata_manager
@@ -428,8 +447,13 @@ impl<
 #[repr(transparent)]
 pub struct RetryPolicyWrapper(pub Box<dyn RetryPolicy + Send + Sync>);
 
+/// Workaround for <https://github.com/rust-lang/rust/issues/63033>
 #[repr(transparent)]
 pub struct ReconnectionPolicyWrapper(pub Arc<dyn ReconnectionPolicy + Send + Sync>);
+
+/// Workaround for <https://github.com/rust-lang/rust/issues/63033>
+#[repr(transparent)]
+pub struct NodeDistanceEvaluatorWrapper(pub Box<dyn NodeDistanceEvaluator + Send + Sync>);
 
 /// This function uses a user-supplied connection configuration to initialize all the
 /// connections in the session. It can be used to supply your own transport and load
@@ -445,6 +469,7 @@ pub async fn connect_generic<T, C, A, CM, LB>(
     load_balancing: LB,
     retry_policy: RetryPolicyWrapper,
     reconnection_policy: ReconnectionPolicyWrapper,
+    node_distance_evaluator: NodeDistanceEvaluatorWrapper,
 ) -> error::Result<Session<T, CM, LB>>
 where
     A: IntoIterator<Item = SocketAddr>,
@@ -454,23 +479,13 @@ where
     LB: LoadBalancingStrategy<T, CM> + Sized + Send + Sync + 'static,
 {
     let connection_manager = Arc::new(config.create_manager().await?);
-
-    let mut nodes = vec![];
-    for node in initial_nodes.into_iter() {
-        nodes.push(Arc::new(Node::new(
-            connection_manager.clone(),
-            node,
-            None,
-            None,
-        )));
-    }
-
     Ok(Session::new(
         load_balancing,
         Default::default(),
         retry_policy.0,
         reconnection_policy.0,
-        nodes,
+        node_distance_evaluator.0,
+        initial_nodes.into_iter().collect(),
         connection_manager,
         config.event_channel_capacity(),
     ))
@@ -487,6 +502,7 @@ struct SessionConfig<
     load_balancing: LB,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+    node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
     event_channel_capacity: usize,
     _connection_manager: PhantomData<CM>,
     _transport: PhantomData<T>,
@@ -505,6 +521,7 @@ impl<
         load_balancing: LB,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+        node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
         event_channel_capacity: usize,
     ) -> Self {
         SessionConfig {
@@ -514,6 +531,7 @@ impl<
             load_balancing,
             retry_policy,
             reconnection_policy,
+            node_distance_evaluator,
             event_channel_capacity,
             _connection_manager: Default::default(),
             _transport: Default::default(),
@@ -542,6 +560,12 @@ pub trait SessionBuilder<
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self;
 
+    /// Sets new node distance evaluator.
+    fn with_node_distance_evaluator(
+        self,
+        node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
+    ) -> Self;
+
     /// Sets new transport buffer size. High values are recommended with large amounts of in flight
     /// queries.
     fn with_transport_buffer_size(self, transport_buffer_size: usize) -> Self;
@@ -568,6 +592,7 @@ pub struct TcpSessionBuilder<
 impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync>
     TcpSessionBuilder<LB>
 {
+    //noinspection DuplicatedCode
     /// Creates a new builder with default session configuration.
     pub fn new(load_balancing: LB, node_config: NodeTcpConfig) -> Self {
         TcpSessionBuilder {
@@ -578,6 +603,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Arc::new(ExponentialReconnectionPolicy::default()),
+                Box::new(AllLocalNodeDistanceEvaluator::default()),
                 DEFAULT_EVENT_CHANNEL_CAPACITY,
             ),
             node_config,
@@ -603,6 +629,14 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self {
         self.config.reconnection_policy = reconnection_policy;
+        self
+    }
+
+    fn with_node_distance_evaluator(
+        mut self,
+        node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
+    ) -> Self {
+        self.config.node_distance_evaluator = node_distance_evaluator;
         self
     }
 
@@ -632,22 +666,13 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             self.config.tcp_nodelay,
         ));
 
-        let mut nodes = Vec::with_capacity(self.node_config.contact_points.len());
-        for contact_point in self.node_config.contact_points {
-            nodes.push(Arc::new(Node::new(
-                connection_manager.clone(),
-                contact_point,
-                None,
-                None,
-            )));
-        }
-
         Session::new(
             self.config.load_balancing,
             keyspace_holder,
             self.config.retry_policy,
             self.config.reconnection_policy,
-            nodes,
+            self.config.node_distance_evaluator,
+            self.node_config.contact_points,
             connection_manager,
             self.config.event_channel_capacity,
         )
@@ -667,6 +692,7 @@ pub struct RustlsSessionBuilder<
 impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync>
     RustlsSessionBuilder<LB>
 {
+    //noinspection DuplicatedCode
     /// Creates a new builder with default session configuration.
     pub fn new(load_balancing: LB, node_config: NodeRustlsConfig) -> Self {
         RustlsSessionBuilder {
@@ -677,6 +703,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
                 load_balancing,
                 Box::new(DefaultRetryPolicy::default()),
                 Arc::new(ExponentialReconnectionPolicy::default()),
+                Box::new(AllLocalNodeDistanceEvaluator::default()),
                 DEFAULT_EVENT_CHANNEL_CAPACITY,
             ),
             node_config,
@@ -704,6 +731,14 @@ impl<
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self {
         self.config.reconnection_policy = reconnection_policy;
+        self
+    }
+
+    fn with_node_distance_evaluator(
+        mut self,
+        node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
+    ) -> Self {
+        self.config.node_distance_evaluator = node_distance_evaluator;
         self
     }
 
@@ -735,22 +770,13 @@ impl<
             self.config.tcp_nodelay,
         ));
 
-        let mut nodes = Vec::with_capacity(self.node_config.contact_points.len());
-        for contact_point in self.node_config.contact_points {
-            nodes.push(Arc::new(Node::new(
-                connection_manager.clone(),
-                contact_point,
-                None,
-                None,
-            )));
-        }
-
         Session::new(
             self.config.load_balancing,
             keyspace_holder,
             self.config.retry_policy,
             self.config.reconnection_policy,
-            nodes,
+            self.config.node_distance_evaluator,
+            self.node_config.contact_points,
             connection_manager,
             self.config.event_channel_capacity,
         )

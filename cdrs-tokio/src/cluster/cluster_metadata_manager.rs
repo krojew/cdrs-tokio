@@ -18,6 +18,7 @@ use crate::events::ServerEvent;
 use crate::frame::events::{StatusChange, StatusChangeType, TopologyChange, TopologyChangeType};
 use crate::frame::frame_error::{AdditionalErrorInfo, CdrsError};
 use crate::frame::Frame;
+use crate::load_balancing::NodeDistanceEvaluator;
 use crate::query::utils::prepare_flags;
 use crate::query::{Query, QueryParamsBuilder};
 use crate::transport::CdrsTransport;
@@ -31,6 +32,7 @@ pub struct ClusterMetadataManager<T: CdrsTransport + 'static, CM: ConnectionMana
     did_initial_refresh: AtomicBool,
     is_schema_v2: AtomicBool,
     session_context: Arc<SessionContext<T>>,
+    node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
 }
 
 impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMetadataManager<T, CM> {
@@ -38,6 +40,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         contact_points: Vec<Arc<Node<T, CM>>>,
         connection_manager: Arc<CM>,
         session_context: Arc<SessionContext<T>>,
+        node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
     ) -> Self {
         ClusterMetadataManager {
             metadata: ArcSwap::from_pointee(ClusterMetadata::default()),
@@ -46,6 +49,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             did_initial_refresh: AtomicBool::new(false),
             is_schema_v2: AtomicBool::new(true),
             session_context,
+            node_distance_evaluator,
         }
     }
 
@@ -252,12 +256,22 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             .is_ok()
         {
             self.metadata.store(Arc::new(
-                build_initial_metadata(&node_infos, &self.contact_points, &self.connection_manager)
-                    .await,
+                build_initial_metadata(
+                    &node_infos,
+                    &self.contact_points,
+                    &self.connection_manager,
+                    self.node_distance_evaluator.as_ref(),
+                )
+                .await,
             ));
         } else {
             self.metadata.rcu(|old_metadata| {
-                refresh_metadata(&node_infos, old_metadata.as_ref(), &self.connection_manager)
+                refresh_metadata(
+                    &node_infos,
+                    old_metadata.as_ref(),
+                    &self.connection_manager,
+                    self.node_distance_evaluator.as_ref(),
+                )
             });
         };
 

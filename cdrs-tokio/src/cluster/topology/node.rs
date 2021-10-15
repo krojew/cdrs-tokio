@@ -43,13 +43,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
         host_id: Option<Uuid>,
+        distance: Option<NodeDistance>,
     ) -> Self {
         Node {
             connection_manager,
             connection: Default::default(),
             broadcast_rpc_address,
             broadcast_address,
-            distance: None,
+            distance,
             state: NodeState::Unknown,
             host_id,
         }
@@ -164,7 +165,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Should this node be ignored from establishing connections.
     #[inline]
     pub fn is_ignored(&self) -> bool {
-        self.distance.is_none()
+        self.distance.is_none() || self.state == NodeState::Down
     }
 
     #[inline]

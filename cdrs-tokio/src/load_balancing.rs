@@ -1,4 +1,5 @@
 mod initializing_wrapper;
+pub mod node_distance_evaluator;
 mod random;
 mod request;
 mod round_robin;
@@ -6,6 +7,9 @@ mod round_robin;
 use std::sync::Arc;
 
 pub(crate) use self::initializing_wrapper::InitializingWrapperLoadBalancingStrategy;
+#[cfg(test)]
+pub use self::node_distance_evaluator::MockNodeDistanceEvaluator;
+pub use self::node_distance_evaluator::NodeDistanceEvaluator;
 pub use self::random::RandomLoadBalancingStrategy;
 pub use self::request::Request;
 pub use self::round_robin::RoundRobinBalancingStrategy;

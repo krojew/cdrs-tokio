@@ -22,12 +22,14 @@ use cdrs_tokio::{
 use cdrs_tokio_helpers_derive::*;
 
 use cdrs_tokio::cluster::session::{
-    ReconnectionPolicyWrapper, RetryPolicyWrapper, DEFAULT_TRANSPORT_BUFFER_SIZE,
+    NodeDistanceEvaluatorWrapper, ReconnectionPolicyWrapper, RetryPolicyWrapper,
+    DEFAULT_TRANSPORT_BUFFER_SIZE,
 };
 use cdrs_tokio::cluster::{ConnectionManager, KeyspaceHolder};
 use cdrs_tokio::compression::Compression;
 use cdrs_tokio::frame::{Frame, Serialize};
 use cdrs_tokio::future::BoxFuture;
+use cdrs_tokio::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
 use futures::FutureExt;
 use maplit::hashmap;
@@ -159,6 +161,7 @@ async fn main() {
         load_balancing,
         RetryPolicyWrapper(Box::new(DefaultRetryPolicy::default())),
         ReconnectionPolicyWrapper(reconnection_policy),
+        NodeDistanceEvaluatorWrapper(Box::new(AllLocalNodeDistanceEvaluator::default())),
     )
     .await
     .expect("session should be created");
@@ -218,6 +221,7 @@ async fn create_table(session: &mut CurrentSession) {
         .expect("Table creation error");
 }
 
+//noinspection DuplicatedCode
 async fn insert_struct(session: &mut CurrentSession) {
     let row = RowStruct {
         key: 3i32,
@@ -238,6 +242,7 @@ async fn insert_struct(session: &mut CurrentSession) {
         .expect("insert");
 }
 
+//noinspection DuplicatedCode
 async fn select_struct(session: &mut CurrentSession) {
     let select_struct_cql = "SELECT * FROM test_ks.my_test_table";
     let rows = session
@@ -255,6 +260,7 @@ async fn select_struct(session: &mut CurrentSession) {
     }
 }
 
+//noinspection DuplicatedCode
 async fn update_struct(session: &mut CurrentSession) {
     let update_struct_cql = "UPDATE test_ks.my_test_table SET user = ? WHERE key = ?";
     let upd_user = User {

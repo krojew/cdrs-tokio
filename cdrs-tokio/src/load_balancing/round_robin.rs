@@ -27,6 +27,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> RoundRobinBalancingStrategy<T, 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
     for RoundRobinBalancingStrategy<T, CM>
 {
+    //noinspection DuplicatedCode
     fn query_plan(
         &self,
         _request: Option<Request>,
@@ -35,7 +36,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         let mut nodes = cluster
             .nodes()
             .iter()
-            .filter_map(|(_, node)| node.is_ignored().then(|| node.clone()))
+            .filter_map(|(_, node)| {
+                if node.is_ignored() {
+                    None
+                } else {
+                    Some(node.clone())
+                }
+            })
             .collect_vec();
 
         if nodes.is_empty() {

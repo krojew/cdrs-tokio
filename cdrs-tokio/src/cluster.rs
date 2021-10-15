@@ -34,7 +34,7 @@ mod session_context;
 mod tcp_connection_manager;
 pub mod topology;
 
-pub(crate) use self::node_info::NodeInfo;
+pub use self::node_info::NodeInfo;
 pub(crate) use self::session_context::SessionContext;
 
 /// Generic connection configuration trait that can be used to create user-supplied

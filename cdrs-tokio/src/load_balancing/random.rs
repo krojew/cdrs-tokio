@@ -27,6 +27,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> RandomLoadBalancingStrategy<T, 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
     for RandomLoadBalancingStrategy<T, CM>
 {
+    //noinspection DuplicatedCode
     fn query_plan(
         &self,
         _request: Option<Request>,
@@ -35,7 +36,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         let mut result = cluster
             .nodes()
             .iter()
-            .filter_map(|(_, node)| node.is_ignored().then(|| node.clone()))
+            .filter_map(|(_, node)| {
+                if node.is_ignored() {
+                    None
+                } else {
+                    Some(node.clone())
+                }
+            })
             .collect_vec();
 
         result.shuffle(&mut thread_rng());
