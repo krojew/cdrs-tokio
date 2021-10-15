@@ -1,3 +1,4 @@
+use derive_more::Display;
 use std::cmp::PartialEq;
 use std::io::Cursor;
 
@@ -140,7 +141,7 @@ impl FromCursor for TopologyChange {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Display)]
 pub enum TopologyChangeType {
     NewNode,
     RemovedNode,
@@ -179,7 +180,7 @@ impl FromCursor for StatusChange {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Display)]
 pub enum StatusChangeType {
     Up,
     Down,
@@ -221,7 +222,7 @@ impl FromCursor for SchemaChange {
 }
 
 /// Represents type of changes.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Display)]
 pub enum SchemaChangeType {
     Created,
     Updated,
@@ -243,7 +244,7 @@ impl FromCursor for SchemaChangeType {
 }
 
 /// Refers to a target of changes were made.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Display)]
 pub enum SchemaChangeTarget {
     Keyspace,
     Table,

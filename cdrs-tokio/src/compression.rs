@@ -8,13 +8,13 @@
 //!by the server, messages can be compressed (including the response to the STARTUP
 //!request).
 
+use derive_more::Display;
+use snap::raw::{Decoder, Encoder};
 use std::convert::{From, TryInto};
 use std::error::Error;
 use std::fmt;
 use std::io;
 use std::result;
-
-use snap::raw::{Decoder, Encoder};
 
 type Result<T> = result::Result<T, CompressionError>;
 
@@ -51,7 +51,7 @@ impl Error for CompressionError {
 }
 
 /// Enum which represents a type of compression. Only non-startup frame's body can be compressed.
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Ord, PartialOrd, Hash)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Ord, PartialOrd, Hash, Display)]
 pub enum Compression {
     /// [lz4](https://code.google.com/p/lz4/) compression
     Lz4,

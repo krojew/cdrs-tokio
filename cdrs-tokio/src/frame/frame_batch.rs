@@ -52,7 +52,7 @@ impl Serialize for BodyReqBatch {
 }
 
 /// Batch type
-#[derive(Debug, Clone, Copy, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Ord, PartialOrd, Eq, Hash, Display)]
 pub enum BatchType {
     /// The batch will be "logged". This is equivalent to a
     /// normal CQL3 batch statement.

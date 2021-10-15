@@ -9,6 +9,8 @@
 * `ToString` implementation for `SimpleServerEvent`.
 * Standard trait implementations for event frames.
 * `contains_column`, `is_empty_by_name` and `is_empty` functions for `Row`.
+* `Display` implementation for public enums.
+* Missing traits for `Consistency` and `ColType`.
 
 ### Changed
 

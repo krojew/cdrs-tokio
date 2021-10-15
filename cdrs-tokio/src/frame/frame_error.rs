@@ -2,6 +2,7 @@
 //! (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 //! which server could respond to client.
 
+use derive_more::Display;
 use std::io;
 use std::io::Read;
 use std::result;
@@ -316,7 +317,7 @@ impl FromCursor for WriteFailureError {
 
 /// Describes the type of the write that failed.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1118)
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Display)]
 pub enum WriteType {
     /// The write was a non-batched non-counter write
     Simple,

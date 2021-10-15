@@ -1,3 +1,4 @@
+use derive_more::Display;
 use std::convert::{TryFrom, TryInto};
 use std::io::{Cursor, Error as IoError, Read};
 
@@ -9,7 +10,7 @@ use crate::types::rows::Row;
 use crate::types::*;
 
 /// `ResultKind` is enum which represents types of result.
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Display)]
 pub enum ResultKind {
     /// Void result.
     Void,
@@ -284,7 +285,7 @@ const HAS_MORE_PAGES: i32 = 0x0002;
 const NO_METADATA: i32 = 0x0004;
 
 /// Enum that represent a set of possible row metadata flags that could be set.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Display)]
 pub enum RowsMetadataFlag {
     GlobalTableSpace,
     HasMorePages,
@@ -409,7 +410,7 @@ impl ColSpec {
 }
 
 /// Cassandra data types which could be returned by a server.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Display, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum ColType {
     Custom,
     Ascii,

@@ -1,5 +1,6 @@
 //! `frame` module contains general Frame functionality.
 use bitflags::bitflags;
+use derive_more::Display;
 use std::convert::TryFrom;
 use std::sync::atomic::{AtomicI16, Ordering};
 use uuid::Uuid;
@@ -135,7 +136,7 @@ impl Frame {
 }
 
 /// Frame's version
-#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash, Display)]
 pub enum Version {
     Request,
     Response,
@@ -226,7 +227,7 @@ impl Flags {
     pub const BYTE_LENGTH: usize = 1;
 }
 
-#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash, Display)]
 pub enum Opcode {
     Error,
     Startup,

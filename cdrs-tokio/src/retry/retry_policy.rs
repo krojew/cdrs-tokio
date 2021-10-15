@@ -1,9 +1,11 @@
+use derive_more::Display;
+
 use crate::error::Error;
 use crate::frame::frame_error::{
     AdditionalErrorInfo, CdrsError, ReadTimeoutError, WriteTimeoutError, WriteType,
 };
 
-#[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy, Clone, Display)]
 pub enum RetryDecision {
     RetrySameNode,
     RetryNextNode,

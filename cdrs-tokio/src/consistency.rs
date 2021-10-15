@@ -1,5 +1,6 @@
 #![warn(missing_docs)]
 //! The module contains Rust representation of Cassandra consistency levels.
+use derive_more::Display;
 use std::convert::From;
 use std::default::Default;
 use std::io;
@@ -8,12 +9,11 @@ use std::str::FromStr;
 use crate::error;
 use crate::frame::{FromBytes, FromCursor, Serialize};
 use crate::types::*;
-use std::io::Cursor;
 
 /// `Consistency` is an enum which represents Cassandra's consistency levels.
 /// To find more details about each consistency level please refer to the following documentation:
 /// <https://docs.datastax.com/en/cql-oss/3.x/cql/cql_reference/cqlshConsistency.html>
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Display, Ord, PartialOrd, Eq, Hash)]
 pub enum Consistency {
     /// Closest replica, as determined by the snitch.
     /// If all replica nodes are down, write succeeds after a hinted handoff.
@@ -111,7 +111,7 @@ impl FromStr for Consistency {
 }
 
 impl Serialize for Consistency {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
         let value: i16 = (*self).into();
         value.serialize(cursor)
     }
