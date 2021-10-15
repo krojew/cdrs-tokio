@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use derive_more::Display;
 use std::convert::{TryFrom, TryInto};
 use std::io::{Cursor, Error as IoError, Read};
@@ -241,7 +242,7 @@ impl FromCursor for BodyResResultRows {
 #[derive(Debug, Clone)]
 pub struct RowsMetadata {
     /// Flags.
-    pub flags: i32,
+    pub flags: RowsMetadataFlags,
     /// Number of columns.
     pub columns_count: i32,
     /// Paging state.
@@ -256,16 +257,16 @@ pub struct RowsMetadata {
 
 impl FromCursor for RowsMetadata {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<RowsMetadata> {
-        let flags = CInt::from_cursor(cursor)?;
+        let flags = RowsMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor)?);
         let columns_count = CInt::from_cursor(cursor)?;
 
-        let paging_state = if RowsMetadataFlag::has_has_more_pages(flags) {
+        let paging_state = if flags.contains(RowsMetadataFlags::HAS_MORE_PAGES) {
             Some(CBytes::from_cursor(cursor)?)
         } else {
             None
         };
 
-        let has_global_table_space = RowsMetadataFlag::has_global_table_space(flags);
+        let has_global_table_space = flags.contains(RowsMetadataFlags::GLOBAL_TABLE_SPACE);
         let global_table_spec = extract_global_table_space(cursor, has_global_table_space)?;
 
         let col_specs = ColSpec::parse_colspecs(cursor, columns_count, has_global_table_space)?;
@@ -280,83 +281,33 @@ impl FromCursor for RowsMetadata {
     }
 }
 
-const GLOBAL_TABLE_SPACE: i32 = 0x0001;
-const HAS_MORE_PAGES: i32 = 0x0002;
-const NO_METADATA: i32 = 0x0004;
-
-/// Enum that represent a set of possible row metadata flags that could be set.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Display)]
-pub enum RowsMetadataFlag {
-    GlobalTableSpace,
-    HasMorePages,
-    NoMetadata,
-}
-
-impl RowsMetadataFlag {
-    /// Shows if provided flag contains GlobalTableSpace rows metadata flag
-    #[inline]
-    pub fn has_global_table_space(flag: i32) -> bool {
-        (flag & GLOBAL_TABLE_SPACE) != 0
-    }
-
-    /// Sets GlobalTableSpace rows metadata flag
-    #[inline]
-    pub fn add_global_table_space(flag: i32) -> i32 {
-        flag | GLOBAL_TABLE_SPACE
-    }
-
-    /// Shows if provided flag contains HasMorePages rows metadata flag
-    #[inline]
-    pub fn has_has_more_pages(flag: i32) -> bool {
-        (flag & HAS_MORE_PAGES) != 0
-    }
-
-    /// Sets HasMorePages rows metadata flag
-    #[inline]
-    pub fn add_has_more_pages(flag: i32) -> i32 {
-        flag | HAS_MORE_PAGES
-    }
-
-    /// Shows if provided flag contains NoMetadata rows metadata flag
-    #[inline]
-    pub fn has_no_metadata(flag: i32) -> bool {
-        (flag & NO_METADATA) != 0
-    }
-
-    /// Sets NoMetadata rows metadata flag
-    #[inline]
-    pub fn add_no_metadata(flag: i32) -> i32 {
-        flag | NO_METADATA
+bitflags! {
+    pub struct RowsMetadataFlags: i32 {
+        const GLOBAL_TABLE_SPACE = 0x0001;
+        const HAS_MORE_PAGES = 0x0002;
+        const NO_METADATA = 0x0004;
     }
 }
 
-impl Serialize for RowsMetadataFlag {
+impl Serialize for RowsMetadataFlags {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        i32::from(*self).serialize(cursor)
+        i32::from(self.bits()).serialize(cursor)
     }
 }
 
-impl From<RowsMetadataFlag> for i32 {
-    fn from(value: RowsMetadataFlag) -> Self {
-        match value {
-            RowsMetadataFlag::GlobalTableSpace => GLOBAL_TABLE_SPACE,
-            RowsMetadataFlag::HasMorePages => HAS_MORE_PAGES,
-            RowsMetadataFlag::NoMetadata => NO_METADATA,
-        }
+impl From<RowsMetadataFlags> for i32 {
+    fn from(value: RowsMetadataFlags) -> Self {
+        value.bits()
     }
 }
 
-impl FromBytes for RowsMetadataFlag {
-    fn from_bytes(bytes: &[u8]) -> error::Result<RowsMetadataFlag> {
-        try_u64_from_bytes(bytes)
-            .map_err(Into::into)
-            .and_then(|f| match f as i32 {
-                GLOBAL_TABLE_SPACE => Ok(RowsMetadataFlag::GlobalTableSpace),
-                HAS_MORE_PAGES => Ok(RowsMetadataFlag::HasMorePages),
-                NO_METADATA => Ok(RowsMetadataFlag::NoMetadata),
-                _ => Err("Unexpected rows metadata flag".into()),
-            })
+impl FromBytes for RowsMetadataFlags {
+    fn from_bytes(bytes: &[u8]) -> error::Result<RowsMetadataFlags> {
+        try_u64_from_bytes(bytes).map_err(Into::into).and_then(|f| {
+            RowsMetadataFlags::from_bits(f as i32)
+                .ok_or_else(|| "Unexpected rows metadata flag".into())
+        })
     }
 }
 
@@ -629,10 +580,16 @@ impl FromCursor for BodyResResultPrepared {
     }
 }
 
+bitflags! {
+    pub struct PreparedMetadataFlags: i32 {
+        const GLOBAL_TABLE_SPACE = 0x0001;
+    }
+}
+
 /// The structure that represents metadata of prepared response.
 #[derive(Debug)]
 pub struct PreparedMetadata {
-    pub flags: i32,
+    pub flags: PreparedMetadataFlags,
     pub columns_count: i32,
     pub pk_count: i32,
     pub pk_indexes: Vec<i16>,
@@ -642,7 +599,7 @@ pub struct PreparedMetadata {
 
 impl FromCursor for PreparedMetadata {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<PreparedMetadata> {
-        let flags = CInt::from_cursor(cursor)?;
+        let flags = PreparedMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor)?);
         let columns_count = CInt::from_cursor(cursor)?;
         let pk_count = if cfg!(feature = "v3") {
             0
@@ -659,7 +616,7 @@ impl FromCursor for PreparedMetadata {
             })
             .collect::<Result<Vec<i16>, IoError>>()?;
 
-        let has_global_table_space = RowsMetadataFlag::has_global_table_space(flags);
+        let has_global_table_space = flags.contains(PreparedMetadataFlags::GLOBAL_TABLE_SPACE);
         let global_table_spec = extract_global_table_space(cursor, has_global_table_space)?;
         let col_specs = ColSpec::parse_colspecs(cursor, columns_count, has_global_table_space)?;
 

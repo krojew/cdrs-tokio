@@ -2,7 +2,7 @@ use crate::cluster::session::Session;
 use crate::cluster::ConnectionManager;
 use crate::consistency::Consistency;
 use crate::error;
-use crate::frame::frame_result::{RowsMetadata, RowsMetadataFlag};
+use crate::frame::frame_result::{RowsMetadata, RowsMetadataFlags};
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::query::{PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
 use crate::transport::CdrsTransport;
@@ -148,7 +148,7 @@ impl<
         let metadata = metadata_res?;
 
         self.pager_state.has_more_pages =
-            Some(RowsMetadataFlag::has_has_more_pages(metadata.flags));
+            Some(metadata.flags.contains(RowsMetadataFlags::HAS_MORE_PAGES));
         self.pager_state.cursor = metadata.paging_state;
         body.into_rows()
             .ok_or_else(|| "Pager query should yield a vector of rows".into())
@@ -201,7 +201,7 @@ impl<
         let metadata = metadata_res?;
 
         self.pager_state.has_more_pages =
-            Some(RowsMetadataFlag::has_has_more_pages(metadata.flags));
+            Some(metadata.flags.contains(RowsMetadataFlags::HAS_MORE_PAGES));
         self.pager_state.cursor = metadata.paging_state;
         body.into_rows()
             .ok_or_else(|| "Pager query should yield a vector of rows".into())
