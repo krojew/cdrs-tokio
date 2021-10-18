@@ -1,7 +1,5 @@
-//! This modules contains [Cassandra's errors]
-//! (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
-//! which server could respond to client.
-
+/// This modules contains [Cassandra's errors](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
+/// which server could respond to client.
 use derive_more::Display;
 use std::io;
 use std::io::Read;
@@ -14,8 +12,6 @@ use crate::frame::Frame;
 use crate::types::*;
 
 /// CDRS specific `Result` which contains a [`Frame`] in case of `Ok` and `CdrsError` if `Err`.
-///
-/// [`Frame`]: ../frame/struct.Frame.html
 pub type Result = result::Result<Frame, CdrsError>;
 
 /// CDRS error which could be returned by Cassandra server as a response. As it goes

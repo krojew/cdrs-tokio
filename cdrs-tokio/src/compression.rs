@@ -1,13 +1,12 @@
-//!CDRS support traffic decompression as it is described in [Apache
-//!Cassandra protocol](
-//!https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L790)
-//!
-//!Before being used, client and server must agree on a compression algorithm to
-//!use, which is done in the STARTUP message. As a consequence, a STARTUP message
-//!must never be compressed.  However, once the STARTUP frame has been received
-//!by the server, messages can be compressed (including the response to the STARTUP
-//!request).
-
+/// CDRS support traffic compression as it is described in [Apache
+/// Cassandra protocol](
+/// https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L790)
+///
+/// Before being used, client and server must agree on a compression algorithm to
+/// use, which is done in the STARTUP message. As a consequence, a STARTUP message
+/// must never be compressed.  However, once the STARTUP frame has been received
+/// by the server, messages can be compressed (including the response to the STARTUP
+/// request).
 use derive_more::Display;
 use snap::raw::{Decoder, Encoder};
 use std::convert::{From, TryInto};
@@ -21,9 +20,8 @@ type Result<T> = result::Result<T, CompressionError>;
 pub const LZ4: &str = "lz4";
 pub const SNAPPY: &str = "snappy";
 
-/// It's an error which may occur during encoding or decoding
-/// frame body. As there are only two types of compressors it
-/// contains two related enum options.
+/// An error which may occur during encoding or decoding frame body. As there are only two types
+/// of compressors it contains two related enum options.
 #[derive(Debug)]
 pub enum CompressionError {
     /// Snappy error.

@@ -16,7 +16,8 @@ use crate::transport::CdrsTransport;
 
 /// Manages establishing connections to nodes.
 pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {
-    /// Tries to establish a new, ready to use connection with optional server event handler.
+    /// Tries to establish a new, ready to use connection with optional server event and error
+    /// handlers.
     fn connection(
         &self,
         event_handler: Option<Sender<Frame>>,

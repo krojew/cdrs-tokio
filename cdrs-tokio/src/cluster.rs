@@ -42,6 +42,7 @@ pub(crate) use self::session_context::SessionContext;
 pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send + Sync {
     fn create_manager(&self) -> BoxFuture<Result<CM>>;
 
-    /// Returns desired event channel capacity. Take a look at ['Session'] builders for more info.
+    /// Returns desired event channel capacity. Take a look at
+    /// [`Session`](crate::cluster::session::Session) builders for more info.
     fn event_channel_capacity(&self) -> usize;
 }

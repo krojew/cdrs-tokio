@@ -10,9 +10,9 @@ use crate::frame::frame_response::ResponseBody;
 pub use crate::frame::traits::*;
 
 /// Number of stream bytes in accordance to protocol.
-pub const STREAM_LEN: usize = 2;
+pub(crate) const STREAM_LEN: usize = 2;
 /// Number of body length bytes in accordance to protocol.
-pub const LENGTH_LEN: usize = 4;
+pub(crate) const LENGTH_LEN: usize = 4;
 
 pub mod events;
 pub mod frame_auth_challenge;
@@ -38,7 +38,7 @@ pub mod traits;
 use crate::error;
 
 const INITIAL_STREAM_ID: i16 = 1;
-pub const EVENT_STREAM_ID: i16 = -1;
+pub(crate) const EVENT_STREAM_ID: i16 = -1;
 
 static STREAM_ID: AtomicI16 = AtomicI16::new(INITIAL_STREAM_ID);
 

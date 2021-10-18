@@ -8,10 +8,9 @@ use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
 use crate::types::data_serialization_types::decode_inet;
 
-pub const LONG_STR_LEN: usize = 4;
-pub const SHORT_LEN: usize = 2;
-pub const INT_LEN: usize = 4;
-pub const UUID_LEN: usize = 16;
+pub(crate) const SHORT_LEN: usize = 2;
+pub(crate) const INT_LEN: usize = 4;
+pub(crate) const UUID_LEN: usize = 16;
 
 const NULL_INT_LEN: CInt = -1;
 const NULL_SHORT_LEN: CIntShort = -1;
