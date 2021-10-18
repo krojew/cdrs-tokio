@@ -1,6 +1,8 @@
+use atomic::Atomic;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::ops::Deref;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
@@ -20,7 +22,7 @@ pub struct Node<T: CdrsTransport, CM: ConnectionManager<T>> {
     broadcast_rpc_address: SocketAddr,
     broadcast_address: Option<SocketAddr>,
     distance: Option<NodeDistance>,
-    state: NodeState,
+    state: Atomic<NodeState>,
     host_id: Option<Uuid>,
 }
 
@@ -51,7 +53,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_rpc_address,
             broadcast_address,
             distance,
-            state: NodeState::Unknown,
+            state: Atomic::new(NodeState::Unknown),
             host_id,
         }
     }
@@ -70,7 +72,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_rpc_address,
             broadcast_address,
             distance: None,
-            state,
+            state: Atomic::new(state),
             host_id,
         }
     }
@@ -89,14 +91,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_rpc_address,
             broadcast_address,
             distance: Some(distance),
-            state: NodeState::Unknown,
+            state: Atomic::new(NodeState::Unknown),
             host_id,
         }
     }
 
     #[inline]
     pub fn state(&self) -> NodeState {
-        self.state
+        self.state.load(Ordering::Relaxed)
     }
 
     /// The host ID that is assigned to this node by Cassandra. This value can be used to uniquely
@@ -128,6 +130,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
                 if !connection.is_broken() {
                     return Ok(connection.clone());
                 }
+
+                // note: make sure this is protected by connection guard
+                self.state.store(NodeState::Down, Ordering::Relaxed);
             }
         }
 
@@ -141,6 +146,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
 
         let new_connection = Arc::new(self.new_connection(None, None).await?);
         *connection = Some(new_connection.clone());
+
+        // note: make sure this is protected by connection guard
+        self.state.store(NodeState::Up, Ordering::Relaxed);
 
         Ok(new_connection)
     }
@@ -165,7 +173,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Should this node be ignored from establishing connections.
     #[inline]
     pub fn is_ignored(&self) -> bool {
-        self.distance.is_none() || self.state != NodeState::Up
+        self.distance.is_none() || self.state.load(Ordering::Relaxed) != NodeState::Up
     }
 
     #[inline]
@@ -177,7 +185,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_address: node_info.broadcast_address,
             // since address could change, we can't be sure of distance or state
             distance: None,
-            state: NodeState::Unknown,
+            state: Atomic::new(NodeState::Unknown),
             host_id: Some(node_info.host_id),
         }
     }
@@ -191,7 +199,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_rpc_address: self.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
             distance: self.distance,
-            state: self.state,
+            state: Atomic::new(self.state.load(Ordering::Relaxed)),
             host_id: Some(node_info.host_id),
         }
     }
@@ -209,7 +217,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_address: node_info.broadcast_address,
             // since address could change, we can't be sure of distance
             distance: None,
-            state,
+            state: Atomic::new(state),
             host_id: Some(node_info.host_id),
         }
     }
@@ -222,7 +230,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_rpc_address: self.broadcast_rpc_address,
             broadcast_address: self.broadcast_address,
             distance: self.distance,
-            state,
+            state: Atomic::new(state),
             host_id: self.host_id,
         }
     }
