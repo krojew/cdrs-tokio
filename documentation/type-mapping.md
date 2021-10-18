@@ -23,7 +23,7 @@
 | Cassandra | Rust + CDRS |
 |-----------|-------------|
 | blob | `Blob -> Vec<>` |
-| list | `List -> Vec<T>` [example](https://github.com/AlexPikalov/cdrs/blob/master/examples/all.rs#L159) |
-| set | `List -> Vec<T>` [example](https://github.com/AlexPikalov/cdrs/blob/master/examples/all.rs#L159)|
-| map | `Map -> HashMap<String, T>` [example](https://github.com/AlexPikalov/cdrs/blob/master/examples/all.rs#L185) |
-| udt | Rust struct + custom [implementation into value](https://github.com/AlexPikalov/cdrs/blob/master/examples/all.rs#L211) |
+| list | `List -> Vec<T>` |
+| set | `List -> Vec<T>` |
+| map | `Map -> HashMap<String, T>` |
+| udt | Rust struct |

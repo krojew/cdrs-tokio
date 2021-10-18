@@ -14,4 +14,4 @@ In order to query information from Cassandra DB and transform results to Rust ty
 
 - `ByIndex` is the same as `IntoRustByIndex` but value can be neither non-set nor null. Otherwise, it panics.
 
-Relations between Cassandra and Rust types are described in [type-mapping.md](https://github.com/AlexPikalov/cdrs/blob/master/type-mapping.md). For details see examples.
+Relations between Cassandra and Rust types are described in [type-mapping](type-mapping.md). For details see examples.
