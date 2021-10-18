@@ -386,10 +386,13 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 None
             };
 
+            let datacenter = row.get_r_by_name("datacenter")?;
+
             Ok(NodeInfo::new(
                 host_id,
                 broadcast_rpc_address,
                 broadcast_address,
+                datacenter,
             ))
         })
     }

@@ -101,6 +101,7 @@ impl TransportTcp {
 }
 
 impl CdrsTransport for TransportTcp {
+    //noinspection DuplicatedCode
     #[inline]
     fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>> {
         self.inner.write_frame(frame).boxed()
@@ -160,6 +161,7 @@ impl TransportRustls {
 
 #[cfg(feature = "rust-tls")]
 impl CdrsTransport for TransportRustls {
+    //noinspection DuplicatedCode
     #[inline]
     fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>> {
         self.inner.write_frame(frame).boxed()

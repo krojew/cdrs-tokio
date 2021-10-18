@@ -562,7 +562,8 @@ pub trait SessionBuilder<
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self;
 
-    /// Sets new node distance evaluator.
+    /// Sets new node distance evaluator. Computing node distance is fundamental to proper
+    /// topology-aware load balancing - see [`NodeDistanceEvaluator`].
     fn with_node_distance_evaluator(
         self,
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,

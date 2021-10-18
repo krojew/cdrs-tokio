@@ -10,8 +10,7 @@ CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u*
 
 - Asynchronous API;
 - TCP/TLS connection;
-- Configurable load balancing;
-- Connection pooling;
+- Topology-aware dynamic and configurable load balancing;
 - Configurable connection strategies;
 - LZ4, Snappy compression;
 - Cassandra-to-Rust data deserialization;

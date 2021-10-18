@@ -165,7 +165,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Should this node be ignored from establishing connections.
     #[inline]
     pub fn is_ignored(&self) -> bool {
-        self.distance.is_none() || self.state == NodeState::Down
+        self.distance.is_none() || self.state != NodeState::Up
     }
 
     #[inline]

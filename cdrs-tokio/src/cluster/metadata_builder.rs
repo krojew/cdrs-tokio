@@ -145,6 +145,7 @@ mod tests {
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
         )];
 
         let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
@@ -182,6 +183,7 @@ mod tests {
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
         )];
 
         let contact_points = [Arc::new(
@@ -224,6 +226,7 @@ mod tests {
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
         )];
 
         let old_host_id = Uuid::new_v4();
@@ -269,6 +272,7 @@ mod tests {
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
         )];
 
         let mut old_nodes = NodeMap::default();
@@ -311,6 +315,7 @@ mod tests {
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
         );
 
         let old_node = Node::with_distance(
@@ -362,6 +367,7 @@ mod tests {
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
         );
 
         let old_node = Node::with_distance(
@@ -410,6 +416,7 @@ mod tests {
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
         );
 
         let old_metadata = ClusterMetadata::new(Default::default());
