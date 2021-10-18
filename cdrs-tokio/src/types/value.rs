@@ -107,14 +107,8 @@ impl<T: Into<Bytes>> From<Option<T>> for Value {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Constructor)]
 pub struct Bytes(Vec<u8>);
-
-impl Bytes {
-    pub fn new(bytes: Vec<u8>) -> Bytes {
-        Bytes(bytes)
-    }
-}
 
 impl From<String> for Bytes {
     #[inline]

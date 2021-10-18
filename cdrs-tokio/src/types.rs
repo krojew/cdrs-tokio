@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use std::convert::TryInto;
 use std::io;
 use std::io::{Cursor, Read};
@@ -204,17 +205,12 @@ pub(crate) fn to_float_big(f: f64) -> Vec<u8> {
     f.to_be_bytes().into()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Constructor)]
 pub struct CString {
     string: String,
 }
 
 impl CString {
-    #[inline]
-    pub fn new(string: String) -> CString {
-        CString { string }
-    }
-
     /// Converts internal value into pointer of `str`.
     #[inline]
     pub fn as_str(&self) -> &str {
@@ -256,17 +252,12 @@ impl FromCursor for CString {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Constructor)]
 pub struct CStringLong {
     string: String,
 }
 
 impl CStringLong {
-    #[inline]
-    pub fn new(string: String) -> CStringLong {
-        CStringLong { string }
-    }
-
     /// Converts internal value into pointer of `str`.
     #[inline]
     pub fn as_str(&self) -> &str {

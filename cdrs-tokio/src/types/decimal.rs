@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use float_eq::*;
 use num::BigInt;
 use std::io::Cursor;
@@ -5,17 +6,13 @@ use std::io::Cursor;
 use crate::frame::Serialize;
 
 /// Cassandra Decimal type
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Constructor, Ord, PartialOrd, Eq, Hash)]
 pub struct Decimal {
     pub unscaled: BigInt,
     pub scale: i32,
 }
 
 impl Decimal {
-    pub fn new(unscaled: BigInt, scale: i32) -> Self {
-        Decimal { unscaled, scale }
-    }
-
     /// Method that returns plain `f64` value.
     pub fn as_plain(&self) -> BigInt {
         self.unscaled.clone() / 10i64.pow(self.scale as u32)

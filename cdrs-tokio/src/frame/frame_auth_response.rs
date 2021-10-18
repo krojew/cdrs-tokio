@@ -1,18 +1,12 @@
+use derive_more::Constructor;
 use std::io::Cursor;
 
 use crate::frame::*;
 use crate::types::CBytes;
 
-#[derive(Debug)]
+#[derive(Debug, Constructor)]
 pub struct BodyReqAuthResponse {
     data: CBytes,
-}
-
-impl BodyReqAuthResponse {
-    #[inline]
-    pub fn new(data: CBytes) -> BodyReqAuthResponse {
-        BodyReqAuthResponse { data }
-    }
 }
 
 impl Serialize for BodyReqAuthResponse {

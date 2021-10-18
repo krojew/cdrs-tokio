@@ -1,15 +1,11 @@
+use derive_more::Constructor;
+
 /// Special type that represents Cassandra blob type.
-#[derive(PartialEq, Eq, Hash, Debug, Clone)]
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Constructor)]
 #[repr(transparent)]
 pub struct Blob(Vec<u8>);
 
 impl Blob {
-    /// Constructor method that creates new blob value from a vector of bytes.
-    #[inline]
-    pub fn new(bytes: Vec<u8>) -> Self {
-        Blob(bytes)
-    }
-
     /// Returns a mutable reference to an underlying slice of bytes.
     #[inline]
     pub fn as_mut_slice(&mut self) -> &[u8] {

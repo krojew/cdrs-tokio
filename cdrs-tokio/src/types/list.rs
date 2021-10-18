@@ -1,3 +1,8 @@
+use derive_more::Constructor;
+use num::BigInt;
+use std::net::IpAddr;
+use uuid::Uuid;
+
 use crate::error::{Error, Result};
 use crate::frame::frame_result::{ColType, ColTypeOption, ColTypeOptionValue};
 use crate::types::blob::Blob;
@@ -7,12 +12,9 @@ use crate::types::map::Map;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
 use crate::types::{AsRust, AsRustType, CBytes};
-use num::BigInt;
-use std::net::IpAddr;
-use uuid::Uuid;
 
 // TODO: consider using pointers to ColTypeOption and Vec<CBytes> instead of owning them.
-#[derive(Debug)]
+#[derive(Debug, Constructor)]
 pub struct List {
     /// column spec of the list, i.e. id should be List as it's a list and value should contain
     /// a type of list items.
@@ -21,10 +23,6 @@ pub struct List {
 }
 
 impl List {
-    pub fn new(data: Vec<CBytes>, metadata: ColTypeOption) -> List {
-        List { metadata, data }
-    }
-
     fn map<T, F>(&self, f: F) -> Vec<T>
     where
         F: FnMut(&CBytes) -> T,

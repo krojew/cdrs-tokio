@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use rand::{thread_rng, Rng};
 use std::time::Duration;
 
@@ -17,7 +18,7 @@ pub trait ReconnectionPolicy {
 }
 
 /// Schedules reconnection at constant interval.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Constructor)]
 pub struct ConstantReconnectionPolicy {
     base_delay: Duration,
 }
@@ -34,12 +35,7 @@ impl ReconnectionPolicy for ConstantReconnectionPolicy {
     }
 }
 
-impl ConstantReconnectionPolicy {
-    pub fn new(base_delay: Duration) -> Self {
-        ConstantReconnectionPolicy { base_delay }
-    }
-}
-
+#[derive(Constructor)]
 struct ConstantReconnectionSchedule {
     base_delay: Duration,
 }
@@ -47,12 +43,6 @@ struct ConstantReconnectionSchedule {
 impl ReconnectionSchedule for ConstantReconnectionSchedule {
     fn next_delay(&mut self) -> Option<Duration> {
         Some(self.base_delay)
-    }
-}
-
-impl ConstantReconnectionSchedule {
-    pub fn new(base_delay: Duration) -> Self {
-        ConstantReconnectionSchedule { base_delay }
     }
 }
 
@@ -77,7 +67,7 @@ impl ReconnectionSchedule for NeverReconnectionSchedule {
 /// A reconnection policy that waits exponentially longer between each reconnection attempt (but
 /// keeps a constant delay once a maximum delay is reached). The delay will increase exponentially,
 /// with an added jitter.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Constructor)]
 pub struct ExponentialReconnectionPolicy {
     base_delay: Duration,
     max_delay: Duration,
@@ -108,16 +98,6 @@ impl Default for ExponentialReconnectionPolicy {
             DEFAULT_MAX_DELAY,
             (64 - (i64::MAX / base_delay).leading_zeros() - ceil) as usize,
         )
-    }
-}
-
-impl ExponentialReconnectionPolicy {
-    pub fn new(base_delay: Duration, max_delay: Duration, max_attempts: usize) -> Self {
-        ExponentialReconnectionPolicy {
-            base_delay,
-            max_delay,
-            max_attempts,
-        }
     }
 }
 

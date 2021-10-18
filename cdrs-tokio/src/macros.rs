@@ -595,7 +595,7 @@ macro_rules! as_rust_type {
         match $data_type_option.id {
             ColType::List | ColType::Set => match $data_value.as_slice() {
                 Some(ref bytes) => decode_list(bytes)
-                    .map(|data| Some(List::new(data, $data_type_option.clone())))
+                    .map(|data| Some(List::new($data_type_option.clone(), data)))
                     .map_err(Into::into),
                 None => Ok(None),
             },

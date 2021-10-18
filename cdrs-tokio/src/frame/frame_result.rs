@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use derive_more::Display;
+use derive_more::{Constructor, Display};
 use std::convert::{TryFrom, TryInto};
 use std::io::{Cursor, Error as IoError, Read};
 
@@ -175,18 +175,10 @@ impl FromCursor for BodyResResultVoid {
 }
 
 /// It represents set keyspace result body. Body contains keyspace name.
-#[derive(Debug)]
+#[derive(Debug, Constructor)]
 pub struct BodyResResultSetKeyspace {
     /// It contains name of keyspace that was set.
     pub body: CString,
-}
-
-impl BodyResResultSetKeyspace {
-    /// Factory function that takes body value and
-    /// returns new instance of `BodyResResultSetKeyspace`.
-    pub fn new(body: CString) -> BodyResResultSetKeyspace {
-        BodyResResultSetKeyspace { body }
-    }
 }
 
 impl FromCursor for BodyResResultSetKeyspace {

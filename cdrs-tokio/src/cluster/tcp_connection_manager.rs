@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use futures::FutureExt;
 use std::net::SocketAddr;
 use std::ops::Deref;
@@ -15,6 +16,7 @@ use crate::future::BoxFuture;
 use crate::retry::ReconnectionPolicy;
 use crate::transport::TransportTcp;
 
+#[derive(Constructor)]
 pub struct TcpConnectionManager {
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
@@ -52,24 +54,6 @@ impl ConnectionManager<TransportTcp> for TcpConnectionManager {
 }
 
 impl TcpConnectionManager {
-    pub fn new(
-        authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
-        keyspace_holder: Arc<KeyspaceHolder>,
-        reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-        compression: Compression,
-        buffer_size: usize,
-        tcp_nodelay: bool,
-    ) -> Self {
-        TcpConnectionManager {
-            authenticator_provider,
-            keyspace_holder,
-            reconnection_policy,
-            compression,
-            buffer_size,
-            tcp_nodelay,
-        }
-    }
-
     async fn establish_connection(
         &self,
         event_handler: Option<Sender<Frame>>,

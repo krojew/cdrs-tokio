@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use fxhash::FxHashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -12,16 +13,12 @@ pub type NodeMap<T, CM> = FxHashMap<Uuid, Arc<Node<T, CM>>>;
 
 /// Immutable metadata of the Cassandra cluster that this driver instance is connected to.
 // TODO: add token map
+#[derive(Constructor)]
 pub struct ClusterMetadata<T: CdrsTransport, CM: ConnectionManager<T>> {
     nodes: NodeMap<T, CM>,
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
-    /// Creates initial metadata.
-    pub fn new(nodes: NodeMap<T, CM>) -> Self {
-        ClusterMetadata { nodes }
-    }
-
     /// Creates a new metadata with a new set of nodes.
     pub fn clone_with_nodes(&self, nodes: NodeMap<T, CM>) -> Self {
         ClusterMetadata { nodes }

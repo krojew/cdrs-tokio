@@ -365,15 +365,14 @@ impl AsyncTransport {
 
 type ResponseHandler = oneshot::Sender<Result<Frame>>;
 
+#[derive(Default)]
 struct ResponseHandlerMap {
     stream_handlers: Mutex<FxHashMap<StreamId, ResponseHandler>>,
 }
 
 impl ResponseHandlerMap {
     pub fn new() -> Self {
-        ResponseHandlerMap {
-            stream_handlers: Default::default(),
-        }
+        Default::default()
     }
 
     #[inline]

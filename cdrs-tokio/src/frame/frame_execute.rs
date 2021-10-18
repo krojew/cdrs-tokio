@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use std::io::Cursor;
 
 use crate::frame::*;
@@ -5,19 +6,10 @@ use crate::query::QueryParams;
 use crate::types::*;
 
 /// The structure that represents a body of a frame of type `execute`.
-#[derive(Debug)]
+#[derive(Debug, Constructor)]
 pub struct BodyReqExecute<'a> {
     id: &'a CBytesShort,
     query_parameters: &'a QueryParams,
-}
-
-impl<'a> BodyReqExecute<'a> {
-    pub fn new<'b>(id: &'b CBytesShort, query_parameters: &'b QueryParams) -> BodyReqExecute<'b> {
-        BodyReqExecute {
-            id,
-            query_parameters,
-        }
-    }
 }
 
 impl<'a> Serialize for BodyReqExecute<'a> {
