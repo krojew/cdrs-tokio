@@ -40,6 +40,6 @@ mod tests {
         let frame = Frame::new_req_options();
         assert_eq!(frame.version, Version::Request);
         assert_eq!(frame.opcode, Opcode::Options);
-        assert_eq!(frame.body, vec![]);
+        assert!(frame.body.is_empty());
     }
 }

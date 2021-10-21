@@ -5,7 +5,7 @@ use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
+use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -20,7 +20,7 @@ async fn paged_query() {
         .build()
         .await
         .unwrap();
-    let lb = RoundRobinBalancingStrategy::new();
+    let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build();

@@ -7,6 +7,7 @@ pub struct PreparedQuery {
     pub(crate) id: RwLock<CBytesShort>,
     pub(crate) query: String,
     pub(crate) keyspace: Option<String>,
+    pub(crate) pk_indexes: Vec<i16>,
 }
 
 impl Clone for PreparedQuery {
@@ -20,6 +21,7 @@ impl Clone for PreparedQuery {
             ),
             query: self.query.clone(),
             keyspace: self.keyspace.clone(),
+            pk_indexes: self.pk_indexes.clone(),
         }
     }
 }

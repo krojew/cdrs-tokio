@@ -1,5 +1,7 @@
 use super::{QueryFlags, QueryParams, QueryValues};
+use crate::cluster::Murmur3Token;
 use crate::consistency::Consistency;
+use crate::types::value::Value;
 use crate::types::CBytes;
 
 #[derive(Debug, Default)]
@@ -14,6 +16,8 @@ pub struct QueryParamsBuilder {
     timestamp: Option<i64>,
     is_idempotent: bool,
     keyspace: Option<String>,
+    token: Option<Murmur3Token>,
+    routing_key: Option<Vec<Value>>,
 }
 
 impl QueryParamsBuilder {
@@ -68,6 +72,8 @@ impl QueryParamsBuilder {
     builder_opt_field!(serial_consistency, Consistency);
     builder_opt_field!(timestamp, i64);
     builder_opt_field!(keyspace, String);
+    builder_opt_field!(token, Murmur3Token);
+    builder_opt_field!(routing_key, Vec<Value>);
 
     /// Marks the query as idempotent or not
     pub fn idempotent(mut self, value: bool) -> Self {
@@ -88,6 +94,8 @@ impl QueryParamsBuilder {
             timestamp: self.timestamp,
             is_idempotent: self.is_idempotent,
             keyspace: self.keyspace,
+            token: self.token,
+            routing_key: self.routing_key,
         }
     }
 }

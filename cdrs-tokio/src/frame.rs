@@ -65,13 +65,13 @@ fn next_stream_id() -> StreamId {
 
 #[derive(Debug, Clone)]
 pub struct Frame {
-    pub version: Version,
-    pub flags: Flags,
-    pub opcode: Opcode,
-    pub stream: StreamId,
-    pub body: Vec<u8>,
-    pub tracing_id: Option<Uuid>,
-    pub warnings: Vec<String>,
+    pub(crate) version: Version,
+    pub(crate) flags: Flags,
+    pub(crate) opcode: Opcode,
+    pub(crate) stream: StreamId,
+    pub(crate) body: Vec<u8>,
+    pub(crate) tracing_id: Option<Uuid>,
+    pub(crate) warnings: Vec<String>,
 }
 
 impl Frame {
@@ -99,10 +99,12 @@ impl Frame {
         ResponseBody::from(self.body.as_slice(), &self.opcode)
     }
 
+    #[inline]
     pub fn tracing_id(&self) -> &Option<Uuid> {
         &self.tracing_id
     }
 
+    #[inline]
     pub fn warnings(&self) -> &Vec<String> {
         &self.warnings
     }

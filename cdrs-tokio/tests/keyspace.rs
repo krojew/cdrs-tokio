@@ -12,7 +12,7 @@ use cdrs_tokio::cluster::session::TcpSessionBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
+use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -30,7 +30,7 @@ async fn create_keyspace() {
         .build()
         .await
         .unwrap();
-    let lb = RoundRobinBalancingStrategy::new();
+    let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build();
@@ -102,7 +102,7 @@ async fn alter_keyspace() {
         .build()
         .await
         .unwrap();
-    let lb = RoundRobinBalancingStrategy::new();
+    let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build();
@@ -165,7 +165,7 @@ async fn use_keyspace() {
         .build()
         .await
         .unwrap();
-    let lb = RoundRobinBalancingStrategy::new();
+    let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build();
@@ -201,7 +201,7 @@ async fn drop_keyspace() {
         .build()
         .await
         .unwrap();
-    let lb = RoundRobinBalancingStrategy::new();
+    let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build();

@@ -14,7 +14,6 @@ pub struct BodyReqQuery {
 }
 
 impl BodyReqQuery {
-    // Fabric function that produces Query request body.
     #[allow(clippy::too_many_arguments)]
     fn new(
         query: String,
@@ -67,6 +66,8 @@ impl BodyReqQuery {
                 timestamp,
                 is_idempotent,
                 keyspace: None,
+                token: None,
+                routing_key: None,
             },
         }
     }

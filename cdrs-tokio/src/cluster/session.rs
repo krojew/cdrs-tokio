@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use std::io::{Cursor, Write};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::ops::Deref;
@@ -21,7 +22,7 @@ use crate::compression::Compression;
 use crate::error;
 use crate::events::ServerEvent;
 use crate::frame::frame_result::BodyResResultPrepared;
-use crate::frame::Frame;
+use crate::frame::{Frame, Serialize};
 use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use crate::load_balancing::{
     InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, NodeDistanceEvaluator,
@@ -37,11 +38,75 @@ use crate::retry::{
 #[cfg(feature = "rust-tls")]
 use crate::transport::TransportRustls;
 use crate::transport::{CdrsTransport, TransportTcp};
+use crate::types::value::Value;
+use crate::types::{CIntShort, SHORT_LEN};
 
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
 
-/// CDRS session that holds a pool of connections to nodes.
+// https://github.com/apache/cassandra/blob/3a950b45c321e051a9744721408760c568c05617/src/java/org/apache/cassandra/db/marshal/CompositeType.java#L39
+
+fn serialize_routing_value(cursor: &mut Cursor<&mut Vec<u8>>, value: &Value) {
+    let temp_size: CIntShort = 0;
+    temp_size.serialize(cursor);
+
+    let before_value_pos = cursor.position();
+    value.serialize(cursor);
+
+    let after_value_pos = cursor.position();
+    cursor.set_position(before_value_pos - SHORT_LEN as u64);
+
+    let value_size: CIntShort = (after_value_pos - before_value_pos) as CIntShort;
+    value_size.serialize(cursor);
+
+    cursor.set_position(after_value_pos);
+    let _ = cursor.write(&[0]);
+}
+
+fn serialize_routing_key_with_indexes(values: &[Value], pk_indexes: &[i16]) -> Option<Vec<u8>> {
+    match pk_indexes.len() {
+        0 => None,
+        1 => values
+            .get(pk_indexes[0] as usize)
+            .map(|value| value.serialize_to_vec()),
+        _ => {
+            let mut buf = vec![];
+            if pk_indexes
+                .iter()
+                .map(|index| values.get(*index as usize))
+                .fold_options(Cursor::new(&mut buf), |mut cursor, value| {
+                    serialize_routing_value(&mut cursor, value);
+                    cursor
+                })
+                .is_some()
+            {
+                Some(buf)
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn serialize_routing_key(values: &[Value]) -> Vec<u8> {
+    match values.len() {
+        0 => vec![],
+        1 => values[0].serialize_to_vec(),
+        _ => {
+            let mut buf = vec![];
+            let mut cursor = Cursor::new(&mut buf);
+
+            for value in values {
+                serialize_routing_value(&mut cursor, value);
+            }
+
+            buf
+        }
+    }
+}
+
+/// CDRS session that holds a pool of connections to nodes and provides an interfaces for
+/// interacting with the cluster.
 pub struct Session<
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T> + 'static,
@@ -88,6 +153,7 @@ impl<
         with_tracing: bool,
         with_warnings: bool,
     ) -> error::Result<Frame> {
+        let consistency = query_parameters.consistency;
         let flags = prepare_flags(with_tracing, with_warnings);
         let options_frame = Frame::new_req_execute(
             prepared
@@ -104,11 +170,29 @@ impl<
             .as_deref()
             .or_else(|| query_parameters.keyspace.as_deref());
 
+        let routing_key = query_parameters
+            .values
+            .as_ref()
+            .and_then(|values| match values {
+                QueryValues::SimpleValues(values) => {
+                    serialize_routing_key_with_indexes(values, &prepared.pk_indexes).or_else(|| {
+                        query_parameters
+                            .routing_key
+                            .as_ref()
+                            .map(|values| serialize_routing_key(values))
+                    })
+                }
+                QueryValues::NamedValues(_) => None,
+            });
+
         let mut result = send_frame(
             self,
             options_frame,
             query_parameters.is_idempotent,
             keyspace,
+            query_parameters.token,
+            routing_key.as_deref(),
+            Some(consistency),
         )
         .await;
 
@@ -127,6 +211,9 @@ impl<
                         options_frame,
                         query_parameters.is_idempotent,
                         keyspace,
+                        query_parameters.token,
+                        routing_key.as_deref(),
+                        Some(consistency),
                     )
                     .await;
                 }
@@ -182,10 +269,7 @@ impl<
     }
 
     /// Executes given prepared query.
-    pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Frame>
-    where
-        Self: Sync,
-    {
+    pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Frame> {
         self.exec_tw(prepared, false, false).await
     }
 
@@ -203,7 +287,7 @@ impl<
 
         let query_frame = Frame::new_req_prepare(query.to_string(), flags);
 
-        send_frame(self, query_frame, false, None)
+        send_frame(self, query_frame, false, None, None, None, None)
             .await
             .and_then(|response| response.body())
             .and_then(|body| {
@@ -238,15 +322,13 @@ impl<
                     .metadata
                     .global_table_spec
                     .map(|(keyspace, _)| keyspace.as_plain()),
+                pk_indexes: result.metadata.pk_indexes,
             })
     }
 
     /// It prepares query without additional tracing information and warnings.
     /// Returns the prepared query.
-    pub async fn prepare<Q: ToString>(&self, query: Q) -> error::Result<PreparedQuery>
-    where
-        Self: Sync,
-    {
+    pub async fn prepare<Q: ToString>(&self, query: Q) -> error::Result<PreparedQuery> {
         self.prepare_tw(query, false, false).await
     }
 
@@ -260,10 +342,20 @@ impl<
         let flags = prepare_flags(with_tracing, with_warnings);
         let is_idempotent = batch.is_idempotent;
         let keyspace = batch.keyspace.take();
+        let consistency = batch.consistency;
 
         let query_frame = Frame::new_req_batch(batch, flags);
 
-        send_frame(self, query_frame, is_idempotent, keyspace.as_deref()).await
+        send_frame(
+            self,
+            query_frame,
+            is_idempotent,
+            keyspace.as_deref(),
+            None,
+            None,
+            Some(consistency),
+        )
+        .await
     }
 
     /// Executes batch query.
@@ -280,7 +372,13 @@ impl<
         with_warnings: bool,
     ) -> error::Result<Frame> {
         let is_idempotent = query_params.is_idempotent;
+        let consistency = query_params.consistency;
         let keyspace = query_params.keyspace.take();
+        let token = query_params.token.take();
+        let routing_key = query_params
+            .routing_key
+            .as_ref()
+            .map(|values| serialize_routing_key(values));
 
         let query = Query {
             query: query.to_string(),
@@ -290,7 +388,16 @@ impl<
         let flags = prepare_flags(with_tracing, with_warnings);
         let query_frame = Frame::new_query(query, flags);
 
-        send_frame(self, query_frame, is_idempotent, keyspace.as_deref()).await
+        send_frame(
+            self,
+            query_frame,
+            is_idempotent,
+            keyspace.as_deref(),
+            token,
+            routing_key.as_deref(),
+            Some(consistency),
+        )
+        .await
     }
 
     /// Executes a query.
@@ -397,6 +504,10 @@ impl<
                     None,
                     // assume contact points are local until refresh
                     Some(NodeDistance::Local),
+                    Default::default(),
+                    // as with distance, rack/dc is unknown until refresh
+                    "".into(),
+                    "".into(),
                 ))
             })
             .collect_vec();

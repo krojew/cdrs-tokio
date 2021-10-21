@@ -10,7 +10,7 @@ use cdrs_tokio::{
     cluster::session::Session,
     cluster::{GenericClusterConfig, TcpConnectionManager},
     error::Result,
-    load_balancing::RoundRobinBalancingStrategy,
+    load_balancing::RoundRobinLoadBalancingStrategy,
     query::*,
     query_values,
     retry::DefaultRetryPolicy,
@@ -38,7 +38,7 @@ use tokio::sync::mpsc::Sender;
 type CurrentSession = Session<
     TransportTcp,
     VirtualConnectionManager,
-    RoundRobinBalancingStrategy<TransportTcp, VirtualConnectionManager>,
+    RoundRobinLoadBalancingStrategy<TransportTcp, VirtualConnectionManager>,
 >;
 
 /// Implements a cluster configuration where the addresses to
@@ -153,7 +153,7 @@ async fn main() {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 9042),
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 9043),
     ];
-    let load_balancing = RoundRobinBalancingStrategy::new();
+    let load_balancing = RoundRobinLoadBalancingStrategy::new();
 
     let mut session = cdrs_tokio::cluster::connect_generic(
         &cluster_config,

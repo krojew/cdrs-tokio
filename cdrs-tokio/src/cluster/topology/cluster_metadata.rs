@@ -1,38 +1,106 @@
-use derive_more::Constructor;
 use fxhash::FxHashMap;
+use itertools::Itertools;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::cluster::topology::keyspace_metadata::KeyspaceMetadata;
 use crate::cluster::topology::node::Node;
-use crate::cluster::ConnectionManager;
+use crate::cluster::topology::{DatacenterMetadata, NodeMap};
+use crate::cluster::{ConnectionManager, TokenMap};
 use crate::transport::CdrsTransport;
 
-/// Map from host id to a node.
-pub type NodeMap<T, CM> = FxHashMap<Uuid, Arc<Node<T, CM>>>;
+fn build_datacenter_info<T: CdrsTransport, CM: ConnectionManager<T>>(
+    nodes: &NodeMap<T, CM>,
+) -> FxHashMap<String, DatacenterMetadata> {
+    let grouped_by_dc = nodes
+        .values()
+        .sorted_unstable_by_key(|node| node.datacenter())
+        .group_by(|node| node.datacenter());
+
+    (&grouped_by_dc)
+        .into_iter()
+        .map(|(dc, nodes)| {
+            (
+                dc.into(),
+                DatacenterMetadata::new(nodes.unique_by(|node| node.rack()).count()),
+            )
+        })
+        .collect()
+}
 
 /// Immutable metadata of the Cassandra cluster that this driver instance is connected to.
-// TODO: add token map
-#[derive(Constructor)]
+#[derive(Debug, Clone)]
 pub struct ClusterMetadata<T: CdrsTransport, CM: ConnectionManager<T>> {
     nodes: NodeMap<T, CM>,
+    token_map: TokenMap<T, CM>,
+    keyspaces: FxHashMap<String, KeyspaceMetadata>,
+    datacenters: FxHashMap<String, DatacenterMetadata>,
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
-    /// Creates a new metadata with a new set of nodes.
-    pub fn clone_with_nodes(&self, nodes: NodeMap<T, CM>) -> Self {
-        ClusterMetadata { nodes }
+    pub fn new(nodes: NodeMap<T, CM>, keyspaces: FxHashMap<String, KeyspaceMetadata>) -> Self {
+        let token_map = TokenMap::new(&nodes);
+        let datacenters = build_datacenter_info(&nodes);
+        ClusterMetadata {
+            nodes,
+            token_map,
+            keyspaces,
+            datacenters,
+        }
+    }
+
+    /// Returns current token map.
+    #[inline]
+    pub fn token_map(&self) -> &TokenMap<T, CM> {
+        &self.token_map
+    }
+
+    /// Creates a new metadata with a keyspace replaced/added.
+    pub fn clone_with_keyspace(&self, keyspace_name: String, keyspace: KeyspaceMetadata) -> Self {
+        let mut keyspaces = self.keyspaces.clone();
+        keyspaces.insert(keyspace_name, keyspace);
+
+        ClusterMetadata {
+            nodes: self.nodes.clone(),
+            token_map: self.token_map.clone(),
+            keyspaces,
+            datacenters: self.datacenters.clone(),
+        }
+    }
+
+    /// Creates a new metadata with a keyspace removed.
+    pub fn clone_without_keyspace(&self, keyspace: &str) -> Self {
+        let mut keyspaces = self.keyspaces.clone();
+        keyspaces.remove(keyspace);
+
+        ClusterMetadata {
+            nodes: self.nodes.clone(),
+            token_map: self.token_map.clone(),
+            keyspaces,
+            datacenters: self.datacenters.clone(),
+        }
     }
 
     /// Creates a new metadata with a node replaced/added. The node must have a host id.
     pub fn clone_with_node(&self, node: Node<T, CM>) -> Self {
+        let node = Arc::new(node);
+        let token_map = self.token_map.clone_with_node(node.clone());
+
         let mut nodes = self.nodes.clone();
         nodes.insert(
             node.host_id().expect("Adding a node without host id!"),
-            Arc::new(node),
+            node,
         );
 
-        ClusterMetadata { nodes }
+        let datacenters = build_datacenter_info(&nodes);
+
+        ClusterMetadata {
+            nodes,
+            token_map,
+            keyspaces: self.keyspaces.clone(),
+            datacenters,
+        }
     }
 
     /// Creates a new metadata with a node removed.
@@ -49,13 +117,83 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
             })
             .collect();
 
-        ClusterMetadata { nodes }
+        Self::new(nodes, self.keyspaces.clone())
     }
 
     /// Returns all known nodes.
     #[inline]
     pub fn nodes(&self) -> &NodeMap<T, CM> {
         &self.nodes
+    }
+
+    /// Returns known keyspaces.
+    #[inline]
+    pub fn keyspaces(&self) -> &FxHashMap<String, KeyspaceMetadata> {
+        &self.keyspaces
+    }
+
+    /// Returns known keyspace, if present.
+    #[inline]
+    pub fn keyspace(&self, keyspace: &str) -> Option<&KeyspaceMetadata> {
+        self.keyspaces.get(keyspace)
+    }
+
+    /// Returns known datacenters.
+    #[inline]
+    pub fn datacenters(&self) -> &FxHashMap<String, DatacenterMetadata> {
+        &self.datacenters
+    }
+
+    /// Returns known datacenter, if present.
+    #[inline]
+    pub fn datacenter(&self, name: &str) -> Option<&DatacenterMetadata> {
+        self.datacenters.get(name)
+    }
+
+    /// Returns node that are not ignored for load balancing.
+    #[inline]
+    pub fn unignored_nodes(&self) -> Vec<Arc<Node<T, CM>>> {
+        self.nodes
+            .iter()
+            .filter_map(|(_, node)| {
+                if node.is_ignored() {
+                    None
+                } else {
+                    Some(node.clone())
+                }
+            })
+            .collect()
+    }
+
+    /// Returns node that are not ignored for load balancing and are local.
+    #[inline]
+    pub fn unignored_local_nodes(&self) -> Vec<Arc<Node<T, CM>>> {
+        self.nodes
+            .iter()
+            .filter_map(|(_, node)| {
+                if node.is_ignored() || !node.is_local() {
+                    None
+                } else {
+                    Some(node.clone())
+                }
+            })
+            .collect()
+    }
+
+    /// Returns node that are not ignored for load balancing and are remote.
+    #[inline]
+    pub fn unignored_remote_nodes_capped(&self, max_count: usize) -> Vec<Arc<Node<T, CM>>> {
+        self.nodes
+            .iter()
+            .filter_map(|(_, node)| {
+                if node.is_ignored() || !node.is_remote() {
+                    None
+                } else {
+                    Some(node.clone())
+                }
+            })
+            .take(max_count)
+            .collect()
     }
 
     /// Checks if any nodes are known.
@@ -91,18 +229,90 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     }
 }
 
-impl<T: CdrsTransport, CM: ConnectionManager<T>> Clone for ClusterMetadata<T, CM> {
-    fn clone(&self) -> Self {
-        ClusterMetadata {
-            nodes: self.nodes.clone(),
-        }
-    }
-}
-
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Default for ClusterMetadata<T, CM> {
     fn default() -> Self {
         ClusterMetadata {
             nodes: Default::default(),
+            token_map: Default::default(),
+            keyspaces: Default::default(),
+            datacenters: Default::default(),
         }
+    }
+}
+
+//noinspection DuplicatedCode
+#[cfg(test)]
+mod tests {
+    use fxhash::FxHashMap;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::topology::cluster_metadata::build_datacenter_info;
+    use crate::cluster::topology::Node;
+    use crate::transport::MockCdrsTransport;
+
+    #[test]
+    fn should_build_datacenter_info() {
+        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+
+        let mut nodes = FxHashMap::default();
+        nodes.insert(
+            Uuid::new_v4(),
+            Arc::new(Node::new(
+                connection_manager.clone(),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
+                None,
+                None,
+                None,
+                Default::default(),
+                "r1".into(),
+                "dc1".into(),
+            )),
+        );
+        nodes.insert(
+            Uuid::new_v4(),
+            Arc::new(Node::new(
+                connection_manager.clone(),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
+                None,
+                None,
+                None,
+                Default::default(),
+                "r1".into(),
+                "dc1".into(),
+            )),
+        );
+        nodes.insert(
+            Uuid::new_v4(),
+            Arc::new(Node::new(
+                connection_manager.clone(),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
+                None,
+                None,
+                None,
+                Default::default(),
+                "r2".into(),
+                "dc1".into(),
+            )),
+        );
+        nodes.insert(
+            Uuid::new_v4(),
+            Arc::new(Node::new(
+                connection_manager,
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
+                None,
+                None,
+                None,
+                Default::default(),
+                "r1".into(),
+                "dc2".into(),
+            )),
+        );
+
+        let dc_info = build_datacenter_info(&nodes);
+        assert_eq!(dc_info.get("dc1").unwrap().rack_count, 2);
+        assert_eq!(dc_info.get("dc2").unwrap().rack_count, 1);
     }
 }

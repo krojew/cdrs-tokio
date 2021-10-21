@@ -2,6 +2,7 @@
 
 ## New
 
+* Topology-aware load balancing: `TopologyAwareNodeDistanceEvaluator` and `TopologyAwareLoadBalancingStrategy`.
 * New `ReconnectionPolicy` used when trying to re-establish connections to downed nodes.
 * `Error` now implements standard `Error`.
 * `SessionBuilder` introduced as the preferred way to create a session.
@@ -10,8 +11,9 @@
 * Standard trait implementations for event frames.
 * `contains_column`, `is_empty_by_name` and `is_empty` functions for `Row`.
 * `Display` implementation for public enums.
-* Missing traits for `Consistency` and `ColType`.
+* Missing traits for `PreparedMetadata`, `Value`, `Consistency` and `ColType`.
 * New `PreparedMetadataFlags`.
+* New `ClusterMetadata` representing information about a cluster.
 
 ### Changed
 
@@ -31,6 +33,7 @@
 * Removed empty `SimpleError`.
 * Renamed `connect_generic_static` to `connect_generic`.
 * Removed `GetRetryPolicy`.
+* Renamed `ChangeSchemeOptions` to `SchemaChangeOptions`.
 
 ## 5.0.0
 

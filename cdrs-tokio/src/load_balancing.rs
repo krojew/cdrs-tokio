@@ -3,6 +3,7 @@ pub mod node_distance_evaluator;
 mod random;
 mod request;
 mod round_robin;
+mod topology_aware;
 
 use std::sync::Arc;
 
@@ -12,7 +13,8 @@ pub use self::node_distance_evaluator::MockNodeDistanceEvaluator;
 pub use self::node_distance_evaluator::NodeDistanceEvaluator;
 pub use self::random::RandomLoadBalancingStrategy;
 pub use self::request::Request;
-pub use self::round_robin::RoundRobinBalancingStrategy;
+pub use self::round_robin::RoundRobinLoadBalancingStrategy;
+pub use self::topology_aware::TopologyAwareLoadBalancingStrategy;
 use crate::cluster::topology::Node;
 use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::transport::CdrsTransport;

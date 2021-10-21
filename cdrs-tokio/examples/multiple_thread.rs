@@ -7,7 +7,7 @@ use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
 
 use cdrs_tokio::frame::Serialize;
-use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
+use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 use cdrs_tokio::transport::TransportTcp;
 use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 use cdrs_tokio::types::prelude::*;
@@ -16,7 +16,7 @@ use cdrs_tokio_helpers_derive::*;
 type CurrentSession = Session<
     TransportTcp,
     TcpConnectionManager,
-    RoundRobinBalancingStrategy<TransportTcp, TcpConnectionManager>,
+    RoundRobinLoadBalancingStrategy<TransportTcp, TcpConnectionManager>,
 >;
 
 #[tokio::main]
@@ -27,7 +27,7 @@ async fn main() {
         .build()
         .await
         .unwrap();
-    let lb = RoundRobinBalancingStrategy::new();
+    let lb = RoundRobinLoadBalancingStrategy::new();
     let session: Arc<CurrentSession> = Arc::new(TcpSessionBuilder::new(lb, cluster_config).build());
 
     create_keyspace(session.clone()).await;

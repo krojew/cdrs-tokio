@@ -14,7 +14,7 @@ use cdrs_tokio::cluster::TcpConnectionManager;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
+use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -29,7 +29,7 @@ const ADDR: &str = "127.0.0.1:9042";
 type CurrentSession = Session<
     TransportTcp,
     TcpConnectionManager,
-    RoundRobinBalancingStrategy<TransportTcp, TcpConnectionManager>,
+    RoundRobinLoadBalancingStrategy<TransportTcp, TcpConnectionManager>,
 >;
 
 #[cfg(feature = "e2e-tests")]
@@ -46,7 +46,7 @@ pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSessi
         .build()
         .await
         .unwrap();
-    let session = TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config)
+    let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build();
     let re_table_name = Regex::new(r"CREATE TABLE IF NOT EXISTS (\w+\.\w+)").unwrap();

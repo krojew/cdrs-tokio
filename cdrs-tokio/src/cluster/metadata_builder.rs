@@ -3,13 +3,14 @@ use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use tracing::*;
 
-use crate::cluster::topology::{Node, NodeState};
+use crate::cluster::topology::{KeyspaceMetadata, Node, NodeState};
 use crate::cluster::{ClusterMetadata, ConnectionManager, NodeInfo};
 use crate::load_balancing::NodeDistanceEvaluator;
 use crate::transport::CdrsTransport;
 
 pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
-    node_infos: &[NodeInfo],
+    node_infos: Vec<NodeInfo>,
+    keyspaces: FxHashMap<String, KeyspaceMetadata>,
     contact_points: &[Arc<Node<T, CM>>],
     connection_manager: &Arc<CM>,
     node_distance_evaluator: &(dyn NodeDistanceEvaluator + Send + Sync),
@@ -31,7 +32,10 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
-                    node_distance_evaluator.compute_distance(node_info),
+                    node_distance_evaluator.compute_distance(&node_info),
+                    node_info.tokens.clone(),
+                    node_info.rack,
+                    node_info.datacenter,
                 ))
             };
 
@@ -44,7 +48,7 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
         }
     }
 
-    ClusterMetadata::new(nodes)
+    ClusterMetadata::new(nodes, keyspaces)
 }
 
 pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
@@ -72,7 +76,7 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                 debug!(?node_info, "Updating old node.");
                 added_or_updated.insert(
                     node_info.host_id,
-                    Arc::new(old_node.clone_with_node_info(node_info)),
+                    Arc::new(old_node.clone_with_node_info(node_info.clone())),
                 );
             } else {
                 debug!(?node_info, "Adding new node.");
@@ -83,6 +87,9 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                     node_info.broadcast_address,
                     Some(node_info.host_id),
                     node_distance_evaluator.compute_distance(node_info),
+                    node_info.tokens.clone(),
+                    node_info.rack.clone(),
+                    node_info.datacenter.clone(),
                 ));
 
                 added_or_updated.insert(node_info.host_id, node);
@@ -90,11 +97,11 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
         }
     }
 
-    old_metadata.clone_with_nodes(added_or_updated)
+    ClusterMetadata::new(added_or_updated, old_metadata.keyspaces().clone())
 }
 
 pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
-    node_info: &NodeInfo,
+    node_info: NodeInfo,
     old_metadata: &ClusterMetadata<T, CM>,
     connection_manager: &Arc<CM>,
     state: NodeState,
@@ -119,6 +126,9 @@ pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
         node_info.broadcast_address,
         Some(node_info.host_id),
         state,
+        node_info.tokens,
+        node_info.rack,
+        node_info.datacenter,
     ))
 }
 
@@ -133,7 +143,7 @@ mod tests {
     use crate::cluster::metadata_builder::{
         add_new_node, build_initial_metadata, refresh_metadata,
     };
-    use crate::cluster::topology::cluster_metadata::NodeMap;
+    use crate::cluster::topology::NodeMap;
     use crate::cluster::topology::{Node, NodeDistance, NodeState};
     use crate::cluster::{ClusterMetadata, NodeInfo};
     use crate::load_balancing::MockNodeDistanceEvaluator;
@@ -141,10 +151,12 @@ mod tests {
 
     #[tokio::test]
     async fn should_create_initial_metadata_from_all_new_nodes() {
-        let node_infos = [NodeInfo::new(
+        let node_infos = vec![NodeInfo::new(
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
+            Default::default(),
             "".into(),
         )];
 
@@ -156,7 +168,8 @@ mod tests {
             .return_const(None);
 
         let metadata = build_initial_metadata(
-            &node_infos,
+            node_infos.clone(),
+            Default::default(),
             &[],
             &Arc::new(connection_manager),
             &node_distance_evaluator,
@@ -179,10 +192,12 @@ mod tests {
         let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
         let node_distance_evaluator = MockNodeDistanceEvaluator::new();
 
-        let node_infos = [NodeInfo::new(
+        let node_infos = vec![NodeInfo::new(
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
+            "".into(),
+            Default::default(),
             "".into(),
         )];
 
@@ -193,12 +208,16 @@ mod tests {
                 node_infos[0].broadcast_address,
                 Some(node_infos[0].host_id),
                 None,
+                Default::default(),
+                "".into(),
+                "".into(),
             )
             .clone_with_node_state(NodeState::Up),
         )];
 
         let metadata = build_initial_metadata(
-            &node_infos,
+            node_infos.clone(),
+            Default::default(),
             &contact_points,
             &connection_manager,
             &node_distance_evaluator,
@@ -227,6 +246,8 @@ mod tests {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
             "".into(),
+            Default::default(),
+            "".into(),
         )];
 
         let old_host_id = Uuid::new_v4();
@@ -240,10 +261,13 @@ mod tests {
                 None,
                 Some(old_host_id),
                 None,
+                Default::default(),
+                "".into(),
+                "".into(),
             )),
         );
 
-        let old_metadata = ClusterMetadata::new(old_nodes);
+        let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
 
         let metadata = refresh_metadata(
             &node_infos,
@@ -273,6 +297,8 @@ mod tests {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
             "".into(),
+            Default::default(),
+            "".into(),
         )];
 
         let mut old_nodes = NodeMap::default();
@@ -284,10 +310,13 @@ mod tests {
                 None,
                 Some(node_infos[0].host_id),
                 None,
+                Default::default(),
+                "".into(),
+                "".into(),
             )),
         );
 
-        let old_metadata = ClusterMetadata::new(old_nodes);
+        let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
 
         let metadata = refresh_metadata(
             &node_infos,
@@ -316,6 +345,8 @@ mod tests {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
             "".into(),
+            Default::default(),
+            "".into(),
         );
 
         let old_node = Node::with_distance(
@@ -331,10 +362,10 @@ mod tests {
         let mut old_nodes = NodeMap::default();
         old_nodes.insert(node_info.host_id, Arc::new(old_node));
 
-        let old_metadata = ClusterMetadata::new(old_nodes);
+        let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
 
         let metadata = add_new_node(
-            &node_info,
+            node_info.clone(),
             &old_metadata,
             &connection_manager,
             NodeState::Up,
@@ -368,6 +399,8 @@ mod tests {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
             "".into(),
+            Default::default(),
+            "".into(),
         );
 
         let old_node = Node::with_distance(
@@ -383,10 +416,10 @@ mod tests {
         let mut old_nodes = NodeMap::default();
         old_nodes.insert(node_info.host_id, Arc::new(old_node));
 
-        let old_metadata = ClusterMetadata::new(old_nodes);
+        let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
 
         let metadata = add_new_node(
-            &node_info,
+            node_info.clone(),
             &old_metadata,
             &connection_manager,
             NodeState::Up,
@@ -417,12 +450,14 @@ mod tests {
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
             None,
             "".into(),
+            Default::default(),
+            "".into(),
         );
 
-        let old_metadata = ClusterMetadata::new(Default::default());
+        let old_metadata = ClusterMetadata::new(Default::default(), Default::default());
 
         let metadata = add_new_node(
-            &node_info,
+            node_info.clone(),
             &old_metadata,
             &connection_manager,
             NodeState::Up,

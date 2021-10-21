@@ -10,7 +10,7 @@ use tracing::*;
 use uuid::Uuid;
 
 use crate::cluster::topology::{NodeDistance, NodeState};
-use crate::cluster::{ConnectionManager, NodeInfo};
+use crate::cluster::{ConnectionManager, Murmur3Token, NodeInfo};
 use crate::error::{Error, Result};
 use crate::frame::Frame;
 use crate::transport::CdrsTransport;
@@ -24,6 +24,9 @@ pub struct Node<T: CdrsTransport, CM: ConnectionManager<T>> {
     distance: Option<NodeDistance>,
     state: Atomic<NodeState>,
     host_id: Option<Uuid>,
+    tokens: Vec<Murmur3Token>,
+    rack: String,
+    datacenter: String,
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
@@ -34,18 +37,25 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
             .field("distance", &self.distance)
             .field("state", &self.state)
             .field("host_id", &self.host_id)
+            .field("tokens", &self.tokens)
+            .field("rack", &self.rack)
+            .field("datacenter", &self.datacenter)
             .finish()
     }
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Creates a node from an address. The node state nad distance is unknown at this time.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         connection_manager: Arc<CM>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
         host_id: Option<Uuid>,
         distance: Option<NodeDistance>,
+        tokens: Vec<Murmur3Token>,
+        rack: String,
+        datacenter: String,
     ) -> Self {
         Node {
             connection_manager,
@@ -55,16 +65,50 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             distance,
             state: Atomic::new(NodeState::Unknown),
             host_id,
+            tokens,
+            rack,
+            datacenter,
+        }
+    }
+
+    /// Creates a node from an address. The node state nad distance is unknown at this time.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_with_state(
+        connection_manager: Arc<CM>,
+        broadcast_rpc_address: SocketAddr,
+        broadcast_address: Option<SocketAddr>,
+        host_id: Option<Uuid>,
+        distance: Option<NodeDistance>,
+        state: NodeState,
+        tokens: Vec<Murmur3Token>,
+        rack: String,
+        datacenter: String,
+    ) -> Self {
+        Node {
+            connection_manager,
+            connection: Default::default(),
+            broadcast_rpc_address,
+            broadcast_address,
+            distance,
+            state: Atomic::new(state),
+            host_id,
+            tokens,
+            rack,
+            datacenter,
         }
     }
 
     /// Creates a node from an address. The node distance is unknown at this time.
+    #[allow(clippy::too_many_arguments)]
     pub fn with_state(
         connection_manager: Arc<CM>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
         host_id: Option<Uuid>,
         state: NodeState,
+        tokens: Vec<Murmur3Token>,
+        rack: String,
+        datacenter: String,
     ) -> Self {
         Node {
             connection_manager,
@@ -74,10 +118,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             distance: None,
             state: Atomic::new(state),
             host_id,
+            tokens,
+            rack,
+            datacenter,
         }
     }
 
-    /// Creates a node from an address. The node state is unknown at this time.
+    #[cfg(test)]
     pub fn with_distance(
         connection_manager: Arc<CM>,
         broadcast_rpc_address: SocketAddr,
@@ -93,6 +140,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             distance: Some(distance),
             state: Atomic::new(NodeState::Unknown),
             host_id,
+            tokens: Default::default(),
+            rack: Default::default(),
+            datacenter: Default::default(),
         }
     }
 
@@ -120,6 +170,24 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     #[inline]
     pub fn broadcast_address(&self) -> Option<SocketAddr> {
         self.broadcast_address
+    }
+
+    /// Returns tokens associated with the node.
+    #[inline]
+    pub fn tokens(&self) -> &[Murmur3Token] {
+        &self.tokens
+    }
+
+    /// Returns the dc the node is in.
+    #[inline]
+    pub fn datacenter(&self) -> &str {
+        &self.datacenter
+    }
+
+    /// Returns the rack the node is in.
+    #[inline]
+    pub fn rack(&self) -> &str {
+        &self.rack
     }
 
     /// Returns connection to given node.
@@ -165,9 +233,22 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             .await
     }
 
+    /// Returns node distance in relation to the driver, if available.
     #[inline]
     pub fn distance(&self) -> Option<NodeDistance> {
         self.distance
+    }
+
+    /// Checks if the node is local in relation to the driver.
+    #[inline]
+    pub fn is_local(&self) -> bool {
+        self.distance == Some(NodeDistance::Local)
+    }
+
+    /// Checks if the node is remote in relation to the driver.
+    #[inline]
+    pub fn is_remote(&self) -> bool {
+        self.distance == Some(NodeDistance::Remote)
     }
 
     /// Should this node be ignored from establishing connections.
@@ -177,7 +258,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     }
 
     #[inline]
-    pub(crate) fn clone_with_node_info(&self, node_info: &NodeInfo) -> Self {
+    pub(crate) fn clone_with_node_info(&self, node_info: NodeInfo) -> Self {
         Node {
             connection_manager: self.connection_manager.clone(),
             connection: Default::default(),
@@ -187,11 +268,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             distance: None,
             state: Atomic::new(NodeState::Unknown),
             host_id: Some(node_info.host_id),
+            tokens: node_info.tokens,
+            rack: node_info.rack,
+            datacenter: node_info.datacenter,
         }
     }
 
     #[inline]
-    pub(crate) async fn clone_as_contact_point(&self, node_info: &NodeInfo) -> Self {
+    pub(crate) async fn clone_as_contact_point(&self, node_info: NodeInfo) -> Self {
         // control points might have valid state already, so no need to reset
         Node {
             connection_manager: self.connection_manager.clone(),
@@ -201,13 +285,16 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             distance: self.distance,
             state: Atomic::new(self.state.load(Ordering::Relaxed)),
             host_id: Some(node_info.host_id),
+            tokens: node_info.tokens,
+            rack: node_info.rack,
+            datacenter: node_info.datacenter,
         }
     }
 
     #[inline]
     pub(crate) fn clone_with_node_info_and_state(
         &self,
-        node_info: &NodeInfo,
+        node_info: NodeInfo,
         state: NodeState,
     ) -> Self {
         Node {
@@ -219,6 +306,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             distance: None,
             state: Atomic::new(state),
             host_id: Some(node_info.host_id),
+            tokens: node_info.tokens,
+            rack: node_info.rack,
+            datacenter: node_info.datacenter,
         }
     }
 
@@ -232,6 +322,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             distance: self.distance,
             state: Atomic::new(state),
             host_id: self.host_id,
+            tokens: self.tokens.clone(),
+            rack: self.rack.clone(),
+            datacenter: self.datacenter.clone(),
         }
     }
 }

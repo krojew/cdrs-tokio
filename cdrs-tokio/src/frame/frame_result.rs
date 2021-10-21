@@ -579,7 +579,7 @@ bitflags! {
 }
 
 /// The structure that represents metadata of prepared response.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PreparedMetadata {
     pub flags: PreparedMetadataFlags,
     pub columns_count: i32,

@@ -5,7 +5,7 @@ use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
+use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
@@ -20,9 +20,10 @@ async fn multithread() {
         .build()
         .await
         .unwrap();
-    let no_compression = TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config)
-        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
-        .build();
+    let no_compression =
+        TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
+            .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+            .build();
 
     no_compression.query("CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { 'class' : 'SimpleStrategy', 'replication_factor' : 1 };").await.expect("Could not create ks");
     no_compression

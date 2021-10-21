@@ -44,7 +44,7 @@ impl From<ValueType> for i32 {
 }
 
 /// Cassandra value which could be an array of bytes, null and non-set values.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct Value {
     pub body: Vec<u8>,
     pub value_type: ValueType,
@@ -287,9 +287,9 @@ impl From<DateTime<Utc>> for Bytes {
     }
 }
 
-impl<T: Into<Bytes> + Clone + Debug> From<Vec<T>> for Bytes {
+impl<T: Into<Bytes> + Clone> From<Vec<T>> for Bytes {
     fn from(vec: Vec<T>) -> Bytes {
-        let mut bytes: Vec<u8> = vec![];
+        let mut bytes = vec![];
         let len = vec.len() as i32;
 
         bytes.extend_from_slice(&len.to_be_bytes());
@@ -370,14 +370,14 @@ mod tests {
     #[test]
     fn test_new_null_value() {
         let null_value = Value::new_null();
-        assert_eq!(null_value.body, vec![]);
+        assert!(null_value.body.is_empty());
         assert_eq!(null_value.value_type, ValueType::Null);
     }
 
     #[test]
     fn test_new_not_set_value() {
         let not_set_value = Value::new_not_set();
-        assert_eq!(not_set_value.body, vec![]);
+        assert!(not_set_value.body.is_empty());
         assert_eq!(not_set_value.value_type, ValueType::NotSet);
     }
 

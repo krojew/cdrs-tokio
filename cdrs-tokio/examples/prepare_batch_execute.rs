@@ -3,7 +3,7 @@ use std::sync::Arc;
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};
 use cdrs_tokio::cluster::{NodeTcpConfigBuilder, TcpConnectionManager};
-use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
+use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 use cdrs_tokio::query::*;
 use cdrs_tokio::query_values;
 
@@ -16,7 +16,7 @@ use cdrs_tokio_helpers_derive::*;
 type CurrentSession = Session<
     TransportTcp,
     TcpConnectionManager,
-    RoundRobinBalancingStrategy<TransportTcp, TcpConnectionManager>,
+    RoundRobinLoadBalancingStrategy<TransportTcp, TcpConnectionManager>,
 >;
 
 #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
@@ -40,7 +40,7 @@ async fn main() {
         .build()
         .await
         .unwrap();
-    let lb = RoundRobinBalancingStrategy::new();
+    let lb = RoundRobinLoadBalancingStrategy::new();
     let mut session = TcpSessionBuilder::new(lb, cluster_config).build();
 
     create_keyspace(&mut session).await;

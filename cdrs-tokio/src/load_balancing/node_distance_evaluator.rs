@@ -23,7 +23,9 @@ impl NodeDistanceEvaluator for AllLocalNodeDistanceEvaluator {
     }
 }
 
-/// An evaluator which is aware of node location in relation to local DC.
+/// An evaluator which is aware of node location in relation to local DC. Built-in
+/// [`TopologyAwareLoadBalancingStrategy`](crate::load_balancing::TopologyAwareLoadBalancingStrategy)
+/// can use this information to properly identify which nodes to use in query plans.
 pub struct TopologyAwareNodeDistanceEvaluator {
     local_dc: String,
 }
@@ -45,6 +47,7 @@ impl TopologyAwareNodeDistanceEvaluator {
     }
 }
 
+//noinspection DuplicatedCode
 #[cfg(test)]
 mod tests {
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -66,7 +69,9 @@ mod tests {
                     Uuid::new_v4(),
                     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
                     None,
-                    "".into()
+                    "".into(),
+                    Default::default(),
+                    "".into(),
                 ))
                 .unwrap(),
             NodeDistance::Remote
@@ -77,7 +82,9 @@ mod tests {
                     Uuid::new_v4(),
                     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
                     None,
-                    local_dc.into()
+                    local_dc.into(),
+                    Default::default(),
+                    "".into(),
                 ))
                 .unwrap(),
             NodeDistance::Local

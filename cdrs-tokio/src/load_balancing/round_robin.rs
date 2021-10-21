@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -8,15 +7,15 @@ use crate::transport::CdrsTransport;
 
 /// Round-robin load balancing.
 #[derive(Default)]
-pub struct RoundRobinBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
+pub struct RoundRobinLoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
     prev_idx: AtomicUsize,
     _transport: PhantomData<T>,
     _connection_manager: PhantomData<CM>,
 }
 
-impl<T: CdrsTransport, CM: ConnectionManager<T>> RoundRobinBalancingStrategy<T, CM> {
+impl<T: CdrsTransport, CM: ConnectionManager<T>> RoundRobinLoadBalancingStrategy<T, CM> {
     pub fn new() -> Self {
-        RoundRobinBalancingStrategy {
+        RoundRobinLoadBalancingStrategy {
             prev_idx: AtomicUsize::new(0),
             _transport: Default::default(),
             _connection_manager: Default::default(),
@@ -25,7 +24,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> RoundRobinBalancingStrategy<T, 
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
-    for RoundRobinBalancingStrategy<T, CM>
+    for RoundRobinLoadBalancingStrategy<T, CM>
 {
     //noinspection DuplicatedCode
     fn query_plan(
@@ -33,18 +32,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         _request: Option<Request>,
         cluster: &ClusterMetadata<T, CM>,
     ) -> QueryPlan<T, CM> {
-        let mut nodes = cluster
-            .nodes()
-            .iter()
-            .filter_map(|(_, node)| {
-                if node.is_ignored() {
-                    None
-                } else {
-                    Some(node.clone())
-                }
-            })
-            .collect_vec();
-
+        let mut nodes = cluster.unignored_nodes();
         if nodes.is_empty() {
             return nodes;
         }

@@ -204,14 +204,14 @@ impl FromCursor for StatusChangeType {
 pub struct SchemaChange {
     pub change_type: SchemaChangeType,
     pub target: SchemaChangeTarget,
-    pub options: ChangeSchemeOptions,
+    pub options: SchemaChangeOptions,
 }
 
 impl FromCursor for SchemaChange {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChange> {
         let change_type = SchemaChangeType::from_cursor(cursor)?;
         let target = SchemaChangeTarget::from_cursor(cursor)?;
-        let options = ChangeSchemeOptions::from_cursor_and_target(cursor, &target)?;
+        let options = SchemaChangeOptions::from_cursor_and_target(cursor, &target)?;
 
         Ok(SchemaChange {
             change_type,
@@ -269,9 +269,9 @@ impl FromCursor for SchemaChangeTarget {
     }
 }
 
-/// Option that contains an information about changes were made.
+/// Information about changes made.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub enum ChangeSchemeOptions {
+pub enum SchemaChangeOptions {
     /// Changes related to keyspaces. Contains keyspace name.
     Keyspace(String),
     /// Changes related to tables. Contains keyspace and table names.
@@ -283,41 +283,41 @@ pub enum ChangeSchemeOptions {
     FunctionAggregate(String, String, Vec<String>),
 }
 
-impl ChangeSchemeOptions {
+impl SchemaChangeOptions {
     fn from_cursor_and_target(
         cursor: &mut Cursor<&[u8]>,
         target: &SchemaChangeTarget,
-    ) -> error::Result<ChangeSchemeOptions> {
+    ) -> error::Result<SchemaChangeOptions> {
         Ok(match *target {
-            SchemaChangeTarget::Keyspace => ChangeSchemeOptions::from_cursor_keyspace(cursor)?,
+            SchemaChangeTarget::Keyspace => SchemaChangeOptions::from_cursor_keyspace(cursor)?,
             SchemaChangeTarget::Table | SchemaChangeTarget::Type => {
-                ChangeSchemeOptions::from_cursor_table_type(cursor)?
+                SchemaChangeOptions::from_cursor_table_type(cursor)?
             }
             SchemaChangeTarget::Function | SchemaChangeTarget::Aggregate => {
-                ChangeSchemeOptions::from_cursor_function_aggregate(cursor)?
+                SchemaChangeOptions::from_cursor_function_aggregate(cursor)?
             }
         })
     }
 
-    fn from_cursor_keyspace(cursor: &mut Cursor<&[u8]>) -> error::Result<ChangeSchemeOptions> {
-        Ok(ChangeSchemeOptions::Keyspace(
+    fn from_cursor_keyspace(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeOptions> {
+        Ok(SchemaChangeOptions::Keyspace(
             CString::from_cursor(cursor)?.into_plain(),
         ))
     }
 
-    fn from_cursor_table_type(cursor: &mut Cursor<&[u8]>) -> error::Result<ChangeSchemeOptions> {
+    fn from_cursor_table_type(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeOptions> {
         let keyspace = CString::from_cursor(cursor)?.into_plain();
         let name = CString::from_cursor(cursor)?.into_plain();
-        Ok(ChangeSchemeOptions::TableType(keyspace, name))
+        Ok(SchemaChangeOptions::TableType(keyspace, name))
     }
 
     fn from_cursor_function_aggregate(
         cursor: &mut Cursor<&[u8]>,
-    ) -> error::Result<ChangeSchemeOptions> {
+    ) -> error::Result<SchemaChangeOptions> {
         let keyspace = CString::from_cursor(cursor)?.into_plain();
         let name = CString::from_cursor(cursor)?.into_plain();
         let types = CStringList::from_cursor(cursor)?.into_plain();
-        Ok(ChangeSchemeOptions::FunctionAggregate(
+        Ok(SchemaChangeOptions::FunctionAggregate(
             keyspace, name, types,
         ))
     }
@@ -601,7 +601,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Created);
                 assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
                 match _c.options {
-                    ChangeSchemeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
+                    SchemaChangeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
                     _ => panic!("should be keyspace"),
                 }
             }
@@ -623,7 +623,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Created);
                 assert_eq!(_c.target, SchemaChangeTarget::Table);
                 match &_c.options {
-                    ChangeSchemeOptions::TableType(ks, tn) => {
+                    SchemaChangeOptions::TableType(ks, tn) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "my_table");
                     }
@@ -648,7 +648,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Created);
                 assert_eq!(_c.target, SchemaChangeTarget::Type);
                 match &_c.options {
-                    ChangeSchemeOptions::TableType(ks, tn) => {
+                    SchemaChangeOptions::TableType(ks, tn) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "my_table");
                     }
@@ -674,7 +674,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Created);
                 assert_eq!(_c.target, SchemaChangeTarget::Function);
                 match &_c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "name");
                         assert!(v.is_empty());
@@ -701,7 +701,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Created);
                 assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
                 match &_c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "name");
                         assert!(v.is_empty());
@@ -730,7 +730,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Updated);
                 assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
                 match _c.options {
-                    ChangeSchemeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
+                    SchemaChangeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
                     _ => panic!("should be keyspace"),
                 }
             }
@@ -752,7 +752,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Updated);
                 assert_eq!(_c.target, SchemaChangeTarget::Table);
                 match &_c.options {
-                    ChangeSchemeOptions::TableType(ks, tn) => {
+                    SchemaChangeOptions::TableType(ks, tn) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "my_table");
                     }
@@ -777,7 +777,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Updated);
                 assert_eq!(_c.target, SchemaChangeTarget::Type);
                 match &_c.options {
-                    ChangeSchemeOptions::TableType(ks, tn) => {
+                    SchemaChangeOptions::TableType(ks, tn) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "my_table");
                     }
@@ -803,7 +803,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Updated);
                 assert_eq!(_c.target, SchemaChangeTarget::Function);
                 match &_c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "name");
                         assert!(v.is_empty());
@@ -830,7 +830,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Updated);
                 assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
                 match &_c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "name");
                         assert!(v.is_empty());
@@ -859,7 +859,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Dropped);
                 assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
                 match _c.options {
-                    ChangeSchemeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
+                    SchemaChangeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
                     _ => panic!("should be keyspace"),
                 }
             }
@@ -881,7 +881,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Dropped);
                 assert_eq!(_c.target, SchemaChangeTarget::Table);
                 match &_c.options {
-                    ChangeSchemeOptions::TableType(ks, tn) => {
+                    SchemaChangeOptions::TableType(ks, tn) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "my_table");
                     }
@@ -906,7 +906,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Dropped);
                 assert_eq!(_c.target, SchemaChangeTarget::Type);
                 match &_c.options {
-                    ChangeSchemeOptions::TableType(ks, tn) => {
+                    SchemaChangeOptions::TableType(ks, tn) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "my_table");
                     }
@@ -932,7 +932,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Dropped);
                 assert_eq!(_c.target, SchemaChangeTarget::Function);
                 match &_c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "name");
                         assert!(v.is_empty());
@@ -959,7 +959,7 @@ mod server_event {
                 assert_eq!(_c.change_type, SchemaChangeType::Dropped);
                 assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
                 match &_c.options {
-                    ChangeSchemeOptions::FunctionAggregate(ks, tn, v) => {
+                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
                         assert_eq!(ks, "my_ks");
                         assert_eq!(tn, "name");
                         assert!(v.is_empty());

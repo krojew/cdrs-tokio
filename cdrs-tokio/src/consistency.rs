@@ -170,6 +170,17 @@ impl FromCursor for Consistency {
     }
 }
 
+impl Consistency {
+    /// Does this consistency require local dc.
+    #[inline]
+    pub fn is_dc_local(self) -> bool {
+        matches!(
+            self,
+            Consistency::LocalOne | Consistency::LocalQuorum | Consistency::LocalSerial
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use std::marker::PhantomData;
 
 use rand::prelude::*;
@@ -33,17 +32,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         _request: Option<Request>,
         cluster: &ClusterMetadata<T, CM>,
     ) -> QueryPlan<T, CM> {
-        let mut result = cluster
-            .nodes()
-            .iter()
-            .filter_map(|(_, node)| {
-                if node.is_ignored() {
-                    None
-                } else {
-                    Some(node.clone())
-                }
-            })
-            .collect_vec();
+        let mut result = cluster.unignored_nodes();
 
         result.shuffle(&mut thread_rng());
         result

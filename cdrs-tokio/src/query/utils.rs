@@ -1,5 +1,6 @@
 use crate::cluster::session::Session;
-use crate::cluster::ConnectionManager;
+use crate::cluster::{ConnectionManager, Murmur3Token};
+use crate::consistency::Consistency;
 use crate::error;
 use crate::frame::{Flags, Frame};
 use crate::load_balancing::{LoadBalancingStrategy, Request};
@@ -29,12 +30,19 @@ pub(crate) async fn send_frame<
     frame: Frame,
     is_idempotent: bool,
     keyspace: Option<&str>,
+    token: Option<Murmur3Token>,
+    routing_key: Option<&[u8]>,
+    consistency: Option<Consistency>,
 ) -> error::Result<Frame> {
     let mut retry_session = session.retry_policy().new_session();
 
     let current_keyspace = session.current_keyspace();
-    let request =
-        Request::new(keyspace.or_else(|| current_keyspace.as_ref().map(|keyspace| &***keyspace)));
+    let request = Request::new(
+        keyspace.or_else(|| current_keyspace.as_ref().map(|keyspace| &***keyspace)),
+        token,
+        routing_key,
+        consistency,
+    );
     let query_plan = session.query_plan(Some(request));
 
     'next_node: for node in query_plan {
