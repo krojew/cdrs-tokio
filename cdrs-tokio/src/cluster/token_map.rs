@@ -191,7 +191,10 @@ mod tests {
 
     #[test]
     fn should_return_replicas_in_order() {
-        verify_tokens(&[*HOST_ID_1, *HOST_ID_3, *HOST_ID_2], Murmur3Token::new(0));
+        verify_tokens(
+            &[*HOST_ID_1, *HOST_ID_3, *HOST_ID_3, *HOST_ID_3, *HOST_ID_2],
+            Murmur3Token::new(0),
+        );
     }
 
     #[test]
@@ -201,7 +204,9 @@ mod tests {
 
     #[test]
     fn should_return_replicas_in_a_ring() {
-        verify_tokens(&[*HOST_ID_1, *HOST_ID_3, *HOST_ID_2], Murmur3Token::new(-3));
-        verify_tokens(&[*HOST_ID_1, *HOST_ID_3, *HOST_ID_2], Murmur3Token::new(30));
+        verify_tokens(
+            &[*HOST_ID_2, *HOST_ID_1, *HOST_ID_1, *HOST_ID_1, *HOST_ID_3],
+            Murmur3Token::new(20),
+        );
     }
 }
