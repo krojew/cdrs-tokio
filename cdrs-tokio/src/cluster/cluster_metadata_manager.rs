@@ -436,7 +436,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
 
         let control_transport = self.control_transport()?;
         send_query_with_values(
-            "SELECT keyspace_name, toJson(replication) FROM system_schema.keyspaces WHERE keyspace_name = ?",
+            "SELECT keyspace_name, toJson(replication) AS replication FROM system_schema.keyspaces WHERE keyspace_name = ?",
             QueryValues::SimpleValues(vec![keyspace.into()]),
             control_transport.as_ref(),
         )
@@ -578,7 +578,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     async fn refresh_keyspaces(&self) -> Result<FxHashMap<String, KeyspaceMetadata>> {
         let control_transport = self.control_transport()?;
         send_query(
-            "SELECT keyspace_name, toJson(replication) FROM system_schema.keyspaces",
+            "SELECT keyspace_name, toJson(replication) AS replication FROM system_schema.keyspaces",
             control_transport.as_ref(),
         )
         .await
