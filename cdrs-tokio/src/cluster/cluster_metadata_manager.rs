@@ -108,7 +108,7 @@ fn build_node_info(row: &Row, broadcast_rpc_address: SocketAddr) -> Result<NodeI
             None
         };
 
-        let datacenter = row.get_r_by_name("datacenter")?;
+        let datacenter = row.get_r_by_name("data_center")?;
         let rack = row.get_r_by_name("rack")?;
         let tokens: List = row.get_r_by_name("tokens")?;
         let tokens: Vec<String> = tokens.as_r_type()?;
