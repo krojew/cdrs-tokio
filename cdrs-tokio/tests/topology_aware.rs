@@ -29,7 +29,7 @@ async fn query_topology_aware() {
     // balancing works
 
     let cluster_config = NodeTcpConfigBuilder::new()
-        .with_contact_point("127.0.0.1:9043".into())
+        .with_contact_point("127.0.0.1:9042".into())
         .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
