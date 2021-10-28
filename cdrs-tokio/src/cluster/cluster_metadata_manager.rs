@@ -24,7 +24,7 @@ use crate::frame::events::{
 };
 use crate::frame::frame_error::{AdditionalErrorInfo, CdrsError};
 use crate::frame::Frame;
-use crate::load_balancing::NodeDistanceEvaluator;
+use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::query::utils::prepare_flags;
 use crate::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
 use crate::transport::CdrsTransport;

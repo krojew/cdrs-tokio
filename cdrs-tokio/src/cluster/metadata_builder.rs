@@ -5,7 +5,7 @@ use tracing::*;
 
 use crate::cluster::topology::{KeyspaceMetadata, Node, NodeState};
 use crate::cluster::{ClusterMetadata, ConnectionManager, NodeInfo};
-use crate::load_balancing::NodeDistanceEvaluator;
+use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::transport::CdrsTransport;
 
 pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
@@ -146,7 +146,7 @@ mod tests {
     use crate::cluster::topology::NodeMap;
     use crate::cluster::topology::{Node, NodeDistance, NodeState};
     use crate::cluster::{ClusterMetadata, NodeInfo};
-    use crate::load_balancing::MockNodeDistanceEvaluator;
+    use crate::load_balancing::node_distance_evaluator::MockNodeDistanceEvaluator;
     use crate::transport::MockCdrsTransport;
 
     #[tokio::test]

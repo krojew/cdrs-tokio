@@ -24,9 +24,9 @@ use crate::events::ServerEvent;
 use crate::frame::frame_result::BodyResResultPrepared;
 use crate::frame::{Frame, Serialize};
 use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
+use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::load_balancing::{
-    InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, NodeDistanceEvaluator,
-    QueryPlan, Request,
+    InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, QueryPlan, Request,
 };
 use crate::query::utils::{prepare_flags, send_frame};
 use crate::query::{

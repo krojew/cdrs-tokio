@@ -55,8 +55,8 @@ mod tests {
 
     use crate::cluster::topology::NodeDistance;
     use crate::cluster::NodeInfo;
+    use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
     use crate::load_balancing::node_distance_evaluator::TopologyAwareNodeDistanceEvaluator;
-    use crate::load_balancing::NodeDistanceEvaluator;
 
     #[test]
     fn should_return_topology_aware_distance() {

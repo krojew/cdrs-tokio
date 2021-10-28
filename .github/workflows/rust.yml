@@ -16,7 +16,7 @@ jobs:
           - 9042:9042
     steps:
       - uses: actions/checkout@v2
-      - name: Install minimal nightly with clippy and rustfmt
+      - name: Install minimal toolchain with clippy and rustfmt
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
