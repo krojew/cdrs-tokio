@@ -105,7 +105,7 @@ fn serialize_routing_key(values: &[Value]) -> Vec<u8> {
     }
 }
 
-/// CDRS session that holds a pool of connections to nodes and provides an interfaces for
+/// CDRS session that holds a pool of connections to nodes and provides an interface for
 /// interacting with the cluster.
 pub struct Session<
     T: CdrsTransport + 'static,
@@ -139,8 +139,7 @@ impl<
         LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
     > Session<T, CM, LB>
 {
-    /// Basing on current session returns new `SessionPager` that can be used
-    /// for performing paged queries.
+    /// Returns new `SessionPager` that can be used for performing paged queries.
     pub fn paged(&self, page_size: i32) -> SessionPager<T, CM, LB> {
         SessionPager::new(self, page_size)
     }

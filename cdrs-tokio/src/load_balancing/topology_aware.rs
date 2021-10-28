@@ -15,8 +15,8 @@ use crate::transport::CdrsTransport;
 
 /// Topology-aware load balancing strategy. Depends on up-to-date topology information, which is
 /// constantly monitored in the background by a control connection. For best results, a
-/// topology-aware [`NodeDistanceEvaluator`](crate::load_balancing::NodeDistanceEvaluator) (e.g.
-/// [`TopologyAwareNodeDistanceEvaluator`](crate::load_balancing::TopologyAwareNodeDistanceEvaluator))
+/// topology-aware [`NodeDistanceEvaluator`](crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator) (e.g.
+/// [`TopologyAwareNodeDistanceEvaluator`](crate::load_balancing::node_distance_evaluator::TopologyAwareNodeDistanceEvaluator))
 /// should also be used.
 ///
 /// This implementation prioritizes replica nodes over non-replica ones; if more than one replica

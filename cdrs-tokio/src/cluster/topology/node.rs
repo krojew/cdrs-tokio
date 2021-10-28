@@ -45,7 +45,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
-    /// Creates a node from an address. The node state nad distance is unknown at this time.
+    /// Creates a node from an address. The node state and distance is unknown at this time.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         connection_manager: Arc<CM>,
@@ -71,7 +71,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         }
     }
 
-    /// Creates a node from an address. The node state nad distance is unknown at this time.
+    /// Creates a node from full state.
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_state(
         connection_manager: Arc<CM>,

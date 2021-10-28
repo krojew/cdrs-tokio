@@ -32,7 +32,8 @@
 //! ## Nodes and load balancing
 //!
 //! In order to maximize efficiency, the driver needs to be appropriately configured for given use
-//! case. Please look at available load balancers and node distance evaluators to pick the optimal
+//! case. Please look at available [load balancers](crate::load_balancing) and
+//! [node distance evaluators](crate::load_balancing::node_distance_evaluator) to pick the optimal
 //! solution when building the [`Session`](crate::cluster::session::Session). Topology-aware load
 //! balancing is preferred when dealing with multi-node clusters, otherwise simpler strategies might
 //! prove more efficient.

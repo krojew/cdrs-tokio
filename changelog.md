@@ -1,4 +1,10 @@
-## x.y.z
+## 6.0.0
+
+This version is a departure from legacy API design, stemming from the sync version migration. Due to large
+performance issues and lack of dynamic topology handling in earlier versions, a decision has been made to cut
+the ties and focus on delivering the best functionality without legacy burden. The API surface changes are
+quite large, but everyone is encouraged to update - the performance improvements and new features cannot be
+understated.
 
 ## New
 
@@ -23,7 +29,8 @@
 * Replaced `RowsMetadataFlag`, `QueryFlags` and `frame::Flags` vectors with bitflags.
 * Changed `Target` and `ChangeType` enums to `SchemaChangeTarget` and `SchemaChangeType`.
 * The `varint` type now uses `num::BigInt` representation (this implies `Decimal` also uses "big" types).
-* Removed `unstable-dynamic-cluster` feature, since it wasn't working as expected and introduced performance penalty.
+* Removed `unstable-dynamic-cluster` feature, since it wasn't working as expected and introduced performance  
+  penalty. Dynamic topology handling is now built-in. 
 * Removed `AsBytes` in favor of new `Serialize` trait due to performance penalty.
 * Removed `FromSingleByte` and `AsByte` in favor of `From`/`TryFrom`.
 * Removed traits along with `async-trait` dependency: `BatchExecutor`, `ExecExecutor`, `PrepareExecutor`, 
