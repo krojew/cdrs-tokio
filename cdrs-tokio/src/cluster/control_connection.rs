@@ -6,6 +6,7 @@ use tokio::sync::mpsc::{channel, Receiver};
 use tokio::time::sleep;
 use tracing::*;
 
+use crate::cluster::topology::Node;
 use crate::cluster::{ClusterMetadataManager, ConnectionManager, SessionContext};
 use crate::events::{ServerEvent, SimpleServerEvent};
 use crate::frame::Frame;
@@ -23,6 +24,7 @@ pub struct ControlConnection<
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
     load_balancing: Arc<LB>,
+    contact_points: Vec<Arc<Node<T, CM>>>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
     event_sender: Sender<ServerEvent>,
@@ -85,14 +87,17 @@ impl<
                 let mut schedule = self.reconnection_policy.new_node_schedule();
 
                 loop {
-                    let nodes = self
+                    let mut nodes = self
                         .load_balancing
                         .query_plan(None, self.cluster_metadata_manager.metadata().as_ref());
                     if nodes.is_empty() {
                         warn!("No nodes found for control connection!");
 
                         Self::wait_for_reconnection(&mut schedule).await;
-                        continue;
+
+                        // when the whole cluster goes down, there's nothing to update LB state, so
+                        // we're left with contact points
+                        nodes = self.contact_points.clone();
                     }
 
                     for node in nodes {

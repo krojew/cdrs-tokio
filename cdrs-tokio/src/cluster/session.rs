@@ -521,7 +521,7 @@ impl<
         let session_context = Arc::new(SessionContext::default());
 
         let cluster_metadata_manager = Arc::new(ClusterMetadataManager::new(
-            contact_points,
+            contact_points.clone(),
             connection_manager,
             session_context.clone(),
             node_distance_evaluator,
@@ -533,6 +533,7 @@ impl<
 
         let control_connection = ControlConnection::new(
             load_balancing.clone(),
+            contact_points,
             reconnection_policy.clone(),
             cluster_metadata_manager.clone(),
             event_sender.clone(),
