@@ -4,7 +4,7 @@
 //!
 //! This example configures a cluster consisting of a single node, and uses round-robin load balancing.
 //!
-//! ```
+//! ```no_run
 //! use cdrs_tokio::cluster::session::{TcpSessionBuilder, SessionBuilder};
 //! use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 //! use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
