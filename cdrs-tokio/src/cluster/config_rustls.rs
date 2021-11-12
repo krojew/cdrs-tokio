@@ -50,9 +50,16 @@ impl NodeRustlsConfigBuilder {
         self
     }
 
-    /// Adds node address.
-    pub fn with_node_address(mut self, addr: NodeAddress) -> Self {
+    /// Adds initial node address (a contact point). Contact points are considered local to the
+    /// driver until a topology refresh occurs.
+    pub fn with_contact_point(mut self, addr: NodeAddress) -> Self {
         self.addrs.push(addr);
+        self
+    }
+
+    /// Adds initial node addresses
+    pub fn with_contact_points(mut self, addr: Vec<NodeAddress>) -> Self {
+        self.addrs.extend(addr);
         self
     }
 
