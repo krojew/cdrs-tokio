@@ -57,6 +57,12 @@ impl NodeRustlsConfigBuilder {
         self
     }
 
+    /// Adds initial node addresses
+    pub fn with_contact_points(mut self, addr: Vec<NodeAddress>) -> Self {
+        self.addrs.extend(addr);
+        self
+    }
+
     /// Finalizes building process
     pub async fn build(self) -> Result<NodeRustlsConfig> {
         // replace with map() when async lambdas become available
