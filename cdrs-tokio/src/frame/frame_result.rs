@@ -413,6 +413,7 @@ impl TryFrom<i16> for ColType {
             0x0022 => Ok(ColType::Set),
             0x0030 => Ok(ColType::Udt),
             0x0031 => Ok(ColType::Tuple),
+            0x0080 => Ok(ColType::Varchar),
             _ => Err("Unexpected column type".into()),
         }
     }
