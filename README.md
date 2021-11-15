@@ -24,6 +24,7 @@ CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u*
 - Batch statements;
 - Configurable retry and reconnection policy;
 - Support for interleaved queries;
+- Support for Yugabyte YCQL JSONB;
 
 ## Documentation and examples
 
