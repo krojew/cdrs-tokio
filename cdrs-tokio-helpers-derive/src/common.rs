@@ -98,7 +98,7 @@ fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream
             let list_as_rust = as_rust(field_type, quote! {list});
 
             quote! {
-              match cdrs_tokio::types::list::List::from_cdrs_r(#arguments) {
+              match cassandra_protocol::types::list::List::from_cdrs_r(#arguments) {
                 Ok(ref list) => {
                   #list_as_rust
                 },
@@ -109,7 +109,7 @@ fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream
         "Map" => {
             let map_as_rust = as_rust(field_type, quote! {map});
             quote! {
-              match cdrs_tokio::types::map::Map::from_cdrs_r(#arguments) {
+              match cassandra_protocol::types::map::Map::from_cdrs_r(#arguments) {
                 Ok(map) => {
                   #map_as_rust
                 },
@@ -142,7 +142,7 @@ fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream
         }
         _ => {
             quote! {
-              #field_type::try_from_udt(cdrs_tokio::types::udt::Udt::from_cdrs_r(#arguments)?)?
+              #field_type::try_from_udt(cassandra_protocol::types::udt::Udt::from_cdrs_r(#arguments)?)?
             }
         }
     }
@@ -172,8 +172,8 @@ fn get_cdrs_type(ty: &Type) -> Type {
         "Uuid" => parse_str("Uuid").unwrap(),
         "Timespec" => parse_str("Timespec").unwrap(),
         "PrimitiveDateTime" => parse_str("PrimitiveDateTime").unwrap(),
-        "Vec" => parse_str("cdrs_tokio::types::list::List").unwrap(),
-        "HashMap" => parse_str("cdrs_tokio::types::map::Map").unwrap(),
+        "Vec" => parse_str("cassandra_protocol::types::list::List").unwrap(),
+        "HashMap" => parse_str("cassandra_protocol::types::map::Map").unwrap(),
         "Option" => parse_str("Option").unwrap(),
         "NonZeroI8" => parse_str("NonZeroI8").unwrap(),
         "NonZeroI16" => parse_str("NonZeroI16").unwrap(),
@@ -181,7 +181,7 @@ fn get_cdrs_type(ty: &Type) -> Type {
         "NonZeroI64" => parse_str("NonZeroI64").unwrap(),
         "NaiveDateTime" => parse_str("NaiveDateTime").unwrap(),
         "DateTime" => parse_str("DateTime").unwrap(),
-        _ => parse_str("cdrs_tokio::types::udt::Udt").unwrap(),
+        _ => parse_str("cassandra_protocol::types::udt::Udt").unwrap(),
     }
 }
 

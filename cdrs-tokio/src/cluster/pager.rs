@@ -1,13 +1,13 @@
 use crate::cluster::session::Session;
 use crate::cluster::ConnectionManager;
-use crate::consistency::Consistency;
-use crate::error;
-use crate::frame::frame_result::{RowsMetadata, RowsMetadataFlags};
 use crate::load_balancing::LoadBalancingStrategy;
-use crate::query::{PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
 use crate::transport::CdrsTransport;
-use crate::types::rows::Row;
-use crate::types::CBytes;
+use cassandra_protocol::consistency::Consistency;
+use cassandra_protocol::error;
+use cassandra_protocol::frame::frame_result::{RowsMetadata, RowsMetadataFlags};
+use cassandra_protocol::query::{PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
+use cassandra_protocol::types::rows::Row;
+use cassandra_protocol::types::CBytes;
 
 pub struct SessionPager<
     'a,

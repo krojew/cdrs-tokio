@@ -1,6 +1,6 @@
 use super::{QueryFlags, QueryParams, QueryValues};
-use crate::cluster::Murmur3Token;
 use crate::consistency::Consistency;
+use crate::query::query_params::Murmur3Token;
 use crate::types::value::Value;
 use crate::types::CBytes;
 

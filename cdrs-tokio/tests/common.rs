@@ -2,7 +2,9 @@
 use std::sync::Arc;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
+use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
+#[cfg(feature = "e2e-tests")]
+use cassandra_protocol::error::Result;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::Session;
 #[cfg(feature = "e2e-tests")]
@@ -11,8 +13,6 @@ use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::TcpConnectionManager;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 #[cfg(feature = "e2e-tests")]

@@ -1,12 +1,14 @@
+use derive_more::Constructor;
+use std::convert::TryFrom;
 use std::io::Cursor;
 
-use crate::cluster::Murmur3Token;
 use crate::consistency::Consistency;
 use crate::frame::Serialize;
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
 use crate::types::value::Value;
 use crate::types::{CBytes, CIntShort};
+use crate::Error;
 
 /// Parameters of Query for query operation.
 #[derive(Debug, Default, Clone)]
@@ -90,5 +92,22 @@ impl Serialize for QueryParams {
                 timestamp.serialize(cursor);
             }
         }
+    }
+}
+
+/// A token on the ring. Only Murmur3 tokens are supported for now.
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Default, Debug, Hash, Constructor)]
+pub struct Murmur3Token {
+    pub value: i64,
+}
+
+impl TryFrom<String> for Murmur3Token {
+    type Error = Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        value
+            .parse()
+            .map_err(|error| format!("Error parsing token: {}", error).into())
+            .map(Murmur3Token::new)
     }
 }

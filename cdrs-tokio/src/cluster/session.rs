@@ -11,6 +11,7 @@ use crate::cluster::connection_manager::ConnectionManager;
 use crate::cluster::control_connection::ControlConnection;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
+use crate::cluster::send_frame::send_frame;
 use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::cluster::topology::{Node, NodeDistance};
 #[cfg(feature = "rust-tls")]
@@ -18,19 +19,10 @@ use crate::cluster::NodeRustlsConfig;
 use crate::cluster::{ClusterMetadata, ClusterMetadataManager, SessionContext};
 use crate::cluster::{GenericClusterConfig, KeyspaceHolder};
 use crate::cluster::{NodeTcpConfig, SessionPager};
-use crate::compression::Compression;
-use crate::error;
-use crate::events::ServerEvent;
-use crate::frame::frame_result::BodyResResultPrepared;
-use crate::frame::{Frame, Serialize};
 use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::load_balancing::{
     InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, QueryPlan, Request,
-};
-use crate::query::utils::{prepare_flags, send_frame};
-use crate::query::{
-    PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
 };
 use crate::retry::{
     DefaultRetryPolicy, ExponentialReconnectionPolicy, ReconnectionPolicy, RetryPolicy,
@@ -38,8 +30,17 @@ use crate::retry::{
 #[cfg(feature = "rust-tls")]
 use crate::transport::TransportRustls;
 use crate::transport::{CdrsTransport, TransportTcp};
-use crate::types::value::Value;
-use crate::types::{CIntShort, SHORT_LEN};
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::error;
+use cassandra_protocol::events::ServerEvent;
+use cassandra_protocol::frame::frame_result::BodyResResultPrepared;
+use cassandra_protocol::frame::{Frame, Serialize};
+use cassandra_protocol::query::utils::prepare_flags;
+use cassandra_protocol::query::{
+    PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
+};
+use cassandra_protocol::types::value::Value;
+use cassandra_protocol::types::{CIntShort, SHORT_LEN};
 
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;

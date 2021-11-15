@@ -1,6 +1,3 @@
-use derive_more::Constructor;
-use std::convert::TryFrom;
-
 pub(crate) use self::cluster_metadata_manager::ClusterMetadataManager;
 #[cfg(feature = "rust-tls")]
 pub use self::config_rustls::{NodeRustlsConfig, NodeRustlsConfigBuilder};
@@ -17,9 +14,9 @@ pub(crate) use self::session_context::SessionContext;
 pub use self::tcp_connection_manager::TcpConnectionManager;
 pub use self::token_map::TokenMap;
 pub use self::topology::cluster_metadata::ClusterMetadata;
-use crate::error;
 use crate::future::BoxFuture;
 use crate::transport::CdrsTransport;
+use cassandra_protocol::error;
 
 mod cluster_metadata_manager;
 #[cfg(feature = "rust-tls")]
@@ -34,6 +31,7 @@ mod node_info;
 mod pager;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_manager;
+mod send_frame;
 pub mod session;
 mod session_context;
 mod tcp_connection_manager;
@@ -49,21 +47,4 @@ pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send
     /// Returns desired event channel capacity. Take a look at
     /// [`Session`](self::session::Session) builders for more info.
     fn event_channel_capacity(&self) -> usize;
-}
-
-/// A token on the ring. Only Murmur3 tokens are supported for now.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Default, Debug, Hash, Constructor)]
-pub struct Murmur3Token {
-    pub value: i64,
-}
-
-impl TryFrom<String> for Murmur3Token {
-    type Error = error::Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value
-            .parse()
-            .map_err(|error| format!("Error parsing token: {}", error).into())
-            .map(Murmur3Token::new)
-    }
 }

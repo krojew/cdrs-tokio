@@ -8,11 +8,11 @@ use tracing::*;
 
 use crate::cluster::topology::Node;
 use crate::cluster::{ClusterMetadataManager, ConnectionManager, SessionContext};
-use crate::events::{ServerEvent, SimpleServerEvent};
-use crate::frame::Frame;
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::retry::{ReconnectionPolicy, ReconnectionSchedule};
 use crate::transport::CdrsTransport;
+use cassandra_protocol::events::{ServerEvent, SimpleServerEvent};
+use cassandra_protocol::frame::Frame;
 
 const DEFAULT_RECONNECT_DELAY: Duration = Duration::from_secs(10);
 const EVENT_CHANNEL_CAPACITY: usize = 32;

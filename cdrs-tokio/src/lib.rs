@@ -8,7 +8,6 @@
 //! use cdrs_tokio::cluster::session::{TcpSessionBuilder, SessionBuilder};
 //! use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 //! use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
-//! use cdrs_tokio::query::*;
 //! use std::sync::Arc;
 //!
 //! #[tokio::main]
@@ -38,23 +37,13 @@
 //! balancing is preferred when dealing with multi-node clusters, otherwise simpler strategies might
 //! prove more efficient.
 
-#[macro_use]
-mod macros;
-
 pub mod cluster;
-pub mod frame;
+pub mod frame_parser;
 pub mod load_balancing;
-pub mod query;
-pub mod types;
 
-pub mod authenticators;
-pub mod compression;
-pub mod consistency;
-pub mod error;
-pub mod events;
 pub mod future;
 pub mod retry;
 pub mod transport;
 
-pub type Error = error::Error;
-pub type Result<T> = error::Result<T>;
+pub type Error = cassandra_protocol::error::Error;
+pub type Result<T> = cassandra_protocol::error::Result<T>;

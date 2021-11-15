@@ -1,7 +1,7 @@
 use derive_more::Display;
 
-use crate::error::Error;
-use crate::frame::frame_error::{
+use cassandra_protocol::error::Error;
+use cassandra_protocol::frame::frame_error::{
     AdditionalErrorInfo, CdrsError, ReadTimeoutError, WriteTimeoutError, WriteType,
 };
 

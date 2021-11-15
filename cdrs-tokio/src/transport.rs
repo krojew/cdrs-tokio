@@ -29,15 +29,15 @@ use tracing::*;
 use mockall::*;
 
 use crate::cluster::KeyspaceHolder;
-use crate::compression::Compression;
-use crate::frame::frame_result::ResultKind;
-use crate::frame::parser::parse_frame;
-use crate::frame::{Frame, StreamId};
-use crate::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
+use crate::frame_parser::parse_frame;
 use crate::future::BoxFuture;
-use crate::types::INT_LEN;
 use crate::Error;
 use crate::Result;
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::frame::frame_result::ResultKind;
+use cassandra_protocol::frame::{Frame, StreamId};
+use cassandra_protocol::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
+use cassandra_protocol::types::INT_LEN;
 
 /// General CDRS transport trait.
 pub trait CdrsTransport: Send + Sync {

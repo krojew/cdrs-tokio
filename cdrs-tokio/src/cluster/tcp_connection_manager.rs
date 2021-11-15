@@ -6,15 +6,15 @@ use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
 
-use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::connection_manager::{startup, ConnectionManager};
 use crate::cluster::KeyspaceHolder;
-use crate::compression::Compression;
-use crate::error::{Error, Result};
-use crate::frame::Frame;
 use crate::future::BoxFuture;
 use crate::retry::ReconnectionPolicy;
 use crate::transport::TransportTcp;
+use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::error::{Error, Result};
+use cassandra_protocol::frame::Frame;
 
 #[derive(Constructor)]
 pub struct TcpConnectionManager {

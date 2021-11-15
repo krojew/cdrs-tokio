@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "cassandra-protocol",
     "cdrs-tokio",
     "cdrs-tokio-helpers-derive"
 ]

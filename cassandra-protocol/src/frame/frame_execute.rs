@@ -20,7 +20,7 @@ impl<'a> Serialize for BodyReqExecute<'a> {
 }
 
 impl Frame {
-    pub(crate) fn new_req_execute(
+    pub fn new_req_execute(
         id: &CBytesShort,
         query_parameters: &QueryParams,
         flags: Flags,

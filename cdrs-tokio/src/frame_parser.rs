@@ -1,12 +1,15 @@
+use std::convert::TryFrom;
 use std::io::Cursor;
 use tokio::io::AsyncReadExt;
 
-use super::*;
-use crate::compression::Compression;
-use crate::error;
-use crate::frame::FromCursor;
-use crate::types::data_serialization_types::decode_timeuuid;
-use crate::types::{try_i16_from_bytes, try_i32_from_bytes, CStringList, UUID_LEN};
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::error;
+use cassandra_protocol::frame::frame_response::ResponseBody;
+use cassandra_protocol::frame::{
+    Flags, Frame, FromCursor, Opcode, Version, LENGTH_LEN, STREAM_LEN,
+};
+use cassandra_protocol::types::data_serialization_types::decode_timeuuid;
+use cassandra_protocol::types::{try_i16_from_bytes, try_i32_from_bytes, CStringList, UUID_LEN};
 
 async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     cursor: &mut T,

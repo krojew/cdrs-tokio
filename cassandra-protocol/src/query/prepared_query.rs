@@ -4,10 +4,10 @@ use crate::types::CBytesShort;
 
 #[derive(Debug)]
 pub struct PreparedQuery {
-    pub(crate) id: RwLock<CBytesShort>,
-    pub(crate) query: String,
-    pub(crate) keyspace: Option<String>,
-    pub(crate) pk_indexes: Vec<i16>,
+    pub id: RwLock<CBytesShort>,
+    pub query: String,
+    pub keyspace: Option<String>,
+    pub pk_indexes: Vec<i16>,
 }
 
 impl Clone for PreparedQuery {

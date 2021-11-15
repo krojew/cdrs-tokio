@@ -4,23 +4,23 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::consistency::Consistency;
+use cassandra_protocol::consistency::Consistency;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::frame::Serialize;
+use cassandra_protocol::frame::Serialize;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::frame::{TryFromRow, TryFromUdt};
+use cassandra_protocol::frame::{TryFromRow, TryFromUdt};
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::query::QueryValues;
+use cassandra_protocol::query::QueryValues;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::query::*;
+use cassandra_protocol::query::*;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::query_values;
+use cassandra_protocol::query_values;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::blob::Blob;
+use cassandra_protocol::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::from_cdrs::FromCdrsByName;
+use cassandra_protocol::types::from_cdrs::FromCdrsByName;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::AsRustType;
+use cassandra_protocol::types::AsRustType;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio_helpers_derive::*;
 #[cfg(feature = "e2e-tests")]

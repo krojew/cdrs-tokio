@@ -4,7 +4,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
+use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
+#[cfg(feature = "e2e-tests")]
+use cassandra_protocol::types::map::Map;
+#[cfg(feature = "e2e-tests")]
+use cassandra_protocol::types::{AsRust, ByName, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::SessionBuilder;
 #[cfg(feature = "e2e-tests")]
@@ -15,10 +19,6 @@ use cdrs_tokio::cluster::NodeTcpConfigBuilder;
 use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::map::Map;
-#[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 
 #[cfg(feature = "e2e-tests")]
 #[tokio::test]

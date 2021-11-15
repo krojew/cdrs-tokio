@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
-use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
+use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
+use cassandra_protocol::frame::Serialize;
+use cassandra_protocol::query::*;
+use cassandra_protocol::query_values;
+use cassandra_protocol::types::from_cdrs::FromCdrsByName;
+use cassandra_protocol::types::prelude::*;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};
 use cdrs_tokio::cluster::{NodeTcpConfigBuilder, TcpConnectionManager};
 use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
-use cdrs_tokio::query::*;
-use cdrs_tokio::query_values;
-
-use cdrs_tokio::frame::Serialize;
 use cdrs_tokio::transport::TransportTcp;
-use cdrs_tokio::types::from_cdrs::FromCdrsByName;
-use cdrs_tokio::types::prelude::*;
 use cdrs_tokio_helpers_derive::*;
 
 type CurrentSession = Session<

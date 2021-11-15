@@ -2,7 +2,7 @@ use derive_more::Display;
 use std::net::SocketAddr;
 use tokio::net::lookup_host;
 
-use crate::error::Result;
+use cassandra_protocol::error::Result;
 
 /// Representation of a node address. Can be a direct socket address or a hostname. In the latter
 /// case, the host can be resolved to multiple addresses, which could result in multiple node
