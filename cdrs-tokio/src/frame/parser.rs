@@ -31,10 +31,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     let opcode = Opcode::try_from(opcode_bytes[0])?;
     let length = try_i32_from_bytes(&length_bytes)? as usize;
 
-    let mut body_bytes = Vec::with_capacity(length);
-    unsafe {
-        body_bytes.set_len(length);
-    }
+    let mut body_bytes = vec![0; length];
 
     cursor.read_exact(&mut body_bytes).await?;
 
@@ -48,10 +45,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     let mut body_cursor = Cursor::new(full_body.as_slice());
 
     let tracing_id = if flags.contains(Flags::TRACING) {
-        let mut tracing_bytes = Vec::with_capacity(UUID_LEN);
-        unsafe {
-            tracing_bytes.set_len(UUID_LEN);
-        }
+        let mut tracing_bytes = vec![0; UUID_LEN];
         std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes)?;
 
         decode_timeuuid(tracing_bytes.as_slice()).ok()
