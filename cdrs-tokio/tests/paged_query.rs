@@ -1,5 +1,5 @@
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
 #[cfg(feature = "e2e-tests")]

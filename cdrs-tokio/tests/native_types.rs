@@ -4,17 +4,17 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::query_values;
+use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::blob::Blob;
+use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::decimal::Decimal;
+use cdrs_tokio::types::decimal::Decimal;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::map::Map;
+use cdrs_tokio::types::map::Map;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::value::Bytes;
+use cdrs_tokio::types::value::Bytes;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::{AsRust, ByName, IntoRustByName};
+use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 use uuid::Uuid;
 

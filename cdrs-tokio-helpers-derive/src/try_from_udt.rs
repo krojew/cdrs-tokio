@@ -9,7 +9,7 @@ pub fn impl_try_from_udt(ast: &DeriveInput) -> TokenStream {
     let fields = get_struct_fields(ast);
     quote! {
         impl TryFromUdt for #name {
-          fn try_from_udt(cdrs: cassandra_protocol::types::udt::Udt) -> cassandra_protocol::Result<Self> {
+          fn try_from_udt(cdrs: cdrs_tokio::types::udt::Udt) -> cdrs_tokio::Result<Self> {
             Ok(#name {
               #(#fields),*
             })

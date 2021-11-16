@@ -10,7 +10,7 @@ pub fn impl_try_from_row(ast: &DeriveInput) -> TokenStream {
 
     quote! {
         impl TryFromRow for #name {
-          fn try_from_row(cdrs: cassandra_protocol::types::rows::Row) -> cassandra_protocol::Result<Self> {
+          fn try_from_row(cdrs: cdrs_tokio::types::rows::Row) -> cdrs_tokio::Result<Self> {
             Ok(#name {
               #(#fields),*
             })

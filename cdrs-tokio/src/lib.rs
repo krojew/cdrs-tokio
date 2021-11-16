@@ -44,6 +44,15 @@ pub mod load_balancing;
 pub mod future;
 pub mod retry;
 pub mod transport;
+pub use cassandra_protocol::authenticators;
+pub use cassandra_protocol::compression;
+pub use cassandra_protocol::consistency;
+pub use cassandra_protocol::error;
+pub use cassandra_protocol::frame;
+pub use cassandra_protocol::query;
+pub use cassandra_protocol::types;
 
-pub type Error = cassandra_protocol::error::Error;
-pub type Result<T> = cassandra_protocol::error::Result<T>;
+pub use cassandra_protocol::query_values;
+
+pub type Error = error::Error;
+pub type Result<T> = error::Result<T>;

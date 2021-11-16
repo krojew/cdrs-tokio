@@ -14,17 +14,17 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
           match value.#field_ident {
             Some(ref val) => {
               let field_bytes: Self = val.clone().into();
-              cassandra_protocol::types::value::Value::new_normal(field_bytes).serialize(&mut cursor);
+              cdrs_tokio::types::value::Value::new_normal(field_bytes).serialize(&mut cursor);
             },
             None => {
-              cassandra_protocol::types::value::Value::new_not_set().serialize(&mut cursor);
+              cdrs_tokio::types::value::Value::new_not_set().serialize(&mut cursor);
             }
           }
         }
       } else {
         quote! {
           let field_bytes: Self = value.#field_ident.into();
-          cassandra_protocol::types::value::Value::new_normal(field_bytes).serialize(&mut cursor);
+          cdrs_tokio::types::value::Value::new_normal(field_bytes).serialize(&mut cursor);
         }
       }
     });
@@ -32,7 +32,7 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
         // for a struct it's enough to implement Into<Bytes> in order to be convertible into Value
         // which is used for making queries
         quote! {
-            impl From<#name> for cassandra_protocol::types::value::Bytes {
+            impl From<#name> for cdrs_tokio::types::value::Bytes {
               fn from(value: #name) -> Self {
                 let mut bytes: Vec<u8> = Vec::new();
                 let mut cursor = std::io::Cursor::new(&mut bytes);

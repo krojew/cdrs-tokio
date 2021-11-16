@@ -4,19 +4,19 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::error::Result;
+use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::frame::Serialize;
+use cdrs_tokio::frame::Serialize;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::query_values;
+use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::blob::Blob;
+use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::tuple::Tuple;
+use cdrs_tokio::types::tuple::Tuple;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::value::{Bytes, Value};
+use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::{IntoRustByIndex, IntoRustByName};
+use cdrs_tokio::types::{IntoRustByIndex, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 use std::io::Cursor;
 #[cfg(feature = "e2e-tests")]

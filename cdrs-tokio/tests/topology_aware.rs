@@ -1,7 +1,7 @@
 mod common;
 
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
+use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::SessionBuilder;
 #[cfg(feature = "e2e-tests")]
@@ -16,11 +16,11 @@ use cdrs_tokio::load_balancing::TopologyAwareLoadBalancingStrategy;
 use std::sync::Arc;
 
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::query_values;
-#[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::IntoRustByName;
+use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::types::IntoRustByName;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]

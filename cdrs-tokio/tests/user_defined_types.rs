@@ -4,24 +4,24 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::error::Result;
+use cdrs_tokio::error::Result;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::query_values;
+use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::map::Map;
+use cdrs_tokio::types::map::Map;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::udt::Udt;
+use cdrs_tokio::types::udt::Udt;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::value::{Bytes, Value};
+use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::{AsRust, IntoRustByName};
+use cdrs_tokio::types::{AsRust, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 use maplit::hashmap;
 #[cfg(feature = "e2e-tests")]
 use time::PrimitiveDateTime;
 
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::frame::Serialize;
+use cdrs_tokio::frame::Serialize;
 #[cfg(feature = "e2e-tests")]
 use std::collections::HashMap;
 #[cfg(feature = "e2e-tests")]

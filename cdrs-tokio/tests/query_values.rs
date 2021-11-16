@@ -4,9 +4,9 @@ mod common;
 use common::*;
 
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::query_values;
+use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
-use cassandra_protocol::types::IntoRustByName;
+use cdrs_tokio::types::IntoRustByName;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]

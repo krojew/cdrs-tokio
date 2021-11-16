@@ -1,12 +1,3 @@
-use cdrs_tokio::{
-    cluster::session::Session,
-    cluster::{GenericClusterConfig, TcpConnectionManager},
-    load_balancing::RoundRobinLoadBalancingStrategy,
-    retry::DefaultRetryPolicy,
-    transport::TransportTcp,
-};
-
-use cassandra_protocol::{query::*, query_values};
 use std::{
     collections::HashMap,
     net::IpAddr,
@@ -14,22 +5,29 @@ use std::{
     sync::Arc,
 };
 
-use cassandra_protocol::{
+use cdrs_tokio::{
     authenticators::{SaslAuthenticatorProvider, StaticPasswordAuthenticatorProvider},
+    cluster::session::Session,
+    cluster::{GenericClusterConfig, TcpConnectionManager},
     error::Result,
+    load_balancing::RoundRobinLoadBalancingStrategy,
+    query::*,
+    query_values,
+    retry::DefaultRetryPolicy,
+    transport::TransportTcp,
     types::from_cdrs::FromCdrsByName,
     types::prelude::*,
 };
 
 use cdrs_tokio_helpers_derive::*;
 
-use cassandra_protocol::compression::Compression;
-use cassandra_protocol::frame::{Frame, Serialize};
 use cdrs_tokio::cluster::session::{
     NodeDistanceEvaluatorWrapper, ReconnectionPolicyWrapper, RetryPolicyWrapper,
     DEFAULT_TRANSPORT_BUFFER_SIZE,
 };
 use cdrs_tokio::cluster::{ConnectionManager, KeyspaceHolder};
+use cdrs_tokio::compression::Compression;
+use cdrs_tokio::frame::{Frame, Serialize};
 use cdrs_tokio::future::BoxFuture;
 use cdrs_tokio::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
