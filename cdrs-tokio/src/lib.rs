@@ -37,6 +37,9 @@
 //! balancing is preferred when dealing with multi-node clusters, otherwise simpler strategies might
 //! prove more efficient.
 
+#[macro_use]
+mod macros;
+
 pub mod cluster;
 pub mod frame_parser;
 pub mod load_balancing;
@@ -44,6 +47,7 @@ pub mod load_balancing;
 pub mod future;
 pub mod retry;
 pub mod transport;
+
 pub use cassandra_protocol::authenticators;
 pub use cassandra_protocol::compression;
 pub use cassandra_protocol::consistency;
@@ -51,8 +55,6 @@ pub use cassandra_protocol::error;
 pub use cassandra_protocol::frame;
 pub use cassandra_protocol::query;
 pub use cassandra_protocol::types;
-
-pub use cassandra_protocol::query_values;
 
 pub type Error = error::Error;
 pub type Result<T> = error::Result<T>;
