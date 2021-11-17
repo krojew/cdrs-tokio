@@ -62,7 +62,7 @@ fn next_stream_id() -> StreamId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Frame {
     pub version: Version,
     pub flags: Flags,
