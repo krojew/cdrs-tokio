@@ -4,8 +4,8 @@
 macro_rules! query_values {
     ($($value:expr),*) => {
         {
-            use cdrs_tokio::types::value::Value;
-            use cdrs_tokio::query::QueryValues;
+            use cassandra_protocol::types::value::Value;
+            use cassandra_protocol::query::QueryValues;
             let mut values: Vec<Value> = Vec::new();
             $(
                 values.push($value.into());
@@ -15,8 +15,8 @@ macro_rules! query_values {
     };
     ($($name:expr => $value:expr),*) => {
         {
-            use cdrs_tokio::types::value::Value;
-            use cdrs_tokio::query::QueryValues;
+            use cassandra_protocol::types::value::Value;
+            use cassandra_protocol::query::QueryValues;
             use std::collections::HashMap;
             let mut values: HashMap<String, Value> = HashMap::new();
             $(

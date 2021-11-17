@@ -26,7 +26,7 @@ impl Serialize for BodyReqPrepare {
 }
 
 impl Frame {
-    pub(crate) fn new_req_prepare(query: String, flags: Flags) -> Frame {
+    pub fn new_req_prepare(query: String, flags: Flags) -> Frame {
         let version = Version::Request;
         let opcode = Opcode::Prepare;
         let body = BodyReqPrepare::new(query);

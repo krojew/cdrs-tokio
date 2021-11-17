@@ -1,9 +1,9 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider};
 use crate::cluster::NodeAddress;
-use crate::error::Result;
+use cassandra_protocol::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider};
+use cassandra_protocol::error::Result;
 
 /// Single node TLS connection config.
 #[derive(Clone)]

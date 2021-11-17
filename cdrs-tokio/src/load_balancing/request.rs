@@ -1,7 +1,7 @@
 use derive_more::Constructor;
 
-use crate::cluster::Murmur3Token;
-use crate::consistency::Consistency;
+use cassandra_protocol::consistency::Consistency;
+use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// A request executed by a `Session`.
 #[derive(Constructor, Clone, Debug)]

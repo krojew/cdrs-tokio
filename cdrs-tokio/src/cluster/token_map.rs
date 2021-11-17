@@ -4,8 +4,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::cluster::topology::{Node, NodeMap};
-use crate::cluster::{ConnectionManager, Murmur3Token};
+use crate::cluster::ConnectionManager;
 use crate::transport::CdrsTransport;
+use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// Map of tokens to nodes.
 pub struct TokenMap<T: CdrsTransport, CM: ConnectionManager<T>> {
@@ -113,8 +114,9 @@ mod tests {
 
     use crate::cluster::connection_manager::MockConnectionManager;
     use crate::cluster::topology::{Node, NodeMap};
-    use crate::cluster::{Murmur3Token, TokenMap};
+    use crate::cluster::TokenMap;
     use crate::transport::MockCdrsTransport;
+    use cassandra_protocol::query::query_params::Murmur3Token;
 
     lazy_static! {
         static ref HOST_ID_1: Uuid = Uuid::new_v4();

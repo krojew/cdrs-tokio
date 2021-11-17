@@ -1,10 +1,10 @@
-mod batch_query_builder;
-mod prepared_query;
-mod query_flags;
-mod query_params;
-mod query_params_builder;
-mod query_values;
-pub(crate) mod utils;
+pub mod batch_query_builder;
+pub mod prepared_query;
+pub mod query_flags;
+pub mod query_params;
+pub mod query_params_builder;
+pub mod query_values;
+pub mod utils;
 
 pub use crate::query::batch_query_builder::{BatchQueryBuilder, QueryBatch};
 pub use crate::query::prepared_query::PreparedQuery;

@@ -10,9 +10,9 @@ use crate::frame::frame_response::ResponseBody;
 pub use crate::frame::traits::*;
 
 /// Number of stream bytes in accordance to protocol.
-pub(crate) const STREAM_LEN: usize = 2;
+pub const STREAM_LEN: usize = 2;
 /// Number of body length bytes in accordance to protocol.
-pub(crate) const LENGTH_LEN: usize = 4;
+pub const LENGTH_LEN: usize = 4;
 
 pub mod events;
 pub mod frame_auth_challenge;
@@ -32,13 +32,12 @@ pub mod frame_response;
 pub mod frame_result;
 pub mod frame_startup;
 pub mod frame_supported;
-pub mod parser;
 pub mod traits;
 
 use crate::error;
 
 const INITIAL_STREAM_ID: i16 = 1;
-pub(crate) const EVENT_STREAM_ID: i16 = -1;
+pub const EVENT_STREAM_ID: i16 = -1;
 
 static STREAM_ID: AtomicI16 = AtomicI16::new(INITIAL_STREAM_ID);
 
@@ -65,13 +64,13 @@ fn next_stream_id() -> StreamId {
 
 #[derive(Debug, Clone)]
 pub struct Frame {
-    pub(crate) version: Version,
-    pub(crate) flags: Flags,
-    pub(crate) opcode: Opcode,
-    pub(crate) stream: StreamId,
-    pub(crate) body: Vec<u8>,
-    pub(crate) tracing_id: Option<Uuid>,
-    pub(crate) warnings: Vec<String>,
+    pub version: Version,
+    pub flags: Flags,
+    pub opcode: Opcode,
+    pub stream: StreamId,
+    pub body: Vec<u8>,
+    pub tracing_id: Option<Uuid>,
+    pub warnings: Vec<String>,
 }
 
 impl Frame {

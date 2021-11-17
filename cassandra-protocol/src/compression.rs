@@ -65,7 +65,7 @@ impl Compression {
     /// # Examples
     ///
     /// ```
-    ///    use cdrs_tokio::compression::Compression;
+    ///    use cassandra_protocol::compression::Compression;
     ///
     ///   let snappy_compression = Compression::Snappy;
     ///   let bytes = String::from("Hello World").into_bytes().to_vec();

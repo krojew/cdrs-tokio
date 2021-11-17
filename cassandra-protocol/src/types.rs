@@ -9,9 +9,9 @@ use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
 use crate::types::data_serialization_types::decode_inet;
 
-pub(crate) const SHORT_LEN: usize = 2;
-pub(crate) const INT_LEN: usize = 4;
-pub(crate) const UUID_LEN: usize = 16;
+pub const SHORT_LEN: usize = 2;
+pub const INT_LEN: usize = 4;
+pub const UUID_LEN: usize = 16;
 
 const NULL_INT_LEN: CInt = -1;
 const NULL_SHORT_LEN: CIntShort = -1;
@@ -131,77 +131,77 @@ fn convert_to_array<const S: usize>(bytes: &[u8]) -> Result<[u8; S], io::Error> 
 }
 
 #[inline]
-pub(crate) fn try_u64_from_bytes(bytes: &[u8]) -> Result<u64, io::Error> {
+pub fn try_u64_from_bytes(bytes: &[u8]) -> Result<u64, io::Error> {
     Ok(u64::from_be_bytes(convert_to_array(bytes)?))
 }
 
 #[inline]
-pub(crate) fn try_i64_from_bytes(bytes: &[u8]) -> Result<i64, io::Error> {
+pub fn try_i64_from_bytes(bytes: &[u8]) -> Result<i64, io::Error> {
     Ok(i64::from_be_bytes(convert_to_array(bytes)?))
 }
 
 #[inline]
-pub(crate) fn try_i32_from_bytes(bytes: &[u8]) -> Result<i32, io::Error> {
+pub fn try_i32_from_bytes(bytes: &[u8]) -> Result<i32, io::Error> {
     Ok(i32::from_be_bytes(convert_to_array(bytes)?))
 }
 
 #[inline]
-pub(crate) fn try_i16_from_bytes(bytes: &[u8]) -> Result<i16, io::Error> {
+pub fn try_i16_from_bytes(bytes: &[u8]) -> Result<i16, io::Error> {
     Ok(i16::from_be_bytes(convert_to_array(bytes)?))
 }
 
 #[inline]
-pub(crate) fn try_f32_from_bytes(bytes: &[u8]) -> Result<f32, io::Error> {
+pub fn try_f32_from_bytes(bytes: &[u8]) -> Result<f32, io::Error> {
     Ok(f32::from_be_bytes(convert_to_array(bytes)?))
 }
 
 #[inline]
-pub(crate) fn try_f64_from_bytes(bytes: &[u8]) -> Result<f64, io::Error> {
+pub fn try_f64_from_bytes(bytes: &[u8]) -> Result<f64, io::Error> {
     Ok(f64::from_be_bytes(convert_to_array(bytes)?))
 }
 
 #[inline]
-pub(crate) fn u16_from_bytes(bytes: [u8; 2]) -> u16 {
+pub fn u16_from_bytes(bytes: [u8; 2]) -> u16 {
     u16::from_be_bytes(bytes)
 }
 
 #[inline]
-pub(crate) fn to_short(int: i16) -> Vec<u8> {
+pub fn to_short(int: i16) -> Vec<u8> {
     int.to_be_bytes().into()
 }
 
 #[inline]
-pub(crate) fn to_int(int: i32) -> Vec<u8> {
+pub fn to_int(int: i32) -> Vec<u8> {
     int.to_be_bytes().into()
 }
 
 #[inline]
-pub(crate) fn to_bigint(int: i64) -> Vec<u8> {
+pub fn to_bigint(int: i64) -> Vec<u8> {
     int.to_be_bytes().into()
 }
 
 #[inline]
-pub(crate) fn to_u_short(int: u16) -> Vec<u8> {
+pub fn to_u_short(int: u16) -> Vec<u8> {
     int.to_be_bytes().into()
 }
 
 #[inline]
-pub(crate) fn to_u_int(int: u32) -> Vec<u8> {
+pub fn to_u_int(int: u32) -> Vec<u8> {
     int.to_be_bytes().into()
 }
 
 #[inline]
-pub(crate) fn to_u_big(int: u64) -> Vec<u8> {
+pub fn to_u_big(int: u64) -> Vec<u8> {
     int.to_be_bytes().into()
 }
 
 #[inline]
-pub(crate) fn to_float(f: f32) -> Vec<u8> {
+pub fn to_float(f: f32) -> Vec<u8> {
     f.to_be_bytes().into()
 }
 
 #[inline]
-pub(crate) fn to_float_big(f: f64) -> Vec<u8> {
+pub fn to_float_big(f: f64) -> Vec<u8> {
     f.to_be_bytes().into()
 }
 

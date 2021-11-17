@@ -5,14 +5,14 @@ use tokio::sync::mpsc::Sender;
 #[cfg(test)]
 use mockall::*;
 
-use crate::authenticators::SaslAuthenticatorProvider;
 use crate::cluster::KeyspaceHolder;
-use crate::compression::Compression;
-use crate::error::{Error, Result};
-use crate::frame::frame_response::ResponseBody;
-use crate::frame::{Frame, Opcode};
 use crate::future::BoxFuture;
 use crate::transport::CdrsTransport;
+use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::error::{Error, Result};
+use cassandra_protocol::frame::frame_response::ResponseBody;
+use cassandra_protocol::frame::{Frame, Opcode};
 
 /// Manages establishing connections to nodes.
 pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {

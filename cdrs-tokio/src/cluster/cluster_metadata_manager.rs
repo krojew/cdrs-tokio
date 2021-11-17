@@ -15,22 +15,21 @@ use crate::cluster::metadata_builder::{add_new_node, build_initial_metadata, ref
 use crate::cluster::topology::{KeyspaceMetadata, Node, NodeState, ReplicationStrategy};
 use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::cluster::{NodeInfo, SessionContext};
-use crate::error::Error;
-use crate::error::Result;
-use crate::events::{SchemaChange, ServerEvent};
-use crate::frame::events::{
+use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
+use crate::transport::CdrsTransport;
+use cassandra_protocol::error::{Error, Result};
+use cassandra_protocol::events::{SchemaChange, ServerEvent};
+use cassandra_protocol::frame::events::{
     SchemaChangeOptions, SchemaChangeType, StatusChange, StatusChangeType, TopologyChange,
     TopologyChangeType,
 };
-use crate::frame::frame_error::{AdditionalErrorInfo, CdrsError};
-use crate::frame::Frame;
-use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
-use crate::query::utils::prepare_flags;
-use crate::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
-use crate::transport::CdrsTransport;
-use crate::types::list::List;
-use crate::types::rows::Row;
-use crate::types::{AsRustType, ByName, IntoRustByName};
+use cassandra_protocol::frame::frame_error::{AdditionalErrorInfo, CdrsError};
+use cassandra_protocol::frame::Frame;
+use cassandra_protocol::query::utils::prepare_flags;
+use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
+use cassandra_protocol::types::list::List;
+use cassandra_protocol::types::rows::Row;
+use cassandra_protocol::types::{AsRustType, ByName, IntoRustByName};
 
 fn find_in_peers(
     peers: &[Row],

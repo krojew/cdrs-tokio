@@ -10,10 +10,11 @@ use tracing::*;
 use uuid::Uuid;
 
 use crate::cluster::topology::{NodeDistance, NodeState};
-use crate::cluster::{ConnectionManager, Murmur3Token, NodeInfo};
-use crate::error::{Error, Result};
-use crate::frame::Frame;
+use crate::cluster::{ConnectionManager, NodeInfo};
 use crate::transport::CdrsTransport;
+use cassandra_protocol::error::{Error, Result};
+use cassandra_protocol::frame::Frame;
+use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// Metadata about a Cassandra node in the cluster, along with a connection.
 pub struct Node<T: CdrsTransport, CM: ConnectionManager<T>> {

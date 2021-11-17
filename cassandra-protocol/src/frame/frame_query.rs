@@ -83,7 +83,7 @@ impl Serialize for BodyReqQuery {
 
 impl Frame {
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn new_req_query(
+    pub fn new_req_query(
         query: String,
         consistency: Consistency,
         values: Option<QueryValues>,
@@ -120,7 +120,7 @@ impl Frame {
     }
 
     #[inline]
-    pub(crate) fn new_query(query: Query, flags: Flags) -> Frame {
+    pub fn new_query(query: Query, flags: Flags) -> Frame {
         Frame::new_req_query(
             query.query,
             query.params.consistency,

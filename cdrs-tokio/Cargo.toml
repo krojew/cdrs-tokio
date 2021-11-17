@@ -14,36 +14,30 @@ license = "MIT/Apache-2.0"
 [features]
 default = ["v4"]
 rust-tls = ["rustls", "tokio-rustls", "webpki"]
-v3 = []
-v4 = []
+v3 = ["cassandra-protocol/v3"]
+v4 = ["cassandra-protocol/v4"]
 # enable v5 feature when it's actually implemented
-# v5 = []
+# v5 = ["cassandra-protocol/v5"]
 e2e-tests = []
 
 [dependencies]
 arc-swap ="1.4"
-arrayref = "0.3"
 atomic = "0.5"
-bitflags = "1.3"
 bytes = "1.1"
-chrono = "0.4"
 derive_more = "0.99"
 float_eq = "0.6"
 futures = { version = "0.3", default_features = false, features = ["alloc"] }
 fxhash = "0.2"
-num = "0.4"
 lz4_flex = "0.8"
 itertools = "0.10"
 rand = "0.8"
 serde_json = "1.0"
-snap = "1"
-thiserror = "1"
-time = { version = "0.3", features = ["std", "macros"] }
 tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
 tokio-rustls = { version = "0.22", optional = true }
 tracing = "0.1"
 uuid = "0.8"
 webpki = { version = "0.21", optional = true }
+cassandra-protocol = { path = "../cassandra-protocol", version = "1.0.0" }
 
 [dependencies.rustls]
 version = "0.19"
@@ -51,9 +45,10 @@ optional = true
 default-features = false
 
 [dev-dependencies]
-cdrs-tokio-helpers-derive = { version = "3.2.0-beta.1", path = "../cdrs-tokio-helpers-derive" }
+cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "3.2.0-beta.1" }
 maplit = "1.0.0"
 mockall = "0.10"
 lazy_static = "1.4"
 regex = "1.5"
 uuid = { version = "0.8", features = ["v4"] }
+time = { version = "0.3", features = ["std", "macros"] }

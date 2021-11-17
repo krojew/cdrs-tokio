@@ -8,10 +8,11 @@ use std::sync::Arc;
 
 use crate::cluster::token_factory::generate_murmur3_token;
 use crate::cluster::topology::{KeyspaceMetadata, Node, NodeDistance, ReplicationStrategy};
-use crate::cluster::{ClusterMetadata, ConnectionManager, Murmur3Token};
-use crate::consistency::Consistency;
+use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
 use crate::transport::CdrsTransport;
+use cassandra_protocol::consistency::Consistency;
+use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// Topology-aware load balancing strategy. Depends on up-to-date topology information, which is
 /// constantly monitored in the background by a control connection. For best results, a
@@ -305,11 +306,12 @@ mod tests {
     use crate::cluster::topology::{
         KeyspaceMetadata, Node, NodeDistance, NodeState, ReplicationStrategy,
     };
-    use crate::cluster::{ClusterMetadata, Murmur3Token};
+    use crate::cluster::ClusterMetadata;
     use crate::load_balancing::{
         LoadBalancingStrategy, Request, TopologyAwareLoadBalancingStrategy,
     };
     use crate::transport::MockCdrsTransport;
+    use cassandra_protocol::query::query_params::Murmur3Token;
 
     lazy_static! {
         static ref HOST_ID_1: Uuid = Uuid::new_v4();
