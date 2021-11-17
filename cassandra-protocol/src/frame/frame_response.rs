@@ -31,7 +31,12 @@ pub enum ResponseBody {
 use crate::frame::Serialize;
 #[cfg(test)]
 impl Serialize for ResponseBody {
-    fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {}
+    fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {
+        match self {
+            ResponseBody::Ready(_) => {}
+            _ => todo!(),
+        }
+    }
 }
 
 impl ResponseBody {
@@ -63,7 +68,7 @@ impl ResponseBody {
             Opcode::AuthSuccess => Ok(ResponseBody::AuthSuccess(BodyReqAuthSuccess::from_cursor(
                 &mut cursor,
             )?)),
-            _ => Err(format!("Unknown response opcode: {}", response_type).into()),
+            _ => Err(format!("opcode {} is not a response", response_type).into()),
         }
     }
 

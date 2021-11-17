@@ -90,7 +90,7 @@ pub async fn parse_frame<T: AsyncReadExt + Unpin>(
 
 fn convert_frame_into_result(frame: Frame) -> error::Result<Frame> {
     match frame.opcode {
-        Opcode::Error => frame.body().and_then(|err| match err {
+        Opcode::Error => frame.body_response().and_then(|err| match err {
             ResponseBody::Error(err) => Err(error::Error::Server(err)),
             _ => unreachable!(),
         }),

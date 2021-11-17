@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicI16, Ordering};
 use uuid::Uuid;
 
 use crate::compression::Compression;
+use crate::frame::frame_request::RequestBody;
 use crate::frame::frame_response::ResponseBody;
 pub use crate::frame::traits::*;
 
@@ -28,6 +29,7 @@ pub mod frame_prepare;
 pub mod frame_query;
 pub mod frame_ready;
 pub mod frame_register;
+pub mod frame_request;
 pub mod frame_response;
 pub mod frame_result;
 pub mod frame_startup;
@@ -97,7 +99,11 @@ impl Frame {
         }
     }
 
-    pub fn body(&self) -> error::Result<ResponseBody> {
+    pub fn body_request(&self) -> error::Result<RequestBody> {
+        RequestBody::try_from(self.body.as_slice(), self.opcode)
+    }
+
+    pub fn body_response(&self) -> error::Result<ResponseBody> {
         ResponseBody::try_from(self.body.as_slice(), self.opcode, self.version)
     }
 
@@ -301,7 +307,13 @@ impl TryFrom<u8> for Opcode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::consistency::Consistency;
+    use crate::frame::frame_query::BodyReqQuery;
     use crate::frame::frame_result::BodyResResultVoid;
+    use crate::query::query_params::QueryParams;
+    use crate::query::query_values::QueryValues;
+    use crate::types::value::Value;
+    use crate::types::{CBytes, CStringLong};
 
     #[test]
     fn test_frame_version_as_byte() {
@@ -370,26 +382,67 @@ mod tests {
         assert_eq!(Opcode::try_from(0x10).unwrap(), Opcode::AuthSuccess);
     }
 
-    fn test_encode_decode_roundtrip(raw_frame: &[u8], frame: Frame, body: ResponseBody) {
+    fn test_encode_decode_roundtrip_response(raw_frame: &[u8], frame: Frame, body: ResponseBody) {
         // test encode
         let encoded_body = body.serialize_to_vec();
-        assert_eq!(&frame.body, &encoded_body);
+        assert_eq!(
+            &frame.body, &encoded_body,
+            "encoded body did not match frames body"
+        );
 
         let encoded_frame = frame.encode_with(Compression::None).unwrap();
-        assert_eq!(raw_frame, &encoded_frame);
+        assert_eq!(
+            raw_frame, &encoded_frame,
+            "encoded frame did not match expected raw frame"
+        );
+
+        // test decode
 
         // TODO: implement once we have a sync parse_frame impl
-        // test decode
         //let decoded_frame = parse_frame(raw_frame).unwrap();
         //assert_eq!(frame, decoded_frame);
 
-        let decoded_body = frame.body().unwrap();
-        assert_eq!(body, decoded_body)
+        let decoded_body = frame.body_response().unwrap();
+        assert_eq!(body, decoded_body, "decoded frame.body did not match body")
+    }
+
+    fn test_encode_decode_roundtrip_request(raw_frame: &[u8], frame: Frame, body: RequestBody) {
+        // test encode
+        let encoded_body = body.serialize_to_vec();
+        assert_eq!(
+            &frame.body, &encoded_body,
+            "encoded body did not match frames body"
+        );
+
+        let encoded_frame = frame.encode_with(Compression::None).unwrap();
+        assert_eq!(
+            raw_frame, &encoded_frame,
+            "encoded frame did not match expected raw frame"
+        );
+
+        // test decode
+
+        // TODO: implement once we have a sync parse_frame impl
+        //let decoded_frame = parse_frame(raw_frame).unwrap();
+        //assert_eq!(frame, decoded_frame);
+
+        let decoded_body = frame.body_request().unwrap();
+        assert_eq!(body, decoded_body, "decoded frame.body did not match body")
+    }
+
+    /// Use this when the body binary representation is nondeterministic but the body typed representation is deterministic
+    fn test_encode_decode_roundtrip_nondeterministic_request(mut frame: Frame, body: RequestBody) {
+        // test encode
+        frame.body = body.serialize_to_vec();
+
+        // test decode
+        let decoded_body = frame.body_request().unwrap();
+        assert_eq!(body, decoded_body, "decoded frame.body did not match body")
     }
 
     #[test]
     fn test_ready() {
-        let bytes = vec![4, 0, 0, 0, 2, 0, 0, 0, 0];
+        let raw_frame = vec![4, 0, 0, 0, 2, 0, 0, 0, 0];
         let frame = Frame {
             version: Version::V4,
             direction: Direction::Request,
@@ -401,6 +454,120 @@ mod tests {
             warnings: vec![],
         };
         let body = ResponseBody::Ready(BodyResResultVoid);
-        test_encode_decode_roundtrip(&bytes, frame, body);
+        test_encode_decode_roundtrip_response(&raw_frame, frame, body);
+    }
+
+    #[test]
+    fn test_query_minimal() {
+        let raw_frame = [
+            4, 0, 0, 0, 7, 0, 0, 0, 11, 0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64,
+        ];
+        let frame = Frame {
+            version: Version::V4,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Query,
+            stream: 0,
+            body: vec![0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64],
+            tracing_id: None,
+            warnings: vec![],
+        };
+        let body = RequestBody::Query(BodyReqQuery {
+            query: CStringLong::new("blah".into()),
+            query_params: QueryParams {
+                consistency: Consistency::Any,
+                with_names: true,
+                values: None,
+                page_size: None,
+                paging_state: None,
+                serial_consistency: None,
+                timestamp: None,
+                is_idempotent: false,
+                keyspace: None,
+                token: None,
+                routing_key: None,
+            },
+        });
+        test_encode_decode_roundtrip_request(&raw_frame, frame, body);
+    }
+
+    #[test]
+    fn test_query_simple_values() {
+        let raw_frame = [
+            4, 0, 0, 0, 7, 0, 0, 0, 30, 0, 0, 0, 10, 115, 111, 109, 101, 32, 113, 117, 101, 114,
+            121, 0, 8, 1, 0, 2, 0, 0, 0, 3, 1, 2, 3, 255, 255, 255, 255,
+        ];
+        let frame = Frame {
+            version: Version::V4,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Query,
+            stream: 0,
+            body: vec![
+                0, 0, 0, 10, 115, 111, 109, 101, 32, 113, 117, 101, 114, 121, 0, 8, 1, 0, 2, 0, 0,
+                0, 3, 1, 2, 3, 255, 255, 255, 255,
+            ],
+            tracing_id: None,
+            warnings: vec![],
+        };
+        let body = RequestBody::Query(BodyReqQuery {
+            query: CStringLong::new("some query".into()),
+            query_params: QueryParams {
+                consistency: Consistency::Serial,
+                with_names: false,
+                values: Some(QueryValues::SimpleValues(vec![
+                    Value::Some(vec![1, 2, 3]),
+                    Value::Null,
+                ])),
+                page_size: None,
+                paging_state: None,
+                serial_consistency: None,
+                timestamp: None,
+                is_idempotent: false,
+                keyspace: None,
+                token: None,
+                routing_key: None,
+            },
+        });
+        test_encode_decode_roundtrip_request(&raw_frame, frame, body);
+    }
+
+    #[test]
+    fn test_query_named_values() {
+        let frame = Frame {
+            version: Version::V4,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Query,
+            stream: 0,
+            body: vec![],
+            tracing_id: None,
+            warnings: vec![],
+        };
+        let body = RequestBody::Query(BodyReqQuery {
+            query: CStringLong::new("another query".into()),
+            query_params: QueryParams {
+                consistency: Consistency::Three,
+                with_names: true,
+                values: Some(QueryValues::NamedValues(
+                    vec![
+                        ("foo".to_string(), Value::Some(vec![11, 12, 13])),
+                        ("bar".to_string(), Value::NotSet),
+                        ("baz".to_string(), Value::Some(vec![42, 10, 99, 100, 4])),
+                    ]
+                    .into_iter()
+                    .collect(),
+                )),
+                page_size: Some(4),
+                paging_state: Some(CBytes::new(vec![0, 1, 2, 3])),
+                serial_consistency: Some(Consistency::One),
+                timestamp: Some(2000),
+                is_idempotent: false,
+                keyspace: None,
+                token: None,
+                routing_key: None,
+            },
+        });
+        test_encode_decode_roundtrip_nondeterministic_request(frame, body);
     }
 }

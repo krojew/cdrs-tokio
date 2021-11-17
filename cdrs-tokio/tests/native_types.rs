@@ -53,7 +53,7 @@ async fn string() {
         .query(cql)
         .await
         .expect("select strings query error")
-        .body()
+        .body_response()
         .expect("get body error")
         .into_rows()
         .expect("converting into rows error");
@@ -92,7 +92,7 @@ async fn counter() {
         .query(cql)
         .await
         .expect("select counter query error")
-        .body()
+        .body_response()
         .expect("get counter body error")
         .into_rows()
         .expect("converting coutner body into rows error");
@@ -131,7 +131,7 @@ async fn integer() {
         .query(cql)
         .await
         .expect("select integers query error")
-        .body()
+        .body_response()
         .expect("get body with integers error")
         .into_rows()
         .expect("converting body with integers into rows error");
@@ -175,7 +175,7 @@ async fn integer_v4() {
         .query(cql)
         .await
         .expect("query integers error")
-        .body()
+        .body_response()
         .expect("get body with integers error")
         .into_rows()
         .expect("converting body with integers into rows error");
@@ -224,7 +224,7 @@ async fn float() {
         .query(cql)
         .await
         .expect("query floats error")
-        .body()
+        .body_response()
         .expect("get body with floats error")
         .into_rows()
         .expect("converting body with floats into rows error");
@@ -279,7 +279,7 @@ async fn blob() {
         .query(cql)
         .await
         .expect("query blobs error")
-        .body()
+        .body_response()
         .expect("get body with blobs error")
         .into_rows()
         .expect("converting body with blobs into rows error");
@@ -319,7 +319,7 @@ async fn uuid() {
         .query(cql)
         .await
         .expect("query UUID error")
-        .body()
+        .body_response()
         .expect("get body with UUID error")
         .into_rows()
         .expect("conversion body with UUID into rows error");
@@ -353,7 +353,7 @@ async fn time() {
         .query(cql)
         .await
         .expect("query with time error")
-        .body()
+        .body_response()
         .expect("get body with time error")
         .into_rows()
         .expect("converting body with time into rows error");
@@ -392,7 +392,7 @@ async fn inet() {
         .query(query)
         .await
         .expect("query inet error")
-        .body()
+        .body_response()
         .expect("get body with inet error")
         .into_rows()
         .expect("converting body with inet into rows error");
