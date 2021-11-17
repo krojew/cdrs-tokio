@@ -20,6 +20,7 @@ understated.
 * Missing traits for `PreparedMetadata`, `Value`, `Consistency` and `ColType`.
 * New `PreparedMetadataFlags`.
 * New `ClusterMetadata` representing information about a cluster.
+* Extracted protocol functionality to separate `cassandra-protocol` crate.
 
 ### Changed
 
