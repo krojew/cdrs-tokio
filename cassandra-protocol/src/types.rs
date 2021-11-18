@@ -510,10 +510,7 @@ impl FromCursor for CInet {
 }
 
 pub fn cursor_next_value(cursor: &mut Cursor<&[u8]>, len: usize) -> CDRSResult<Vec<u8>> {
-    let mut buff: Vec<u8> = Vec::with_capacity(len);
-    unsafe {
-        buff.set_len(len);
-    }
+    let mut buff = vec![0u8; len];
     cursor.read_exact(&mut buff)?;
     Ok(buff)
 }
@@ -524,7 +521,6 @@ mod tests {
     use crate::frame::traits::FromCursor;
     use num::BigInt;
     use std::io::Cursor;
-    use std::mem::transmute;
 
     fn from_i_bytes(bytes: &[u8]) -> i64 {
         try_i64_from_bytes(bytes).unwrap()
@@ -715,14 +711,14 @@ mod tests {
 
     #[test]
     fn test_try_u16_from_bytes() {
-        let bytes: [u8; 2] = unsafe { transmute(12u16.to_be()) }; // or .to_le()
+        let bytes: [u8; 2] = [0, 12]; // or .to_le()
         let val = try_u16_from_bytes(&bytes);
         assert_eq!(val.unwrap(), 12u16);
     }
 
     #[test]
     fn test_from_i_bytes() {
-        let bytes: [u8; 8] = unsafe { transmute(12i64.to_be()) }; // or .to_le()
+        let bytes: [u8; 8] = [0, 0, 0, 0, 0, 0, 0, 12]; // or .to_le()
         let val = from_i_bytes(&bytes);
         assert_eq!(val, 12i64);
     }
