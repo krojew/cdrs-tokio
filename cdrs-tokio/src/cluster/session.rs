@@ -33,7 +33,7 @@ use crate::transport::{CdrsTransport, TransportTcp};
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error;
 use cassandra_protocol::events::ServerEvent;
-use cassandra_protocol::frame::frame_result::BodyResResultPrepared;
+use cassandra_protocol::frame::frame_result::{BodyResResultPrepared, TableSpec};
 use cassandra_protocol::frame::{Frame, Serialize};
 use cassandra_protocol::query::utils::prepare_flags;
 use cassandra_protocol::query::{
@@ -321,7 +321,7 @@ impl<
                 keyspace: result
                     .metadata
                     .global_table_spec
-                    .map(|(keyspace, _)| keyspace.as_plain()),
+                    .map(|TableSpec { ks_name, .. }| ks_name.as_plain()),
                 pk_indexes: result.metadata.pk_indexes,
             })
     }
