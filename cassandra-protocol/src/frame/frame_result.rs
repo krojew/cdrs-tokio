@@ -242,7 +242,7 @@ pub struct RowsMetadata {
     // In fact by specification Vec should have only two elements representing the
     // (unique) keyspace name and table name the columns belong to
     /// `Option` that may contain global table space.
-    pub global_table_spec: Option<(CString, CString)>,
+    pub global_table_spec: Option<TableSpec>,
     /// List of column specifications.
     pub col_specs: Vec<ColSpec>,
 }
@@ -303,15 +303,19 @@ impl FromBytes for RowsMetadataFlags {
     }
 }
 
+/// Table specifiction.
+#[derive(Debug, Clone)]
+pub struct TableSpec {
+    pub ks_name: CString,
+    pub table_name: CString,
+}
+
 /// Single column specification.
 #[derive(Debug, Clone)]
 pub struct ColSpec {
-    /// The initial <ks_name> is a string and is only present
+    /// The initial <ks_name> and <table_name> are strings and only present
     /// if the Global_tables_spec flag is NOT set
-    pub ks_name: Option<CString>,
-    /// The initial <table_name> is a string and is present
-    /// if the Global_tables_spec flag is NOT set
-    pub table_name: Option<CString>,
+    pub table_spec: Option<TableSpec>,
     /// Column name
     pub name: CString,
     /// Column type defined in spec in 4.2.5.2
@@ -326,14 +330,13 @@ impl ColSpec {
     ) -> error::Result<Vec<ColSpec>> {
         (0..column_count)
             .map(|_| {
-                let ks_name: Option<CString> = if !has_global_table_space {
-                    Some(CString::from_cursor(cursor)?)
-                } else {
-                    None
-                };
-
-                let table_name = if !has_global_table_space {
-                    Some(CString::from_cursor(cursor)?)
+                let table_spec = if !has_global_table_space {
+                    let ks_name = CString::from_cursor(cursor)?;
+                    let table_name = CString::from_cursor(cursor)?;
+                    Some(TableSpec {
+                        ks_name,
+                        table_name,
+                    })
                 } else {
                     None
                 };
@@ -342,8 +345,7 @@ impl ColSpec {
                 let col_type = ColTypeOption::from_cursor(cursor)?;
 
                 Ok(ColSpec {
-                    ks_name,
-                    table_name,
+                    table_spec,
                     name,
                     col_type,
                 })
@@ -586,7 +588,7 @@ pub struct PreparedMetadata {
     pub columns_count: i32,
     pub pk_count: i32,
     pub pk_indexes: Vec<i16>,
-    pub global_table_spec: Option<(CString, CString)>,
+    pub global_table_spec: Option<TableSpec>,
     pub col_specs: Vec<ColSpec>,
 }
 
@@ -627,11 +629,14 @@ impl FromCursor for PreparedMetadata {
 fn extract_global_table_space(
     cursor: &mut Cursor<&[u8]>,
     has_global_table_space: bool,
-) -> error::Result<Option<(CString, CString)>> {
+) -> error::Result<Option<TableSpec>> {
     Ok(if has_global_table_space {
-        let keyspace = CString::from_cursor(cursor)?;
+        let ks_name = CString::from_cursor(cursor)?;
         let table_name = CString::from_cursor(cursor)?;
-        Some((keyspace, table_name))
+        Some(TableSpec {
+            ks_name,
+            table_name,
+        })
     } else {
         None
     })
