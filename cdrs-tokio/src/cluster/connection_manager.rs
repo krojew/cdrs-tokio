@@ -127,7 +127,7 @@ async fn set_keyspace<T: CdrsTransport>(
             format!("USE {}", current_keyspace),
             Default::default(),
             None,
-            None,
+            false,
             None,
             None,
             None,

@@ -9,7 +9,7 @@ pub struct QueryParamsBuilder {
     consistency: Consistency,
     flags: Option<QueryFlags>,
     values: Option<QueryValues>,
-    with_names: Option<bool>,
+    with_names: bool,
     page_size: Option<i32>,
     paging_state: Option<CBytes>,
     serial_consistency: Option<Consistency>,
@@ -37,12 +37,11 @@ impl QueryParamsBuilder {
 
     /// Sets new query consistency
     pub fn values(mut self, values: QueryValues) -> Self {
-        let with_names = values.has_names();
-        self.with_names = Some(with_names);
+        self.with_names = values.has_names();
         self.values = Some(values);
         self.flags = self.flags.or_else(|| {
             let mut flags = QueryFlags::VALUE;
-            if with_names {
+            if self.with_names {
                 flags.insert(QueryFlags::WITH_NAMES_FOR_VALUES);
             }
             Some(flags)
@@ -51,7 +50,11 @@ impl QueryParamsBuilder {
         self
     }
 
-    builder_opt_field!(with_names, bool);
+    /// Sets the "with names for values" flag
+    pub fn with_names(mut self, with_names: bool) -> Self {
+        self.with_names = with_names;
+        self
+    }
 
     /// Sets new query consistency
     pub fn page_size(mut self, size: i32) -> Self {
@@ -85,7 +88,6 @@ impl QueryParamsBuilder {
     pub fn finalize(self) -> QueryParams {
         QueryParams {
             consistency: self.consistency,
-            flags: self.flags.unwrap_or_default(),
             values: self.values,
             with_names: self.with_names,
             page_size: self.page_size,
