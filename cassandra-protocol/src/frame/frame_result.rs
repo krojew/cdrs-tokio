@@ -303,7 +303,7 @@ impl FromBytes for RowsMetadataFlags {
     }
 }
 
-/// Table specifiction.
+/// Table specification.
 #[derive(Debug, Clone)]
 pub struct TableSpec {
     pub ks_name: CString,
