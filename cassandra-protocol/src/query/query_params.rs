@@ -15,10 +15,8 @@ use crate::Error;
 pub struct QueryParams {
     /// Cassandra consistency level.
     pub consistency: Consistency,
-    /// Query flags.
-    pub flags: QueryFlags,
     /// Were values provided with names
-    pub with_names: Option<bool>,
+    pub with_names: bool,
     /// Array of values.
     pub values: Option<QueryValues>,
     /// Page size.
@@ -45,10 +43,34 @@ pub struct QueryParams {
 }
 
 impl QueryParams {
-    /// Sets values of Query request params.
-    pub fn set_values(&mut self, values: QueryValues) {
-        self.flags.insert(QueryFlags::VALUE);
-        self.values = Some(values);
+    fn get_flags(&self) -> QueryFlags {
+        let mut flags = QueryFlags::empty();
+
+        if self.values.is_some() {
+            flags.insert(QueryFlags::VALUE);
+        }
+
+        if self.with_names {
+            flags.insert(QueryFlags::WITH_NAMES_FOR_VALUES);
+        }
+
+        if self.page_size.is_some() {
+            flags.insert(QueryFlags::PAGE_SIZE);
+        }
+
+        if self.paging_state.is_some() {
+            flags.insert(QueryFlags::WITH_PAGING_STATE);
+        }
+
+        if self.serial_consistency.is_some() {
+            flags.insert(QueryFlags::WITH_SERIAL_CONSISTENCY);
+        }
+
+        if self.timestamp.is_some() {
+            flags.insert(QueryFlags::WITH_DEFAULT_TIMESTAMP);
+        }
+
+        flags
     }
 }
 
@@ -57,40 +79,30 @@ impl Serialize for QueryParams {
         let consistency: CIntShort = self.consistency.into();
         consistency.serialize(cursor);
 
-        let flag_bits = self.flags.bits();
+        let flag_bits = self.get_flags().bits();
         flag_bits.serialize(cursor);
 
-        if self.flags.contains(QueryFlags::VALUE) {
-            if let Some(values) = &self.values {
-                let len = values.len() as CIntShort;
-                len.serialize(cursor);
-                values.serialize(cursor);
-            }
+        if let Some(values) = &self.values {
+            let len = values.len() as CIntShort;
+            len.serialize(cursor);
+            values.serialize(cursor);
         }
 
-        if self.flags.contains(QueryFlags::PAGE_SIZE) {
-            if let Some(page_size) = self.page_size {
-                page_size.serialize(cursor);
-            }
+        if let Some(page_size) = self.page_size {
+            page_size.serialize(cursor);
         }
 
-        if self.flags.contains(QueryFlags::WITH_PAGING_STATE) {
-            if let Some(paging_state) = &self.paging_state {
-                paging_state.serialize(cursor);
-            }
+        if let Some(paging_state) = &self.paging_state {
+            paging_state.serialize(cursor);
         }
 
-        if self.flags.contains(QueryFlags::WITH_SERIAL_CONSISTENCY) {
-            if let Some(serial_consistency) = self.serial_consistency {
-                let serial_consistency: CIntShort = serial_consistency.into();
-                serial_consistency.serialize(cursor);
-            }
+        if let Some(serial_consistency) = self.serial_consistency {
+            let serial_consistency: CIntShort = serial_consistency.into();
+            serial_consistency.serialize(cursor);
         }
 
-        if self.flags.contains(QueryFlags::WITH_DEFAULT_TIMESTAMP) {
-            if let Some(timestamp) = self.timestamp {
-                timestamp.serialize(cursor);
-            }
+        if let Some(timestamp) = self.timestamp {
+            timestamp.serialize(cursor);
         }
     }
 }

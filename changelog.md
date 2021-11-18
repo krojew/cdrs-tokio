@@ -24,6 +24,8 @@ understated.
 
 ### Changed
 
+* All `with_name` fields or args in the query API are now `bool` instead of `Option<bool>`
+* `flags` field removed from `QueryParams` (flags are now derived from the other fields at serialization time)
 * Rewritten transport layer for massive performance improvements (including removing `bb8`). This
   involves changing a large portion of public API related to transport and server events.
 * Rewritten event mechanism - now you can subscribe to server events via `create_event_receiver()` in `Session`.
