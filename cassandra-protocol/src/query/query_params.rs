@@ -43,7 +43,7 @@ pub struct QueryParams {
 }
 
 impl QueryParams {
-    fn get_flags(&self) -> QueryFlags {
+    fn flags(&self) -> QueryFlags {
         let mut flags = QueryFlags::empty();
 
         if self.values.is_some() {
@@ -79,7 +79,7 @@ impl Serialize for QueryParams {
         let consistency: CIntShort = self.consistency.into();
         consistency.serialize(cursor);
 
-        let flag_bits = self.get_flags().bits();
+        let flag_bits = self.flags().bits();
         flag_bits.serialize(cursor);
 
         if let Some(values) = &self.values {
