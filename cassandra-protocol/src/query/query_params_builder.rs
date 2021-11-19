@@ -35,7 +35,7 @@ impl QueryParamsBuilder {
     // Sets new flags.
     builder_opt_field!(flags, QueryFlags);
 
-    /// Sets new query consistency
+    /// Sets new query values
     pub fn values(mut self, values: QueryValues) -> Self {
         self.with_names = values.has_names();
         self.values = Some(values);
