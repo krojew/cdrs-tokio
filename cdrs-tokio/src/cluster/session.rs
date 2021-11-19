@@ -2,10 +2,10 @@ use itertools::Itertools;
 use std::io::{Cursor, Write};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
-use std::ops::Deref;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::task::JoinHandle;
+use tracing::*;
 
 use crate::cluster::connection_manager::ConnectionManager;
 use crate::cluster::control_connection::ControlConnection;
@@ -155,15 +155,7 @@ impl<
     ) -> error::Result<Frame> {
         let consistency = query_parameters.consistency;
         let flags = prepare_flags(with_tracing, with_warnings);
-        let options_frame = Frame::new_req_execute(
-            prepared
-                .id
-                .read()
-                .expect("Cannot read prepared query id!")
-                .deref(),
-            &query_parameters,
-            flags,
-        );
+        let options_frame = Frame::new_req_execute(&prepared.id, &query_parameters, flags);
 
         let keyspace = prepared
             .keyspace
@@ -199,11 +191,17 @@ impl<
         if let Err(error::Error::Server(error)) = &result {
             // if query is unprepared
             if error.error_code == 0x2500 {
+                debug!("Re-preparing statement.");
                 if let Ok(new) = self.prepare_raw(&prepared.query).await {
-                    *prepared
-                        .id
-                        .write()
-                        .expect("Cannot write prepared query id!") = new.id.clone();
+                    // re-prepare the statement and check the resulting id - it should remain the
+                    // same as the old one, except when schema changed in the meantime, in which
+                    // case, the client should have the knowledge how to handle it
+                    // see: https://issues.apache.org/jira/browse/CASSANDRA-10786
+
+                    if prepared.id != new.id {
+                        return Err("Re-preparing an unprepared statement resulted in a different id - probably schema changed on the server.".into());
+                    }
+
                     let flags = prepare_flags(with_tracing, with_warnings);
                     let options_frame = Frame::new_req_execute(&new.id, &query_parameters, flags);
                     result = send_frame(
@@ -316,7 +314,7 @@ impl<
         self.prepare_raw_tw(query, with_tracing, with_warnings)
             .await
             .map(|result| PreparedQuery {
-                id: RwLock::new(result.id),
+                id: result.id,
                 query: s,
                 keyspace: result
                     .metadata

@@ -335,7 +335,7 @@ impl FromCursor for CStringList {
 
 //
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
 /// The structure that represents Cassandra byte type.
 pub struct CBytes {
     bytes: Option<Vec<u8>>,
@@ -406,7 +406,7 @@ impl Serialize for CBytes {
 }
 
 /// Cassandra short bytes
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct CBytesShort {
     bytes: Option<Vec<u8>>,
 }

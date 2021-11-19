@@ -122,9 +122,7 @@ impl Serialize for BatchQuery {
 
         match &self.subject {
             BatchQuerySubj::PreparedId(s) => {
-                s.id.read()
-                    .expect("Cannot read prepared query id!")
-                    .serialize(cursor);
+                s.id.serialize(cursor);
             }
             BatchQuerySubj::QueryString(s) => {
                 s.serialize(cursor);
