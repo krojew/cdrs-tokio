@@ -233,7 +233,7 @@ impl<
     }
 
     /// Executes given prepared query with query values and optional tracing, and warnings.
-    pub async fn exec_with_values_tw<V: Into<QueryValues> + Sync + Send>(
+    pub async fn exec_with_values_tw<V: Into<QueryValues>>(
         &self,
         prepared: &PreparedQuery,
         values: V,
@@ -247,7 +247,7 @@ impl<
     }
 
     /// Executes given prepared query with query values.
-    pub async fn exec_with_values<V: Into<QueryValues> + Sync + Send>(
+    pub async fn exec_with_values<V: Into<QueryValues>>(
         &self,
         prepared: &PreparedQuery,
         values: V,
@@ -418,7 +418,7 @@ impl<
     }
 
     /// Executes a query with bounded values (either with or without names).
-    pub async fn query_with_values<Q: ToString, V: Into<QueryValues> + Send>(
+    pub async fn query_with_values<Q: ToString, V: Into<QueryValues>>(
         &self,
         query: Q,
         values: V,
@@ -428,7 +428,7 @@ impl<
 
     /// Executes a query with bounded values (either with or without names)
     /// and ability to see warnings, trace a request and default parameters.
-    pub async fn query_with_values_tw<Q: ToString, V: Into<QueryValues> + Send>(
+    pub async fn query_with_values_tw<Q: ToString, V: Into<QueryValues>>(
         &self,
         query: Q,
         values: V,
