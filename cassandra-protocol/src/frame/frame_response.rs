@@ -11,11 +11,10 @@ use crate::frame::frame_result::{
     ResResultBody, RowsMetadata,
 };
 use crate::frame::frame_supported::*;
-use crate::frame::FromCursor;
-use crate::frame::Opcode;
+use crate::frame::{FromCursor, Opcode};
 use crate::types::rows::Row;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ResponseBody {
     Error(CdrsError),
     Startup,
@@ -33,6 +32,14 @@ pub enum ResponseBody {
     AuthChallenge(BodyResAuthChallenge),
     AuthResponse,
     AuthSuccess(BodyReqAuthSuccess),
+}
+
+// This implementation is incomplete so only enable in tests
+#[cfg(test)]
+use crate::frame::Serialize;
+#[cfg(test)]
+impl Serialize for ResponseBody {
+    fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {}
 }
 
 impl ResponseBody {

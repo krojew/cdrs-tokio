@@ -305,6 +305,7 @@ impl TryFrom<u8> for Opcode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frame::frame_result::BodyResResultVoid;
 
     #[test]
     #[cfg(not(feature = "v3"))]
@@ -376,5 +377,38 @@ mod tests {
         assert_eq!(Opcode::try_from(0x0E).unwrap(), Opcode::AuthChallenge);
         assert_eq!(Opcode::try_from(0x0F).unwrap(), Opcode::AuthResponse);
         assert_eq!(Opcode::try_from(0x10).unwrap(), Opcode::AuthSuccess);
+    }
+
+    fn test_encode_decode_roundtrip(raw_frame: &[u8], frame: Frame, body: ResponseBody) {
+        // test encode
+        let encoded_body = body.serialize_to_vec();
+        assert_eq!(&frame.body, &encoded_body);
+
+        let encoded_frame = frame.encode_with(Compression::None).unwrap();
+        assert_eq!(raw_frame, &encoded_frame);
+
+        // TODO: implement once we have a sync parse_frame impl
+        // test decode
+        //let decoded_frame = parse_frame(raw_frame).unwrap();
+        //assert_eq!(frame, decoded_frame);
+
+        let decoded_body = frame.body().unwrap();
+        assert_eq!(body, decoded_body)
+    }
+
+    #[test]
+    fn test_ready() {
+        let bytes = vec![3, 0, 0, 0, 2, 0, 0, 0, 0];
+        let frame = Frame {
+            version: Version::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Ready,
+            stream: 0,
+            body: vec![],
+            tracing_id: None,
+            warnings: vec![],
+        };
+        let body = ResponseBody::Ready(BodyResResultVoid);
+        test_encode_decode_roundtrip(&bytes, frame, body);
     }
 }
