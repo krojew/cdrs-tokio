@@ -83,7 +83,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn into_cbytes_test() {
+    fn serialize_test() {
         assert_eq!(
             Decimal::new(129.into(), 0).serialize_to_vec(),
             vec![0, 0, 0, 0, 0x00, 0x81]

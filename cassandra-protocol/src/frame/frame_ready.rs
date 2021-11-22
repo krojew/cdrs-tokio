@@ -21,7 +21,7 @@ mod tests {
     }
 
     #[test]
-    fn body_res_ready_into_cbytes() {
+    fn body_res_ready_serialize() {
         let body = BodyResReady;
         assert!(body.serialize_to_vec().is_empty());
     }

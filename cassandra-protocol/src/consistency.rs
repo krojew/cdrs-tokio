@@ -188,7 +188,7 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn test_consistency_into_cbytes() {
+    fn test_consistency_serialize() {
         assert_eq!(Consistency::Any.serialize_to_vec(), &[0, 0]);
         assert_eq!(Consistency::One.serialize_to_vec(), &[0, 1]);
         assert_eq!(Consistency::Two.serialize_to_vec(), &[0, 2]);

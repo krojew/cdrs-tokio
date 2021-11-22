@@ -581,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cstring_into_cbytes() {
+    fn test_cstring_serialize() {
         let value = "foo".to_string();
         let cstring = CString::new(value);
 
@@ -620,7 +620,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cstringlong_into_cbytes() {
+    fn test_cstringlong_serialize() {
         let value = "foo".to_string();
         let cstring = CStringLong::new(value);
 
@@ -670,7 +670,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cbytes_into_cbytes() {
+    fn test_cbytes_serialize() {
         let bytes_vec = vec![1, 2, 3];
         let cbytes = CBytes::new(bytes_vec);
         assert_eq!(cbytes.serialize_to_vec(), vec![0, 0, 0, 3, 1, 2, 3]);
@@ -698,7 +698,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cbytesshort_into_cbytes() {
+    fn test_cbytesshort_serialize() {
         let bytes_vec: Vec<u8> = vec![1, 2, 3];
         let cbytes = CBytesShort::new(bytes_vec);
         assert_eq!(cbytes.serialize_to_vec(), vec![0, 3, 1, 2, 3]);
