@@ -12,12 +12,7 @@ keywords = ["cassandra", "driver", "client", "cassandradb", "async"]
 license = "MIT/Apache-2.0"
 
 [features]
-default = ["v4"]
 rust-tls = ["rustls", "tokio-rustls", "webpki"]
-v3 = ["cassandra-protocol/v3"]
-v4 = ["cassandra-protocol/v4"]
-# enable v5 feature when it's actually implemented
-# v5 = ["cassandra-protocol/v5"]
 e2e-tests = []
 
 [dependencies]

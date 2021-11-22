@@ -11,7 +11,7 @@ use crate::frame::frame_result::{
     ResResultBody, RowsMetadata,
 };
 use crate::frame::frame_supported::*;
-use crate::frame::{FromCursor, Opcode};
+use crate::frame::{FromCursor, Opcode, Version};
 use crate::types::rows::Row;
 
 #[derive(Debug, PartialEq)]
@@ -43,7 +43,11 @@ impl Serialize for ResponseBody {
 }
 
 impl ResponseBody {
-    pub fn from(bytes: &[u8], response_type: &Opcode) -> error::Result<ResponseBody> {
+    pub fn from(
+        bytes: &[u8],
+        response_type: &Opcode,
+        version: Version,
+    ) -> error::Result<ResponseBody> {
         let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
         Ok(match *response_type {
             // request frames
@@ -65,7 +69,9 @@ impl ResponseBody {
             Opcode::Supported => {
                 ResponseBody::Supported(BodyResSupported::from_cursor(&mut cursor)?)
             }
-            Opcode::Result => ResponseBody::Result(ResResultBody::from_cursor(&mut cursor)?),
+            Opcode::Result => {
+                ResponseBody::Result(ResResultBody::from_cursor(&mut cursor, version)?)
+            }
             Opcode::Event => ResponseBody::Event(BodyResEvent::from_cursor(&mut cursor)?),
             Opcode::AuthChallenge => {
                 ResponseBody::AuthChallenge(BodyResAuthChallenge::from_cursor(&mut cursor)?)

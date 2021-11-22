@@ -4,18 +4,21 @@ use std::sync::Arc;
 use crate::cluster::NodeAddress;
 use cassandra_protocol::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider};
 use cassandra_protocol::error::Result;
+use cassandra_protocol::frame::Version;
 
 /// Single node TCP connection config.
 #[derive(Clone)]
 pub struct NodeTcpConfig {
     pub contact_points: Vec<SocketAddr>,
     pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+    pub version: Version,
 }
 
 /// Builder structure that helps to configure TCP connection for node.
 pub struct NodeTcpConfigBuilder {
     addrs: Vec<NodeAddress>,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+    version: Version,
 }
 
 impl Default for NodeTcpConfigBuilder {
@@ -23,6 +26,7 @@ impl Default for NodeTcpConfigBuilder {
         NodeTcpConfigBuilder {
             addrs: vec![],
             authenticator_provider: Arc::new(NoneAuthenticatorProvider),
+            version: Version::V4,
         }
     }
 }
@@ -63,6 +67,12 @@ impl NodeTcpConfigBuilder {
         self
     }
 
+    /// Set cassandra protocol version
+    pub fn with_version(mut self, version: Version) -> Self {
+        self.version = version;
+        self
+    }
+
     /// Finalizes building process
     pub async fn build(self) -> Result<NodeTcpConfig> {
         // replace with map() when async lambdas become available
@@ -74,6 +84,7 @@ impl NodeTcpConfigBuilder {
         Ok(NodeTcpConfig {
             contact_points,
             authenticator_provider: self.authenticator_provider,
+            version: self.version,
         })
     }
 }

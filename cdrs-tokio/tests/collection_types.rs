@@ -80,7 +80,7 @@ async fn list() {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "v4", feature = "e2e-tests"))]
+#[cfg(all(feature = "e2e-tests"))]
 async fn list_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_lists_v4 \
                (my_text_list frozen<list<text>> PRIMARY KEY, \
@@ -196,7 +196,7 @@ async fn set() {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "v4", feature = "e2e-tests"))]
+#[cfg(all(feature = "e2e-tests"))]
 async fn set_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_sets_v4 \
                (my_text_set frozen<set<text>> PRIMARY KEY, \
@@ -325,7 +325,7 @@ async fn map_without_blob() {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "v4", feature = "e2e-tests"))]
+#[cfg(all(feature = "e2e-tests"))]
 async fn map_without_blob_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps_without_blob_v4 \
                (my_text_map frozen<map<text, text>> PRIMARY KEY, \

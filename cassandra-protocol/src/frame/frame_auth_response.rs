@@ -20,13 +20,14 @@ impl Serialize for BodyReqAuthResponse {
 
 impl Frame {
     /// Creates new frame of type `AuthResponse`.
-    pub fn new_req_auth_response(token_bytes: CBytes) -> Frame {
-        let version = Version::Request;
+    pub fn new_req_auth_response(token_bytes: CBytes, version: Version) -> Frame {
+        let direction = Direction::Request;
         let opcode = Opcode::AuthResponse;
         let body = BodyReqAuthResponse::new(token_bytes);
 
         Frame::new(
             version,
+            direction,
             Flags::empty(),
             opcode,
             body.serialize_to_vec(),
@@ -51,9 +52,9 @@ mod tests {
     #[test]
     fn frame_body_req_auth_response() {
         let bytes = vec![1, 2, 3];
-        let frame = Frame::new_req_auth_response(CBytes::new(bytes));
+        let frame = Frame::new_req_auth_response(CBytes::new(bytes), Version::V4);
 
-        assert_eq!(frame.version, Version::Request);
+        assert_eq!(frame.version, Version::V4);
         assert_eq!(frame.opcode, Opcode::AuthResponse);
         assert_eq!(frame.body, &[0, 0, 0, 3, 1, 2, 3]);
         assert_eq!(frame.tracing_id, None);

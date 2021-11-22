@@ -149,7 +149,7 @@ async fn integer() {
 
 // TODO counter, varint
 #[tokio::test]
-#[cfg(all(feature = "v4", feature = "e2e-tests"))]
+#[cfg(all(feature = "e2e-tests"))]
 async fn integer_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_integer_v4 \
                (my_bigint bigint PRIMARY KEY, my_int int, my_smallint smallint, \
