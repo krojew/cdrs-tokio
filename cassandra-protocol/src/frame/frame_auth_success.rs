@@ -4,7 +4,7 @@ use crate::error;
 use crate::frame::FromCursor;
 
 /// `BodyReqAuthSuccess` is a frame that represents a successful authentication response.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct BodyReqAuthSuccess;
 
 impl FromCursor for BodyReqAuthSuccess {

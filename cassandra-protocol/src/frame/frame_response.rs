@@ -14,7 +14,7 @@ use crate::frame::frame_supported::*;
 use crate::frame::{FromCursor, Opcode, Version};
 use crate::types::rows::Row;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ResponseBody {
     Error(CdrsError),
     Startup,

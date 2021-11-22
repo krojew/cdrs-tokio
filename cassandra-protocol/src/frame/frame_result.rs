@@ -79,7 +79,7 @@ impl FromCursor for ResultKind {
 
 /// `ResponseBody` is a generalized enum that represents all types of responses. Each of enum
 /// option wraps related body type.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
 pub enum ResResultBody {
     /// Void response body. It's an empty struct.
     Void(BodyResResultVoid),
@@ -161,7 +161,7 @@ impl ResResultBody {
 }
 
 /// Body of a response of type Void
-#[derive(Debug, Default, Copy, Clone, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct BodyResResultVoid;
 
 impl FromBytes for BodyResResultVoid {
@@ -179,7 +179,7 @@ impl FromCursor for BodyResResultVoid {
 }
 
 /// It represents set keyspace result body. Body contains keyspace name.
-#[derive(Debug, Constructor, PartialEq)]
+#[derive(Debug, Constructor, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
 pub struct BodyResResultSetKeyspace {
     /// It contains name of keyspace that was set.
     pub body: CString,
@@ -193,7 +193,7 @@ impl FromCursor for BodyResResultSetKeyspace {
 
 /// Structure that represents result of type
 /// [rows](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L533).
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
 pub struct BodyResResultRows {
     /// Rows metadata
     pub metadata: RowsMetadata,
@@ -235,7 +235,7 @@ impl FromCursor for BodyResResultRows {
 }
 
 /// Rows metadata.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct RowsMetadata {
     /// Flags.
     pub flags: RowsMetadataFlags,
@@ -308,14 +308,14 @@ impl FromBytes for RowsMetadataFlags {
 }
 
 /// Table specification.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct TableSpec {
     pub ks_name: CString,
     pub table_name: CString,
 }
 
 /// Single column specification.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct ColSpec {
     /// The initial <ks_name> and <table_name> are strings and only present
     /// if the Global_tables_spec flag is NOT set
@@ -444,7 +444,7 @@ impl FromCursor for ColType {
 }
 
 /// Cassandra option that represent column type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct ColTypeOption {
     /// Id refers to `ColType`.
     pub id: ColType,
@@ -483,7 +483,7 @@ impl FromCursor for ColTypeOption {
 }
 
 /// Enum that represents all possible types of `value` of `ColTypeOption`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub enum ColTypeOptionValue {
     CString(CString),
     ColType(ColType),
@@ -495,7 +495,7 @@ pub enum ColTypeOptionValue {
 }
 
 /// User defined type.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CUdt {
     /// Keyspace name.
     pub ks: CString,
@@ -531,7 +531,7 @@ impl FromCursor for CUdt {
 
 /// User defined type.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L608)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CTuple {
     /// List of types.
     pub types: Vec<ColTypeOption>,
@@ -554,7 +554,7 @@ impl FromCursor for CTuple {
 }
 
 /// The structure represents a body of a response frame of type `prepared`
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
 pub struct BodyResResultPrepared {
     /// id of prepared request
     pub id: CBytesShort,
@@ -589,7 +589,7 @@ bitflags! {
 }
 
 /// The structure that represents metadata of prepared response.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct PreparedMetadata {
     pub flags: PreparedMetadataFlags,
     pub columns_count: i32,

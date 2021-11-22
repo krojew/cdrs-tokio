@@ -18,7 +18,7 @@ pub type Result = result::Result<Frame, CdrsError>;
 /// from the specification it contains an error code and an error message. Apart of those
 /// depending of type of error it could contain an additional information about an error.
 /// This additional information is represented by `additional_info` property which is `ErrorKind`.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct CdrsError {
     /// `i32` that points to a type of error.
     pub error_code: CInt,
@@ -45,7 +45,7 @@ impl FromCursor for CdrsError {
 /// Additional error info in accordance to
 /// [Cassandra protocol v4]
 /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub enum AdditionalErrorInfo {
     Server,
     Protocol,
@@ -115,7 +115,7 @@ impl AdditionalErrorInfo {
 /// Additional info about
 /// [unavailable exception]
 /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Copy, Clone, Hash)]
 pub struct UnavailableError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -140,7 +140,7 @@ impl FromCursor for UnavailableError {
 }
 
 /// Timeout exception during a write request.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
 pub struct WriteTimeoutError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -169,7 +169,7 @@ impl FromCursor for WriteTimeoutError {
 }
 
 /// Timeout exception during a read request.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Copy, Clone, Hash)]
 pub struct ReadTimeoutError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -209,7 +209,7 @@ impl FromCursor for ReadTimeoutError {
 }
 
 /// A non-timeout exception during a read request.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Copy, Clone, Hash)]
 pub struct ReadFailureError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -253,7 +253,7 @@ impl FromCursor for ReadFailureError {
 }
 
 /// A (user defined) function failed during execution.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct FunctionFailureError {
     /// The keyspace of the failed function.
     pub keyspace: CString,
@@ -279,7 +279,7 @@ impl FromCursor for FunctionFailureError {
 
 /// A non-timeout exception during a write request.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1106)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Copy, Clone)]
 pub struct WriteFailureError {
     /// Consistency of the query having triggered the exception.
     pub cl: Consistency,
@@ -348,7 +348,7 @@ impl FromCursor for WriteType {
 
 /// The query attempted to create a keyspace or a table that was already existing.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1140)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct AlreadyExistsError {
     /// Represents either the keyspace that already exists,
     /// or the keyspace in which the table that already exists is.
@@ -370,7 +370,7 @@ impl FromCursor for AlreadyExistsError {
 /// executed if the provided prepared statement ID is not known by
 /// this host. [Read more...]
 /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct UnpreparedError {
     /// Unknown ID.
     pub id: CBytesShort,

@@ -211,7 +211,7 @@ pub fn serialize_str(cursor: &mut Cursor<&mut Vec<u8>>, value: &str) {
     let _ = cursor.write(value.as_bytes());
 }
 
-#[derive(Debug, Clone, Constructor, PartialEq)]
+#[derive(Debug, Clone, Constructor, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CString {
     string: String,
 }
@@ -258,7 +258,7 @@ impl FromCursor for CString {
     }
 }
 
-#[derive(Debug, Clone, Constructor, PartialEq)]
+#[derive(Debug, Clone, Constructor, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CStringLong {
     string: String,
 }
@@ -299,7 +299,7 @@ impl FromCursor for CStringLong {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Constructor, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CStringList {
     pub list: Vec<CString>,
 }
@@ -310,10 +310,6 @@ impl CStringList {
             .into_iter()
             .map(|string| string.into_plain())
             .collect()
-    }
-
-    pub fn new(list: Vec<CString>) -> Self {
-        CStringList { list }
     }
 }
 
@@ -499,15 +495,9 @@ impl FromCursor for CIntShort {
 
 /// The structure which represents Cassandra inet
 /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Constructor)]
 pub struct CInet {
     pub addr: SocketAddr,
-}
-
-impl CInet {
-    pub fn new(addr: SocketAddr) -> Self {
-        CInet { addr }
-    }
 }
 
 impl Serialize for CInet {

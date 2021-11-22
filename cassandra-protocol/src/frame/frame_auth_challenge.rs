@@ -7,7 +7,7 @@ use crate::types::CBytes;
 use super::Serialize;
 
 /// Server authentication challenge.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct BodyResAuthChallenge {
     pub data: CBytes,
 }

@@ -9,7 +9,7 @@ use crate::types::CIntShort;
 /// Enum that represents two types of query values:
 /// * values without name
 /// * values with names
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryValues {
     SimpleValues(Vec<Value>),
     NamedValues(HashMap<String, Value>),
