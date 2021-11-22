@@ -205,7 +205,7 @@ pub fn to_float_big(f: f64) -> Vec<u8> {
     f.to_be_bytes().into()
 }
 
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone, Constructor, PartialEq)]
 pub struct CString {
     string: String,
 }
@@ -252,7 +252,7 @@ impl FromCursor for CString {
     }
 }
 
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone, Constructor, PartialEq)]
 pub struct CStringLong {
     string: String,
 }
@@ -293,7 +293,7 @@ impl FromCursor for CStringLong {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CStringList {
     pub list: Vec<CString>,
 }

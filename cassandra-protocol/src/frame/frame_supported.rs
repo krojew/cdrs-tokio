@@ -5,7 +5,7 @@ use crate::error;
 use crate::frame::FromCursor;
 use crate::types::{CString, CStringList, SHORT_LEN};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BodyResSupported {
     pub data: HashMap<String, Vec<String>>,
 }

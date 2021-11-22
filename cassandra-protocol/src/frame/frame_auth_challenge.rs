@@ -5,7 +5,7 @@ use crate::frame::FromCursor;
 use crate::types::CBytes;
 
 /// Server authentication challenge.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BodyResAuthChallenge {
     pub data: CBytes,
 }

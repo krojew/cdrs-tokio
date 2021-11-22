@@ -5,7 +5,7 @@ use crate::frame::FromCursor;
 use crate::types::CString;
 
 /// A server authentication challenge.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BodyResAuthenticate {
     pub data: CString,
 }
