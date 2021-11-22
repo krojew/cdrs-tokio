@@ -328,7 +328,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_value_type_into_cbytes() {
+    fn test_value_type_serialize() {
         // normal value types
         let normal_type = ValueType::Normal(1);
         assert_eq!(normal_type.serialize_to_vec(), vec![0, 0, 0, 1]);
@@ -382,7 +382,7 @@ mod tests {
     }
 
     #[test]
-    fn test_value_into_cbytes() {
+    fn test_value_serialize() {
         let value = Value::new_normal(1_u8);
         assert_eq!(value.serialize_to_vec(), vec![0, 0, 0, 1, 1]);
     }
