@@ -14,7 +14,7 @@ use crate::transport::TransportTcp;
 use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::frame::Frame;
+use cassandra_protocol::frame::{Frame, Version};
 
 #[derive(Constructor)]
 pub struct TcpConnectionManager {
@@ -24,6 +24,7 @@ pub struct TcpConnectionManager {
     compression: Compression,
     buffer_size: usize,
     tcp_nodelay: bool,
+    version: Version,
 }
 
 impl ConnectionManager<TransportTcp> for TcpConnectionManager {
@@ -76,6 +77,7 @@ impl TcpConnectionManager {
             self.authenticator_provider.deref(),
             self.keyspace_holder.deref(),
             self.compression,
+            self.version,
         )
         .await?;
 

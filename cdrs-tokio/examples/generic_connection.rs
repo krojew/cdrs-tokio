@@ -27,7 +27,7 @@ use cdrs_tokio::cluster::session::{
 };
 use cdrs_tokio::cluster::{ConnectionManager, KeyspaceHolder};
 use cdrs_tokio::compression::Compression;
-use cdrs_tokio::frame::{Frame, Serialize};
+use cdrs_tokio::frame::{Frame, Serialize, Version};
 use cdrs_tokio::future::BoxFuture;
 use cdrs_tokio::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
@@ -58,6 +58,7 @@ struct VirtualClusterConfig {
     actual: Ipv4Addr,
     keyspace_holder: Arc<KeyspaceHolder>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+    version: Version,
 }
 
 fn rewrite(addr: SocketAddr, mask: &Ipv4Addr, actual: &Ipv4Addr) -> SocketAddr {
@@ -113,6 +114,7 @@ impl VirtualConnectionManager {
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
                 true,
+                config.version,
             ),
             mask: config.mask,
             actual: config.actual,
@@ -129,6 +131,10 @@ impl GenericClusterConfig<TransportTcp, VirtualConnectionManager> for VirtualClu
 
     fn event_channel_capacity(&self) -> usize {
         32
+    }
+
+    fn version(&self) -> Version {
+        self.version
     }
 }
 
@@ -148,6 +154,7 @@ async fn main() {
         actual,
         keyspace_holder: Default::default(),
         reconnection_policy: reconnection_policy.clone(),
+        version: Version::V4,
     };
     let nodes = [
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 9042),

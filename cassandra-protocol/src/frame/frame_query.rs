@@ -66,8 +66,9 @@ impl Frame {
         timestamp: Option<i64>,
         flags: Flags,
         is_idempotent: bool,
+        version: Version,
     ) -> Frame {
-        let version = Version::Request;
+        let direction = Direction::Request;
         let opcode = Opcode::Query;
         let body = BodyReqQuery::new(
             query,
@@ -83,6 +84,7 @@ impl Frame {
 
         Frame::new(
             version,
+            direction,
             flags,
             opcode,
             body.serialize_to_vec(),
@@ -92,7 +94,7 @@ impl Frame {
     }
 
     #[inline]
-    pub fn new_query(query: Query, flags: Flags) -> Frame {
+    pub fn new_query(query: Query, flags: Flags, version: Version) -> Frame {
         Frame::new_req_query(
             query.query,
             query.params.consistency,
@@ -104,6 +106,7 @@ impl Frame {
             query.params.timestamp,
             flags,
             query.params.is_idempotent,
+            version,
         )
     }
 }

@@ -13,7 +13,7 @@ use crate::transport::TransportRustls;
 use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::frame::Frame;
+use cassandra_protocol::frame::{Frame, Version};
 
 pub struct RustlsConnectionManager {
     dns_name: webpki::DNSName,
@@ -24,6 +24,7 @@ pub struct RustlsConnectionManager {
     compression: Compression,
     buffer_size: usize,
     tcp_nodelay: bool,
+    version: Version,
 }
 
 impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
@@ -64,6 +65,7 @@ impl RustlsConnectionManager {
         compression: Compression,
         buffer_size: usize,
         tcp_nodelay: bool,
+        version: Version,
     ) -> Self {
         RustlsConnectionManager {
             dns_name,
@@ -74,6 +76,7 @@ impl RustlsConnectionManager {
             compression,
             buffer_size,
             tcp_nodelay,
+            version,
         }
     }
 
@@ -101,6 +104,7 @@ impl RustlsConnectionManager {
             self.authenticator_provider.deref(),
             self.keyspace_holder.deref(),
             self.compression,
+            self.version,
         )
         .await?;
 

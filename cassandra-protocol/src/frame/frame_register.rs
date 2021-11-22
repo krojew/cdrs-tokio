@@ -27,13 +27,14 @@ impl Serialize for BodyReqRegister {
 
 impl Frame {
     /// Creates new frame of type `REGISTER`.
-    pub fn new_req_register(events: Vec<SimpleServerEvent>) -> Frame {
-        let version = Version::Request;
+    pub fn new_req_register(events: Vec<SimpleServerEvent>, version: Version) -> Frame {
+        let direction = Direction::Request;
         let opcode = Opcode::Register;
         let register_body = BodyReqRegister { events };
 
         Frame::new(
             version,
+            direction,
             Flags::empty(),
             opcode,
             register_body.serialize_to_vec(),

@@ -24,14 +24,16 @@ impl Frame {
         id: &CBytesShort,
         query_parameters: &QueryParams,
         flags: Flags,
+        version: Version,
     ) -> Frame {
-        let version = Version::Request;
+        let direction = Direction::Request;
         let opcode = Opcode::Execute;
 
         let body = BodyReqExecute::new(id, query_parameters);
 
         Frame::new(
             version,
+            direction,
             flags,
             opcode,
             body.serialize_to_vec(),

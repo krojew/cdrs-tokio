@@ -34,7 +34,7 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error;
 use cassandra_protocol::events::ServerEvent;
 use cassandra_protocol::frame::frame_result::{BodyResResultPrepared, TableSpec};
-use cassandra_protocol::frame::{Frame, Serialize};
+use cassandra_protocol::frame::{Frame, Serialize, Version};
 use cassandra_protocol::query::utils::prepare_flags;
 use cassandra_protocol::query::{
     PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
@@ -121,6 +121,7 @@ pub struct Session<
     cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
     _transport: PhantomData<T>,
     _connection_manager: PhantomData<CM>,
+    version: Version,
 }
 
 impl<
@@ -155,7 +156,8 @@ impl<
     ) -> error::Result<Frame> {
         let consistency = query_parameters.consistency;
         let flags = prepare_flags(with_tracing, with_warnings);
-        let options_frame = Frame::new_req_execute(&prepared.id, &query_parameters, flags);
+        let options_frame =
+            Frame::new_req_execute(&prepared.id, &query_parameters, flags, self.version);
 
         let keyspace = prepared
             .keyspace
@@ -203,7 +205,8 @@ impl<
                     }
 
                     let flags = prepare_flags(with_tracing, with_warnings);
-                    let options_frame = Frame::new_req_execute(&new.id, &query_parameters, flags);
+                    let options_frame =
+                        Frame::new_req_execute(&new.id, &query_parameters, flags, self.version);
                     result = send_frame(
                         self,
                         options_frame,
@@ -283,7 +286,7 @@ impl<
     ) -> error::Result<BodyResResultPrepared> {
         let flags = prepare_flags(with_tracing, with_warnings);
 
-        let query_frame = Frame::new_req_prepare(query.to_string(), flags);
+        let query_frame = Frame::new_req_prepare(query.to_string(), flags, self.version);
 
         send_frame(self, query_frame, false, None, None, None, None)
             .await
@@ -342,7 +345,7 @@ impl<
         let keyspace = batch.keyspace.take();
         let consistency = batch.consistency;
 
-        let query_frame = Frame::new_req_batch(batch, flags);
+        let query_frame = Frame::new_req_batch(batch, flags, self.version);
 
         send_frame(
             self,
@@ -368,6 +371,7 @@ impl<
         mut query_params: QueryParams,
         with_tracing: bool,
         with_warnings: bool,
+        version: Version,
     ) -> error::Result<Frame> {
         let is_idempotent = query_params.is_idempotent;
         let consistency = query_params.consistency;
@@ -384,7 +388,7 @@ impl<
         };
 
         let flags = prepare_flags(with_tracing, with_warnings);
-        let query_frame = Frame::new_query(query, flags);
+        let query_frame = Frame::new_query(query, flags, version);
 
         send_frame(
             self,
@@ -411,8 +415,14 @@ impl<
         with_warnings: bool,
     ) -> error::Result<Frame> {
         let query_params = QueryParamsBuilder::new().finalize();
-        self.query_with_params_tw(query, query_params, with_tracing, with_warnings)
-            .await
+        self.query_with_params_tw(
+            query,
+            query_params,
+            with_tracing,
+            with_warnings,
+            self.version,
+        )
+        .await
     }
 
     /// Executes a query with bounded values (either with or without names).
@@ -435,8 +445,14 @@ impl<
     ) -> error::Result<Frame> {
         let query_params_builder = QueryParamsBuilder::new();
         let query_params = query_params_builder.values(values.into()).finalize();
-        self.query_with_params_tw(query, query_params, with_tracing, with_warnings)
-            .await
+        self.query_with_params_tw(
+            query,
+            query_params,
+            with_tracing,
+            with_warnings,
+            self.version,
+        )
+        .await
     }
 
     /// Executes a query with query params without warnings and tracing.
@@ -445,7 +461,7 @@ impl<
         query: Q,
         query_params: QueryParams,
     ) -> error::Result<Frame> {
-        self.query_with_params_tw(query, query_params, false, false)
+        self.query_with_params_tw(query, query_params, false, false, self.version)
             .await
     }
 
@@ -491,6 +507,7 @@ impl<
         contact_points: Vec<SocketAddr>,
         connection_manager: Arc<CM>,
         event_channel_capacity: usize,
+        version: Version,
     ) -> Self {
         let contact_points = contact_points
             .into_iter()
@@ -524,6 +541,7 @@ impl<
             connection_manager,
             session_context.clone(),
             node_distance_evaluator,
+            version,
         ));
 
         cluster_metadata_manager
@@ -537,6 +555,7 @@ impl<
             cluster_metadata_manager.clone(),
             event_sender.clone(),
             session_context,
+            version,
         );
 
         let control_connection_handle = tokio::spawn(control_connection.run());
@@ -550,6 +569,7 @@ impl<
             cluster_metadata_manager,
             _transport: Default::default(),
             _connection_manager: Default::default(),
+            version,
         }
     }
 }
@@ -599,6 +619,7 @@ where
         initial_nodes.into_iter().collect(),
         connection_manager,
         config.event_channel_capacity(),
+        config.version(),
     ))
 }
 
@@ -777,6 +798,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             self.config.compression,
             self.config.transport_buffer_size,
             self.config.tcp_nodelay,
+            self.node_config.version,
         ));
 
         Session::new(
@@ -788,6 +810,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             self.node_config.contact_points,
             connection_manager,
             self.config.event_channel_capacity,
+            self.node_config.version,
         )
     }
 }
@@ -881,6 +904,7 @@ impl<
             self.config.compression,
             self.config.transport_buffer_size,
             self.config.tcp_nodelay,
+            self.node_config.version,
         ));
 
         Session::new(
@@ -892,6 +916,7 @@ impl<
             self.node_config.contact_points,
             connection_manager,
             self.config.event_channel_capacity,
+            self.node_config.version,
         )
     }
 }

@@ -6,7 +6,7 @@ use std::io::{Cursor, Error as IoError, Read};
 use crate::error;
 use crate::error::Error;
 use crate::frame::events::SchemaChange;
-use crate::frame::{FromBytes, FromCursor, Serialize};
+use crate::frame::{FromBytes, FromCursor, Serialize, Version};
 use crate::types::rows::Row;
 use crate::types::*;
 
@@ -98,6 +98,7 @@ impl ResResultBody {
     fn parse_body_from_cursor(
         cursor: &mut Cursor<&[u8]>,
         result_kind: ResultKind,
+        version: Version,
     ) -> error::Result<ResResultBody> {
         Ok(match result_kind {
             ResultKind::Void => ResResultBody::Void(BodyResResultVoid::from_cursor(cursor)?),
@@ -106,7 +107,7 @@ impl ResResultBody {
                 ResResultBody::SetKeyspace(BodyResResultSetKeyspace::from_cursor(cursor)?)
             }
             ResultKind::Prepared => {
-                ResResultBody::Prepared(BodyResResultPrepared::from_cursor(cursor)?)
+                ResResultBody::Prepared(BodyResResultPrepared::from_cursor(cursor, version)?)
             }
             ResultKind::SchemaChange => {
                 ResResultBody::SchemaChange(SchemaChange::from_cursor(cursor)?)
@@ -149,10 +150,13 @@ impl ResResultBody {
     }
 }
 
-impl FromCursor for ResResultBody {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ResResultBody> {
+impl ResResultBody {
+    pub fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<ResResultBody> {
         let result_kind = ResultKind::from_cursor(cursor)?;
-        ResResultBody::parse_body_from_cursor(cursor, result_kind)
+        ResResultBody::parse_body_from_cursor(cursor, result_kind, version)
     }
 }
 
@@ -561,10 +565,13 @@ pub struct BodyResResultPrepared {
     pub result_metadata: RowsMetadata,
 }
 
-impl FromCursor for BodyResResultPrepared {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResResultPrepared> {
+impl BodyResResultPrepared {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<BodyResResultPrepared> {
         let id = CBytesShort::from_cursor(cursor)?;
-        let metadata = PreparedMetadata::from_cursor(cursor)?;
+        let metadata = PreparedMetadata::from_cursor(cursor, version)?;
         let result_metadata = RowsMetadata::from_cursor(cursor)?;
 
         Ok(BodyResResultPrepared {
@@ -592,11 +599,14 @@ pub struct PreparedMetadata {
     pub col_specs: Vec<ColSpec>,
 }
 
-impl FromCursor for PreparedMetadata {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<PreparedMetadata> {
+impl PreparedMetadata {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<PreparedMetadata> {
         let flags = PreparedMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor)?);
         let columns_count = CInt::from_cursor(cursor)?;
-        let pk_count = if cfg!(feature = "v3") {
+        let pk_count = if let Version::V3 = version {
             0
         } else {
             // v4 or v5

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::cluster::NodeAddress;
 use cassandra_protocol::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider};
 use cassandra_protocol::error::Result;
+use cassandra_protocol::frame::Version;
 
 /// Single node TLS connection config.
 #[derive(Clone)]
@@ -12,6 +13,7 @@ pub struct NodeRustlsConfig {
     pub dns_name: webpki::DNSName,
     pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub config: Arc<rustls::ClientConfig>,
+    pub version: Version,
 }
 
 /// Builder structure that helps to configure TLS connection for node.
@@ -20,6 +22,7 @@ pub struct NodeRustlsConfigBuilder {
     dns_name: webpki::DNSName,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<rustls::ClientConfig>,
+    version: Version,
 }
 
 impl NodeRustlsConfigBuilder {
@@ -29,6 +32,7 @@ impl NodeRustlsConfigBuilder {
             dns_name,
             authenticator_provider: Arc::new(NoneAuthenticatorProvider),
             config,
+            version: Version::V4,
         }
     }
 
@@ -63,6 +67,12 @@ impl NodeRustlsConfigBuilder {
         self
     }
 
+    /// Set cassandra protocol version
+    pub fn with_version(mut self, version: Version) -> Self {
+        self.version = version;
+        self
+    }
+
     /// Finalizes building process
     pub async fn build(self) -> Result<NodeRustlsConfig> {
         // replace with map() when async lambdas become available
@@ -76,6 +86,7 @@ impl NodeRustlsConfigBuilder {
             dns_name: self.dns_name,
             authenticator_provider: self.authenticator_provider,
             config: self.config,
+            version: self.version,
         })
     }
 }
