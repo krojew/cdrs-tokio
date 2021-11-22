@@ -12,7 +12,7 @@ use crate::load_balancing::LoadBalancingStrategy;
 use crate::retry::{ReconnectionPolicy, ReconnectionSchedule};
 use crate::transport::CdrsTransport;
 use cassandra_protocol::events::{ServerEvent, SimpleServerEvent};
-use cassandra_protocol::frame::Frame;
+use cassandra_protocol::frame::{Frame, Version};
 
 const DEFAULT_RECONNECT_DELAY: Duration = Duration::from_secs(10);
 const EVENT_CHANNEL_CAPACITY: usize = 32;
@@ -29,6 +29,7 @@ pub struct ControlConnection<
     cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
     event_sender: Sender<ServerEvent>,
     session_context: Arc<SessionContext<T>>,
+    version: Version,
 }
 
 impl<
@@ -50,11 +51,14 @@ impl<
                 .load()
                 .clone();
             if let Some(current_connection) = current_connection {
-                let register_frame = Frame::new_req_register(vec![
-                    SimpleServerEvent::SchemaChange,
-                    SimpleServerEvent::StatusChange,
-                    SimpleServerEvent::TopologyChange,
-                ]);
+                let register_frame = Frame::new_req_register(
+                    vec![
+                        SimpleServerEvent::SchemaChange,
+                        SimpleServerEvent::StatusChange,
+                        SimpleServerEvent::TopologyChange,
+                    ],
+                    self.version,
+                );
 
                 // in case of error, simply reconnect
                 let result = current_connection.write_frame(&register_frame).await;

@@ -65,6 +65,7 @@ fn next_stream_id() -> StreamId {
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct Frame {
     pub version: Version,
+    pub direction: Direction,
     pub flags: Flags,
     pub opcode: Opcode,
     pub stream: StreamId,
@@ -76,6 +77,7 @@ pub struct Frame {
 impl Frame {
     pub fn new(
         version: Version,
+        direction: Direction,
         flags: Flags,
         opcode: Opcode,
         body: Vec<u8>,
@@ -85,6 +87,7 @@ impl Frame {
         let stream = next_stream_id();
         Frame {
             version,
+            direction,
             flags,
             opcode,
             stream,
@@ -95,7 +98,7 @@ impl Frame {
     }
 
     pub fn body(&self) -> error::Result<ResponseBody> {
-        ResponseBody::from(self.body.as_slice(), &self.opcode)
+        ResponseBody::from(self.body.as_slice(), &self.opcode, self.version)
     }
 
     #[inline]
@@ -109,13 +112,13 @@ impl Frame {
     }
 
     pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
-        let version_byte = u8::from(self.version);
+        let combined_version_byte = u8::from(self.version) | u8::from(self.direction);
         let flag_byte = self.flags.bits();
         let opcode_byte = u8::from(self.opcode);
 
         let mut v = Vec::with_capacity(9);
 
-        v.push(version_byte);
+        v.push(combined_version_byte);
         v.push(flag_byte);
         v.extend_from_slice(&self.stream.to_be_bytes());
         v.push(opcode_byte);
@@ -136,55 +139,20 @@ impl Frame {
     }
 }
 
-/// Frame's version
 #[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash, Display)]
 pub enum Version {
-    Request,
-    Response,
-}
-
-impl Version {
-    /// Number of bytes that represent Cassandra frame's version.
-    pub const BYTE_LENGTH: usize = 1;
-
-    /// It returns an actual Cassandra request frame version that CDRS can work with.
-    /// This version is based on selected feature - on of `v3`, `v4` or `v5`.
-    fn request_version() -> u8 {
-        if cfg!(feature = "v3") {
-            0x03
-        } else if cfg!(feature = "v4") || cfg!(feature = "v5") {
-            0x04
-        } else {
-            panic!(
-                "{}",
-                "Protocol version is not supported. CDRS should be run with protocol feature \
-                 set to v3, v4 or v5"
-            );
-        }
-    }
-
-    /// It returns an actual Cassandra response frame version that CDRS can work with.
-    /// This version is based on selected feature - on of `v3`, `v4` or `v5`.
-    fn response_version() -> u8 {
-        if cfg!(feature = "v3") {
-            0x83
-        } else if cfg!(feature = "v4") || cfg!(feature = "v5") {
-            0x84
-        } else {
-            panic!(
-                "{}",
-                "Protocol version is not supported. CDRS should be run with protocol feature \
-                 set to v3, v4 or v5"
-            );
-        }
-    }
+    V3,
+    V4,
+    // enable v5 feature when it's actually implemented
+    //V5,
 }
 
 impl From<Version> for u8 {
     fn from(value: Version) -> Self {
         match value {
-            Version::Request => Version::request_version(),
-            Version::Response => Version::response_version(),
+            Version::V3 => 3,
+            Version::V4 => 4,
+            //Version::V5 => 5,
         }
     }
 }
@@ -193,15 +161,43 @@ impl TryFrom<u8> for Version {
     type Error = error::Error;
 
     fn try_from(version: u8) -> Result<Self, Self::Error> {
-        let req = Version::request_version();
-        let res = Version::response_version();
+        match version & 0x7F {
+            3 => Ok(Version::V3),
+            4 => Ok(Version::V4),
+            //5 => Ok(Version::V5),
+            v => Err(error::Error::General(format!(
+                "Unknown cassandra version: {}",
+                v
+            ))),
+        }
+    }
+}
 
-        if version == req {
-            Ok(Version::Request)
-        } else if version == res {
-            Ok(Version::Response)
-        } else {
-            Err(format!("Unexpected Cassandra version: {}", version).into())
+impl Version {
+    /// Number of bytes that represent Cassandra frame's version.
+    pub const BYTE_LENGTH: usize = 1;
+}
+
+#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash, Display)]
+pub enum Direction {
+    Request,
+    Response,
+}
+
+impl From<Direction> for u8 {
+    fn from(value: Direction) -> u8 {
+        match value {
+            Direction::Request => 0x00,
+            Direction::Response => 0x80,
+        }
+    }
+}
+
+impl From<u8> for Direction {
+    fn from(value: u8) -> Self {
+        match value & 0x80 {
+            0 => Direction::Request,
+            _ => Direction::Response,
         }
     }
 }
@@ -305,37 +301,33 @@ impl TryFrom<u8> for Opcode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::frame::frame_result::BodyResResultVoid;
 
     #[test]
-    #[cfg(not(feature = "v3"))]
     fn test_frame_version_as_byte() {
-        let request_version = Version::Request;
-        assert_eq!(u8::from(request_version), 0x04);
-        let response_version = Version::Response;
-        assert_eq!(u8::from(response_version), 0x84);
+        assert_eq!(u8::from(Version::V3), 0x03);
+        assert_eq!(u8::from(Version::V4), 0x04);
+        //assert_eq!(u8::from(Version::V5), 0x05);
+
+        assert_eq!(u8::from(Direction::Request), 0x00);
+        assert_eq!(u8::from(Direction::Response), 0x80);
     }
 
     #[test]
-    #[cfg(feature = "v3")]
-    fn test_frame_version_as_byte_v3() {
-        let request_version = Version::Request;
-        assert_eq!(u8::from(request_version), 0x03);
-        let response_version = Version::Response;
-        assert_eq!(u8::from(response_version), 0x83);
-    }
-
-    #[test]
-    #[cfg(not(feature = "v3"))]
     fn test_frame_version_from() {
-        assert_eq!(Version::try_from(0x04).unwrap(), Version::Request);
-        assert_eq!(Version::try_from(0x84).unwrap(), Version::Response);
-    }
+        assert_eq!(Version::try_from(0x03).unwrap(), Version::V3);
+        assert_eq!(Version::try_from(0x83).unwrap(), Version::V3);
+        assert_eq!(Version::try_from(0x04).unwrap(), Version::V4);
+        assert_eq!(Version::try_from(0x84).unwrap(), Version::V4);
+        //assert_eq!(Version::try_from(0x05).unwrap(), Version::V5);
+        //assert_eq!(Version::try_from(0x85).unwrap(), Version::V5);
 
-    #[test]
-    #[cfg(feature = "v3")]
-    fn test_frame_version_from_v3() {
-        assert_eq!(Version::try_from(0x03).unwrap(), Version::Request);
-        assert_eq!(Version::try_from(0x83).unwrap(), Version::Response);
+        assert_eq!(Direction::from(0x03), Direction::Request);
+        assert_eq!(Direction::from(0x04), Direction::Request);
+        assert_eq!(Direction::from(0x05), Direction::Request);
+        assert_eq!(Direction::from(0x83), Direction::Response);
+        assert_eq!(Direction::from(0x84), Direction::Response);
+        assert_eq!(Direction::from(0x85), Direction::Response);
     }
 
     #[test]
@@ -376,5 +368,39 @@ mod tests {
         assert_eq!(Opcode::try_from(0x0E).unwrap(), Opcode::AuthChallenge);
         assert_eq!(Opcode::try_from(0x0F).unwrap(), Opcode::AuthResponse);
         assert_eq!(Opcode::try_from(0x10).unwrap(), Opcode::AuthSuccess);
+    }
+
+    fn test_encode_decode_roundtrip(raw_frame: &[u8], frame: Frame, body: ResponseBody) {
+        // test encode
+        let encoded_body = body.serialize_to_vec();
+        assert_eq!(&frame.body, &encoded_body);
+
+        let encoded_frame = frame.encode_with(Compression::None).unwrap();
+        assert_eq!(raw_frame, &encoded_frame);
+
+        // TODO: implement once we have a sync parse_frame impl
+        // test decode
+        //let decoded_frame = parse_frame(raw_frame).unwrap();
+        //assert_eq!(frame, decoded_frame);
+
+        let decoded_body = frame.body().unwrap();
+        assert_eq!(body, decoded_body)
+    }
+
+    #[test]
+    fn test_ready() {
+        let bytes = vec![4, 0, 0, 0, 2, 0, 0, 0, 0];
+        let frame = Frame {
+            version: Version::V4,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Ready,
+            stream: 0,
+            body: vec![],
+            tracing_id: None,
+            warnings: vec![],
+        };
+        let body = ResponseBody::Ready(BodyResResultVoid);
+        test_encode_decode_roundtrip(&bytes, frame, body);
     }
 }

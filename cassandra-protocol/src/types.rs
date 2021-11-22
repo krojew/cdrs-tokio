@@ -258,7 +258,7 @@ impl FromCursor for CString {
     }
 }
 
-#[derive(Debug, Clone, Constructor)]
+#[derive(Debug, Clone, Constructor, PartialEq)]
 pub struct CStringLong {
     string: String,
 }
@@ -299,7 +299,7 @@ impl FromCursor for CStringLong {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CStringList {
     pub list: Vec<CString>,
 }

@@ -6,7 +6,7 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::frame_response::ResponseBody;
 use cassandra_protocol::frame::{
-    Flags, Frame, FromCursor, Opcode, Version, LENGTH_LEN, STREAM_LEN,
+    Direction, Flags, Frame, FromCursor, Opcode, Version, LENGTH_LEN, STREAM_LEN,
 };
 use cassandra_protocol::types::data_serialization_types::decode_timeuuid;
 use cassandra_protocol::types::{try_i16_from_bytes, try_i32_from_bytes, CStringList, UUID_LEN};
@@ -29,6 +29,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     cursor.read_exact(&mut length_bytes).await?;
 
     let version = Version::try_from(version_bytes[0])?;
+    let direction = Direction::from(version_bytes[0]);
     let flags = Flags::from_bits_truncate(flag_bytes[0]);
     let stream = try_i16_from_bytes(&stream_bytes)?;
     let opcode = Opcode::try_from(opcode_bytes[0])?;
@@ -68,6 +69,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
 
     let frame = Frame {
         version,
+        direction,
         flags,
         opcode,
         stream,

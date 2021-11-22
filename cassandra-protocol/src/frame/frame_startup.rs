@@ -45,13 +45,14 @@ impl<'a> Serialize for BodyReqStartup<'a> {
 
 impl Frame {
     /// Creates new frame of type `startup`.
-    pub fn new_req_startup(compression: Option<&str>) -> Frame {
-        let version = Version::Request;
+    pub fn new_req_startup(compression: Option<&str>, version: Version) -> Frame {
+        let direction = Direction::Request;
         let opcode = Opcode::Startup;
         let body = BodyReqStartup::new(compression);
 
         Frame::new(
             version,
+            direction,
             Flags::empty(),
             opcode,
             body.serialize_to_vec(),
@@ -85,8 +86,8 @@ mod test {
     #[test]
     fn new_req_startup() {
         let compression = Some("test_compression");
-        let frame = Frame::new_req_startup(compression);
-        assert_eq!(frame.version, Version::Request);
+        let frame = Frame::new_req_startup(compression, Version::V4);
+        assert_eq!(frame.version, Version::V4);
         assert_eq!(frame.flags, Flags::empty());
         assert_eq!(frame.opcode, Opcode::Startup);
         assert_eq!(frame.tracing_id, None);

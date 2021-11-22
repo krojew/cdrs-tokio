@@ -12,7 +12,7 @@ use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error::{Error, Result};
 use cassandra_protocol::frame::frame_response::ResponseBody;
-use cassandra_protocol::frame::{Frame, Opcode};
+use cassandra_protocol::frame::{Frame, Opcode, Version};
 
 /// Manages establishing connections to nodes.
 pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {
@@ -50,12 +50,13 @@ pub async fn startup<
     authenticator_provider: &A,
     keyspace_holder: &KeyspaceHolder,
     compression: Compression,
+    version: Version,
 ) -> Result<()> {
-    let startup_frame = Frame::new_req_startup(compression.as_str());
+    let startup_frame = Frame::new_req_startup(compression.as_str(), version);
     let start_response = transport.write_frame(&startup_frame).await?;
 
     if start_response.opcode == Opcode::Ready {
-        return set_keyspace(transport, keyspace_holder).await;
+        return set_keyspace(transport, keyspace_holder, version).await;
     }
 
     if start_response.opcode == Opcode::Authenticate {
@@ -95,7 +96,7 @@ pub async fn startup<
         let authenticator = authenticator_provider.create_authenticator();
         let response = authenticator.initial_response();
         let mut frame = transport
-            .write_frame(&Frame::new_req_auth_response(response))
+            .write_frame(&Frame::new_req_auth_response(response, version))
             .await?;
 
         loop {
@@ -104,7 +105,7 @@ pub async fn startup<
                     let response = authenticator.evaluate_challenge(challenge.data)?;
 
                     frame = transport
-                        .write_frame(&Frame::new_req_auth_response(response))
+                        .write_frame(&Frame::new_req_auth_response(response, version))
                         .await?;
                 }
                 ResponseBody::AuthSuccess(..) => break,
@@ -112,7 +113,7 @@ pub async fn startup<
             }
         }
 
-        return set_keyspace(transport, keyspace_holder).await;
+        return set_keyspace(transport, keyspace_holder, version).await;
     }
 
     unreachable!();
@@ -121,6 +122,7 @@ pub async fn startup<
 async fn set_keyspace<T: CdrsTransport>(
     transport: &T,
     keyspace_holder: &KeyspaceHolder,
+    version: Version,
 ) -> Result<()> {
     if let Some(current_keyspace) = keyspace_holder.current_keyspace() {
         let use_frame = Frame::new_req_query(
@@ -134,6 +136,7 @@ async fn set_keyspace<T: CdrsTransport>(
             None,
             Default::default(),
             false,
+            version,
         );
 
         transport.write_frame(&use_frame).await.map(|_| ())

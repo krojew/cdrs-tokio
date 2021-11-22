@@ -26,13 +26,14 @@ impl Serialize for BodyReqPrepare {
 }
 
 impl Frame {
-    pub fn new_req_prepare(query: String, flags: Flags) -> Frame {
-        let version = Version::Request;
+    pub fn new_req_prepare(query: String, flags: Flags, version: Version) -> Frame {
+        let direction = Direction::Request;
         let opcode = Opcode::Prepare;
         let body = BodyReqPrepare::new(query);
 
         Frame::new(
             version,
+            direction,
             flags,
             opcode,
             body.serialize_to_vec(),

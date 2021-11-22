@@ -11,11 +11,10 @@ use crate::frame::frame_result::{
     ResResultBody, RowsMetadata,
 };
 use crate::frame::frame_supported::*;
-use crate::frame::FromCursor;
-use crate::frame::Opcode;
+use crate::frame::{FromCursor, Opcode, Version};
 use crate::types::rows::Row;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ResponseBody {
     Error(CdrsError),
     Startup,
@@ -35,8 +34,20 @@ pub enum ResponseBody {
     AuthSuccess(BodyReqAuthSuccess),
 }
 
+// This implementation is incomplete so only enable in tests
+#[cfg(test)]
+use crate::frame::Serialize;
+#[cfg(test)]
+impl Serialize for ResponseBody {
+    fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {}
+}
+
 impl ResponseBody {
-    pub fn from(bytes: &[u8], response_type: &Opcode) -> error::Result<ResponseBody> {
+    pub fn from(
+        bytes: &[u8],
+        response_type: &Opcode,
+        version: Version,
+    ) -> error::Result<ResponseBody> {
         let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
         Ok(match *response_type {
             // request frames
@@ -58,7 +69,9 @@ impl ResponseBody {
             Opcode::Supported => {
                 ResponseBody::Supported(BodyResSupported::from_cursor(&mut cursor)?)
             }
-            Opcode::Result => ResponseBody::Result(ResResultBody::from_cursor(&mut cursor)?),
+            Opcode::Result => {
+                ResponseBody::Result(ResResultBody::from_cursor(&mut cursor, version)?)
+            }
             Opcode::Event => ResponseBody::Event(BodyResEvent::from_cursor(&mut cursor)?),
             Opcode::AuthChallenge => {
                 ResponseBody::AuthChallenge(BodyResAuthChallenge::from_cursor(&mut cursor)?)

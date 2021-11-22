@@ -137,12 +137,13 @@ impl Serialize for BatchQuery {
 
 impl Frame {
     /// **Note:** This function should be used internally for building query request frames.
-    pub fn new_req_batch(query: BodyReqBatch, flags: Flags) -> Frame {
-        let version = Version::Request;
+    pub fn new_req_batch(query: BodyReqBatch, flags: Flags, version: Version) -> Frame {
+        let direction = Direction::Request;
         let opcode = Opcode::Batch;
 
         Frame::new(
             version,
+            direction,
             flags,
             opcode,
             query.serialize_to_vec(),

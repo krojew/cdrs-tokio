@@ -17,6 +17,7 @@ pub use self::topology::cluster_metadata::ClusterMetadata;
 use crate::future::BoxFuture;
 use crate::transport::CdrsTransport;
 use cassandra_protocol::error;
+use cassandra_protocol::frame::Version;
 
 mod cluster_metadata_manager;
 #[cfg(feature = "rust-tls")]
@@ -47,4 +48,7 @@ pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send
     /// Returns desired event channel capacity. Take a look at
     /// [`Session`](self::session::Session) builders for more info.
     fn event_channel_capacity(&self) -> usize;
+
+    /// Cassandra protocol version to use
+    fn version(&self) -> Version;
 }

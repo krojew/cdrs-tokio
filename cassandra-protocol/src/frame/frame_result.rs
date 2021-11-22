@@ -6,7 +6,7 @@ use std::io::{Cursor, Error as IoError, Read};
 use crate::error;
 use crate::error::Error;
 use crate::frame::events::SchemaChange;
-use crate::frame::{FromBytes, FromCursor, Serialize};
+use crate::frame::{FromBytes, FromCursor, Serialize, Version};
 use crate::types::rows::Row;
 use crate::types::*;
 
@@ -79,7 +79,7 @@ impl FromCursor for ResultKind {
 
 /// `ResponseBody` is a generalized enum that represents all types of responses. Each of enum
 /// option wraps related body type.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ResResultBody {
     /// Void response body. It's an empty struct.
     Void(BodyResResultVoid),
@@ -98,6 +98,7 @@ impl ResResultBody {
     fn parse_body_from_cursor(
         cursor: &mut Cursor<&[u8]>,
         result_kind: ResultKind,
+        version: Version,
     ) -> error::Result<ResResultBody> {
         Ok(match result_kind {
             ResultKind::Void => ResResultBody::Void(BodyResResultVoid::from_cursor(cursor)?),
@@ -106,7 +107,7 @@ impl ResResultBody {
                 ResResultBody::SetKeyspace(BodyResResultSetKeyspace::from_cursor(cursor)?)
             }
             ResultKind::Prepared => {
-                ResResultBody::Prepared(BodyResResultPrepared::from_cursor(cursor)?)
+                ResResultBody::Prepared(BodyResResultPrepared::from_cursor(cursor, version)?)
             }
             ResultKind::SchemaChange => {
                 ResResultBody::SchemaChange(SchemaChange::from_cursor(cursor)?)
@@ -149,15 +150,18 @@ impl ResResultBody {
     }
 }
 
-impl FromCursor for ResResultBody {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ResResultBody> {
+impl ResResultBody {
+    pub fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<ResResultBody> {
         let result_kind = ResultKind::from_cursor(cursor)?;
-        ResResultBody::parse_body_from_cursor(cursor, result_kind)
+        ResResultBody::parse_body_from_cursor(cursor, result_kind, version)
     }
 }
 
 /// Body of a response of type Void
-#[derive(Debug, Default, Copy, Clone)]
+#[derive(Debug, Default, Copy, Clone, PartialEq)]
 pub struct BodyResResultVoid;
 
 impl FromBytes for BodyResResultVoid {
@@ -175,7 +179,7 @@ impl FromCursor for BodyResResultVoid {
 }
 
 /// It represents set keyspace result body. Body contains keyspace name.
-#[derive(Debug, Constructor)]
+#[derive(Debug, Constructor, PartialEq)]
 pub struct BodyResResultSetKeyspace {
     /// It contains name of keyspace that was set.
     pub body: CString,
@@ -189,7 +193,7 @@ impl FromCursor for BodyResResultSetKeyspace {
 
 /// Structure that represents result of type
 /// [rows](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L533).
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BodyResResultRows {
     /// Rows metadata
     pub metadata: RowsMetadata,
@@ -231,7 +235,7 @@ impl FromCursor for BodyResResultRows {
 }
 
 /// Rows metadata.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RowsMetadata {
     /// Flags.
     pub flags: RowsMetadataFlags,
@@ -304,14 +308,14 @@ impl FromBytes for RowsMetadataFlags {
 }
 
 /// Table specification.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TableSpec {
     pub ks_name: CString,
     pub table_name: CString,
 }
 
 /// Single column specification.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ColSpec {
     /// The initial <ks_name> and <table_name> are strings and only present
     /// if the Global_tables_spec flag is NOT set
@@ -440,7 +444,7 @@ impl FromCursor for ColType {
 }
 
 /// Cassandra option that represent column type.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ColTypeOption {
     /// Id refers to `ColType`.
     pub id: ColType,
@@ -479,7 +483,7 @@ impl FromCursor for ColTypeOption {
 }
 
 /// Enum that represents all possible types of `value` of `ColTypeOption`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ColTypeOptionValue {
     CString(CString),
     ColType(ColType),
@@ -491,7 +495,7 @@ pub enum ColTypeOptionValue {
 }
 
 /// User defined type.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CUdt {
     /// Keyspace name.
     pub ks: CString,
@@ -527,7 +531,7 @@ impl FromCursor for CUdt {
 
 /// User defined type.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L608)
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CTuple {
     /// List of types.
     pub types: Vec<ColTypeOption>,
@@ -550,7 +554,7 @@ impl FromCursor for CTuple {
 }
 
 /// The structure represents a body of a response frame of type `prepared`
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct BodyResResultPrepared {
     /// id of prepared request
     pub id: CBytesShort,
@@ -561,10 +565,13 @@ pub struct BodyResResultPrepared {
     pub result_metadata: RowsMetadata,
 }
 
-impl FromCursor for BodyResResultPrepared {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResResultPrepared> {
+impl BodyResResultPrepared {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<BodyResResultPrepared> {
         let id = CBytesShort::from_cursor(cursor)?;
-        let metadata = PreparedMetadata::from_cursor(cursor)?;
+        let metadata = PreparedMetadata::from_cursor(cursor, version)?;
         let result_metadata = RowsMetadata::from_cursor(cursor)?;
 
         Ok(BodyResResultPrepared {
@@ -582,7 +589,7 @@ bitflags! {
 }
 
 /// The structure that represents metadata of prepared response.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PreparedMetadata {
     pub flags: PreparedMetadataFlags,
     pub columns_count: i32,
@@ -592,11 +599,14 @@ pub struct PreparedMetadata {
     pub col_specs: Vec<ColSpec>,
 }
 
-impl FromCursor for PreparedMetadata {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<PreparedMetadata> {
+impl PreparedMetadata {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<PreparedMetadata> {
         let flags = PreparedMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor)?);
         let columns_count = CInt::from_cursor(cursor)?;
-        let pk_count = if cfg!(feature = "v3") {
+        let pk_count = if let Version::V3 = version {
             0
         } else {
             // v4 or v5
