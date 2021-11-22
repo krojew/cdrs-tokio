@@ -1,8 +1,8 @@
 use derive_more::Constructor;
 use std::convert::TryInto;
-use std::io;
+use std::io::{self, Write};
 use std::io::{Cursor, Read};
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
 use crate::frame::traits::FromCursor;
@@ -205,7 +205,13 @@ pub fn to_float_big(f: f64) -> Vec<u8> {
     f.to_be_bytes().into()
 }
 
-#[derive(Debug, Clone, Constructor)]
+pub fn serialize_str(cursor: &mut Cursor<&mut Vec<u8>>, value: &str) {
+    let len = value.len() as CIntShort;
+    len.serialize(cursor);
+    let _ = cursor.write(value.as_bytes());
+}
+
+#[derive(Debug, Clone, Constructor, PartialEq)]
 pub struct CString {
     string: String,
 }
@@ -304,6 +310,10 @@ impl CStringList {
             .into_iter()
             .map(|string| string.into_plain())
             .collect()
+    }
+
+    pub fn new(list: Vec<CString>) -> Self {
+        CStringList { list }
     }
 }
 
@@ -492,6 +502,29 @@ impl FromCursor for CIntShort {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct CInet {
     pub addr: SocketAddr,
+}
+
+impl CInet {
+    pub fn new(addr: SocketAddr) -> Self {
+        CInet { addr }
+    }
+}
+
+impl Serialize for CInet {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match self.addr.ip() {
+            IpAddr::V4(v4) => {
+                [4].serialize(cursor);
+                v4.octets().serialize(cursor);
+            }
+            IpAddr::V6(v6) => {
+                [16].serialize(cursor);
+                v6.octets().serialize(cursor);
+            }
+        }
+
+        to_int(self.addr.port().into()).serialize(cursor);
+    }
 }
 
 impl FromCursor for CInet {

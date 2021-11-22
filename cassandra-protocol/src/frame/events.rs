@@ -4,7 +4,8 @@ use std::io::Cursor;
 
 use crate::error;
 use crate::frame::traits::FromCursor;
-use crate::types::{CInet, CString, CStringList};
+use crate::frame::Serialize;
+use crate::types::{serialize_str, CInet, CIntShort, CString, CStringList};
 
 // Event types
 const TOPOLOGY_CHANGE: &str = "TOPOLOGY_CHANGE";
@@ -100,6 +101,22 @@ pub enum ServerEvent {
     SchemaChange(SchemaChange),
 }
 
+impl Serialize for ServerEvent {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match &self {
+            ServerEvent::TopologyChange(t) => {
+                t.serialize(cursor);
+            }
+            ServerEvent::StatusChange(s) => {
+                s.serialize(cursor);
+            }
+            ServerEvent::SchemaChange(s) => {
+                s.serialize(cursor);
+            }
+        }
+    }
+}
+
 impl PartialEq<SimpleServerEvent> for ServerEvent {
     fn eq(&self, event: &SimpleServerEvent) -> bool {
         &SimpleServerEvent::from(self) == event
@@ -132,6 +149,14 @@ pub struct TopologyChange {
     pub addr: CInet,
 }
 
+impl Serialize for TopologyChange {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        serialize_str(cursor, TOPOLOGY_CHANGE);
+        self.change_type.serialize(cursor);
+        self.addr.serialize(cursor);
+    }
+}
+
 impl FromCursor for TopologyChange {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<TopologyChange> {
         let change_type = TopologyChangeType::from_cursor(cursor)?;
@@ -145,6 +170,15 @@ impl FromCursor for TopologyChange {
 pub enum TopologyChangeType {
     NewNode,
     RemovedNode,
+}
+
+impl Serialize for TopologyChangeType {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match &self {
+            TopologyChangeType::NewNode => serialize_str(cursor, NEW_NODE),
+            TopologyChangeType::RemovedNode => serialize_str(cursor, REMOVED_NODE),
+        }
+    }
 }
 
 impl FromCursor for TopologyChangeType {
@@ -171,6 +205,14 @@ pub struct StatusChange {
     pub addr: CInet,
 }
 
+impl Serialize for StatusChange {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        serialize_str(cursor, STATUS_CHANGE);
+        self.change_type.serialize(cursor);
+        self.addr.serialize(cursor);
+    }
+}
+
 impl FromCursor for StatusChange {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<StatusChange> {
         let change_type = StatusChangeType::from_cursor(cursor)?;
@@ -184,6 +226,15 @@ impl FromCursor for StatusChange {
 pub enum StatusChangeType {
     Up,
     Down,
+}
+
+impl Serialize for StatusChangeType {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match self {
+            StatusChangeType::Up => serialize_str(cursor, UP),
+            StatusChangeType::Down => serialize_str(cursor, DOWN),
+        }
+    }
 }
 
 impl FromCursor for StatusChangeType {
@@ -205,6 +256,15 @@ pub struct SchemaChange {
     pub change_type: SchemaChangeType,
     pub target: SchemaChangeTarget,
     pub options: SchemaChangeOptions,
+}
+
+impl Serialize for SchemaChange {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        serialize_str(cursor, SCHEMA_CHANGE);
+        self.change_type.serialize(cursor);
+        self.target.serialize(cursor);
+        self.options.serialize(cursor);
+    }
 }
 
 impl FromCursor for SchemaChange {
@@ -229,6 +289,16 @@ pub enum SchemaChangeType {
     Dropped,
 }
 
+impl Serialize for SchemaChangeType {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match self {
+            SchemaChangeType::Created => serialize_str(cursor, CREATED),
+            SchemaChangeType::Updated => serialize_str(cursor, UPDATED),
+            SchemaChangeType::Dropped => serialize_str(cursor, DROPPED),
+        }
+    }
+}
+
 impl FromCursor for SchemaChangeType {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeType> {
         CString::from_cursor(cursor).and_then(|ct| {
@@ -251,6 +321,18 @@ pub enum SchemaChangeTarget {
     Type,
     Function,
     Aggregate,
+}
+
+impl Serialize for SchemaChangeTarget {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match self {
+            SchemaChangeTarget::Keyspace => serialize_str(cursor, KEYSPACE),
+            SchemaChangeTarget::Table => serialize_str(cursor, TABLE),
+            SchemaChangeTarget::Type => serialize_str(cursor, TYPE),
+            SchemaChangeTarget::Function => serialize_str(cursor, FUNCTION),
+            SchemaChangeTarget::Aggregate => serialize_str(cursor, AGGREGATE),
+        }
+    }
 }
 
 impl FromCursor for SchemaChangeTarget {
@@ -281,6 +363,28 @@ pub enum SchemaChangeOptions {
     /// * the function/aggregate name
     /// * list of strings, one string for each argument type (as CQL type)
     FunctionAggregate(String, String, Vec<String>),
+}
+
+impl Serialize for SchemaChangeOptions {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match self {
+            SchemaChangeOptions::Keyspace(ks) => {
+                serialize_str(cursor, ks);
+            }
+            SchemaChangeOptions::TableType(ks, t) => {
+                serialize_str(cursor, ks);
+                serialize_str(cursor, t);
+            }
+            SchemaChangeOptions::FunctionAggregate(ks, fa_name, list) => {
+                serialize_str(cursor, ks);
+                serialize_str(cursor, fa_name);
+
+                let len = list.len() as CIntShort;
+                len.serialize(cursor);
+                list.iter().for_each(|x| serialize_str(cursor, x));
+            }
+        }
+    }
 }
 
 impl SchemaChangeOptions {
@@ -321,6 +425,18 @@ impl SchemaChangeOptions {
             keyspace, name, types,
         ))
     }
+}
+
+#[cfg(test)]
+fn test_encode_decode(bytes: &[u8], expected: ServerEvent) {
+    let mut ks: Cursor<&[u8]> = Cursor::new(bytes);
+    let event = ServerEvent::from_cursor(&mut ks).unwrap();
+    assert_eq!(expected, event);
+
+    let mut buffer = Vec::new();
+    let mut cursor = Cursor::new(&mut buffer);
+    expected.serialize(&mut cursor);
+    assert_eq!(buffer, bytes);
 }
 
 #[cfg(test)]
@@ -368,6 +484,27 @@ mod topology_change_type_test {
     }
 
     #[test]
+    fn serialize() {
+        {
+            let a = &[0, 8, 78, 69, 87, 95, 78, 79, 68, 69];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let new_node = TopologyChangeType::NewNode;
+            new_node.serialize(&mut cursor);
+            assert_eq!(buffer, a);
+        }
+
+        {
+            let b = &[0, 12, 82, 69, 77, 79, 86, 69, 68, 95, 78, 79, 68, 69];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let removed_node = TopologyChangeType::RemovedNode;
+            removed_node.serialize(&mut cursor);
+            assert_eq!(buffer, b);
+        }
+    }
+
+    #[test]
     #[should_panic]
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
@@ -400,11 +537,35 @@ mod status_change_type_test {
     }
 
     #[test]
-    #[should_panic]
+    fn serialize() {
+        {
+            let a = &[0, 2, 85, 80];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let up = StatusChangeType::Up;
+            up.serialize(&mut cursor);
+            assert_eq!(buffer, a);
+        }
+
+        {
+            let b = &[0, 4, 68, 79, 87, 78];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let down = StatusChangeType::Down;
+            down.serialize(&mut cursor);
+            assert_eq!(buffer, b);
+        }
+    }
+
+    #[test]
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
         let mut wrong: Cursor<&[u8]> = Cursor::new(a);
-        let _ = StatusChangeType::from_cursor(&mut wrong).unwrap();
+        let err = StatusChangeType::from_cursor(&mut wrong)
+            .unwrap_err()
+            .to_string();
+
+        assert_eq!("General error: Unexpected status change type: N", err);
     }
 }
 
@@ -439,6 +600,35 @@ mod schema_change_type_test {
     }
 
     #[test]
+    fn serialize() {
+        {
+            let a = &[0, 7, 67, 82, 69, 65, 84, 69, 68];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let created = SchemaChangeType::Created;
+            created.serialize(&mut cursor);
+            assert_eq!(buffer, a);
+        }
+        {
+            let b = &[0, 7, 85, 80, 68, 65, 84, 69, 68];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let updated = SchemaChangeType::Updated;
+            updated.serialize(&mut cursor);
+            assert_eq!(buffer, b);
+        }
+
+        {
+            let c = &[0, 7, 68, 82, 79, 80, 80, 69, 68];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let dropped = SchemaChangeType::Dropped;
+            dropped.serialize(&mut cursor);
+            assert_eq!(buffer, c);
+        }
+    }
+
+    #[test]
     #[should_panic]
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
@@ -455,13 +645,15 @@ mod schema_change_target_test {
 
     #[test]
     #[allow(clippy::many_single_char_names)]
-    fn from_cursor() {
-        let a = &[0, 8, 75, 69, 89, 83, 80, 65, 67, 69];
-        let mut keyspace: Cursor<&[u8]> = Cursor::new(a);
-        assert_eq!(
-            SchemaChangeTarget::from_cursor(&mut keyspace).unwrap(),
-            SchemaChangeTarget::Keyspace
-        );
+    fn schema_change_target() {
+        {
+            let bytes = &[0, 8, 75, 69, 89, 83, 80, 65, 67, 69];
+            let mut keyspace: Cursor<&[u8]> = Cursor::new(bytes);
+            assert_eq!(
+                SchemaChangeTarget::from_cursor(&mut keyspace).unwrap(),
+                SchemaChangeTarget::Keyspace
+            );
+        }
 
         let b = &[0, 5, 84, 65, 66, 76, 69];
         let mut table: Cursor<&[u8]> = Cursor::new(b);
@@ -493,6 +685,54 @@ mod schema_change_target_test {
     }
 
     #[test]
+    fn serialize() {
+        {
+            let a = &[0, 8, 75, 69, 89, 83, 80, 65, 67, 69];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let keyspace = SchemaChangeTarget::Keyspace;
+            keyspace.serialize(&mut cursor);
+            assert_eq!(buffer, a);
+        }
+
+        {
+            let b = &[0, 5, 84, 65, 66, 76, 69];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let table = SchemaChangeTarget::Table;
+            table.serialize(&mut cursor);
+            assert_eq!(buffer, b);
+        }
+
+        {
+            let c = &[0, 4, 84, 89, 80, 69];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let target_type = SchemaChangeTarget::Type;
+            target_type.serialize(&mut cursor);
+            assert_eq!(buffer, c);
+        }
+
+        {
+            let d = &[0, 8, 70, 85, 78, 67, 84, 73, 79, 78];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let function = SchemaChangeTarget::Function;
+            function.serialize(&mut cursor);
+            assert_eq!(buffer, d);
+        }
+
+        {
+            let e = &[0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let aggregate = SchemaChangeTarget::Aggregate;
+            aggregate.serialize(&mut cursor);
+            assert_eq!(buffer, e);
+        }
+    }
+
+    #[test]
     #[should_panic]
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
@@ -504,8 +744,6 @@ mod schema_change_target_test {
 #[cfg(test)]
 mod server_event {
     use super::*;
-    use crate::frame::traits::FromCursor;
-    use std::io::Cursor;
 
     #[test]
     fn topology_change_new_node() {
@@ -515,15 +753,13 @@ mod server_event {
             0, 8, 78, 69, 87, 95, 78, 79, 68, 69, //
             4, 127, 0, 0, 1, 0, 0, 0, 1, // 127.0.0.1:1
         ];
-        let mut c: Cursor<&[u8]> = Cursor::new(bytes);
-        let event = ServerEvent::from_cursor(&mut c).unwrap();
-        match event {
-            ServerEvent::TopologyChange(ref tc) => {
-                assert_eq!(tc.change_type, TopologyChangeType::NewNode);
-                assert_eq!(format!("{:?}", tc.addr.addr), "127.0.0.1:1");
-            }
-            _ => panic!("should be topology change event"),
-        }
+
+        let expected = ServerEvent::TopologyChange(TopologyChange {
+            change_type: TopologyChangeType::NewNode,
+            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+        });
+
+        test_encode_decode(bytes, expected);
     }
 
     #[test]
@@ -535,15 +771,13 @@ mod server_event {
             0, 12, 82, 69, 77, 79, 86, 69, 68, 95, 78, 79, 68, 69, //
             4, 127, 0, 0, 1, 0, 0, 0, 1, // 127.0.0.1:1
         ];
-        let mut c: Cursor<&[u8]> = Cursor::new(bytes);
-        let event = ServerEvent::from_cursor(&mut c).unwrap();
-        match event {
-            ServerEvent::TopologyChange(ref tc) => {
-                assert_eq!(tc.change_type, TopologyChangeType::RemovedNode);
-                assert_eq!(format!("{:?}", tc.addr.addr), "127.0.0.1:1");
-            }
-            _ => panic!("should be topology change event"),
-        }
+
+        let expected = ServerEvent::TopologyChange(TopologyChange {
+            change_type: TopologyChangeType::RemovedNode,
+            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+        });
+
+        test_encode_decode(bytes, expected);
     }
 
     #[test]
@@ -554,15 +788,13 @@ mod server_event {
             0, 2, 85, 80, //
             4, 127, 0, 0, 1, 0, 0, 0, 1, // 127.0.0.1:1
         ];
-        let mut c: Cursor<&[u8]> = Cursor::new(bytes);
-        let event = ServerEvent::from_cursor(&mut c).unwrap();
-        match event {
-            ServerEvent::StatusChange(ref tc) => {
-                assert_eq!(tc.change_type, StatusChangeType::Up);
-                assert_eq!(format!("{:?}", tc.addr.addr), "127.0.0.1:1");
-            }
-            _ => panic!("should be status change up"),
-        }
+
+        let expected = ServerEvent::StatusChange(StatusChange {
+            change_type: StatusChangeType::Up,
+            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+        });
+
+        test_encode_decode(bytes, expected);
     }
 
     #[test]
@@ -573,401 +805,337 @@ mod server_event {
             0, 4, 68, 79, 87, 78, //
             4, 127, 0, 0, 1, 0, 0, 0, 1, // 127.0.0.1:1
         ];
-        let mut c: Cursor<&[u8]> = Cursor::new(bytes);
-        let event = ServerEvent::from_cursor(&mut c).unwrap();
-        match event {
-            ServerEvent::StatusChange(ref tc) => {
-                assert_eq!(tc.change_type, StatusChangeType::Down);
-                assert_eq!(format!("{:?}", tc.addr.addr), "127.0.0.1:1");
-            }
-            _ => panic!("should be status change down"),
-        }
+
+        let expected = ServerEvent::StatusChange(StatusChange {
+            change_type: StatusChangeType::Down,
+            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+        });
+
+        test_encode_decode(bytes, expected);
     }
 
     #[test]
     fn schema_change_created() {
         // keyspace
-        let keyspace = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
-            0, 7, 67, 82, 69, 65, 84, 69, 68, // keyspace
-            0, 8, 75, 69, 89, 83, 80, 65, 67, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115,
-        ];
-        let mut ks: Cursor<&[u8]> = Cursor::new(keyspace);
-        let ks_event = ServerEvent::from_cursor(&mut ks).unwrap();
-        match ks_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Created);
-                assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
-                match _c.options {
-                    SchemaChangeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
-                    _ => panic!("should be keyspace"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
+                0, 7, 67, 82, 69, 65, 84, 69, 68, // keyspace
+                0, 8, 75, 69, 89, 83, 80, 65, 67, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Created,
+                target: SchemaChangeTarget::Keyspace,
+                options: SchemaChangeOptions::Keyspace("my_ks".to_string()),
+            });
+
+            test_encode_decode(bytes, expected);
         }
+
         // table
-        let table = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
-            0, 7, 67, 82, 69, 65, 84, 69, 68, // table
-            0, 5, 84, 65, 66, 76, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // my_table
-            0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
-        ];
-        let mut tb: Cursor<&[u8]> = Cursor::new(table);
-        let tb_event = ServerEvent::from_cursor(&mut tb).unwrap();
-        match tb_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Created);
-                assert_eq!(_c.target, SchemaChangeTarget::Table);
-                match &_c.options {
-                    SchemaChangeOptions::TableType(ks, tn) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "my_table");
-                    }
-                    _ => panic!("should be table"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
+                0, 7, 67, 82, 69, 65, 84, 69, 68, // table
+                0, 5, 84, 65, 66, 76, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // my_table
+                0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Created,
+                target: SchemaChangeTarget::Table,
+                options: SchemaChangeOptions::TableType(
+                    "my_ks".to_string(),
+                    "my_table".to_string(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
+
         // type
-        let _type = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
-            0, 7, 67, 82, 69, 65, 84, 69, 68, // type
-            0, 4, 84, 89, 80, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // my_table
-            0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
-        ];
-        let mut tp: Cursor<&[u8]> = Cursor::new(_type);
-        let tp_event = ServerEvent::from_cursor(&mut tp).unwrap();
-        match tp_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Created);
-                assert_eq!(_c.target, SchemaChangeTarget::Type);
-                match &_c.options {
-                    SchemaChangeOptions::TableType(ks, tn) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "my_table");
-                    }
-                    _ => panic!("should be type"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
+                0, 7, 67, 82, 69, 65, 84, 69, 68, // type
+                0, 4, 84, 89, 80, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // my_table
+                0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Created,
+                target: SchemaChangeTarget::Type,
+                options: SchemaChangeOptions::TableType(
+                    "my_ks".to_string(),
+                    "my_table".to_string(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
-        // function
-        let function = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
-            0, 7, 67, 82, 69, 65, 84, 69, 68, // function
-            0, 8, 70, 85, 78, 67, 84, 73, 79, 78, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // name
-            0, 4, 110, 97, 109, 101, // empty list of parameters
-            0, 0,
-        ];
-        let mut fnct: Cursor<&[u8]> = Cursor::new(function);
-        let fnct_event = ServerEvent::from_cursor(&mut fnct).unwrap();
-        match fnct_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Created);
-                assert_eq!(_c.target, SchemaChangeTarget::Function);
-                match &_c.options {
-                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "name");
-                        assert!(v.is_empty());
-                    }
-                    _ => panic!("should be function"),
-                }
-            }
-            _ => panic!("should be schema change"),
+
+        {
+            // function
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
+                0, 7, 67, 82, 69, 65, 84, 69, 68, // function
+                0, 8, 70, 85, 78, 67, 84, 73, 79, 78, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // name
+                0, 4, 110, 97, 109, 101, // empty list of parameters
+                0, 0,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Created,
+                target: SchemaChangeTarget::Function,
+                options: SchemaChangeOptions::FunctionAggregate(
+                    "my_ks".to_string(),
+                    "name".to_string(),
+                    Vec::new(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
-        // function
-        let aggregate = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
-            0, 7, 67, 82, 69, 65, 84, 69, 68, // aggregate
-            0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // name
-            0, 4, 110, 97, 109, 101, // empty list of parameters
-            0, 0,
-        ];
-        let mut aggr: Cursor<&[u8]> = Cursor::new(aggregate);
-        let aggr_event = ServerEvent::from_cursor(&mut aggr).unwrap();
-        match aggr_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Created);
-                assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
-                match &_c.options {
-                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "name");
-                        assert!(v.is_empty());
-                    }
-                    _ => panic!("should be aggregate"),
-                }
-            }
-            _ => panic!("should be schema change"),
+
+        {
+            // aggregate
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // created
+                0, 7, 67, 82, 69, 65, 84, 69, 68, // aggregate
+                0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // name
+                0, 4, 110, 97, 109, 101, // empty list of parameters
+                0, 0,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Created,
+                target: SchemaChangeTarget::Aggregate,
+                options: SchemaChangeOptions::FunctionAggregate(
+                    "my_ks".to_string(),
+                    "name".to_string(),
+                    Vec::new(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
     }
 
     #[test]
     fn schema_change_updated() {
         // keyspace
-        let keyspace = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
-            0, 7, 85, 80, 68, 65, 84, 69, 68, // keyspace
-            0, 8, 75, 69, 89, 83, 80, 65, 67, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115,
-        ];
-        let mut ks: Cursor<&[u8]> = Cursor::new(keyspace);
-        let ks_event = ServerEvent::from_cursor(&mut ks).unwrap();
-        match ks_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Updated);
-                assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
-                match _c.options {
-                    SchemaChangeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
-                    _ => panic!("should be keyspace"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
+                0, 7, 85, 80, 68, 65, 84, 69, 68, // keyspace
+                0, 8, 75, 69, 89, 83, 80, 65, 67, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Updated,
+                target: SchemaChangeTarget::Keyspace,
+                options: SchemaChangeOptions::Keyspace("my_ks".to_string()),
+            });
+            test_encode_decode(bytes, expected);
         }
+
         // table
-        let table = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
-            0, 7, 85, 80, 68, 65, 84, 69, 68, // table
-            0, 5, 84, 65, 66, 76, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // my_table
-            0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
-        ];
-        let mut tb: Cursor<&[u8]> = Cursor::new(table);
-        let tb_event = ServerEvent::from_cursor(&mut tb).unwrap();
-        match tb_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Updated);
-                assert_eq!(_c.target, SchemaChangeTarget::Table);
-                match &_c.options {
-                    SchemaChangeOptions::TableType(ks, tn) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "my_table");
-                    }
-                    _ => panic!("should be table"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
+                0, 7, 85, 80, 68, 65, 84, 69, 68, // table
+                0, 5, 84, 65, 66, 76, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // my_table
+                0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Updated,
+                target: SchemaChangeTarget::Table,
+                options: SchemaChangeOptions::TableType(
+                    "my_ks".to_string(),
+                    "my_table".to_string(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
+
         // type
-        let _type = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
-            0, 7, 85, 80, 68, 65, 84, 69, 68, // type
-            0, 4, 84, 89, 80, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // my_table
-            0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
-        ];
-        let mut tp: Cursor<&[u8]> = Cursor::new(_type);
-        let tp_event = ServerEvent::from_cursor(&mut tp).unwrap();
-        match tp_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Updated);
-                assert_eq!(_c.target, SchemaChangeTarget::Type);
-                match &_c.options {
-                    SchemaChangeOptions::TableType(ks, tn) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "my_table");
-                    }
-                    _ => panic!("should be type"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
+                0, 7, 85, 80, 68, 65, 84, 69, 68, // type
+                0, 4, 84, 89, 80, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // my_table
+                0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Updated,
+                target: SchemaChangeTarget::Type,
+                options: SchemaChangeOptions::TableType(
+                    "my_ks".to_string(),
+                    "my_table".to_string(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
+
         // function
-        let function = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
-            0, 7, 85, 80, 68, 65, 84, 69, 68, // function
-            0, 8, 70, 85, 78, 67, 84, 73, 79, 78, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // name
-            0, 4, 110, 97, 109, 101, // empty list of parameters
-            0, 0,
-        ];
-        let mut fnct: Cursor<&[u8]> = Cursor::new(function);
-        let fnct_event = ServerEvent::from_cursor(&mut fnct).unwrap();
-        match fnct_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Updated);
-                assert_eq!(_c.target, SchemaChangeTarget::Function);
-                match &_c.options {
-                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "name");
-                        assert!(v.is_empty());
-                    }
-                    _ => panic!("should be function"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
+                0, 7, 85, 80, 68, 65, 84, 69, 68, // function
+                0, 8, 70, 85, 78, 67, 84, 73, 79, 78, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // name
+                0, 4, 110, 97, 109, 101, // empty list of parameters
+                0, 0,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Updated,
+                target: SchemaChangeTarget::Function,
+                options: SchemaChangeOptions::FunctionAggregate(
+                    "my_ks".to_string(),
+                    "name".to_string(),
+                    Vec::new(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
-        // function
-        let aggregate = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
-            0, 7, 85, 80, 68, 65, 84, 69, 68, // aggregate
-            0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // name
-            0, 4, 110, 97, 109, 101, // empty list of parameters
-            0, 0,
-        ];
-        let mut aggr: Cursor<&[u8]> = Cursor::new(aggregate);
-        let aggr_event = ServerEvent::from_cursor(&mut aggr).unwrap();
-        match aggr_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Updated);
-                assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
-                match &_c.options {
-                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "name");
-                        assert!(v.is_empty());
-                    }
-                    _ => panic!("should be aggregate"),
-                }
-            }
-            _ => panic!("should be schema change"),
+
+        // aggreate
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // updated
+                0, 7, 85, 80, 68, 65, 84, 69, 68, // aggregate
+                0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // name
+                0, 4, 110, 97, 109, 101, // empty list of parameters
+                0, 0,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Updated,
+                target: SchemaChangeTarget::Aggregate,
+                options: SchemaChangeOptions::FunctionAggregate(
+                    "my_ks".to_string(),
+                    "name".to_string(),
+                    Vec::new(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
     }
 
     #[test]
     fn schema_change_dropped() {
         // keyspace
-        let keyspace = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
-            0, 7, 68, 82, 79, 80, 80, 69, 68, // keyspace
-            0, 8, 75, 69, 89, 83, 80, 65, 67, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115,
-        ];
-        let mut ks: Cursor<&[u8]> = Cursor::new(keyspace);
-        let ks_event = ServerEvent::from_cursor(&mut ks).unwrap();
-        match ks_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
-                assert_eq!(_c.target, SchemaChangeTarget::Keyspace);
-                match _c.options {
-                    SchemaChangeOptions::Keyspace(ref ks) => assert_eq!(ks.as_str(), "my_ks"),
-                    _ => panic!("should be keyspace"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
+                0, 7, 68, 82, 79, 80, 80, 69, 68, // keyspace
+                0, 8, 75, 69, 89, 83, 80, 65, 67, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Dropped,
+                target: SchemaChangeTarget::Keyspace,
+                options: SchemaChangeOptions::Keyspace("my_ks".to_string()),
+            });
+            test_encode_decode(bytes, expected);
         }
+
         // table
-        let table = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
-            0, 7, 68, 82, 79, 80, 80, 69, 68, // table
-            0, 5, 84, 65, 66, 76, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // my_table
-            0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
-        ];
-        let mut tb: Cursor<&[u8]> = Cursor::new(table);
-        let tb_event = ServerEvent::from_cursor(&mut tb).unwrap();
-        match tb_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
-                assert_eq!(_c.target, SchemaChangeTarget::Table);
-                match &_c.options {
-                    SchemaChangeOptions::TableType(ks, tn) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "my_table");
-                    }
-                    _ => panic!("should be table"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
+                0, 7, 68, 82, 79, 80, 80, 69, 68, // table
+                0, 5, 84, 65, 66, 76, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // my_table
+                0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Dropped,
+                target: SchemaChangeTarget::Table,
+                options: SchemaChangeOptions::TableType(
+                    "my_ks".to_string(),
+                    "my_table".to_string(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
+
         // type
-        let _type = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
-            0, 7, 68, 82, 79, 80, 80, 69, 68, // type
-            0, 4, 84, 89, 80, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // my_table
-            0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
-        ];
-        let mut tp: Cursor<&[u8]> = Cursor::new(_type);
-        let tp_event = ServerEvent::from_cursor(&mut tp).unwrap();
-        match tp_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
-                assert_eq!(_c.target, SchemaChangeTarget::Type);
-                match &_c.options {
-                    SchemaChangeOptions::TableType(ks, tn) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "my_table");
-                    }
-                    _ => panic!("should be type"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
+                0, 7, 68, 82, 79, 80, 80, 69, 68, // type
+                0, 4, 84, 89, 80, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // my_table
+                0, 8, 109, 121, 95, 116, 97, 98, 108, 101,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Dropped,
+                target: SchemaChangeTarget::Type,
+                options: SchemaChangeOptions::TableType(
+                    "my_ks".to_string(),
+                    "my_table".to_string(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
+
         // function
-        let function = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
-            0, 7, 68, 82, 79, 80, 80, 69, 68, // function
-            0, 8, 70, 85, 78, 67, 84, 73, 79, 78, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // name
-            0, 4, 110, 97, 109, 101, // empty list of parameters
-            0, 0,
-        ];
-        let mut fnct: Cursor<&[u8]> = Cursor::new(function);
-        let fnct_event = ServerEvent::from_cursor(&mut fnct).unwrap();
-        match fnct_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
-                assert_eq!(_c.target, SchemaChangeTarget::Function);
-                match &_c.options {
-                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "name");
-                        assert!(v.is_empty());
-                    }
-                    _ => panic!("should be function"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
+                0, 7, 68, 82, 79, 80, 80, 69, 68, // function
+                0, 8, 70, 85, 78, 67, 84, 73, 79, 78, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // name
+                0, 4, 110, 97, 109, 101, // empty list of parameters
+                0, 0,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Dropped,
+                target: SchemaChangeTarget::Function,
+                options: SchemaChangeOptions::FunctionAggregate(
+                    "my_ks".to_string(),
+                    "name".to_string(),
+                    Vec::new(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
+
         // function
-        let aggregate = &[
-            // schema change
-            0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
-            0, 7, 68, 82, 79, 80, 80, 69, 68, // aggregate
-            0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69, // my_ks
-            0, 5, 109, 121, 95, 107, 115, // name
-            0, 4, 110, 97, 109, 101, // empty list of parameters
-            0, 0,
-        ];
-        let mut aggr: Cursor<&[u8]> = Cursor::new(aggregate);
-        let aggr_event = ServerEvent::from_cursor(&mut aggr).unwrap();
-        match aggr_event {
-            ServerEvent::SchemaChange(ref _c) => {
-                assert_eq!(_c.change_type, SchemaChangeType::Dropped);
-                assert_eq!(_c.target, SchemaChangeTarget::Aggregate);
-                match &_c.options {
-                    SchemaChangeOptions::FunctionAggregate(ks, tn, v) => {
-                        assert_eq!(ks, "my_ks");
-                        assert_eq!(tn, "name");
-                        assert!(v.is_empty());
-                    }
-                    _ => panic!("should be aggregate"),
-                }
-            }
-            _ => panic!("should be schema change"),
+        {
+            let bytes = &[
+                // schema change
+                0, 13, 83, 67, 72, 69, 77, 65, 95, 67, 72, 65, 78, 71, 69, // dropped
+                0, 7, 68, 82, 79, 80, 80, 69, 68, // aggregate
+                0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69, // my_ks
+                0, 5, 109, 121, 95, 107, 115, // name
+                0, 4, 110, 97, 109, 101, // empty list of parameters
+                0, 0,
+            ];
+            let expected = ServerEvent::SchemaChange(SchemaChange {
+                change_type: SchemaChangeType::Dropped,
+                target: SchemaChangeTarget::Aggregate,
+                options: SchemaChangeOptions::FunctionAggregate(
+                    "my_ks".to_string(),
+                    "name".to_string(),
+                    Vec::new(),
+                ),
+            });
+            test_encode_decode(bytes, expected);
         }
     }
 }
