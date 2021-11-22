@@ -35,43 +35,36 @@ impl Serialize for ResponseBody {
 }
 
 impl ResponseBody {
-    pub fn from(
+    pub fn try_from(
         bytes: &[u8],
-        response_type: &Opcode,
+        response_type: Opcode,
         version: Version,
     ) -> error::Result<ResponseBody> {
         let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-        Ok(match *response_type {
-            // response frames
-            Opcode::Error => ResponseBody::Error(CdrsError::from_cursor(&mut cursor)?),
-            Opcode::Ready => ResponseBody::Ready(BodyResResultVoid::from_cursor(&mut cursor)?),
-            Opcode::Authenticate => {
-                ResponseBody::Authenticate(BodyResAuthenticate::from_cursor(&mut cursor)?)
-            }
-            Opcode::Supported => {
-                ResponseBody::Supported(BodyResSupported::from_cursor(&mut cursor)?)
-            }
-            Opcode::Result => {
-                ResponseBody::Result(ResResultBody::from_cursor(&mut cursor, version)?)
-            }
-            Opcode::Event => ResponseBody::Event(BodyResEvent::from_cursor(&mut cursor)?),
-            Opcode::AuthChallenge => {
-                ResponseBody::AuthChallenge(BodyResAuthChallenge::from_cursor(&mut cursor)?)
-            }
-            Opcode::AuthSuccess => {
-                ResponseBody::AuthSuccess(BodyReqAuthSuccess::from_cursor(&mut cursor)?)
-            }
-
-            // request frames
-            Opcode::Startup => unreachable!(),
-            Opcode::Options => unreachable!(),
-            Opcode::Query => unreachable!(),
-            Opcode::Prepare => unreachable!(),
-            Opcode::Execute => unreachable!(),
-            Opcode::Register => unreachable!(),
-            Opcode::Batch => unreachable!(),
-            Opcode::AuthResponse => unreachable!(),
-        })
+        match response_type {
+            Opcode::Error => Ok(ResponseBody::Error(CdrsError::from_cursor(&mut cursor)?)),
+            Opcode::Ready => Ok(ResponseBody::Ready(BodyResResultVoid::from_cursor(
+                &mut cursor,
+            )?)),
+            Opcode::Authenticate => Ok(ResponseBody::Authenticate(
+                BodyResAuthenticate::from_cursor(&mut cursor)?,
+            )),
+            Opcode::Supported => Ok(ResponseBody::Supported(BodyResSupported::from_cursor(
+                &mut cursor,
+            )?)),
+            Opcode::Result => Ok(ResponseBody::Result(ResResultBody::from_cursor(
+                &mut cursor,
+                version,
+            )?)),
+            Opcode::Event => Ok(ResponseBody::Event(BodyResEvent::from_cursor(&mut cursor)?)),
+            Opcode::AuthChallenge => Ok(ResponseBody::AuthChallenge(
+                BodyResAuthChallenge::from_cursor(&mut cursor)?,
+            )),
+            Opcode::AuthSuccess => Ok(ResponseBody::AuthSuccess(BodyReqAuthSuccess::from_cursor(
+                &mut cursor,
+            )?)),
+            _ => Err(format!("Unknown response opcode: {}", response_type).into()),
+        }
     }
 
     pub fn into_rows(self) -> Option<Vec<Row>> {

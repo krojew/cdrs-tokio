@@ -98,7 +98,7 @@ impl Frame {
     }
 
     pub fn body(&self) -> error::Result<ResponseBody> {
-        ResponseBody::from(self.body.as_slice(), &self.opcode, self.version)
+        ResponseBody::try_from(self.body.as_slice(), self.opcode, self.version)
     }
 
     #[inline]
