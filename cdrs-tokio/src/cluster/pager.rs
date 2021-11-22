@@ -184,8 +184,8 @@ impl<
 
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
         let mut params = QueryParamsBuilder::new().page_size(self.pager.page_size);
-        if self.pager_state.cursor.is_some() {
-            params = params.paging_state(self.pager_state.cursor.clone().unwrap());
+        if let Some(cursor) = &self.pager_state.cursor {
+            params = params.paging_state(cursor.clone());
         }
 
         let body = self

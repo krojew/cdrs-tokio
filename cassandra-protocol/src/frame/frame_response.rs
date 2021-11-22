@@ -88,7 +88,7 @@ impl ResponseBody {
         }
     }
 
-    /// It unwraps body and returns BodyResResultPrepared which contains an exact result of
+    /// Unwraps body and returns BodyResResultPrepared which contains an exact result of
     /// PREPARE query. If frame body is not of type `Result` this method returns `None`.
     pub fn into_prepared(self) -> Option<BodyResResultPrepared> {
         match self {
@@ -97,7 +97,7 @@ impl ResponseBody {
         }
     }
 
-    /// It unwraps body and returns BodyResResultPrepared which contains an exact result of
+    /// Unwraps body and returns BodyResResultPrepared which contains an exact result of
     /// use keyspace query. If frame body is not of type `Result` this method returns `None`.
     pub fn into_set_keyspace(self) -> Option<BodyResResultSetKeyspace> {
         match self {
@@ -106,7 +106,7 @@ impl ResponseBody {
         }
     }
 
-    /// It unwraps body and returns BodyResEvent.
+    /// Unwraps body and returns BodyResEvent.
     /// If frame body is not of type `Result` this method returns `None`.
     pub fn into_server_event(self) -> Option<BodyResEvent> {
         match self {

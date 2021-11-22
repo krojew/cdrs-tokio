@@ -69,23 +69,22 @@ macro_rules! map_as_rust {
         impl AsRustType<HashMap<$($key_type)+, $($val_type)+>> for Map {
             /// Converts `Map` into `HashMap` for blob values.
             fn as_rust_type(&self) -> Result<Option<HashMap<$($key_type)+, $($val_type)+>>> {
-                match &self.metadata.value {
-                    Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) => {
-                        let mut map = HashMap::with_capacity(self.data.len());
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
                         let key_type_option = key_type_option.as_ref();
                         let val_type_option = val_type_option.as_ref();
 
                         for (key, val) in self.data.iter() {
                             let key = as_rust_type!(key_type_option, key, $($key_type)+)?;
                             let val = as_rust_type!(val_type_option, val, $($val_type)+)?;
-                            if val.is_some() && key.is_some() {
-                                map.insert(key.unwrap(), val.unwrap());
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
                             }
                         }
 
                         Ok(Some(map))
-                    }
-                    _ => unreachable!()
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
                 }
             }
         }

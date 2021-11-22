@@ -131,7 +131,7 @@ impl ResResultBody {
         }
     }
 
-    /// It unwraps body and returns BodyResResultPrepared which contains an exact result of
+    /// Unwraps body and returns BodyResResultPrepared which contains an exact result of
     /// PREPARE query.
     pub fn into_prepared(self) -> Option<BodyResResultPrepared> {
         match self {
@@ -140,7 +140,7 @@ impl ResResultBody {
         }
     }
 
-    /// It unwraps body and returns BodyResResultSetKeyspace which contains an exact result of
+    /// Unwraps body and returns BodyResResultSetKeyspace which contains an exact result of
     /// use keyspace query.
     pub fn into_set_keyspace(self) -> Option<BodyResResultSetKeyspace> {
         match self {
