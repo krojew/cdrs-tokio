@@ -44,6 +44,7 @@ understated.
 * Renamed `connect_generic_static` to `connect_generic`.
 * Removed `GetRetryPolicy`.
 * Renamed `ChangeSchemeOptions` to `SchemaChangeOptions`.
+* Protocol version can now be selected at run time.
 
 ## 5.0.0
 
