@@ -17,20 +17,12 @@ use crate::types::rows::Row;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ResponseBody {
     Error(CdrsError),
-    Startup,
     Ready(BodyResResultVoid),
     Authenticate(BodyResAuthenticate),
-    Options,
     Supported(BodyResSupported),
-    Query,
     Result(ResResultBody),
-    Prepare,
-    Execute,
-    Register,
     Event(BodyResEvent),
-    Batch,
     AuthChallenge(BodyResAuthChallenge),
-    AuthResponse,
     AuthSuccess(BodyReqAuthSuccess),
 }
 
@@ -50,16 +42,6 @@ impl ResponseBody {
     ) -> error::Result<ResponseBody> {
         let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
         Ok(match *response_type {
-            // request frames
-            Opcode::Startup => unreachable!(),
-            Opcode::Options => unreachable!(),
-            Opcode::Query => unreachable!(),
-            Opcode::Prepare => unreachable!(),
-            Opcode::Execute => unreachable!(),
-            Opcode::Register => unreachable!(),
-            Opcode::Batch => unreachable!(),
-            Opcode::AuthResponse => unreachable!(),
-
             // response frames
             Opcode::Error => ResponseBody::Error(CdrsError::from_cursor(&mut cursor)?),
             Opcode::Ready => ResponseBody::Ready(BodyResResultVoid::from_cursor(&mut cursor)?),
@@ -79,6 +61,16 @@ impl ResponseBody {
             Opcode::AuthSuccess => {
                 ResponseBody::AuthSuccess(BodyReqAuthSuccess::from_cursor(&mut cursor)?)
             }
+
+            // request frames
+            Opcode::Startup => unreachable!(),
+            Opcode::Options => unreachable!(),
+            Opcode::Query => unreachable!(),
+            Opcode::Prepare => unreachable!(),
+            Opcode::Execute => unreachable!(),
+            Opcode::Register => unreachable!(),
+            Opcode::Batch => unreachable!(),
+            Opcode::AuthResponse => unreachable!(),
         })
     }
 
