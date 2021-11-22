@@ -45,6 +45,7 @@ understated.
 * Removed `GetRetryPolicy`.
 * Renamed `ChangeSchemeOptions` to `SchemaChangeOptions`.
 * Protocol version can now be selected at run time.
+* `Value` now directly contains the value in the `Some` variant instead of a separate body field.
 
 ## 5.0.0
 

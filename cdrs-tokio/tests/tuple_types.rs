@@ -55,9 +55,9 @@ async fn simple_tuple() {
             let mut bytes = Vec::new();
             let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = value.my_int.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -126,11 +126,11 @@ async fn nested_tuples() {
             let mut bytes = Vec::new();
             let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = value.my_int.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = value.my_timestamp.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -161,11 +161,11 @@ async fn nested_tuples() {
             let mut bytes = Vec::new();
             let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_uuid.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = Bytes::new(value.my_blob);
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             let val_bytes: Bytes = value.my_inner_tuple.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }

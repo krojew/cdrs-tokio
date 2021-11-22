@@ -54,7 +54,7 @@ async fn simple_udt() {
             let mut bytes = Vec::new();
             let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -118,7 +118,7 @@ async fn nested_udt() {
             let mut bytes = Vec::new();
             let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -141,7 +141,7 @@ async fn nested_udt() {
             let mut bytes = Vec::new();
             let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_inner_udt.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }
@@ -204,7 +204,7 @@ async fn alter_udt_add() {
             let mut bytes = Vec::new();
             let mut cursor = Cursor::new(&mut bytes);
             let val_bytes: Bytes = value.my_text.into();
-            Value::new_normal(val_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
             Bytes::new(bytes)
         }
     }

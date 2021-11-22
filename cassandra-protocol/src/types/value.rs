@@ -17,92 +17,49 @@ use super::*;
 const NULL_INT_VALUE: i32 = -1;
 const NOT_SET_INT_VALUE: i32 = -2;
 
-/// Types of Cassandra value: normal value (bits), null value and not-set value
-#[derive(Debug, Clone, PartialEq, Copy, Ord, PartialOrd, Eq, Hash)]
-pub enum ValueType {
-    Normal(i32),
+/// Cassandra value which could be an array of bytes, null and non-set values.
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+pub enum Value {
+    Some(Vec<u8>),
     Null,
     NotSet,
 }
 
-impl Serialize for ValueType {
-    #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        let value_type: i32 = (*self).into();
-        value_type.serialize(cursor);
-    }
-}
-
-impl From<ValueType> for i32 {
-    fn from(value: ValueType) -> Self {
-        match value {
-            ValueType::Normal(value) => value,
-            ValueType::Null => NULL_INT_VALUE,
-            ValueType::NotSet => NOT_SET_INT_VALUE,
-        }
-    }
-}
-
-/// Cassandra value which could be an array of bytes, null and non-set values.
-#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
-pub struct Value {
-    pub body: Vec<u8>,
-    pub value_type: ValueType,
-}
-
 impl Value {
     /// The factory method which creates a normal type value basing on provided bytes.
-    pub fn new_normal<B>(v: B) -> Value
+    pub fn new<B>(v: B) -> Value
     where
         B: Into<Bytes>,
     {
-        let bytes = v.into().0;
-        let l = bytes.len() as i32;
-        Value {
-            body: bytes,
-            value_type: ValueType::Normal(l),
-        }
-    }
-
-    /// The factory method which creates null Cassandra value.
-    pub fn new_null() -> Value {
-        Value {
-            body: vec![],
-            value_type: ValueType::Null,
-        }
-    }
-
-    /// The factory method which creates non-set Cassandra value.
-    pub fn new_not_set() -> Value {
-        Value {
-            body: vec![],
-            value_type: ValueType::NotSet,
-        }
+        Value::Some(v.into().0)
     }
 }
 
 impl Serialize for Value {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        let value_int: CInt = self.value_type.into();
-        value_int.serialize(cursor);
-
-        if let ValueType::Normal(_) = &self.value_type {
-            self.body.serialize(cursor);
+        match self {
+            Value::Null => NULL_INT_VALUE.serialize(cursor),
+            Value::NotSet => NOT_SET_INT_VALUE.serialize(cursor),
+            Value::Some(value) => {
+                let len = value.len() as CInt;
+                len.serialize(cursor);
+                value.serialize(cursor);
+            }
         }
     }
 }
 
 impl<T: Into<Bytes>> From<T> for Value {
     fn from(b: T) -> Value {
-        Value::new_normal(b.into())
+        Value::new(b.into())
     }
 }
 
 impl<T: Into<Bytes>> From<Option<T>> for Value {
     fn from(b: Option<T>) -> Value {
         match b {
-            Some(b) => Value::new_normal(b.into()),
-            None => Value::new_null(),
+            Some(b) => Value::new(b.into()),
+            None => Value::Null,
         }
     }
 }
@@ -295,7 +252,7 @@ impl<T: Into<Bytes> + Clone> From<Vec<T>> for Bytes {
         bytes.extend_from_slice(&len.to_be_bytes());
         bytes = vec.iter().fold(bytes, |mut acc, v| {
             let b: Bytes = v.clone().into();
-            acc.append(&mut Value::new_normal(b).serialize_to_vec());
+            acc.append(&mut Value::new(b).serialize_to_vec());
             acc
         });
         Bytes(bytes)
@@ -315,8 +272,8 @@ where
         bytes = map.iter().fold(bytes, |mut acc, (k, v)| {
             let key_bytes: Bytes = k.clone().into();
             let val_bytes: Bytes = v.clone().into();
-            acc.append(&mut Value::new_normal(key_bytes).serialize_to_vec());
-            acc.append(&mut Value::new_normal(val_bytes).serialize_to_vec());
+            acc.append(&mut Value::new(key_bytes).serialize_to_vec());
+            acc.append(&mut Value::new(val_bytes).serialize_to_vec());
             acc
         });
         Bytes(bytes)
@@ -328,62 +285,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_value_type_serialize() {
-        // normal value types
-        let normal_type = ValueType::Normal(1);
-        assert_eq!(normal_type.serialize_to_vec(), vec![0, 0, 0, 1]);
-        // null value types
-        let null_type = ValueType::Null;
-        assert_eq!(null_type.serialize_to_vec(), vec![255, 255, 255, 255]);
-        // not set value types
-        let not_set = ValueType::NotSet;
-        assert_eq!(not_set.serialize_to_vec(), vec![255, 255, 255, 254])
+    fn test_value_serialization() {
+        assert_eq!(Value::Some(vec![1]).serialize_to_vec(), vec![0, 0, 0, 1, 1]);
+
+        assert_eq!(
+            Value::Some(vec![1, 2, 3]).serialize_to_vec(),
+            vec![0, 0, 0, 3, 1, 2, 3]
+        );
+
+        assert_eq!(Value::Null.serialize_to_vec(), vec![255, 255, 255, 255]);
+        assert_eq!(Value::NotSet.serialize_to_vec(), vec![255, 255, 255, 254])
     }
 
     #[test]
-    fn test_new_normal_value() {
-        let plain_value = "hello";
-        let len = plain_value.len() as i32;
-        let normal_value = Value::new_normal(plain_value);
-        assert_eq!(normal_value.body, b"hello");
-        match normal_value.value_type {
-            ValueType::Normal(l) => assert_eq!(l, len),
-            _ => unreachable!(),
-        }
-    }
-
-    #[test]
-    fn test_new_normal_value_all_types() {
-        let _ = Value::new_normal("hello");
-        let _ = Value::new_normal("hello".to_string());
-        let _ = Value::new_normal(1_u8);
-        let _ = Value::new_normal(1_u16);
-        let _ = Value::new_normal(1_u32);
-        let _ = Value::new_normal(1_u64);
-        let _ = Value::new_normal(1_i8);
-        let _ = Value::new_normal(1_i16);
-        let _ = Value::new_normal(1_i32);
-        let _ = Value::new_normal(1_i64);
-        let _ = Value::new_normal(true);
-    }
-
-    #[test]
-    fn test_new_null_value() {
-        let null_value = Value::new_null();
-        assert!(null_value.body.is_empty());
-        assert_eq!(null_value.value_type, ValueType::Null);
-    }
-
-    #[test]
-    fn test_new_not_set_value() {
-        let not_set_value = Value::new_not_set();
-        assert!(not_set_value.body.is_empty());
-        assert_eq!(not_set_value.value_type, ValueType::NotSet);
-    }
-
-    #[test]
-    fn test_value_serialize() {
-        let value = Value::new_normal(1_u8);
-        assert_eq!(value.serialize_to_vec(), vec![0, 0, 0, 1, 1]);
+    fn test_new_value_all_types() {
+        assert_eq!(
+            Value::new("hello"),
+            Value::Some(vec!(104, 101, 108, 108, 111))
+        );
+        assert_eq!(
+            Value::new("hello".to_string()),
+            Value::Some(vec!(104, 101, 108, 108, 111))
+        );
+        assert_eq!(Value::new(1_u8), Value::Some(vec!(1)));
+        assert_eq!(Value::new(1_u16), Value::Some(vec!(0, 1)));
+        assert_eq!(Value::new(1_u32), Value::Some(vec!(0, 0, 0, 1)));
+        assert_eq!(Value::new(1_u64), Value::Some(vec!(0, 0, 0, 0, 0, 0, 0, 1)));
+        assert_eq!(Value::new(1_i8), Value::Some(vec!(1)));
+        assert_eq!(Value::new(1_i16), Value::Some(vec!(0, 1)));
+        assert_eq!(Value::new(1_i32), Value::Some(vec!(0, 0, 0, 1)));
+        assert_eq!(Value::new(1_i64), Value::Some(vec!(0, 0, 0, 0, 0, 0, 0, 1)));
+        assert_eq!(Value::new(true), Value::Some(vec!(1)));
     }
 }
