@@ -82,7 +82,7 @@ impl FromCursor for ResultKind {
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
 pub enum ResResultBody {
     /// Void response body. It's an empty struct.
-    Void(BodyResResultVoid),
+    Void,
     /// Rows response body. It represents a body of response which contains rows.
     Rows(BodyResResultRows),
     /// Set keyspace body. It represents a body of set_keyspace query and usually contains
@@ -101,7 +101,7 @@ impl ResResultBody {
         version: Version,
     ) -> error::Result<ResResultBody> {
         Ok(match result_kind {
-            ResultKind::Void => ResResultBody::Void(BodyResResultVoid::from_cursor(cursor)?),
+            ResultKind::Void => ResResultBody::Void,
             ResultKind::Rows => ResResultBody::Rows(BodyResResultRows::from_cursor(cursor)?),
             ResultKind::SetKeyspace => {
                 ResResultBody::SetKeyspace(BodyResResultSetKeyspace::from_cursor(cursor)?)
@@ -157,24 +157,6 @@ impl ResResultBody {
     ) -> error::Result<ResResultBody> {
         let result_kind = ResultKind::from_cursor(cursor)?;
         ResResultBody::parse_body_from_cursor(cursor, result_kind, version)
-    }
-}
-
-/// Body of a response of type Void
-#[derive(Debug, Default, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
-pub struct BodyResResultVoid;
-
-impl FromBytes for BodyResResultVoid {
-    fn from_bytes(_bytes: &[u8]) -> error::Result<BodyResResultVoid> {
-        // as it's empty by definition just create BodyResVoid
-        let body: BodyResResultVoid = Default::default();
-        Ok(body)
-    }
-}
-
-impl FromCursor for BodyResResultVoid {
-    fn from_cursor(_cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResResultVoid> {
-        Ok(Default::default())
     }
 }
 
