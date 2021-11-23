@@ -309,7 +309,6 @@ mod tests {
     use super::*;
     use crate::consistency::Consistency;
     use crate::frame::frame_query::BodyReqQuery;
-    use crate::frame::frame_result::BodyResResultVoid;
     use crate::query::query_params::QueryParams;
     use crate::query::query_values::QueryValues;
     use crate::types::value::Value;
@@ -453,7 +452,7 @@ mod tests {
             tracing_id: None,
             warnings: vec![],
         };
-        let body = ResponseBody::Ready(BodyResResultVoid);
+        let body = ResponseBody::Ready;
         test_encode_decode_roundtrip_response(&raw_frame, frame, body);
     }
 

@@ -7,8 +7,7 @@ use crate::frame::frame_authenticate::BodyResAuthenticate;
 use crate::frame::frame_error::CdrsError;
 use crate::frame::frame_event::BodyResEvent;
 use crate::frame::frame_result::{
-    BodyResResultPrepared, BodyResResultRows, BodyResResultSetKeyspace, BodyResResultVoid,
-    ResResultBody, RowsMetadata,
+    BodyResResultPrepared, BodyResResultRows, BodyResResultSetKeyspace, ResResultBody, RowsMetadata,
 };
 use crate::frame::frame_supported::*;
 use crate::frame::{FromCursor, Opcode, Version};
@@ -17,7 +16,7 @@ use crate::types::rows::Row;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ResponseBody {
     Error(CdrsError),
-    Ready(BodyResResultVoid),
+    Ready,
     Authenticate(BodyResAuthenticate),
     Supported(BodyResSupported),
     Result(ResResultBody),
@@ -33,7 +32,7 @@ use crate::frame::Serialize;
 impl Serialize for ResponseBody {
     fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {
         match self {
-            ResponseBody::Ready(_) => {}
+            ResponseBody::Ready => {}
             _ => todo!(),
         }
     }
@@ -48,9 +47,7 @@ impl ResponseBody {
         let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
         match response_type {
             Opcode::Error => Ok(ResponseBody::Error(CdrsError::from_cursor(&mut cursor)?)),
-            Opcode::Ready => Ok(ResponseBody::Ready(BodyResResultVoid::from_cursor(
-                &mut cursor,
-            )?)),
+            Opcode::Ready => Ok(ResponseBody::Ready),
             Opcode::Authenticate => Ok(ResponseBody::Authenticate(
                 BodyResAuthenticate::from_cursor(&mut cursor)?,
             )),
