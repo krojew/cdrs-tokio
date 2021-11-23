@@ -105,12 +105,15 @@ impl Serialize for ServerEvent {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         match &self {
             ServerEvent::TopologyChange(t) => {
+                serialize_str(cursor, TOPOLOGY_CHANGE);
                 t.serialize(cursor);
             }
             ServerEvent::StatusChange(s) => {
+                serialize_str(cursor, STATUS_CHANGE);
                 s.serialize(cursor);
             }
             ServerEvent::SchemaChange(s) => {
+                serialize_str(cursor, SCHEMA_CHANGE);
                 s.serialize(cursor);
             }
         }
@@ -151,7 +154,6 @@ pub struct TopologyChange {
 
 impl Serialize for TopologyChange {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, TOPOLOGY_CHANGE);
         self.change_type.serialize(cursor);
         self.addr.serialize(cursor);
     }
@@ -207,7 +209,6 @@ pub struct StatusChange {
 
 impl Serialize for StatusChange {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, STATUS_CHANGE);
         self.change_type.serialize(cursor);
         self.addr.serialize(cursor);
     }
@@ -260,7 +261,6 @@ pub struct SchemaChange {
 
 impl Serialize for SchemaChange {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, SCHEMA_CHANGE);
         self.change_type.serialize(cursor);
         self.target.serialize(cursor);
         self.options.serialize(cursor);

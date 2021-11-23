@@ -94,6 +94,33 @@ pub enum ResResultBody {
     SchemaChange(SchemaChange),
 }
 
+impl Serialize for ResResultBody {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match &self {
+            ResResultBody::Void => {
+                ResultKind::Void.serialize(cursor);
+            }
+            ResResultBody::Rows(rows) => {
+                ResultKind::Rows.serialize(cursor);
+                rows.serialize(cursor);
+            }
+            ResResultBody::SetKeyspace(set_keyspace) => {
+                ResultKind::SetKeyspace.serialize(cursor);
+                set_keyspace.serialize(cursor);
+            }
+            ResResultBody::Prepared(prepared) => {
+                ResultKind::Prepared.serialize(cursor);
+                prepared.serialize(cursor);
+            }
+            ResResultBody::SchemaChange(schema_change) => {
+                ResultKind::SchemaChange.serialize(cursor);
+                schema_change.serialize(cursor);
+            }
+        }
+    }
+}
+
 impl ResResultBody {
     fn parse_body_from_cursor(
         cursor: &mut Cursor<&[u8]>,
@@ -167,6 +194,13 @@ pub struct BodyResResultSetKeyspace {
     pub body: CString,
 }
 
+impl Serialize for BodyResResultSetKeyspace {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.body.serialize(cursor);
+    }
+}
+
 impl FromCursor for BodyResResultSetKeyspace {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResResultSetKeyspace> {
         CString::from_cursor(cursor).map(BodyResResultSetKeyspace::new)
@@ -183,6 +217,18 @@ pub struct BodyResResultRows {
     pub rows_count: CInt,
     /// From spec: it is composed of `rows_count` of rows.
     pub rows_content: Vec<Vec<CBytes>>,
+}
+
+impl Serialize for BodyResResultRows {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.metadata.serialize(cursor);
+        self.rows_count.serialize(cursor);
+        self.rows_content
+            .iter()
+            .flatten()
+            .for_each(|x| x.serialize(cursor));
+    }
 }
 
 impl BodyResResultRows {
@@ -231,6 +277,49 @@ pub struct RowsMetadata {
     pub global_table_spec: Option<TableSpec>,
     /// List of column specifications.
     pub col_specs: Vec<ColSpec>,
+}
+
+impl Serialize for RowsMetadata {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        // First we need assert that the flags match up with the data we were provided.
+        // If they dont match up then it is impossible to encode.
+        assert_eq!(
+            self.flags.contains(RowsMetadataFlags::HAS_MORE_PAGES),
+            self.paging_state.is_some()
+        );
+
+        match (
+            self.flags.contains(RowsMetadataFlags::NO_METADATA),
+            self.flags.contains(RowsMetadataFlags::GLOBAL_TABLE_SPACE),
+        ) {
+            (false, false) => {
+                assert!(self.global_table_spec.is_none());
+                assert!(!self.col_specs.is_empty());
+            }
+            (false, true) => {
+                assert!(!self.col_specs.is_empty());
+            }
+            (true, _) => {
+                assert!(self.global_table_spec.is_none());
+                assert!(self.col_specs.is_empty());
+            }
+        }
+
+        self.flags.serialize(cursor);
+
+        self.columns_count.serialize(cursor);
+
+        if let Some(paging_state) = &self.paging_state {
+            paging_state.serialize(cursor);
+        }
+
+        if let Some(global_table_spec) = &self.global_table_spec {
+            global_table_spec.serialize(cursor);
+        }
+
+        self.col_specs.iter().for_each(|x| x.serialize(cursor));
+    }
 }
 
 impl FromCursor for RowsMetadata {
@@ -296,6 +385,25 @@ pub struct TableSpec {
     pub table_name: CString,
 }
 
+impl Serialize for TableSpec {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.ks_name.serialize(cursor);
+        self.table_name.serialize(cursor);
+    }
+}
+
+impl FromCursor for TableSpec {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
+        let ks_name = CString::from_cursor(cursor)?;
+        let table_name = CString::from_cursor(cursor)?;
+        Ok(TableSpec {
+            ks_name,
+            table_name,
+        })
+    }
+}
+
 /// Single column specification.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct ColSpec {
@@ -308,6 +416,18 @@ pub struct ColSpec {
     pub col_type: ColTypeOption,
 }
 
+impl Serialize for ColSpec {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        if let Some(table_spec) = &self.table_spec {
+            table_spec.serialize(cursor);
+        }
+
+        self.name.serialize(cursor);
+        self.col_type.serialize(cursor);
+    }
+}
+
 impl ColSpec {
     pub fn parse_colspecs(
         cursor: &mut Cursor<&[u8]>,
@@ -317,12 +437,7 @@ impl ColSpec {
         (0..column_count)
             .map(|_| {
                 let table_spec = if !has_global_table_space {
-                    let ks_name = CString::from_cursor(cursor)?;
-                    let table_name = CString::from_cursor(cursor)?;
-                    Some(TableSpec {
-                        ks_name,
-                        table_name,
-                    })
+                    Some(TableSpec::from_cursor(cursor)?)
                 } else {
                     None
                 };
@@ -415,6 +530,41 @@ impl FromBytes for ColType {
     }
 }
 
+impl Serialize for ColType {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        (match self {
+            ColType::Custom => 0x0000,
+            ColType::Ascii => 0x0001,
+            ColType::Bigint => 0x0002,
+            ColType::Blob => 0x0003,
+            ColType::Boolean => 0x0004,
+            ColType::Counter => 0x0005,
+            ColType::Decimal => 0x0006,
+            ColType::Double => 0x0007,
+            ColType::Float => 0x0008,
+            ColType::Int => 0x0009,
+            ColType::Timestamp => 0x000B,
+            ColType::Uuid => 0x000C,
+            ColType::Varchar => 0x000D,
+            ColType::Varint => 0x000E,
+            ColType::Timeuuid => 0x000F,
+            ColType::Inet => 0x0010,
+            ColType::Date => 0x0011,
+            ColType::Time => 0x0012,
+            ColType::Smallint => 0x0013,
+            ColType::Tinyint => 0x0014,
+            ColType::List => 0x0020,
+            ColType::Map => 0x0021,
+            ColType::Set => 0x0022,
+            ColType::Udt => 0x0030,
+            ColType::Tuple => 0x0031,
+            _ => 0x6666,
+        } as i16)
+            .serialize(cursor);
+    }
+}
+
 impl FromCursor for ColType {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ColType> {
         let mut buff = [0; SHORT_LEN];
@@ -432,6 +582,16 @@ pub struct ColTypeOption {
     pub id: ColType,
     /// Values depending on column type.
     pub value: Option<ColTypeOptionValue>,
+}
+
+impl Serialize for ColTypeOption {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.id.serialize(cursor);
+        if let Some(value) = &self.value {
+            value.serialize(cursor);
+        }
+    }
 }
 
 impl FromCursor for ColTypeOption {
@@ -476,6 +636,24 @@ pub enum ColTypeOptionValue {
     CMap(Box<ColTypeOption>, Box<ColTypeOption>),
 }
 
+impl Serialize for ColTypeOptionValue {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match self {
+            Self::CString(c) => c.serialize(cursor),
+            Self::ColType(c) => c.serialize(cursor),
+            Self::CSet(c) => c.serialize(cursor),
+            Self::CList(c) => c.serialize(cursor),
+            Self::UdtType(c) => c.serialize(cursor),
+            Self::TupleType(c) => c.serialize(cursor),
+            Self::CMap(v1, v2) => {
+                v1.serialize(cursor);
+                v2.serialize(cursor);
+            }
+        }
+    }
+}
+
 /// User defined type.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CUdt {
@@ -485,6 +663,19 @@ pub struct CUdt {
     pub udt_name: CString,
     /// List of pairs `(name, type)` where name is field name and type is type of field.
     pub descriptions: Vec<(CString, ColTypeOption)>,
+}
+
+impl Serialize for CUdt {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.ks.serialize(cursor);
+        self.udt_name.serialize(cursor);
+        (self.descriptions.len() as i16).serialize(cursor);
+        self.descriptions.iter().for_each(|(name, col_type)| {
+            name.serialize(cursor);
+            col_type.serialize(cursor);
+        });
+    }
 }
 
 impl FromCursor for CUdt {
@@ -519,6 +710,14 @@ pub struct CTuple {
     pub types: Vec<ColTypeOption>,
 }
 
+impl Serialize for CTuple {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        (self.types.len() as i16).serialize(cursor);
+        self.types.iter().for_each(|f| f.serialize(cursor));
+    }
+}
+
 impl FromCursor for CTuple {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<CTuple> {
         let mut buff = [0; SHORT_LEN];
@@ -547,6 +746,15 @@ pub struct BodyResResultPrepared {
     pub result_metadata: RowsMetadata,
 }
 
+impl Serialize for BodyResResultPrepared {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.id.serialize(cursor);
+        self.metadata.serialize(cursor);
+        self.result_metadata.serialize(cursor);
+    }
+}
+
 impl BodyResResultPrepared {
     fn from_cursor(
         cursor: &mut Cursor<&[u8]>,
@@ -570,6 +778,13 @@ bitflags! {
     }
 }
 
+impl Serialize for PreparedMetadataFlags {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.bits().serialize(cursor);
+    }
+}
+
 /// The structure that represents metadata of prepared response.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct PreparedMetadata {
@@ -581,6 +796,36 @@ pub struct PreparedMetadata {
     pub col_specs: Vec<ColSpec>,
 }
 
+impl Serialize for PreparedMetadata {
+    #[inline]
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        match self
+            .flags
+            .contains(PreparedMetadataFlags::GLOBAL_TABLE_SPACE)
+        {
+            false => {
+                assert!(self.global_table_spec.is_none());
+                assert!(!self.col_specs.is_empty());
+            }
+            true => {
+                assert!(self.global_table_spec.is_some());
+                assert!(self.col_specs.is_empty());
+            }
+        }
+
+        self.flags.serialize(cursor);
+        self.columns_count.serialize(cursor);
+        self.pk_count.serialize(cursor);
+        self.pk_indexes.iter().for_each(|f| f.serialize(cursor));
+
+        if let Some(global_table_spec) = &self.global_table_spec {
+            global_table_spec.serialize(cursor);
+        }
+
+        self.col_specs.iter().for_each(|x| x.serialize(cursor));
+    }
+}
+
 impl PreparedMetadata {
     fn from_cursor(
         cursor: &mut Cursor<&[u8]>,
@@ -588,12 +833,14 @@ impl PreparedMetadata {
     ) -> error::Result<PreparedMetadata> {
         let flags = PreparedMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor)?);
         let columns_count = CInt::from_cursor(cursor)?;
+
         let pk_count = if let Version::V3 = version {
             0
         } else {
             // v4 or v5
             CInt::from_cursor(cursor)?
         };
+
         let pk_indexes = (0..pk_count)
             .map(|_| {
                 let mut buff = [0; SHORT_LEN];
@@ -623,13 +870,667 @@ fn extract_global_table_space(
     has_global_table_space: bool,
 ) -> error::Result<Option<TableSpec>> {
     Ok(if has_global_table_space {
-        let ks_name = CString::from_cursor(cursor)?;
-        let table_name = CString::from_cursor(cursor)?;
-        Some(TableSpec {
-            ks_name,
-            table_name,
-        })
+        Some(TableSpec::from_cursor(cursor)?)
     } else {
         None
     })
+}
+
+#[cfg(test)]
+fn test_encode_decode(bytes: &[u8], expected: ResResultBody) {
+    {
+        let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+        let result = ResResultBody::from_cursor(&mut cursor, Version::V4).unwrap();
+        assert_eq!(expected, result);
+    }
+
+    {
+        let mut buffer = Vec::new();
+        let mut cursor = Cursor::new(&mut buffer);
+        expected.serialize(&mut cursor);
+        assert_eq!(buffer, bytes);
+    }
+}
+
+#[cfg(test)]
+mod cudt {
+    use super::*;
+
+    #[test]
+    fn cudt() {
+        let bytes = &[
+            0, 3, 98, 97, 114, // keyspace name - bar
+            0, 3, 102, 111, 111, // udt_name - foo
+            0, 2, // length
+            // pair 1
+            0, 3, 98, 97, 114, //name - bar
+            0, 9, // col type int
+            //
+            // // pair 2
+            0, 3, 102, 111, 111, // name - foo
+            0, 9, // col type int
+        ];
+        let expected = CUdt {
+            ks: CString::new("bar".into()),
+            udt_name: CString::new("foo".into()),
+            descriptions: vec![
+                (
+                    CString::new("bar".into()),
+                    ColTypeOption {
+                        id: ColType::Int,
+                        value: None,
+                    },
+                ),
+                (
+                    CString::new("foo".into()),
+                    ColTypeOption {
+                        id: ColType::Int,
+                        value: None,
+                    },
+                ),
+            ],
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let udt = CUdt::from_cursor(&mut cursor).unwrap();
+            assert_eq!(udt, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+}
+
+#[cfg(test)]
+mod ctuple {
+    use super::*;
+
+    #[test]
+    fn ctuple() {
+        let bytes = &[0, 3, 0, 9, 0, 9, 0, 9];
+        let expected = CTuple {
+            types: vec![
+                ColTypeOption {
+                    id: ColType::Int,
+                    value: None,
+                };
+                3
+            ],
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let tuple = CTuple::from_cursor(&mut cursor).unwrap();
+            assert_eq!(tuple, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+}
+
+#[cfg(test)]
+mod col_spec {
+    use super::*;
+
+    #[test]
+    fn col_spec_with_table_spec() {
+        let bytes = &[
+            // table spec
+            0, 3, 98, 97, 114, // bar
+            0, 3, 102, 111, 111, //foo
+            //
+            0, 3, 102, 111, 111, //name - foo
+            //
+            0, 9, // col type - int
+        ];
+
+        let expected = vec![ColSpec {
+            table_spec: Some(TableSpec {
+                ks_name: CString::new("bar".into()),
+                table_name: CString::new("foo".into()),
+            }),
+            name: CString::new("foo".into()),
+            col_type: ColTypeOption {
+                id: ColType::Int,
+                value: None,
+            },
+        }];
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let col_spec = ColSpec::parse_colspecs(&mut cursor, 1, false).unwrap();
+            assert_eq!(col_spec, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected[0].serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+
+    #[test]
+    fn col_spec_without_table_spec() {
+        let bytes = &[
+            0, 3, 102, 111, 111, //name - foo
+            //
+            0, 9, // col type - int
+        ];
+        let expected = vec![ColSpec {
+            table_spec: None,
+            name: CString::new("foo".into()),
+            col_type: ColTypeOption {
+                id: ColType::Int,
+                value: None,
+            },
+        }];
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let col_spec = ColSpec::parse_colspecs(&mut cursor, 1, true).unwrap();
+            assert_eq!(col_spec, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected[0].serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+}
+
+#[cfg(test)]
+mod col_type_option {
+    use super::*;
+
+    #[test]
+    fn col_type_options_int() {
+        let bytes = &[0, 9];
+        let expected = ColTypeOption {
+            id: ColType::Int,
+            value: None,
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let col_type_option = ColTypeOption::from_cursor(&mut cursor).unwrap();
+            assert_eq!(col_type_option, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+
+    #[test]
+    fn col_type_options_map() {
+        let bytes = &[0, 33, 0, 9, 0, 9];
+        let expected = ColTypeOption {
+            id: ColType::Map,
+            value: Some(ColTypeOptionValue::CMap(
+                Box::new(ColTypeOption {
+                    id: ColType::Int,
+                    value: None,
+                }),
+                Box::new(ColTypeOption {
+                    id: ColType::Int,
+                    value: None,
+                }),
+            )),
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let col_type_option = ColTypeOption::from_cursor(&mut cursor).unwrap();
+            assert_eq!(col_type_option, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+}
+
+#[cfg(test)]
+mod table_spec {
+    use super::*;
+
+    #[test]
+    fn table_spec() {
+        let bytes = &[
+            0, 3, 98, 97, 114, // bar
+            0, 3, 102, 111, 111, //foo
+        ];
+        let expected = TableSpec {
+            ks_name: CString::new("bar".into()),
+            table_name: CString::new("foo".into()),
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let table_spec = TableSpec::from_cursor(&mut cursor).unwrap();
+            assert_eq!(table_spec, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+}
+
+#[cfg(test)]
+mod void {
+    use super::*;
+
+    #[test]
+    fn test_void() {
+        let bytes = &[0, 0, 0, 1];
+        let expected = ResResultBody::Void;
+        test_encode_decode(bytes, expected);
+    }
+}
+
+#[cfg(test)]
+mod rows_metadata {
+    use super::*;
+
+    #[test]
+    fn rows_metadata() {
+        let bytes = &[
+            0, 0, 0, 0, // rows metadata flag
+            0, 0, 0, 2, // columns count
+            //
+            // Col Spec 1
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 102, 111, 111, // name
+            0, 9, // col type id
+            //
+            // Col spec 2
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 98, 97, 114, // name
+            0, 19, // col type
+        ];
+
+        let expected = RowsMetadata {
+            flags: RowsMetadataFlags::empty(),
+            columns_count: 2,
+            paging_state: None,
+            global_table_spec: None,
+            col_specs: vec![
+                ColSpec {
+                    table_spec: Some(TableSpec {
+                        ks_name: CString::new("ksname1".into()),
+                        table_name: CString::new("tablename".into()),
+                    }),
+                    name: CString::new("foo".into()),
+                    col_type: ColTypeOption {
+                        id: ColType::Int,
+                        value: None,
+                    },
+                },
+                ColSpec {
+                    table_spec: Some(TableSpec {
+                        ks_name: CString::new("ksname1".into()),
+                        table_name: CString::new("tablename".into()),
+                    }),
+                    name: CString::new("bar".into()),
+                    col_type: ColTypeOption {
+                        id: ColType::Smallint,
+                        value: None,
+                    },
+                },
+            ],
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let metadata = RowsMetadata::from_cursor(&mut cursor).unwrap();
+            assert_eq!(metadata, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+}
+
+#[cfg(test)]
+mod rows {
+    use super::*;
+
+    #[test]
+    fn test_rows() {
+        let bytes = &[
+            0, 0, 0, 2, // rows flag
+            0, 0, 0, 0, // rows metadata flag
+            0, 0, 0, 2, // columns count
+            //
+            // Col Spec 1
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 102, 111, 111, // name
+            0, 9, // col type id
+            //
+            // Col spec 2
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 98, 97, 114, // name
+            0, 19, // col type
+            0, 0, 0, 0, // rows count
+        ];
+
+        let expected = ResResultBody::Rows(BodyResResultRows {
+            metadata: RowsMetadata {
+                flags: RowsMetadataFlags::empty(),
+                columns_count: 2,
+                paging_state: None,
+                global_table_spec: None,
+                col_specs: vec![
+                    ColSpec {
+                        table_spec: Some(TableSpec {
+                            ks_name: CString::new("ksname1".into()),
+                            table_name: CString::new("tablename".into()),
+                        }),
+                        name: CString::new("foo".into()),
+                        col_type: ColTypeOption {
+                            id: ColType::Int,
+                            value: None,
+                        },
+                    },
+                    ColSpec {
+                        table_spec: Some(TableSpec {
+                            ks_name: CString::new("ksname1".into()),
+                            table_name: CString::new("tablename".into()),
+                        }),
+                        name: CString::new("bar".into()),
+                        col_type: ColTypeOption {
+                            id: ColType::Smallint,
+                            value: None,
+                        },
+                    },
+                ],
+            },
+            rows_count: 0,
+            rows_content: vec![],
+        });
+
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn test_rows_no_metadata() {
+        let bytes = &[
+            0, 0, 0, 2, // rows flag
+            0, 0, 0, 4, // rows metadataflag
+            0, 0, 0, 0, // columns count
+            0, 0, 0, 0, // rows count
+        ];
+
+        let expected = ResResultBody::Rows(BodyResResultRows {
+            metadata: RowsMetadata {
+                flags: RowsMetadataFlags::NO_METADATA,
+                columns_count: 0,
+                paging_state: None,
+                global_table_spec: None,
+                col_specs: vec![],
+            },
+            rows_count: 0,
+            rows_content: vec![],
+        });
+
+        test_encode_decode(bytes, expected);
+    }
+}
+
+#[cfg(test)]
+mod keyspace {
+    use super::*;
+
+    #[test]
+    fn test_set_keyspace() {
+        let bytes = &[
+            0, 0, 0, 3, // keyspace flag
+            0, 4, 98, 108, 97, 104, // blah
+        ];
+
+        let expected = ResResultBody::SetKeyspace(BodyResResultSetKeyspace {
+            body: CString::new("blah".into()),
+        });
+
+        test_encode_decode(bytes, expected);
+    }
+}
+
+#[cfg(test)]
+mod prepared_metadata {
+    use super::*;
+    #[test]
+    fn prepared_metadata() {
+        let bytes = &[
+            0, 0, 0, 0, // global table space flag
+            0, 0, 0, 2, // columns counts
+            0, 0, 0, 1, // pk_count
+            0, 0, // pk_index
+            //
+            // col specs
+            // col spec 1
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 102, 111, 111, // foo
+            0, 9, // id
+            //
+            // col spec 2
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 98, 97, 114, // bar
+            0, 19, // id
+        ];
+
+        let expected = PreparedMetadata {
+            flags: PreparedMetadataFlags::empty(),
+            columns_count: 2,
+            pk_count: 1,
+            pk_indexes: vec![0],
+            global_table_spec: None,
+            col_specs: vec![
+                ColSpec {
+                    table_spec: Some(TableSpec {
+                        ks_name: CString::new("ksname1".into()),
+                        table_name: CString::new("tablename".into()),
+                    }),
+                    name: CString::new("foo".into()),
+                    col_type: ColTypeOption {
+                        id: ColType::Int,
+                        value: None,
+                    },
+                },
+                ColSpec {
+                    table_spec: Some(TableSpec {
+                        ks_name: CString::new("ksname1".into()),
+                        table_name: CString::new("tablename".into()),
+                    }),
+                    name: CString::new("bar".into()),
+                    col_type: ColTypeOption {
+                        id: ColType::Smallint,
+                        value: None,
+                    },
+                },
+            ],
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let metadata = PreparedMetadata::from_cursor(&mut cursor, Version::V4).unwrap();
+            assert_eq!(metadata, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
+    }
+}
+
+#[cfg(test)]
+mod prepared {
+    use super::*;
+
+    #[test]
+    fn test_prepared() {
+        let bytes = &[
+            0, 0, 0, 4, // prepared
+            0, 2, 0, 1, // id
+            //
+            // prepared flags
+            0, 0, 0, 0, // global table space flag
+            0, 0, 0, 2, // columns counts
+            0, 0, 0, 1, // pk_count
+            0, 0, // pk_index
+            //
+            // col specs
+            // col spec 1
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 102, 111, 111, // foo
+            0, 9, // id
+            //
+            // col spec 2
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 98, 97, 114, // bar
+            0, 19, // id
+            //
+            // rows metadata
+            0, 0, 0, 0, // empty flags
+            0, 0, 0, 2, // columns count
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 102, 111, 111, // foo
+            0, 9, // int
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            0, 3, 98, 97, 114, // bar
+            0, 19, // id
+        ];
+
+        let expected = ResResultBody::Prepared(BodyResResultPrepared {
+            id: CBytesShort::new(to_short(1)),
+            metadata: PreparedMetadata {
+                flags: PreparedMetadataFlags::empty(),
+                columns_count: 2,
+                pk_count: 1,
+                pk_indexes: vec![0],
+                global_table_spec: None,
+                col_specs: vec![
+                    ColSpec {
+                        table_spec: Some(TableSpec {
+                            ks_name: CString::new("ksname1".into()),
+                            table_name: CString::new("tablename".into()),
+                        }),
+                        name: CString::new("foo".into()),
+                        col_type: ColTypeOption {
+                            id: ColType::Int,
+                            value: None,
+                        },
+                    },
+                    ColSpec {
+                        table_spec: Some(TableSpec {
+                            ks_name: CString::new("ksname1".into()),
+                            table_name: CString::new("tablename".into()),
+                        }),
+                        name: CString::new("bar".into()),
+                        col_type: ColTypeOption {
+                            id: ColType::Smallint,
+                            value: None,
+                        },
+                    },
+                ],
+            },
+            result_metadata: RowsMetadata {
+                flags: RowsMetadataFlags::empty(),
+                columns_count: 2,
+                paging_state: None,
+                global_table_spec: None,
+                col_specs: vec![
+                    ColSpec {
+                        table_spec: Some(TableSpec {
+                            ks_name: CString::new("ksname1".into()),
+                            table_name: CString::new("tablename".into()),
+                        }),
+                        name: CString::new("foo".into()),
+                        col_type: ColTypeOption {
+                            id: ColType::Int,
+                            value: None,
+                        },
+                    },
+                    ColSpec {
+                        table_spec: Some(TableSpec {
+                            table_name: CString::new("tablename".into()),
+                            ks_name: CString::new("ksname1".into()),
+                        }),
+                        name: CString::new("bar".into()),
+                        col_type: ColTypeOption {
+                            id: ColType::Smallint,
+                            value: None,
+                        },
+                    },
+                ],
+            },
+        });
+
+        test_encode_decode(bytes, expected);
+    }
+}
+
+#[cfg(test)]
+mod schema_change {
+    use crate::frame::events::{SchemaChangeOptions, SchemaChangeTarget, SchemaChangeType};
+
+    use super::*;
+
+    #[test]
+    fn test_schema_change() {
+        let bytes = &[
+            0, 0, 0, 5, // schema change
+            0, 7, 67, 82, 69, 65, 84, 69, 68, // change type - created
+            0, 8, 75, 69, 89, 83, 80, 65, 67, 69, // target keyspace
+            0, 4, 98, 108, 97, 104, // options - blah
+        ];
+
+        let expected = ResResultBody::SchemaChange(SchemaChange {
+            change_type: SchemaChangeType::Created,
+            target: SchemaChangeTarget::Keyspace,
+            options: SchemaChangeOptions::Keyspace("blah".into()),
+        });
+
+        test_encode_decode(bytes, expected);
+    }
 }
