@@ -99,11 +99,11 @@ impl Frame {
         }
     }
 
-    pub fn body_request(&self) -> error::Result<RequestBody> {
+    pub fn request_body(&self) -> error::Result<RequestBody> {
         RequestBody::try_from(self.body.as_slice(), self.opcode)
     }
 
-    pub fn body_response(&self) -> error::Result<ResponseBody> {
+    pub fn response_body(&self) -> error::Result<ResponseBody> {
         ResponseBody::try_from(self.body.as_slice(), self.opcode, self.version)
     }
 
@@ -402,7 +402,7 @@ mod tests {
         //let decoded_frame = parse_frame(raw_frame).unwrap();
         //assert_eq!(frame, decoded_frame);
 
-        let decoded_body = frame.body_response().unwrap();
+        let decoded_body = frame.response_body().unwrap();
         assert_eq!(body, decoded_body, "decoded frame.body did not match body")
     }
 
@@ -426,7 +426,7 @@ mod tests {
         //let decoded_frame = parse_frame(raw_frame).unwrap();
         //assert_eq!(frame, decoded_frame);
 
-        let decoded_body = frame.body_request().unwrap();
+        let decoded_body = frame.request_body().unwrap();
         assert_eq!(body, decoded_body, "decoded frame.body did not match body")
     }
 
@@ -436,7 +436,7 @@ mod tests {
         frame.body = body.serialize_to_vec();
 
         // test decode
-        let decoded_body = frame.body_request().unwrap();
+        let decoded_body = frame.request_body().unwrap();
         assert_eq!(body, decoded_body, "decoded frame.body did not match body")
     }
 

@@ -290,7 +290,7 @@ impl<
 
         send_frame(self, query_frame, false, None, None, None, None)
             .await
-            .and_then(|response| response.body_response())
+            .and_then(|response| response.response_body())
             .and_then(|body| {
                 body.into_prepared()
                     .ok_or_else(|| "CDRS BUG: cannot convert frame into prepared".into())

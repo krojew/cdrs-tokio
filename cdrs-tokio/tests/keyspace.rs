@@ -54,7 +54,7 @@ async fn create_keyspace() {
         .query(select_query)
         .await
         .expect("select keyspace query")
-        .body_response()
+        .response_body()
         .expect("get select keyspace query body")
         .into_rows()
         .expect("convert keyspaces results into rows");
@@ -134,7 +134,7 @@ async fn alter_keyspace() {
         .query(select_query)
         .await
         .expect("select keyspace query")
-        .body_response()
+        .response_body()
         .expect("get select keyspace query body")
         .into_rows()
         .expect("convert keyspaces results into rows");
@@ -184,7 +184,7 @@ async fn use_keyspace() {
         .query(use_query)
         .await
         .expect("should use selected")
-        .body_response()
+        .response_body()
         .expect("should get body")
         .into_set_keyspace()
         .expect("set keyspace")

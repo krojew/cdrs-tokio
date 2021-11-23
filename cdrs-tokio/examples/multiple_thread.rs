@@ -93,7 +93,7 @@ async fn select_struct(session: Arc<CurrentSession>) {
         .query(select_struct_cql)
         .await
         .expect("query")
-        .body_response()
+        .response_body()
         .expect("get body")
         .into_rows()
         .expect("into rows");

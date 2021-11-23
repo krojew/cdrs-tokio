@@ -37,7 +37,7 @@ async fn query_values_in() {
         .query_with_values(cql, query_values!(criteria.clone()))
         .await
         .expect("select values query error")
-        .body_response()
+        .response_body()
         .expect("get body error")
         .into_rows()
         .expect("converting into rows error");

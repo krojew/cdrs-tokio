@@ -148,7 +148,7 @@ impl<
     ) {
         tokio::spawn(async move {
             while let Some(frame) = event_frame_receiver.recv().await {
-                if let Ok(body) = frame.body_response() {
+                if let Ok(body) = frame.response_body() {
                     if let Some(event) = body.into_server_event() {
                         let _ = event_sender.send(event.event);
                     }

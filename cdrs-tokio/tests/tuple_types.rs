@@ -80,7 +80,7 @@ async fn simple_tuple() {
         .query(cql)
         .await
         .expect("query")
-        .body_response()
+        .response_body()
         .expect("get body")
         .into_rows()
         .expect("into rows");
@@ -197,7 +197,7 @@ async fn nested_tuples() {
         .query(cql)
         .await
         .expect("query")
-        .body_response()
+        .response_body()
         .expect("get body")
         .into_rows()
         .expect("into rows");

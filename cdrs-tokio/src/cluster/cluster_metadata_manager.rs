@@ -87,7 +87,7 @@ async fn send_query_with_params<T: CdrsTransport>(
     transport
         .write_frame(&frame)
         .await
-        .and_then(|frame| frame.body_response())
+        .and_then(|frame| frame.response_body())
         .map(|body| body.into_rows())
 }
 

@@ -140,7 +140,7 @@ impl<
             .session
             .query_with_params(query, params.finalize())
             .await
-            .and_then(|frame| frame.body_response())?;
+            .and_then(|frame| frame.response_body())?;
 
         let metadata_res: error::Result<RowsMetadata> = body
             .as_rows_metadata()
@@ -193,7 +193,7 @@ impl<
             .session
             .exec_with_params(self.query, params.finalize())
             .await
-            .and_then(|frame| frame.body_response())?;
+            .and_then(|frame| frame.response_body())?;
 
         let metadata_res: error::Result<RowsMetadata> = body
             .as_rows_metadata()

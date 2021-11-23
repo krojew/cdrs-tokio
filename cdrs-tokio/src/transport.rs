@@ -310,7 +310,7 @@ impl AsyncTransport {
                         if frame.opcode == Opcode::Result {
                             let result_kind = ResultKind::from_bytes(&frame.body[..INT_LEN])?;
                             if result_kind == ResultKind::SetKeyspace {
-                                let response_body = frame.body_response()?;
+                                let response_body = frame.response_body()?;
                                 let set_keyspace =
                                     response_body.into_set_keyspace().ok_or_else(|| {
                                         Error::General(
