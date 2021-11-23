@@ -1,11 +1,12 @@
 use crate::consistency::Consistency;
+use crate::frame::traits::FromCursor;
 use crate::frame::*;
 use crate::query::{Query, QueryParams, QueryValues};
 use crate::types::*;
 use std::io::Cursor;
 
 /// Structure which represents body of Query request
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BodyReqQuery {
     /// Query string.
     pub query: CStringLong,
@@ -42,6 +43,18 @@ impl BodyReqQuery {
                 routing_key: None,
             },
         }
+    }
+}
+
+impl FromCursor for BodyReqQuery {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyReqQuery> {
+        let query = CStringLong::from_cursor(cursor)?;
+        let query_params = QueryParams::from_cursor(cursor)?;
+
+        Ok(BodyReqQuery {
+            query,
+            query_params,
+        })
     }
 }
 

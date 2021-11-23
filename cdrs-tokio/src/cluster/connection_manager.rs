@@ -60,7 +60,7 @@ pub async fn startup<
     }
 
     if start_response.opcode == Opcode::Authenticate {
-        let body = start_response.body()?;
+        let body = start_response.body_response()?;
         let authenticator = body.authenticator()
             .ok_or_else(|| Error::General("Cassandra server did communicate that it needed authentication but the auth schema was missing in the body response".into()))?;
 
@@ -100,7 +100,7 @@ pub async fn startup<
             .await?;
 
         loop {
-            match frame.body()? {
+            match frame.body_response()? {
                 ResponseBody::AuthChallenge(challenge) => {
                     let response = authenticator.evaluate_challenge(challenge.data)?;
 

@@ -13,6 +13,7 @@ use uuid::Uuid;
 use super::blob::Blob;
 use super::decimal::Decimal;
 use super::*;
+use crate::Error;
 
 const NULL_INT_VALUE: i32 = -1;
 const NOT_SET_INT_VALUE: i32 = -2;
@@ -45,6 +46,25 @@ impl Serialize for Value {
                 len.serialize(cursor);
                 value.serialize(cursor);
             }
+        }
+    }
+}
+
+impl FromCursor for Value {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> Result<Value, Error> {
+        let value_size = {
+            let mut buff = [0; 4];
+            cursor.read_exact(&mut buff)?;
+            i32::from_be_bytes(buff)
+        };
+        if value_size > 0 {
+            Ok(Value::Some(cursor_next_value(cursor, value_size as usize)?))
+        } else if value_size == -1 {
+            Ok(Value::Null)
+        } else if value_size == -2 {
+            Ok(Value::NotSet)
+        } else {
+            Err(Error::General("Could not decode query values".into()))
         }
     }
 }

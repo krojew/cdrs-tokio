@@ -1,17 +1,20 @@
 use derive_more::Constructor;
+use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 
 use crate::consistency::Consistency;
+use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
 use crate::types::value::Value;
-use crate::types::{CBytes, CIntShort};
+use crate::types::CIntShort;
+use crate::types::{CBytes, CString};
 use crate::Error;
 
 /// Parameters of Query for query operation.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct QueryParams {
     /// Cassandra consistency level.
     pub consistency: Consistency,
@@ -104,6 +107,97 @@ impl Serialize for QueryParams {
         if let Some(timestamp) = self.timestamp {
             timestamp.serialize(cursor);
         }
+    }
+}
+
+impl FromCursor for QueryParams {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> Result<QueryParams, Error> {
+        let consistency = Consistency::from_cursor(cursor)?;
+        let flags = {
+            let mut buff = [0];
+            cursor.read_exact(&mut buff)?;
+            QueryFlags::from_bits_truncate(buff[0])
+        };
+
+        let values = if flags.contains(QueryFlags::VALUE) {
+            let number_of_values = {
+                let mut buff = [0; 2];
+                cursor.read_exact(&mut buff)?;
+                i16::from_be_bytes(buff)
+            };
+            if flags.contains(QueryFlags::WITH_NAMES_FOR_VALUES) {
+                let mut map = HashMap::with_capacity(number_of_values as usize);
+                for _ in 0..number_of_values {
+                    map.insert(
+                        CString::from_cursor(cursor)?.as_plain(),
+                        Value::from_cursor(cursor)?,
+                    );
+                }
+                Some(QueryValues::NamedValues(map))
+            } else {
+                let mut vec = Vec::with_capacity(number_of_values as usize);
+                for _ in 0..number_of_values {
+                    vec.push(Value::from_cursor(cursor)?);
+                }
+                Some(QueryValues::SimpleValues(vec))
+            }
+        } else {
+            None
+        };
+
+        let page_size = if flags.contains(QueryFlags::PAGE_SIZE) {
+            Some({
+                let mut buff = [0; 4];
+                cursor.read_exact(&mut buff)?;
+                i32::from_be_bytes(buff)
+            })
+        } else {
+            None
+        };
+
+        let paging_state = if flags.contains(QueryFlags::WITH_PAGING_STATE) {
+            Some(CBytes::from_cursor(cursor)?)
+        } else {
+            None
+        };
+
+        let serial_consistency = if flags.contains(QueryFlags::WITH_SERIAL_CONSISTENCY) {
+            Some(Consistency::from_cursor(cursor)?)
+        } else {
+            None
+        };
+
+        let timestamp = if flags.contains(QueryFlags::WITH_DEFAULT_TIMESTAMP) {
+            Some({
+                let mut buff = [0; 8];
+                cursor.read_exact(&mut buff)?;
+                i64::from_be_bytes(buff)
+            })
+        } else {
+            None
+        };
+
+        let with_names = flags.contains(QueryFlags::WITH_NAMES_FOR_VALUES);
+
+        // We set these to default values as they arent actually part of the cassandra protocol
+        let is_idempotent = false;
+        let keyspace = None;
+        let token = None;
+        let routing_key = None;
+
+        Ok(QueryParams {
+            consistency,
+            with_names,
+            values,
+            page_size,
+            paging_state,
+            serial_consistency,
+            timestamp,
+            is_idempotent,
+            keyspace,
+            token,
+            routing_key,
+        })
     }
 }
 
