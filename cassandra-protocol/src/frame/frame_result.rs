@@ -98,23 +98,23 @@ impl Serialize for ResResultBody {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         match &self {
-            ResResultBody::Void(_) => {
-                to_int(1).serialize(cursor);
+            ResResultBody::Void => {
+                ResultKind::Void.serialize(cursor);
             }
             ResResultBody::Rows(rows) => {
-                to_int(2).serialize(cursor);
+                ResultKind::Rows.serialize(cursor);
                 rows.serialize(cursor);
             }
             ResResultBody::SetKeyspace(set_keyspace) => {
-                to_int(3).serialize(cursor);
+                ResultKind::SetKeyspace.serialize(cursor);
                 set_keyspace.serialize(cursor);
             }
             ResResultBody::Prepared(prepared) => {
-                to_int(4).serialize(cursor);
+                ResultKind::Prepared.serialize(cursor);
                 prepared.serialize(cursor);
             }
             ResResultBody::SchemaChange(schema_change) => {
-                to_int(5).serialize(cursor);
+                ResultKind::SchemaChange.serialize(cursor);
                 schema_change.serialize(cursor);
             }
         }
@@ -308,7 +308,7 @@ impl Serialize for RowsMetadata {
 
         self.flags.serialize(cursor);
 
-        to_int(self.columns_count).serialize(cursor);
+        self.columns_count.serialize(cursor);
 
         if let Some(paging_state) = &self.paging_state {
             paging_state.serialize(cursor);
@@ -533,7 +533,7 @@ impl FromBytes for ColType {
 impl Serialize for ColType {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        to_short(match self {
+        (match self {
             ColType::Custom => 0x0000,
             ColType::Ascii => 0x0001,
             ColType::Bigint => 0x0002,
@@ -560,8 +560,8 @@ impl Serialize for ColType {
             ColType::Udt => 0x0030,
             ColType::Tuple => 0x0031,
             _ => 0x6666,
-        })
-        .serialize(cursor);
+        } as i16)
+            .serialize(cursor);
     }
 }
 
@@ -670,7 +670,7 @@ impl Serialize for CUdt {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         self.ks.serialize(cursor);
         self.udt_name.serialize(cursor);
-        to_short(self.descriptions.len() as i16).serialize(cursor);
+        (self.descriptions.len() as i16).serialize(cursor);
         self.descriptions.iter().for_each(|(name, col_type)| {
             name.serialize(cursor);
             col_type.serialize(cursor);
@@ -713,7 +713,7 @@ pub struct CTuple {
 impl Serialize for CTuple {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        to_short(self.types.len() as i16).serialize(cursor);
+        (self.types.len() as i16).serialize(cursor);
         self.types.iter().for_each(|f| f.serialize(cursor));
     }
 }
@@ -781,7 +781,7 @@ bitflags! {
 impl Serialize for PreparedMetadataFlags {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        to_int(self.bits()).serialize(cursor);
+        self.bits().serialize(cursor);
     }
 }
 
@@ -814,11 +814,9 @@ impl Serialize for PreparedMetadata {
         }
 
         self.flags.serialize(cursor);
-        to_int(self.columns_count).serialize(cursor);
-        to_int(self.pk_count).serialize(cursor);
-        self.pk_indexes
-            .iter()
-            .for_each(|f| to_short(*f).serialize(cursor));
+        self.columns_count.serialize(cursor);
+        self.pk_count.serialize(cursor);
+        self.pk_indexes.iter().for_each(|f| f.serialize(cursor));
 
         if let Some(global_table_spec) = &self.global_table_spec {
             global_table_spec.serialize(cursor);
@@ -880,14 +878,18 @@ fn extract_global_table_space(
 
 #[cfg(test)]
 fn test_encode_decode(bytes: &[u8], expected: ResResultBody) {
-    let mut ks: Cursor<&[u8]> = Cursor::new(bytes);
-    let result = ResResultBody::from_cursor(&mut ks, Version::V4).unwrap();
-    assert_eq!(expected, result);
+    {
+        let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+        let result = ResResultBody::from_cursor(&mut cursor, Version::V4).unwrap();
+        assert_eq!(expected, result);
+    }
 
-    let mut buffer = Vec::new();
-    let mut cursor = Cursor::new(&mut buffer);
-    expected.serialize(&mut cursor);
-    assert_eq!(buffer, bytes);
+    {
+        let mut buffer = Vec::new();
+        let mut cursor = Cursor::new(&mut buffer);
+        expected.serialize(&mut cursor);
+        assert_eq!(buffer, bytes);
+    }
 }
 
 #[cfg(test)]
@@ -963,8 +965,8 @@ mod ctuple {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let event = CTuple::from_cursor(&mut cursor).unwrap();
-            assert_eq!(event, expected);
+            let tuple = CTuple::from_cursor(&mut cursor).unwrap();
+            assert_eq!(tuple, expected);
         }
 
         {
@@ -1063,8 +1065,8 @@ mod col_type_option {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let event = ColTypeOption::from_cursor(&mut cursor).unwrap();
-            assert_eq!(event, expected);
+            let col_type_option = ColTypeOption::from_cursor(&mut cursor).unwrap();
+            assert_eq!(col_type_option, expected);
         }
 
         {
@@ -1094,8 +1096,8 @@ mod col_type_option {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let event = ColTypeOption::from_cursor(&mut cursor).unwrap();
-            assert_eq!(event, expected);
+            let col_type_option = ColTypeOption::from_cursor(&mut cursor).unwrap();
+            assert_eq!(col_type_option, expected);
         }
 
         {
@@ -1124,8 +1126,8 @@ mod table_spec {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let event = TableSpec::from_cursor(&mut cursor).unwrap();
-            assert_eq!(event, expected);
+            let table_spec = TableSpec::from_cursor(&mut cursor).unwrap();
+            assert_eq!(table_spec, expected);
         }
 
         {
@@ -1144,7 +1146,7 @@ mod void {
     #[test]
     fn test_void() {
         let bytes = &[0, 0, 0, 1];
-        let expected = ResResultBody::Void(BodyResResultVoid {});
+        let expected = ResResultBody::Void;
         test_encode_decode(bytes, expected);
     }
 }
@@ -1205,8 +1207,8 @@ mod rows_metadata {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let event = RowsMetadata::from_cursor(&mut cursor).unwrap();
-            assert_eq!(event, expected);
+            let metadata = RowsMetadata::from_cursor(&mut cursor).unwrap();
+            assert_eq!(metadata, expected);
         }
 
         {
@@ -1384,8 +1386,8 @@ mod prepared_metadata {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let event = PreparedMetadata::from_cursor(&mut cursor, Version::V4).unwrap();
-            assert_eq!(event, expected);
+            let metadata = PreparedMetadata::from_cursor(&mut cursor, Version::V4).unwrap();
+            assert_eq!(metadata, expected);
         }
 
         {
