@@ -13,7 +13,7 @@ use crate::cluster::control_connection::ControlConnection;
 use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
 use crate::cluster::send_frame::send_frame;
 use crate::cluster::tcp_connection_manager::TcpConnectionManager;
-use crate::cluster::topology::{Node, NodeDistance};
+use crate::cluster::topology::{Node, NodeDistance, NodeState};
 #[cfg(feature = "rust-tls")]
 use crate::cluster::NodeRustlsConfig;
 use crate::cluster::{ClusterMetadata, ClusterMetadataManager, SessionContext};
@@ -512,13 +512,14 @@ impl<
         let contact_points = contact_points
             .into_iter()
             .map(|contact_point| {
-                Arc::new(Node::new(
+                Arc::new(Node::new_with_state(
                     connection_manager.clone(),
                     contact_point,
                     None,
                     None,
                     // assume contact points are local until refresh
                     Some(NodeDistance::Local),
+                    NodeState::Up,
                     Default::default(),
                     // as with distance, rack/dc is unknown until refresh
                     "".into(),

@@ -27,12 +27,13 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                 Arc::new(contact_point.clone_as_contact_point(node_info).await)
             } else {
                 debug!(?node_info, "Adding new node.");
-                Arc::new(Node::new(
+                Arc::new(Node::new_with_state(
                     connection_manager.clone(),
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
                     node_distance_evaluator.compute_distance(&node_info),
+                    NodeState::Up,
                     node_info.tokens.clone(),
                     node_info.rack,
                     node_info.datacenter,
