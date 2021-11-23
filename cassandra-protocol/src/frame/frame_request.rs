@@ -5,6 +5,7 @@ use crate::frame::frame_query::BodyReqQuery;
 use crate::frame::{FromCursor, Opcode, Serialize};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum RequestBody {
     Startup,
     Options,
@@ -22,6 +23,7 @@ impl Serialize for RequestBody {
             RequestBody::Query(query) => query.serialize(cursor),
             _ => {
                 // TODO: add remaining
+                todo!()
             }
         }
     }
