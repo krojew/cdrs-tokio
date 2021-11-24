@@ -11,6 +11,8 @@ use crate::frame::traits::FromCursor;
 use crate::frame::Frame;
 use crate::types::*;
 
+use super::Serialize;
+
 /// CDRS specific `Result` which contains a [`Frame`] in case of `Ok` and `ErrorBody` if `Err`.
 pub type Result = result::Result<Frame, ErrorBody>;
 
@@ -26,6 +28,14 @@ pub struct ErrorBody {
     pub message: CString,
     /// Additional information.
     pub additional_info: AdditionalErrorInfo,
+}
+
+impl Serialize for ErrorBody {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.error_code.serialize(cursor);
+        self.message.serialize(cursor);
+        self.additional_info.serialize(cursor);
+    }
 }
 
 impl FromCursor for ErrorBody {
@@ -65,6 +75,24 @@ pub enum AdditionalErrorInfo {
     Config,
     AlreadyExists(AlreadyExistsError),
     Unprepared(UnpreparedError),
+}
+
+impl Serialize for AdditionalErrorInfo {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        match self {
+            AdditionalErrorInfo::Unavailable(unavailable) => unavailable.serialize(cursor),
+            AdditionalErrorInfo::WriteTimeout(write_timeout) => write_timeout.serialize(cursor),
+            AdditionalErrorInfo::ReadTimeout(read_timeout) => read_timeout.serialize(cursor),
+            AdditionalErrorInfo::ReadFailure(read_failure) => read_failure.serialize(cursor),
+            AdditionalErrorInfo::FunctionFailure(function_failure) => {
+                function_failure.serialize(cursor)
+            }
+            AdditionalErrorInfo::WriteFailure(write_failure) => write_failure.serialize(cursor),
+            AdditionalErrorInfo::AlreadyExists(already_exists) => already_exists.serialize(cursor),
+            AdditionalErrorInfo::Unprepared(unprepared) => unprepared.serialize(cursor),
+            _ => {}
+        }
+    }
 }
 
 impl AdditionalErrorInfo {
@@ -125,6 +153,14 @@ pub struct UnavailableError {
     pub alive: CInt,
 }
 
+impl Serialize for UnavailableError {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.cl.serialize(cursor);
+        self.required.serialize(cursor);
+        self.alive.serialize(cursor);
+    }
+}
+
 impl FromCursor for UnavailableError {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<UnavailableError> {
         let cl = Consistency::from_cursor(cursor)?;
@@ -150,6 +186,15 @@ pub struct WriteTimeoutError {
     pub block_for: CInt,
     /// Describes the type of the write that timed out
     pub write_type: WriteType,
+}
+
+impl Serialize for WriteTimeoutError {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.cl.serialize(cursor);
+        self.received.serialize(cursor);
+        self.block_for.serialize(cursor);
+        self.write_type.serialize(cursor);
+    }
 }
 
 impl FromCursor for WriteTimeoutError {
@@ -178,6 +223,15 @@ pub struct ReadTimeoutError {
     /// `i32` representing the number of replicas whose acknowledgement is required to achieve `cl`.
     pub block_for: CInt,
     data_present: u8,
+}
+
+impl Serialize for ReadTimeoutError {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.cl.serialize(cursor);
+        self.received.serialize(cursor);
+        self.block_for.serialize(cursor);
+        self.data_present.serialize(cursor);
+    }
 }
 
 impl ReadTimeoutError {
@@ -222,6 +276,16 @@ pub struct ReadFailureError {
     data_present: u8,
 }
 
+impl Serialize for ReadFailureError {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.cl.serialize(cursor);
+        self.received.serialize(cursor);
+        self.block_for.serialize(cursor);
+        self.num_failures.serialize(cursor);
+        self.data_present.serialize(cursor);
+    }
+}
+
 impl ReadFailureError {
     /// Shows if replica has responded to a query.
     #[inline]
@@ -259,8 +323,16 @@ pub struct FunctionFailureError {
     pub keyspace: CString,
     /// The name of the failed function
     pub function: CString,
-    /// `Vec<CString>` one string for each argument type (as CQL type) of the failed function.
+    /// `CStringList` one string for each argument type (as CQL type) of the failed function.
     pub arg_types: CStringList,
+}
+
+impl Serialize for FunctionFailureError {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.keyspace.serialize(cursor);
+        self.function.serialize(cursor);
+        self.arg_types.serialize(cursor);
+    }
 }
 
 impl FromCursor for FunctionFailureError {
@@ -291,6 +363,16 @@ pub struct WriteFailureError {
     pub num_failures: CInt,
     /// describes the type of the write that failed.
     pub write_type: WriteType,
+}
+
+impl Serialize for WriteFailureError {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.cl.serialize(cursor);
+        self.received.serialize(cursor);
+        self.block_for.serialize(cursor);
+        self.num_failures.serialize(cursor);
+        self.write_type.serialize(cursor);
+    }
 }
 
 impl FromCursor for WriteFailureError {
@@ -330,19 +412,30 @@ pub enum WriteType {
     BatchLog,
 }
 
+impl Serialize for WriteType {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        match self {
+            WriteType::Simple => serialize_str(cursor, "SIMPLE"),
+            WriteType::Batch => serialize_str(cursor, "BATCH"),
+            WriteType::UnloggedBatch => serialize_str(cursor, "UNLOGGED_BATCH"),
+            WriteType::Counter => serialize_str(cursor, "COUNTER"),
+            WriteType::BatchLog => serialize_str(cursor, "BATCH_LOG"),
+        }
+    }
+}
+
 impl FromCursor for WriteType {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<WriteType> {
-        CString::from_cursor(cursor).and_then(|wt| {
-            let wt = wt.as_str();
-            match wt {
-                "SIMPLE" => Ok(WriteType::Simple),
-                "BATCH" => Ok(WriteType::Batch),
-                "UNLOGGED_BATCH" => Ok(WriteType::UnloggedBatch),
-                "COUNTER" => Ok(WriteType::Counter),
-                "BATCH_LOG" => Ok(WriteType::BatchLog),
-                _ => Err(format!("Unexpected write type: {}", wt).into()),
-            }
-        })
+        let wt = CString::from_cursor(cursor)?;
+        let wt = wt.as_str();
+        match wt {
+            "SIMPLE" => Ok(WriteType::Simple),
+            "BATCH" => Ok(WriteType::Batch),
+            "UNLOGGED_BATCH" => Ok(WriteType::UnloggedBatch),
+            "COUNTER" => Ok(WriteType::Counter),
+            "BATCH_LOG" => Ok(WriteType::BatchLog),
+            _ => Err(format!("Unexpected write type: {}", wt).into()),
+        }
     }
 }
 
@@ -355,6 +448,13 @@ pub struct AlreadyExistsError {
     pub ks: CString,
     /// Represents the name of the table that already exists.
     pub table: CString,
+}
+
+impl Serialize for AlreadyExistsError {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.ks.serialize(cursor);
+        self.table.serialize(cursor);
+    }
 }
 
 impl FromCursor for AlreadyExistsError {
@@ -376,9 +476,276 @@ pub struct UnpreparedError {
     pub id: CBytesShort,
 }
 
+impl Serialize for UnpreparedError {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+        self.id.serialize(cursor);
+    }
+}
+
 impl FromCursor for UnpreparedError {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<UnpreparedError> {
         let id = CBytesShort::from_cursor(cursor)?;
         Ok(UnpreparedError { id })
+    }
+}
+
+#[cfg(test)]
+fn test_encode_decode(bytes: &[u8], expected: ErrorBody) {
+    {
+        let mut cursor: io::Cursor<&[u8]> = io::Cursor::new(bytes);
+        let result = ErrorBody::from_cursor(&mut cursor).unwrap();
+        assert_eq!(expected, result);
+    }
+
+    {
+        let mut buffer = Vec::new();
+        let mut cursor = io::Cursor::new(&mut buffer);
+        expected.serialize(&mut cursor);
+        assert_eq!(buffer, bytes);
+    }
+}
+
+#[cfg(test)]
+mod error_tests {
+    use super::*;
+
+    #[test]
+    fn server() {
+        let bytes = &[
+            0, 0, 0, 0, // server
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x0000,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Server,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn protocol() {
+        let bytes = &[
+            0, 0, 0, 10, // protocol
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x000A,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Protocol,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn authentication() {
+        let bytes = &[
+            0, 0, 1, 0, // authentication error
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x0100,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Authentication,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn unavailable() {
+        let bytes = &[
+            0, 0, 16, 0, // unavailable
+            0, 3, 102, 111, 111, // message - foo
+            //
+            // unavailable error
+            0, 0, // consistency any
+            0, 0, 0, 1, // required
+            0, 0, 0, 1, // alive
+        ];
+        let expected = ErrorBody {
+            error_code: 0x1000,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Unavailable(UnavailableError {
+                cl: Consistency::Any,
+                required: 1,
+                alive: 1,
+            }),
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn overloaded() {
+        let bytes = &[
+            0, 0, 16, 1, // authentication error
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x1001,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Overloaded,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn is_bootstrapping() {
+        let bytes = &[
+            0, 0, 16, 2, // is bootstrapping
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x1002,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::IsBootstrapping,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn truncate() {
+        let bytes = &[
+            0, 0, 16, 3, // truncate
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x1003,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Truncate,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn write_timeout() {
+        let bytes = &[
+            0, 0, 17, 0, // write timeout
+            0, 3, 102, 111, 111, // message - foo
+            //
+            // timeout error
+            0, 0, // consistency any
+            0, 0, 0, 1, // received
+            0, 0, 0, 1, // block_for
+            0, 6, 83, 73, 77, 80, 76, 69, // Write type simple
+        ];
+        let expected = ErrorBody {
+            error_code: 0x1100,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::WriteTimeout(WriteTimeoutError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 1,
+                write_type: WriteType::Simple,
+            }),
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn read_timeout() {
+        let bytes = &[
+            0, 0, 18, 0, // read timeout
+            0, 3, 102, 111, 111, // message - foo
+            //
+            // read timeout
+            0, 0, // consistency any
+            0, 0, 0, 1, // received
+            0, 0, 0, 1, // block_for
+            0, // data present
+        ];
+        let expected = ErrorBody {
+            error_code: 0x1200,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::ReadTimeout(ReadTimeoutError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 1,
+                data_present: 0,
+            }),
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn read_failure() {
+        let bytes = &[
+            0, 0, 19, 0, // read failure
+            0, 3, 102, 111, 111, // message - foo
+            //
+            // read timeout
+            0, 0, // consistency any
+            0, 0, 0, 1, // received
+            0, 0, 0, 1, // block_for
+            0, 0, 0, 1, // num failure
+            0, // data present
+        ];
+        let expected = ErrorBody {
+            error_code: 0x1300,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::ReadFailure(ReadFailureError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 1,
+                num_failures: 1,
+                data_present: 0,
+            }),
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn syntax() {
+        let bytes = &[
+            0, 0, 32, 0, // syntax
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x2000,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Syntax,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn unauthorized() {
+        let bytes = &[
+            0, 0, 33, 0, // unauthorized
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x2100,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Unauthorized,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn invalid() {
+        let bytes = &[
+            0, 0, 34, 0, // invalid
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x2200,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Invalid,
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn config() {
+        let bytes = &[
+            0, 0, 35, 0, // config
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let expected = ErrorBody {
+            error_code: 0x2300,
+            message: CString::new("foo".into()),
+            additional_info: AdditionalErrorInfo::Config,
+        };
+        test_encode_decode(bytes, expected);
     }
 }

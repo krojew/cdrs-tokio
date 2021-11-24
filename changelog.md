@@ -69,7 +69,7 @@ understated.
 
 * New `connect_generic_*` functions allowing custom connection configurations (see `generic_connection.rs`
   for example usage).
-* Possibility to use custom error types which implement `FromErrorBody` throughout the crate.
+* Possibility to use custom error types which implement `FromCdrsError` throughout the crate.
 * `Consistency` now implements `FromStr`.
 * Pagers can be converted into `PagerState`.
 * Support for v4 marshaled types.
