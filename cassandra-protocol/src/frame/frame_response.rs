@@ -30,10 +30,34 @@ pub enum ResponseBody {
 use crate::frame::Serialize;
 #[cfg(test)]
 impl Serialize for ResponseBody {
-    fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         match self {
+            ResponseBody::Error(error_body) => {
+                todo!();
+                //error_body.serialize(cursor);
+            }
             ResponseBody::Ready => {}
-            _ => todo!(),
+            ResponseBody::Authenticate(auth) => {
+                todo!();
+                //auth.serialize(cursor);
+            }
+            ResponseBody::Supported(supported) => {
+                todo!();
+                //supported.serialize(supported);
+            }
+            ResponseBody::Result(result) => {
+                result.serialize(cursor);
+            }
+            ResponseBody::Event(event) => {
+                event.serialize(cursor);
+            }
+            ResponseBody::AuthChallenge(auth_challenge) => {
+                auth_challenge.serialize(cursor);
+            }
+            ResponseBody::AuthSuccess(auth_success) => {
+                todo!();
+                //auth_success.serialize(auth_success);
+            }
         }
     }
 }
