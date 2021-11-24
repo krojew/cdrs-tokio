@@ -18,6 +18,7 @@ pub const LENGTH_LEN: usize = 4;
 pub mod events;
 pub mod frame_auth_challenge;
 pub mod frame_auth_response;
+pub mod frame_auth_success;
 pub mod frame_authenticate;
 pub mod frame_batch;
 pub mod frame_error;

@@ -108,7 +108,7 @@ pub async fn startup<
                         .write_frame(&Frame::new_req_auth_response(response, version))
                         .await?;
                 }
-                ResponseBody::AuthSuccess => break,
+                ResponseBody::AuthSuccess(..) => break,
                 _ => return Err(format!("Unexpected auth response: {:?}", frame.opcode).into()),
             }
         }

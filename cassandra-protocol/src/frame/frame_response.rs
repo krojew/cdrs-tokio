@@ -2,6 +2,7 @@ use std::io::Cursor;
 
 use crate::error;
 use crate::frame::frame_auth_challenge::*;
+use crate::frame::frame_auth_success::BodyReqAuthSuccess;
 use crate::frame::frame_authenticate::BodyResAuthenticate;
 use crate::frame::frame_error::ErrorBody;
 use crate::frame::frame_event::BodyResEvent;
@@ -21,7 +22,7 @@ pub enum ResponseBody {
     Result(ResResultBody),
     Event(BodyResEvent),
     AuthChallenge(BodyResAuthChallenge),
-    AuthSuccess,
+    AuthSuccess(BodyReqAuthSuccess),
 }
 
 // This implementation is incomplete so only enable in tests
@@ -34,7 +35,7 @@ impl Serialize for ResponseBody {
             ResponseBody::Error(error_body) => {
                 error_body.serialize(cursor);
             }
-            ResponseBody::Ready | ResponseBody::AuthSuccess => {}
+            ResponseBody::Ready => {}
             ResponseBody::Authenticate(auth) => {
                 auth.serialize(cursor);
             }
@@ -49,6 +50,9 @@ impl Serialize for ResponseBody {
             }
             ResponseBody::AuthChallenge(auth_challenge) => {
                 auth_challenge.serialize(cursor);
+            }
+            ResponseBody::AuthSuccess(auth_success) => {
+                auth_success.serialize(cursor);
             }
         }
     }
@@ -78,7 +82,9 @@ impl ResponseBody {
             Opcode::AuthChallenge => Ok(ResponseBody::AuthChallenge(
                 BodyResAuthChallenge::from_cursor(&mut cursor)?,
             )),
-            Opcode::AuthSuccess => Ok(ResponseBody::AuthSuccess),
+            Opcode::AuthSuccess => Ok(ResponseBody::AuthSuccess(BodyReqAuthSuccess::from_cursor(
+                &mut cursor,
+            )?)),
             _ => Err(format!("opcode {} is not a response", response_type).into()),
         }
     }
