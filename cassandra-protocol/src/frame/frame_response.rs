@@ -4,7 +4,7 @@ use crate::error;
 use crate::frame::frame_auth_challenge::*;
 use crate::frame::frame_auth_success::BodyReqAuthSuccess;
 use crate::frame::frame_authenticate::BodyResAuthenticate;
-use crate::frame::frame_error::CdrsError;
+use crate::frame::frame_error::ErrorBody;
 use crate::frame::frame_event::BodyResEvent;
 use crate::frame::frame_result::{
     BodyResResultPrepared, BodyResResultRows, BodyResResultSetKeyspace, ResResultBody, RowsMetadata,
@@ -15,7 +15,7 @@ use crate::types::rows::Row;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ResponseBody {
-    Error(CdrsError),
+    Error(ErrorBody),
     Ready,
     Authenticate(BodyResAuthenticate),
     Supported(BodyResSupported),
@@ -46,7 +46,7 @@ impl ResponseBody {
     ) -> error::Result<ResponseBody> {
         let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
         match response_type {
-            Opcode::Error => Ok(ResponseBody::Error(CdrsError::from_cursor(&mut cursor)?)),
+            Opcode::Error => Ok(ResponseBody::Error(ErrorBody::from_cursor(&mut cursor)?)),
             Opcode::Ready => Ok(ResponseBody::Ready),
             Opcode::Authenticate => Ok(ResponseBody::Authenticate(
                 BodyResAuthenticate::from_cursor(&mut cursor)?,

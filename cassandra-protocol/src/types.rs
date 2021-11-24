@@ -4,7 +4,7 @@ use std::io::{self, Write};
 use std::io::{Cursor, Read};
 use std::net::{IpAddr, SocketAddr};
 
-use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
+use crate::error::{column_is_empty_err, Error as ErrorBody, Result as CDRSResult};
 use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
 use crate::types::data_serialization_types::decode_inet;
@@ -48,7 +48,7 @@ pub trait AsRustType<T> {
 
     fn as_r_type(&self) -> CDRSResult<T> {
         self.as_rust_type()
-            .and_then(|op| op.ok_or_else(|| CdrsError::from("Value is null or non-set")))
+            .and_then(|op| op.ok_or_else(|| ErrorBody::from("Value is null or non-set")))
     }
 }
 

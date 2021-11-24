@@ -6,7 +6,7 @@ use thiserror::Error as ThisError;
 use uuid::Error as UuidError;
 
 use crate::compression::CompressionError;
-use crate::frame::frame_error::CdrsError;
+use crate::frame::frame_error::ErrorBody;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -34,15 +34,15 @@ pub enum Error {
     Compression(#[from] CompressionError),
     /// Server error.
     #[error("Server error: {0:?}")]
-    Server(CdrsError),
+    Server(ErrorBody),
 }
 
 pub fn column_is_empty_err<T: Display>(column_name: T) -> Error {
     Error::General(format!("Column or Udt property '{}' is empty", column_name))
 }
 
-impl From<CdrsError> for Error {
-    fn from(err: CdrsError) -> Error {
+impl From<ErrorBody> for Error {
+    fn from(err: ErrorBody) -> Error {
         Error::Server(err)
     }
 }

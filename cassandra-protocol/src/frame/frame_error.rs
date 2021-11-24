@@ -11,15 +11,15 @@ use crate::frame::traits::FromCursor;
 use crate::frame::Frame;
 use crate::types::*;
 
-/// CDRS specific `Result` which contains a [`Frame`] in case of `Ok` and `CdrsError` if `Err`.
-pub type Result = result::Result<Frame, CdrsError>;
+/// CDRS specific `Result` which contains a [`Frame`] in case of `Ok` and `ErrorBody` if `Err`.
+pub type Result = result::Result<Frame, ErrorBody>;
 
 /// CDRS error which could be returned by Cassandra server as a response. As it goes
 /// from the specification it contains an error code and an error message. Apart of those
 /// depending of type of error it could contain an additional information about an error.
 /// This additional information is represented by `additional_info` property which is `ErrorKind`.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
-pub struct CdrsError {
+pub struct ErrorBody {
     /// `i32` that points to a type of error.
     pub error_code: CInt,
     /// Error message string.
@@ -28,13 +28,13 @@ pub struct CdrsError {
     pub additional_info: AdditionalErrorInfo,
 }
 
-impl FromCursor for CdrsError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<CdrsError> {
+impl FromCursor for ErrorBody {
+    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<ErrorBody> {
         let error_code = CInt::from_cursor(cursor)?;
         let message = CString::from_cursor(cursor)?;
         let additional_info = AdditionalErrorInfo::from_cursor_with_code(cursor, error_code)?;
 
-        Ok(CdrsError {
+        Ok(ErrorBody {
             error_code,
             message,
             additional_info,
