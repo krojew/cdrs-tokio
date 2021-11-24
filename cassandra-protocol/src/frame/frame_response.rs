@@ -31,9 +31,8 @@ use crate::frame::Serialize;
 impl Serialize for ResponseBody {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         match self {
-            ResponseBody::Error(_error_body) => {
-                todo!();
-                //error_body.serialize(cursor);
+            ResponseBody::Error(error_body) => {
+                error_body.serialize(cursor);
             }
             ResponseBody::Ready | ResponseBody::AuthSuccess => {}
             ResponseBody::Authenticate(auth) => {
