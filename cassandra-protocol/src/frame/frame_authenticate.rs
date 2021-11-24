@@ -4,10 +4,18 @@ use crate::error;
 use crate::frame::FromCursor;
 use crate::types::CString;
 
+use super::Serialize;
+
 /// A server authentication challenge.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct BodyResAuthenticate {
     pub data: CString,
+}
+
+impl Serialize for BodyResAuthenticate {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        self.data.serialize(cursor);
+    }
 }
 
 impl FromCursor for BodyResAuthenticate {
@@ -27,9 +35,22 @@ mod tests {
     #[test]
     fn body_res_authenticate() {
         // string "abcde"
-        let data = [0, 5, 97, 98, 99, 100, 101];
-        let mut cursor: Cursor<&[u8]> = Cursor::new(&data);
-        let body = BodyResAuthenticate::from_cursor(&mut cursor).unwrap();
-        assert_eq!(body.data.as_str(), "abcde");
+        let bytes = [0, 5, 97, 98, 99, 100, 101];
+        let expected = BodyResAuthenticate {
+            data: CString::new("abcde".into()),
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+            let auth = BodyResAuthenticate::from_cursor(&mut cursor).unwrap();
+            assert_eq!(auth, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
     }
 }
