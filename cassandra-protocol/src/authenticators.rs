@@ -2,17 +2,20 @@ use crate::error::Result;
 use crate::types::CBytes;
 
 /// Handles SASL authentication. The lifecycle of an authenticator consists of:
-/// - The `initial_response` function will be called. The initial return value will be sent to the
+/// - The [`initial_response`] function will be called. The initial return value will be sent to the
 /// server to initiate the handshake.
 /// - The server will respond to each client response by either issuing a challenge or indicating
 ///  that the authentication is complete (successfully or not). If a new challenge is issued,
-///  the authenticator's `evaluate_challenge` function will be called to produce a response
+///  the authenticator's [`evaluate_challenge`] function will be called to produce a response
 ///  that will be sent to the server. This challenge/response negotiation will continue until
 ///  the server responds that authentication is successful or an error is raised.
+/// - On success, the [`handle_success`] will be called with data returned by the server.
 pub trait SaslAuthenticator {
     fn initial_response(&self) -> CBytes;
 
     fn evaluate_challenge(&self, challenge: CBytes) -> Result<CBytes>;
+
+    fn handle_success(&self, data: CBytes) -> Result<()>;
 }
 
 /// Provides authenticators per new connection.
@@ -49,6 +52,10 @@ impl SaslAuthenticator for StaticPasswordAuthenticator {
 
     fn evaluate_challenge(&self, _challenge: CBytes) -> Result<CBytes> {
         Err("Server challenge is not supported for StaticPasswordAuthenticator!".into())
+    }
+
+    fn handle_success(&self, _data: CBytes) -> Result<()> {
+        Ok(())
     }
 }
 
@@ -91,6 +98,10 @@ impl SaslAuthenticator for NoneAuthenticator {
 
     fn evaluate_challenge(&self, _challenge: CBytes) -> Result<CBytes> {
         Err("Server challenge is not supported for NoneAuthenticator!".into())
+    }
+
+    fn handle_success(&self, _data: CBytes) -> Result<()> {
+        Ok(())
     }
 }
 

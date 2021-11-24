@@ -9,7 +9,7 @@ use super::Serialize;
 /// `BodyReqAuthSuccess` is a frame that represents a successful authentication response.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct BodyReqAuthSuccess {
-    data: CBytes,
+    pub data: CBytes,
 }
 
 impl Serialize for BodyReqAuthSuccess {
