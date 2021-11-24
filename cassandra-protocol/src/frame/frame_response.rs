@@ -41,8 +41,7 @@ impl Serialize for ResponseBody {
                 //auth.serialize(cursor);
             }
             ResponseBody::Supported(supported) => {
-                todo!();
-                //supported.serialize(supported);
+                supported.serialize(cursor);
             }
             ResponseBody::Result(result) => {
                 result.serialize(cursor);

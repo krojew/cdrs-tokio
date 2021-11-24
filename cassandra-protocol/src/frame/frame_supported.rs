@@ -3,11 +3,24 @@ use std::io::{Cursor, Read};
 
 use crate::error;
 use crate::frame::FromCursor;
-use crate::types::{CString, CStringList, SHORT_LEN};
+use crate::types::{serialize_str, CString, CStringList, SHORT_LEN};
+
+use super::Serialize;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BodyResSupported {
     pub data: HashMap<String, Vec<String>>,
+}
+
+impl Serialize for BodyResSupported {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+        (self.data.len() as i16).serialize(cursor);
+        self.data.iter().for_each(|(key, value)| {
+            serialize_str(cursor, key.as_str());
+            (value.len() as i16).serialize(cursor);
+            value.iter().for_each(|s| serialize_str(cursor, s.as_str()));
+        })
+    }
 }
 
 impl FromCursor for BodyResSupported {
@@ -34,18 +47,28 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn test_name() {
+    fn body_res_supported() {
         let bytes = [
             0, 1, // n options
             // 1-st option
             0, 2, 97, 98, // key [string] "ab"
             0, 2, 0, 1, 97, 0, 1, 98, /* value ["a", "b"] */
         ];
-        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
-        let options = BodyResSupported::from_cursor(&mut cursor).unwrap().data;
-        assert_eq!(options.len(), 1);
-        let option_ab = options.get(&"ab".to_string()).unwrap();
-        assert_eq!(option_ab[0], "a".to_string());
-        assert_eq!(option_ab[1], "b".to_string());
+        let mut data: HashMap<String, Vec<String>> = HashMap::new();
+        data.insert("ab".into(), vec!["a".into(), "b".into()]);
+        let expected = BodyResSupported { data };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+            let auth = BodyResSupported::from_cursor(&mut cursor).unwrap();
+            assert_eq!(auth, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor);
+            assert_eq!(buffer, bytes);
+        }
     }
 }
