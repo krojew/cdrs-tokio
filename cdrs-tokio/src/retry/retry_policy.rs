@@ -2,7 +2,7 @@ use derive_more::Display;
 
 use cassandra_protocol::error::Error;
 use cassandra_protocol::frame::frame_error::{
-    AdditionalErrorInfo, CdrsError, ReadTimeoutError, WriteTimeoutError, WriteType,
+    AdditionalErrorInfo, ErrorBody, ReadTimeoutError, WriteTimeoutError, WriteType,
 };
 
 #[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy, Clone, Display)]
@@ -72,15 +72,15 @@ impl RetrySession for DefaultRetrySession {
         match query_info.error {
             Error::Io(_)
             | Error::General(_)
-            | Error::Server(CdrsError {
+            | Error::Server(ErrorBody {
                 additional_info: AdditionalErrorInfo::Overloaded,
                 ..
             })
-            | Error::Server(CdrsError {
+            | Error::Server(ErrorBody {
                 additional_info: AdditionalErrorInfo::Server,
                 ..
             })
-            | Error::Server(CdrsError {
+            | Error::Server(ErrorBody {
                 additional_info: AdditionalErrorInfo::Truncate,
                 ..
             }) => {
@@ -90,7 +90,7 @@ impl RetrySession for DefaultRetrySession {
                     RetryDecision::DontRetry
                 }
             }
-            Error::Server(CdrsError {
+            Error::Server(ErrorBody {
                 additional_info: AdditionalErrorInfo::Unavailable(_),
                 ..
             }) => {
@@ -101,7 +101,7 @@ impl RetrySession for DefaultRetrySession {
                     RetryDecision::DontRetry
                 }
             }
-            Error::Server(CdrsError {
+            Error::Server(ErrorBody {
                 additional_info: AdditionalErrorInfo::ReadTimeout(error @ ReadTimeoutError { .. }),
                 ..
             }) => {
@@ -115,7 +115,7 @@ impl RetrySession for DefaultRetrySession {
                     RetryDecision::DontRetry
                 }
             }
-            Error::Server(CdrsError {
+            Error::Server(ErrorBody {
                 additional_info: AdditionalErrorInfo::WriteTimeout(error @ WriteTimeoutError { .. }),
                 ..
             }) => {
@@ -129,7 +129,7 @@ impl RetrySession for DefaultRetrySession {
                     RetryDecision::DontRetry
                 }
             }
-            Error::Server(CdrsError {
+            Error::Server(ErrorBody {
                 additional_info: AdditionalErrorInfo::IsBootstrapping,
                 ..
             }) => RetryDecision::RetryNextNode,

@@ -23,7 +23,7 @@ use cassandra_protocol::frame::events::{
     SchemaChangeOptions, SchemaChangeType, StatusChange, StatusChangeType, TopologyChange,
     TopologyChangeType,
 };
-use cassandra_protocol::frame::frame_error::{AdditionalErrorInfo, CdrsError};
+use cassandra_protocol::frame::frame_error::{AdditionalErrorInfo, ErrorBody};
 use cassandra_protocol::frame::{Frame, Version};
 use cassandra_protocol::query::utils::prepare_flags;
 use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
@@ -651,7 +651,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         match peers_v2_result {
             Ok(result) => Ok(result),
             // peers_v2 does not exist
-            Err(Error::Server(CdrsError {
+            Err(Error::Server(ErrorBody {
                 additional_info: AdditionalErrorInfo::Invalid,
                 ..
             })) => {
