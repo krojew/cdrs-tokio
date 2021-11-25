@@ -25,7 +25,7 @@ pub struct ErrorBody {
     /// `i32` that points to a type of error.
     pub error_code: CInt,
     /// Error message string.
-    pub message: CString,
+    pub message: String,
     /// Additional information.
     pub additional_info: AdditionalErrorInfo,
 }
@@ -33,7 +33,7 @@ pub struct ErrorBody {
 impl Serialize for ErrorBody {
     fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
         self.error_code.serialize(cursor);
-        self.message.serialize(cursor);
+        serialize_str(cursor, &self.message);
         self.additional_info.serialize(cursor);
     }
 }
@@ -41,7 +41,7 @@ impl Serialize for ErrorBody {
 impl FromCursor for ErrorBody {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<ErrorBody> {
         let error_code = CInt::from_cursor(cursor)?;
-        let message = CString::from_cursor(cursor)?;
+        let message = from_cursor_str(cursor)?.to_string();
         let additional_info = AdditionalErrorInfo::from_cursor_with_code(cursor, error_code)?;
 
         Ok(ErrorBody {
@@ -320,25 +320,25 @@ impl FromCursor for ReadFailureError {
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct FunctionFailureError {
     /// The keyspace of the failed function.
-    pub keyspace: CString,
+    pub keyspace: String,
     /// The name of the failed function
-    pub function: CString,
+    pub function: String,
     /// `CStringList` one string for each argument type (as CQL type) of the failed function.
     pub arg_types: CStringList,
 }
 
 impl Serialize for FunctionFailureError {
     fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.keyspace.serialize(cursor);
-        self.function.serialize(cursor);
+        serialize_str(cursor, &self.keyspace);
+        serialize_str(cursor, &self.function);
         self.arg_types.serialize(cursor);
     }
 }
 
 impl FromCursor for FunctionFailureError {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<FunctionFailureError> {
-        let keyspace = CString::from_cursor(cursor)?;
-        let function = CString::from_cursor(cursor)?;
+        let keyspace = from_cursor_str(cursor)?.to_string();
+        let function = from_cursor_str(cursor)?.to_string();
         let arg_types = CStringList::from_cursor(cursor)?;
 
         Ok(FunctionFailureError {
@@ -426,15 +426,13 @@ impl Serialize for WriteType {
 
 impl FromCursor for WriteType {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<WriteType> {
-        let wt = CString::from_cursor(cursor)?;
-        let wt = wt.as_str();
-        match wt {
+        match from_cursor_str(cursor)? {
             "SIMPLE" => Ok(WriteType::Simple),
             "BATCH" => Ok(WriteType::Batch),
             "UNLOGGED_BATCH" => Ok(WriteType::UnloggedBatch),
             "COUNTER" => Ok(WriteType::Counter),
             "BATCH_LOG" => Ok(WriteType::BatchLog),
-            _ => Err(format!("Unexpected write type: {}", wt).into()),
+            wt => Err(format!("Unexpected write type: {}", wt).into()),
         }
     }
 }
@@ -445,22 +443,22 @@ impl FromCursor for WriteType {
 pub struct AlreadyExistsError {
     /// Represents either the keyspace that already exists,
     /// or the keyspace in which the table that already exists is.
-    pub ks: CString,
+    pub ks: String,
     /// Represents the name of the table that already exists.
-    pub table: CString,
+    pub table: String,
 }
 
 impl Serialize for AlreadyExistsError {
     fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.ks.serialize(cursor);
-        self.table.serialize(cursor);
+        serialize_str(cursor, &self.ks);
+        serialize_str(cursor, &self.table);
     }
 }
 
 impl FromCursor for AlreadyExistsError {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<AlreadyExistsError> {
-        let ks = CString::from_cursor(cursor)?;
-        let table = CString::from_cursor(cursor)?;
+        let ks = from_cursor_str(cursor)?.to_string();
+        let table = from_cursor_str(cursor)?.to_string();
 
         Ok(AlreadyExistsError { ks, table })
     }
@@ -517,7 +515,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x0000,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Server,
         };
         test_encode_decode(bytes, expected);
@@ -531,7 +529,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x000A,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Protocol,
         };
         test_encode_decode(bytes, expected);
@@ -545,7 +543,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x0100,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Authentication,
         };
         test_encode_decode(bytes, expected);
@@ -564,7 +562,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x1000,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Unavailable(UnavailableError {
                 cl: Consistency::Any,
                 required: 1,
@@ -582,7 +580,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x1001,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Overloaded,
         };
         test_encode_decode(bytes, expected);
@@ -596,7 +594,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x1002,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::IsBootstrapping,
         };
         test_encode_decode(bytes, expected);
@@ -610,7 +608,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x1003,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Truncate,
         };
         test_encode_decode(bytes, expected);
@@ -630,7 +628,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x1100,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::WriteTimeout(WriteTimeoutError {
                 cl: Consistency::Any,
                 received: 1,
@@ -655,7 +653,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x1200,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::ReadTimeout(ReadTimeoutError {
                 cl: Consistency::Any,
                 received: 1,
@@ -681,7 +679,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x1300,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::ReadFailure(ReadFailureError {
                 cl: Consistency::Any,
                 received: 1,
@@ -701,7 +699,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x2000,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Syntax,
         };
         test_encode_decode(bytes, expected);
@@ -715,7 +713,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x2100,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Unauthorized,
         };
         test_encode_decode(bytes, expected);
@@ -729,7 +727,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x2200,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Invalid,
         };
         test_encode_decode(bytes, expected);
@@ -743,7 +741,7 @@ mod error_tests {
         ];
         let expected = ErrorBody {
             error_code: 0x2300,
-            message: CString::new("foo".into()),
+            message: "foo".into(),
             additional_info: AdditionalErrorInfo::Config,
         };
         test_encode_decode(bytes, expected);

@@ -2,26 +2,26 @@ use std::io::Cursor;
 
 use crate::error;
 use crate::frame::FromCursor;
-use crate::types::CString;
+use crate::types::{from_cursor_str, serialize_str};
 
 use super::Serialize;
 
 /// A server authentication challenge.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
 pub struct BodyResAuthenticate {
-    pub data: CString,
+    pub data: String,
 }
 
 impl Serialize for BodyResAuthenticate {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.data.serialize(cursor);
+        serialize_str(cursor, &self.data);
     }
 }
 
 impl FromCursor for BodyResAuthenticate {
     fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResAuthenticate> {
         Ok(BodyResAuthenticate {
-            data: CString::from_cursor(&mut cursor)?,
+            data: from_cursor_str(&mut cursor)?.to_string(),
         })
     }
 }
@@ -37,7 +37,7 @@ mod tests {
         // string "abcde"
         let bytes = [0, 5, 97, 98, 99, 100, 101];
         let expected = BodyResAuthenticate {
-            data: CString::new("abcde".into()),
+            data: "abcde".into(),
         };
 
         {

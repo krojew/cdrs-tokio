@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use crate::frame::events::SimpleServerEvent;
 use crate::frame::*;
-use crate::types::{CString, CStringList};
+use crate::types::CStringList;
 
 /// The structure which represents a body of a frame of type `options`.
 pub struct BodyReqRegister {
@@ -12,11 +12,7 @@ pub struct BodyReqRegister {
 impl Serialize for BodyReqRegister {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         let events_string_list = CStringList {
-            list: self
-                .events
-                .iter()
-                .map(|event| CString::new(event.as_string()))
-                .collect(),
+            list: self.events.iter().map(|event| event.as_string()).collect(),
         };
 
         events_string_list.serialize(cursor)

@@ -211,51 +211,14 @@ pub fn serialize_str(cursor: &mut Cursor<&mut Vec<u8>>, value: &str) {
     let _ = cursor.write(value.as_bytes());
 }
 
-#[derive(Debug, Clone, Constructor, PartialEq, Ord, PartialOrd, Eq, Hash)]
-pub struct CString {
-    string: String,
-}
+pub(crate) fn from_cursor_str<'a>(cursor: &mut Cursor<&'a [u8]>) -> CDRSResult<&'a str> {
+    let mut buff = [0; SHORT_LEN];
+    cursor.read_exact(&mut buff)?;
 
-impl CString {
-    /// Converts internal value into pointer of `str`.
-    #[inline]
-    pub fn as_str(&self) -> &str {
-        self.string.as_str()
-    }
+    let len = i16::from_be_bytes(buff);
+    let body_bytes = cursor_next_value_ref(cursor, len as usize)?;
 
-    /// Converts internal value into a plain `String`.
-    #[inline]
-    pub fn into_plain(self) -> String {
-        self.string
-    }
-
-    /// Represents internal value as a `String`.
-    #[inline]
-    pub fn as_plain(&self) -> String {
-        self.string.clone()
-    }
-}
-
-impl Serialize for CString {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        let len = self.string.len() as CIntShort;
-        len.serialize(cursor);
-        self.string.serialize(cursor);
-    }
-}
-
-impl FromCursor for CString {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CString> {
-        let mut buff = [0; SHORT_LEN];
-        cursor.read_exact(&mut buff)?;
-
-        let len = i16::from_be_bytes(buff);
-        let body_bytes = cursor_next_value(cursor, len as usize)?;
-
-        String::from_utf8(body_bytes)
-            .map_err(Into::into)
-            .map(CString::new)
-    }
+    std::str::from_utf8(body_bytes).map_err(Into::into)
 }
 
 #[derive(Debug, Clone, Constructor, PartialEq, Ord, PartialOrd, Eq, Hash)]
@@ -281,7 +244,7 @@ impl Serialize for CStringLong {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         let len = self.string.len() as CInt;
         len.serialize(cursor);
-        self.string.serialize(cursor);
+        let _ = cursor.write(self.string.as_bytes());
     }
 }
 
@@ -301,15 +264,12 @@ impl FromCursor for CStringLong {
 
 #[derive(Debug, Clone, Constructor, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CStringList {
-    pub list: Vec<CString>,
+    pub list: Vec<String>,
 }
 
 impl CStringList {
     pub fn into_plain(self) -> Vec<String> {
         self.list
-            .into_iter()
-            .map(|string| string.into_plain())
-            .collect()
     }
 }
 
@@ -319,7 +279,7 @@ impl Serialize for CStringList {
         len.serialize(cursor);
 
         for string in &self.list {
-            string.serialize(cursor);
+            serialize_str(cursor, string);
         }
     }
 }
@@ -330,16 +290,14 @@ impl FromCursor for CStringList {
         cursor.read_exact(&mut buff)?;
 
         let len = i16::from_be_bytes(buff);
-        let mut list = Vec::with_capacity(len as usize * SHORT_LEN);
+        let mut list = Vec::with_capacity(len as usize);
         for _ in 0..len {
-            list.push(CString::from_cursor(cursor)?);
+            list.push(from_cursor_str(cursor)?.to_string());
         }
 
         Ok(CStringList { list })
     }
 }
-
-//
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
 /// The structure that represents Cassandra byte type.
@@ -538,6 +496,23 @@ pub fn cursor_next_value(cursor: &mut Cursor<&[u8]>, len: usize) -> CDRSResult<V
     Ok(buff)
 }
 
+pub fn cursor_next_value_ref<'a>(
+    cursor: &mut Cursor<&'a [u8]>,
+    len: usize,
+) -> CDRSResult<&'a [u8]> {
+    let start = cursor.position() as usize;
+    let result = &cursor.get_ref()[start..start + len];
+    cursor.set_position(cursor.position() + len as u64);
+
+    if result.len() != len {
+        Err(CdrsError::General(
+            "cursor_next_value_ref could not retrieve a full slice".into(),
+        ))
+    } else {
+        Ok(result)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -557,43 +532,12 @@ mod tests {
         int.to_signed_bytes_be()
     }
 
-    // CString
     #[test]
-    fn test_cstring_new() {
-        let value = "foo".to_string();
-        let _ = CString::new(value);
-    }
-
-    #[test]
-    fn test_cstring_as_str() {
-        let value = "foo".to_string();
-        let cstring = CString::new(value);
-
-        assert_eq!(cstring.as_str(), "foo");
-    }
-
-    #[test]
-    fn test_cstring_into_plain() {
-        let value = "foo".to_string();
-        let cstring = CString::new(value);
-
-        assert_eq!(cstring.into_plain(), "foo".to_string());
-    }
-
-    #[test]
-    fn test_cstring_serialize() {
-        let value = "foo".to_string();
-        let cstring = CString::new(value);
-
-        assert_eq!(cstring.serialize_to_vec(), &[0, 3, 102, 111, 111]);
-    }
-
-    #[test]
-    fn test_cstring_from_cursor() {
+    fn test_from_cursor_str() {
         let a = &[0, 3, 102, 111, 111, 0];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
-        let cstring = CString::from_cursor(&mut cursor).unwrap();
-        assert_eq!(cstring.as_str(), "foo");
+        let cstring = from_cursor_str(&mut cursor).unwrap();
+        assert_eq!(cstring, "foo");
     }
 
     // CStringLong

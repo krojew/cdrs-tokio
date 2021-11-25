@@ -191,19 +191,19 @@ impl ResResultBody {
 #[derive(Debug, Constructor, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
 pub struct BodyResResultSetKeyspace {
     /// It contains name of keyspace that was set.
-    pub body: CString,
+    pub body: String,
 }
 
 impl Serialize for BodyResResultSetKeyspace {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.body.serialize(cursor);
+        serialize_str(cursor, &self.body);
     }
 }
 
 impl FromCursor for BodyResResultSetKeyspace {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResResultSetKeyspace> {
-        CString::from_cursor(cursor).map(BodyResResultSetKeyspace::new)
+        from_cursor_str(cursor).map(|x| BodyResResultSetKeyspace::new(x.to_string()))
     }
 }
 
@@ -381,22 +381,22 @@ impl FromBytes for RowsMetadataFlags {
 /// Table specification.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct TableSpec {
-    pub ks_name: CString,
-    pub table_name: CString,
+    pub ks_name: String,
+    pub table_name: String,
 }
 
 impl Serialize for TableSpec {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.ks_name.serialize(cursor);
-        self.table_name.serialize(cursor);
+        serialize_str(cursor, &self.ks_name);
+        serialize_str(cursor, &self.table_name);
     }
 }
 
 impl FromCursor for TableSpec {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
-        let ks_name = CString::from_cursor(cursor)?;
-        let table_name = CString::from_cursor(cursor)?;
+        let ks_name = from_cursor_str(cursor)?.to_string();
+        let table_name = from_cursor_str(cursor)?.to_string();
         Ok(TableSpec {
             ks_name,
             table_name,
@@ -411,7 +411,7 @@ pub struct ColSpec {
     /// if the Global_tables_spec flag is NOT set
     pub table_spec: Option<TableSpec>,
     /// Column name
-    pub name: CString,
+    pub name: String,
     /// Column type defined in spec in 4.2.5.2
     pub col_type: ColTypeOption,
 }
@@ -423,7 +423,7 @@ impl Serialize for ColSpec {
             table_spec.serialize(cursor);
         }
 
-        self.name.serialize(cursor);
+        serialize_str(cursor, &self.name);
         self.col_type.serialize(cursor);
     }
 }
@@ -442,7 +442,7 @@ impl ColSpec {
                     None
                 };
 
-                let name = CString::from_cursor(cursor)?;
+                let name = from_cursor_str(cursor)?.to_string();
                 let col_type = ColTypeOption::from_cursor(cursor)?;
 
                 Ok(ColSpec {
@@ -598,7 +598,9 @@ impl FromCursor for ColTypeOption {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ColTypeOption> {
         let id = ColType::from_cursor(cursor)?;
         let value = match id {
-            ColType::Custom => Some(ColTypeOptionValue::CString(CString::from_cursor(cursor)?)),
+            ColType::Custom => Some(ColTypeOptionValue::CString(
+                from_cursor_str(cursor)?.to_string(),
+            )),
             ColType::Set => {
                 let col_type = ColTypeOption::from_cursor(cursor)?;
                 Some(ColTypeOptionValue::CSet(Box::new(col_type)))
@@ -627,7 +629,7 @@ impl FromCursor for ColTypeOption {
 /// Enum that represents all possible types of `value` of `ColTypeOption`.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub enum ColTypeOptionValue {
-    CString(CString),
+    CString(String),
     ColType(ColType),
     CSet(Box<ColTypeOption>),
     CList(Box<ColTypeOption>),
@@ -640,7 +642,7 @@ impl Serialize for ColTypeOptionValue {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         match self {
-            Self::CString(c) => c.serialize(cursor),
+            Self::CString(c) => serialize_str(cursor, c),
             Self::ColType(c) => c.serialize(cursor),
             Self::CSet(c) => c.serialize(cursor),
             Self::CList(c) => c.serialize(cursor),
@@ -658,21 +660,21 @@ impl Serialize for ColTypeOptionValue {
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct CUdt {
     /// Keyspace name.
-    pub ks: CString,
+    pub ks: String,
     /// Udt name
-    pub udt_name: CString,
+    pub udt_name: String,
     /// List of pairs `(name, type)` where name is field name and type is type of field.
-    pub descriptions: Vec<(CString, ColTypeOption)>,
+    pub descriptions: Vec<(String, ColTypeOption)>,
 }
 
 impl Serialize for CUdt {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.ks.serialize(cursor);
-        self.udt_name.serialize(cursor);
+        serialize_str(cursor, &self.ks);
+        serialize_str(cursor, &self.udt_name);
         (self.descriptions.len() as i16).serialize(cursor);
         self.descriptions.iter().for_each(|(name, col_type)| {
-            name.serialize(cursor);
+            serialize_str(cursor, name);
             col_type.serialize(cursor);
         });
     }
@@ -680,8 +682,8 @@ impl Serialize for CUdt {
 
 impl FromCursor for CUdt {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<CUdt> {
-        let ks = CString::from_cursor(cursor)?;
-        let udt_name = CString::from_cursor(cursor)?;
+        let ks = from_cursor_str(cursor)?.to_string();
+        let udt_name = from_cursor_str(cursor)?.to_string();
 
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
@@ -689,7 +691,7 @@ impl FromCursor for CUdt {
         let n = i16::from_be_bytes(buff);
         let mut descriptions = Vec::with_capacity(n as usize);
         for _ in 0..n {
-            let name = CString::from_cursor(cursor)?;
+            let name = from_cursor_str(cursor)?.to_string();
             let col_type = ColTypeOption::from_cursor(cursor)?;
             descriptions.push((name, col_type));
         }
@@ -911,18 +913,18 @@ mod cudt {
             0, 9, // col type int
         ];
         let expected = CUdt {
-            ks: CString::new("bar".into()),
-            udt_name: CString::new("foo".into()),
+            ks: "bar".into(),
+            udt_name: "foo".into(),
             descriptions: vec![
                 (
-                    CString::new("bar".into()),
+                    "bar".into(),
                     ColTypeOption {
                         id: ColType::Int,
                         value: None,
                     },
                 ),
                 (
-                    CString::new("foo".into()),
+                    "foo".into(),
                     ColTypeOption {
                         id: ColType::Int,
                         value: None,
@@ -996,10 +998,10 @@ mod col_spec {
 
         let expected = vec![ColSpec {
             table_spec: Some(TableSpec {
-                ks_name: CString::new("bar".into()),
-                table_name: CString::new("foo".into()),
+                ks_name: "bar".into(),
+                table_name: "foo".into(),
             }),
-            name: CString::new("foo".into()),
+            name: "foo".into(),
             col_type: ColTypeOption {
                 id: ColType::Int,
                 value: None,
@@ -1029,7 +1031,7 @@ mod col_spec {
         ];
         let expected = vec![ColSpec {
             table_spec: None,
-            name: CString::new("foo".into()),
+            name: "foo".into(),
             col_type: ColTypeOption {
                 id: ColType::Int,
                 value: None,
@@ -1120,8 +1122,8 @@ mod table_spec {
             0, 3, 102, 111, 111, //foo
         ];
         let expected = TableSpec {
-            ks_name: CString::new("bar".into()),
-            table_name: CString::new("foo".into()),
+            ks_name: "bar".into(),
+            table_name: "foo".into(),
         };
 
         {
@@ -1182,10 +1184,10 @@ mod rows_metadata {
             col_specs: vec![
                 ColSpec {
                     table_spec: Some(TableSpec {
-                        ks_name: CString::new("ksname1".into()),
-                        table_name: CString::new("tablename".into()),
+                        ks_name: "ksname1".into(),
+                        table_name: "tablename".into(),
                     }),
-                    name: CString::new("foo".into()),
+                    name: "foo".into(),
                     col_type: ColTypeOption {
                         id: ColType::Int,
                         value: None,
@@ -1193,10 +1195,10 @@ mod rows_metadata {
                 },
                 ColSpec {
                     table_spec: Some(TableSpec {
-                        ks_name: CString::new("ksname1".into()),
-                        table_name: CString::new("tablename".into()),
+                        ks_name: "ksname1".into(),
+                        table_name: "tablename".into(),
                     }),
-                    name: CString::new("bar".into()),
+                    name: "bar".into(),
                     col_type: ColTypeOption {
                         id: ColType::Smallint,
                         value: None,
@@ -1254,10 +1256,10 @@ mod rows {
                 col_specs: vec![
                     ColSpec {
                         table_spec: Some(TableSpec {
-                            ks_name: CString::new("ksname1".into()),
-                            table_name: CString::new("tablename".into()),
+                            ks_name: "ksname1".into(),
+                            table_name: "tablename".into(),
                         }),
-                        name: CString::new("foo".into()),
+                        name: "foo".into(),
                         col_type: ColTypeOption {
                             id: ColType::Int,
                             value: None,
@@ -1265,10 +1267,10 @@ mod rows {
                     },
                     ColSpec {
                         table_spec: Some(TableSpec {
-                            ks_name: CString::new("ksname1".into()),
-                            table_name: CString::new("tablename".into()),
+                            ks_name: "ksname1".into(),
+                            table_name: "tablename".into(),
                         }),
-                        name: CString::new("bar".into()),
+                        name: "bar".into(),
                         col_type: ColTypeOption {
                             id: ColType::Smallint,
                             value: None,
@@ -1320,7 +1322,7 @@ mod keyspace {
         ];
 
         let expected = ResResultBody::SetKeyspace(BodyResResultSetKeyspace {
-            body: CString::new("blah".into()),
+            body: "blah".into(),
         });
 
         test_encode_decode(bytes, expected);
@@ -1361,10 +1363,10 @@ mod prepared_metadata {
             col_specs: vec![
                 ColSpec {
                     table_spec: Some(TableSpec {
-                        ks_name: CString::new("ksname1".into()),
-                        table_name: CString::new("tablename".into()),
+                        ks_name: "ksname1".into(),
+                        table_name: "tablename".into(),
                     }),
-                    name: CString::new("foo".into()),
+                    name: "foo".into(),
                     col_type: ColTypeOption {
                         id: ColType::Int,
                         value: None,
@@ -1372,10 +1374,10 @@ mod prepared_metadata {
                 },
                 ColSpec {
                     table_spec: Some(TableSpec {
-                        ks_name: CString::new("ksname1".into()),
-                        table_name: CString::new("tablename".into()),
+                        ks_name: "ksname1".into(),
+                        table_name: "tablename".into(),
                     }),
-                    name: CString::new("bar".into()),
+                    name: "bar".into(),
                     col_type: ColTypeOption {
                         id: ColType::Smallint,
                         value: None,
@@ -1452,10 +1454,10 @@ mod prepared {
                 col_specs: vec![
                     ColSpec {
                         table_spec: Some(TableSpec {
-                            ks_name: CString::new("ksname1".into()),
-                            table_name: CString::new("tablename".into()),
+                            ks_name: "ksname1".into(),
+                            table_name: "tablename".into(),
                         }),
-                        name: CString::new("foo".into()),
+                        name: "foo".into(),
                         col_type: ColTypeOption {
                             id: ColType::Int,
                             value: None,
@@ -1463,10 +1465,10 @@ mod prepared {
                     },
                     ColSpec {
                         table_spec: Some(TableSpec {
-                            ks_name: CString::new("ksname1".into()),
-                            table_name: CString::new("tablename".into()),
+                            ks_name: "ksname1".into(),
+                            table_name: "tablename".into(),
                         }),
-                        name: CString::new("bar".into()),
+                        name: "bar".into(),
                         col_type: ColTypeOption {
                             id: ColType::Smallint,
                             value: None,
@@ -1482,10 +1484,10 @@ mod prepared {
                 col_specs: vec![
                     ColSpec {
                         table_spec: Some(TableSpec {
-                            ks_name: CString::new("ksname1".into()),
-                            table_name: CString::new("tablename".into()),
+                            ks_name: "ksname1".into(),
+                            table_name: "tablename".into(),
                         }),
-                        name: CString::new("foo".into()),
+                        name: "foo".into(),
                         col_type: ColTypeOption {
                             id: ColType::Int,
                             value: None,
@@ -1493,10 +1495,10 @@ mod prepared {
                     },
                     ColSpec {
                         table_spec: Some(TableSpec {
-                            table_name: CString::new("tablename".into()),
-                            ks_name: CString::new("ksname1".into()),
+                            table_name: "tablename".into(),
+                            ks_name: "ksname1".into(),
                         }),
-                        name: CString::new("bar".into()),
+                        name: "bar".into(),
                         col_type: ColTypeOption {
                             id: ColType::Smallint,
                             value: None,

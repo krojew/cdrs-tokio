@@ -8,9 +8,8 @@ use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
-use crate::types::value::Value;
-use crate::types::CIntShort;
-use crate::types::{CBytes, CString};
+use crate::types::CBytes;
+use crate::types::{from_cursor_str, value::Value, CIntShort};
 use crate::Error;
 
 /// Parameters of Query for query operation.
@@ -129,7 +128,7 @@ impl FromCursor for QueryParams {
                 let mut map = HashMap::with_capacity(number_of_values as usize);
                 for _ in 0..number_of_values {
                     map.insert(
-                        CString::from_cursor(cursor)?.as_plain(),
+                        from_cursor_str(cursor)?.to_string(),
                         Value::from_cursor(cursor)?,
                     );
                 }

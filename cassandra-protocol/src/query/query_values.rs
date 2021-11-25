@@ -3,8 +3,8 @@ use std::hash::Hash;
 use std::io::Cursor;
 
 use crate::frame::Serialize;
+use crate::types::serialize_str;
 use crate::types::value::Value;
-use crate::types::CIntShort;
 
 /// Enum that represents two types of query values:
 /// * values without name
@@ -76,9 +76,7 @@ impl Serialize for QueryValues {
             }
             QueryValues::NamedValues(v) => {
                 for (key, value) in v {
-                    let len = key.len() as CIntShort;
-                    len.serialize(cursor);
-                    key.serialize(cursor);
+                    serialize_str(cursor, key);
                     value.serialize(cursor);
                 }
             }

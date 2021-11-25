@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display};
 use std::io;
 use std::result;
+use std::str::Utf8Error;
 use std::string::FromUtf8Error;
 use thiserror::Error as ThisError;
 use uuid::Error as UuidError;
@@ -27,8 +28,11 @@ pub enum Error {
     #[error("General error: {0}")]
     General(String),
     /// Internal error that may be raised during `String::from_utf8`
-    #[error("Utf8 error: {0}")]
+    #[error("FromUtf8 error: {0}")]
     FromUtf8(#[from] FromUtf8Error),
+    /// Internal error that may be raised during `str::from_utf8`
+    #[error("Utf8 error: {0}")]
+    Utf8(#[from] Utf8Error),
     /// Internal Compression/Decompression error
     #[error("Compressor error: {0}")]
     Compression(#[from] CompressionError),
