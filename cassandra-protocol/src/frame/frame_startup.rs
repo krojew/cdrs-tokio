@@ -30,13 +30,8 @@ impl<'a> Serialize for BodyReqStartup<'a> {
         num.serialize(cursor);
 
         for (key, val) in &self.map {
-            let key_len = key.len() as CIntShort;
-            key_len.serialize(cursor);
-            key.serialize(cursor);
-
-            let val_len = val.len() as CIntShort;
-            val_len.serialize(cursor);
-            val.serialize(cursor);
+            serialize_str(cursor, key);
+            serialize_str(cursor, val);
         }
     }
 }

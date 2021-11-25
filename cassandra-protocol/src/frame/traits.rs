@@ -69,20 +69,6 @@ impl Serialize for Vec<u8> {
     }
 }
 
-impl Serialize for String {
-    #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        let _ = cursor.write(self.as_bytes());
-    }
-}
-
-impl Serialize for &str {
-    #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        let _ = cursor.write(self.as_bytes());
-    }
-}
-
 impl Serialize for BigInt {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {

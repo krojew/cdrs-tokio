@@ -5,7 +5,7 @@ use std::io::Cursor;
 use crate::error;
 use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
-use crate::types::{serialize_str, CInet, CIntShort, CString, CStringList};
+use crate::types::{from_cursor_str, serialize_str, CInet, CIntShort, CStringList};
 
 // Event types
 const TOPOLOGY_CHANGE: &str = "TOPOLOGY_CHANGE";
@@ -128,8 +128,7 @@ impl PartialEq<SimpleServerEvent> for ServerEvent {
 
 impl FromCursor for ServerEvent {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ServerEvent> {
-        let event_type = CString::from_cursor(cursor)?;
-        let event_type = event_type.as_str();
+        let event_type = from_cursor_str(cursor)?;
         match event_type {
             TOPOLOGY_CHANGE => Ok(ServerEvent::TopologyChange(TopologyChange::from_cursor(
                 cursor,
@@ -185,17 +184,14 @@ impl Serialize for TopologyChangeType {
 
 impl FromCursor for TopologyChangeType {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<TopologyChangeType> {
-        CString::from_cursor(cursor).and_then(|tc| {
-            let tc = tc.as_str();
-            match tc {
-                NEW_NODE => Ok(TopologyChangeType::NewNode),
-                REMOVED_NODE => Ok(TopologyChangeType::RemovedNode),
-                _ => Err(format!(
-                    "Unexpected topology change type received from Cluster: {}",
-                    tc
-                )
-                .into()),
-            }
+        from_cursor_str(cursor).and_then(|tc| match tc {
+            NEW_NODE => Ok(TopologyChangeType::NewNode),
+            REMOVED_NODE => Ok(TopologyChangeType::RemovedNode),
+            _ => Err(format!(
+                "Unexpected topology change type received from Cluster: {}",
+                tc
+            )
+            .into()),
         })
     }
 }
@@ -240,13 +236,10 @@ impl Serialize for StatusChangeType {
 
 impl FromCursor for StatusChangeType {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<StatusChangeType> {
-        CString::from_cursor(cursor).and_then(|sct| {
-            let sct = sct.as_str();
-            match sct {
-                UP => Ok(StatusChangeType::Up),
-                DOWN => Ok(StatusChangeType::Down),
-                _ => Err(format!("Unexpected status change type: {}", sct).into()),
-            }
+        from_cursor_str(cursor).and_then(|sct| match sct {
+            UP => Ok(StatusChangeType::Up),
+            DOWN => Ok(StatusChangeType::Down),
+            _ => Err(format!("Unexpected status change type: {}", sct).into()),
         })
     }
 }
@@ -301,14 +294,11 @@ impl Serialize for SchemaChangeType {
 
 impl FromCursor for SchemaChangeType {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeType> {
-        CString::from_cursor(cursor).and_then(|ct| {
-            let ct = ct.as_str();
-            match ct {
-                CREATED => Ok(SchemaChangeType::Created),
-                UPDATED => Ok(SchemaChangeType::Updated),
-                DROPPED => Ok(SchemaChangeType::Dropped),
-                _ => Err(format!("Unexpected schema change type: {}", ct).into()),
-            }
+        from_cursor_str(cursor).and_then(|ct| match ct {
+            CREATED => Ok(SchemaChangeType::Created),
+            UPDATED => Ok(SchemaChangeType::Updated),
+            DROPPED => Ok(SchemaChangeType::Dropped),
+            _ => Err(format!("Unexpected schema change type: {}", ct).into()),
         })
     }
 }
@@ -337,16 +327,13 @@ impl Serialize for SchemaChangeTarget {
 
 impl FromCursor for SchemaChangeTarget {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeTarget> {
-        CString::from_cursor(cursor).and_then(|t| {
-            let t = t.as_str();
-            match t {
-                KEYSPACE => Ok(SchemaChangeTarget::Keyspace),
-                TABLE => Ok(SchemaChangeTarget::Table),
-                TYPE => Ok(SchemaChangeTarget::Type),
-                FUNCTION => Ok(SchemaChangeTarget::Function),
-                AGGREGATE => Ok(SchemaChangeTarget::Aggregate),
-                _ => Err(format!("Unexpected schema change target: {}", t).into()),
-            }
+        from_cursor_str(cursor).and_then(|t| match t {
+            KEYSPACE => Ok(SchemaChangeTarget::Keyspace),
+            TABLE => Ok(SchemaChangeTarget::Table),
+            TYPE => Ok(SchemaChangeTarget::Type),
+            FUNCTION => Ok(SchemaChangeTarget::Function),
+            AGGREGATE => Ok(SchemaChangeTarget::Aggregate),
+            _ => Err(format!("Unexpected schema change target: {}", t).into()),
         })
     }
 }
@@ -405,21 +392,21 @@ impl SchemaChangeOptions {
 
     fn from_cursor_keyspace(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeOptions> {
         Ok(SchemaChangeOptions::Keyspace(
-            CString::from_cursor(cursor)?.into_plain(),
+            from_cursor_str(cursor)?.to_string(),
         ))
     }
 
     fn from_cursor_table_type(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeOptions> {
-        let keyspace = CString::from_cursor(cursor)?.into_plain();
-        let name = CString::from_cursor(cursor)?.into_plain();
+        let keyspace = from_cursor_str(cursor)?.to_string();
+        let name = from_cursor_str(cursor)?.to_string();
         Ok(SchemaChangeOptions::TableType(keyspace, name))
     }
 
     fn from_cursor_function_aggregate(
         cursor: &mut Cursor<&[u8]>,
     ) -> error::Result<SchemaChangeOptions> {
-        let keyspace = CString::from_cursor(cursor)?.into_plain();
-        let name = CString::from_cursor(cursor)?.into_plain();
+        let keyspace = from_cursor_str(cursor)?.to_string();
+        let name = from_cursor_str(cursor)?.to_string();
         let types = CStringList::from_cursor(cursor)?.into_plain();
         Ok(SchemaChangeOptions::FunctionAggregate(
             keyspace, name, types,

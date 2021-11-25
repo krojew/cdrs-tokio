@@ -322,7 +322,7 @@ impl<
                 keyspace: result
                     .metadata
                     .global_table_spec
-                    .map(|TableSpec { ks_name, .. }| ks_name.as_plain()),
+                    .map(|TableSpec { ks_name, .. }| ks_name),
                 pk_indexes: result.metadata.pk_indexes,
             })
     }

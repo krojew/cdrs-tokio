@@ -318,8 +318,7 @@ impl AsyncTransport {
                                         )
                                     })?;
 
-                                keyspace_holder
-                                    .update_current_keyspace(set_keyspace.body.into_plain());
+                                keyspace_holder.update_current_keyspace(set_keyspace.body);
                             }
                         }
 
