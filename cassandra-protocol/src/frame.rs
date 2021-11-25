@@ -2,14 +2,20 @@
 use bitflags::bitflags;
 use derive_more::Display;
 use std::convert::TryFrom;
+use std::io::Cursor;
 use std::sync::atomic::{AtomicI16, Ordering};
 use uuid::Uuid;
 
-use crate::compression::Compression;
+use crate::compression::{Compression, CompressionError};
 use crate::frame::frame_request::RequestBody;
 use crate::frame::frame_response::ResponseBody;
+use crate::types::data_serialization_types::decode_timeuuid;
+use crate::types::{try_i16_from_bytes, try_i32_from_bytes, CStringList, UUID_LEN};
+
 pub use crate::frame::traits::*;
 
+/// Number of bytes in the header
+const HEADER_LEN: usize = 9;
 /// Number of stream bytes in accordance to protocol.
 pub const STREAM_LEN: usize = 2;
 /// Number of body length bytes in accordance to protocol.
@@ -117,6 +123,85 @@ impl Frame {
         &self.warnings
     }
 
+    /// Parses the raw bytes of a cassandra frame returning a [`Frame`] struct.
+    /// The typical use case is reading from a buffer that may contain 0 or more frames and where the last frame may be incomplete.
+    /// The possible return values are:
+    /// * `Ok(Frame, usize)` - The first frame in the buffer has been succesfully parsed.
+    ///     + [`Frame`] - The parsed frame
+    ///     + `usize` - How many bytes from the buffer have been read.
+    /// * `Err(ParseFrameError::NotEnoughBytes)` - There are not enough bytes to parse a single frame, [`Frame::from_buffer`] should be recalled when it is possible that there are more bytes.
+    /// * `Err(_)` - The frame is malformed and you should close the connection as this method does not provide a way to tell how many bytes to advance the buffer in this case.
+    pub fn from_buffer(
+        data: &[u8],
+        compressor: Compression,
+    ) -> Result<(Frame, usize), ParseFrameError> {
+        if data.len() < HEADER_LEN {
+            return Err(ParseFrameError::NotEnoughBytes);
+        }
+
+        let body_len = try_i32_from_bytes(&data[5..9]).unwrap() as usize;
+        let frame_len = HEADER_LEN + body_len;
+        if data.len() < frame_len {
+            return Err(ParseFrameError::NotEnoughBytes);
+        }
+
+        let version = Version::try_from(data[0])
+            .map_err(|_| ParseFrameError::UnsupportedVersion(data[0] & 0x7f))?;
+        let direction = Direction::from(data[0]);
+        let flags = Flags::from_bits_truncate(data[1]);
+        let stream = try_i16_from_bytes(&data[2..4]).unwrap();
+        let opcode =
+            Opcode::try_from(data[4]).map_err(|_| ParseFrameError::UnsupportedOpcode(data[4]))?;
+
+        let body_bytes = &data[HEADER_LEN..frame_len];
+
+        let full_body = if flags.contains(Flags::COMPRESSION) {
+            compressor.decode(body_bytes.to_vec())
+        } else {
+            Compression::None.decode(body_bytes.to_vec())
+        }
+        .map_err(ParseFrameError::DecompressionError)?;
+
+        // Use cursor to get tracing id, warnings and actual body
+        let mut body_cursor = Cursor::new(full_body.as_slice());
+
+        let tracing_id = if flags.contains(Flags::TRACING) {
+            let mut tracing_bytes = [0; UUID_LEN];
+            std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes).unwrap();
+
+            Some(decode_timeuuid(&tracing_bytes).map_err(ParseFrameError::InvalidUuid)?)
+        } else {
+            None
+        };
+
+        let warnings = if flags.contains(Flags::WARNING) {
+            CStringList::from_cursor(&mut body_cursor)
+                .map_err(ParseFrameError::InvalidWarnings)?
+                .into_plain()
+        } else {
+            vec![]
+        };
+
+        let mut body = vec![];
+
+        std::io::Read::read_to_end(&mut body_cursor, &mut body)
+            .expect("Read cannot fail because cursor is backed by slice");
+
+        Ok((
+            Frame {
+                version,
+                direction,
+                flags,
+                opcode,
+                stream,
+                body,
+                tracing_id,
+                warnings,
+            },
+            frame_len,
+        ))
+    }
+
     pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
         let combined_version_byte = u8::from(self.version) | u8::from(self.direction);
         let flag_byte = self.flags.bits();
@@ -143,6 +228,18 @@ impl Frame {
 
         Ok(v)
     }
+}
+
+#[derive(Debug)]
+pub enum ParseFrameError {
+    /// There are not enough bytes to parse a single frame, [`Frame::from_buffer`] should be recalled when it is possible that there are more bytes.
+    NotEnoughBytes,
+    /// The version is not supported by cassandra-protocol, a server implementation should handle this by returning a server error with the message "Invalid or unsupported protocol version".
+    UnsupportedVersion(u8),
+    UnsupportedOpcode(u8),
+    DecompressionError(CompressionError),
+    InvalidUuid(uuid::Error),
+    InvalidWarnings(error::Error),
 }
 
 #[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash, Display)]
