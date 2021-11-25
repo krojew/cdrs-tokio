@@ -53,5 +53,5 @@ pub(crate) async fn send_frame<
         }
     }
 
-    Err("No nodes in query plan!".into())
+    Err("No nodes available in query plan!".into())
 }

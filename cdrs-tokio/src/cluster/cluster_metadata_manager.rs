@@ -11,6 +11,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Receiver;
 use tracing::*;
 
+use crate::cluster::connection_pool::ConnectionPoolFactory;
 use crate::cluster::metadata_builder::{add_new_node, build_initial_metadata, refresh_metadata};
 use crate::cluster::topology::{KeyspaceMetadata, Node, NodeState, ReplicationStrategy};
 use crate::cluster::{ClusterMetadata, ConnectionManager};
@@ -292,7 +293,7 @@ fn extract_replication_factor(value: Option<&JsonValue>) -> Result<usize> {
 pub struct ClusterMetadataManager<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
     metadata: ArcSwap<ClusterMetadata<T, CM>>,
     contact_points: Vec<Arc<Node<T, CM>>>,
-    connection_manager: Arc<CM>,
+    connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
     did_initial_refresh: AtomicBool,
     is_schema_v2: AtomicBool,
     session_context: Arc<SessionContext<T>>,
@@ -303,7 +304,7 @@ pub struct ClusterMetadataManager<T: CdrsTransport + 'static, CM: ConnectionMana
 impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMetadataManager<T, CM> {
     pub fn new(
         contact_points: Vec<Arc<Node<T, CM>>>,
-        connection_manager: Arc<CM>,
+        connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         session_context: Arc<SessionContext<T>>,
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
         version: Version,
@@ -311,7 +312,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         ClusterMetadataManager {
             metadata: ArcSwap::from_pointee(ClusterMetadata::default()),
             contact_points,
-            connection_manager,
+            connection_pool_factory,
             did_initial_refresh: AtomicBool::new(false),
             is_schema_v2: AtomicBool::new(true),
             session_context,
@@ -485,7 +486,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 self.metadata.store(Arc::new(add_new_node(
                     new_node_info,
                     metadata.as_ref(),
-                    &self.connection_manager,
+                    &self.connection_pool_factory,
                     state,
                 )));
             }
@@ -571,7 +572,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     node_infos,
                     keyspaces,
                     &self.contact_points,
-                    &self.connection_manager,
+                    &self.connection_pool_factory,
                     self.node_distance_evaluator.as_ref(),
                 )
                 .await,
@@ -581,7 +582,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 refresh_metadata(
                     &node_infos,
                     old_metadata.as_ref(),
-                    &self.connection_manager,
+                    &self.connection_pool_factory,
                     self.node_distance_evaluator.as_ref(),
                 )
             });

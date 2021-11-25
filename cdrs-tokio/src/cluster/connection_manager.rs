@@ -13,6 +13,7 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error::{Error, Result};
 use cassandra_protocol::frame::frame_response::ResponseBody;
 use cassandra_protocol::frame::{Frame, Opcode, Version};
+use cassandra_protocol::query::utils::quote;
 
 /// Manages establishing connections to nodes.
 pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {
@@ -129,7 +130,7 @@ async fn set_keyspace<T: CdrsTransport>(
 ) -> Result<()> {
     if let Some(current_keyspace) = keyspace_holder.current_keyspace() {
         let use_frame = Frame::new_req_query(
-            format!("USE {}", current_keyspace),
+            format!("USE {}", quote(current_keyspace.as_ref())),
             Default::default(),
             None,
             false,

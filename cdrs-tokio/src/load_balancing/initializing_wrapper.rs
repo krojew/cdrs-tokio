@@ -7,8 +7,8 @@ use crate::transport::CdrsTransport;
 
 // Wrapper strategy which returns contact points until cluster metadata gets populated.
 pub struct InitializingWrapperLoadBalancingStrategy<
-    T: CdrsTransport,
-    CM: ConnectionManager<T>,
+    T: CdrsTransport + 'static,
+    CM: ConnectionManager<T> + 'static,
     LB: LoadBalancingStrategy<T, CM>,
 > {
     inner: LB,

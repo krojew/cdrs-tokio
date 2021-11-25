@@ -4,10 +4,12 @@ use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tracing::*;
 
 use crate::cluster::connection_manager::ConnectionManager;
+use crate::cluster::connection_pool::{ConnectionPoolConfig, ConnectionPoolFactory};
 use crate::cluster::control_connection::ControlConnection;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
@@ -45,8 +47,15 @@ use cassandra_protocol::types::{CIntShort, SHORT_LEN};
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
 
-// https://github.com/apache/cassandra/blob/3a950b45c321e051a9744721408760c568c05617/src/java/org/apache/cassandra/db/marshal/CompositeType.java#L39
+fn create_keyspace_holder() -> (Arc<KeyspaceHolder>, watch::Receiver<Option<String>>) {
+    let (keyspace_sender, keyspace_receiver) = watch::channel(None);
+    (
+        Arc::new(KeyspaceHolder::new(keyspace_sender)),
+        keyspace_receiver,
+    )
+}
 
+// https://github.com/apache/cassandra/blob/3a950b45c321e051a9744721408760c568c05617/src/java/org/apache/cassandra/db/marshal/CompositeType.java#L39
 fn serialize_routing_value(cursor: &mut Cursor<&mut Vec<u8>>, value: &Value) {
     let temp_size: CIntShort = 0;
     temp_size.serialize(cursor);
@@ -501,19 +510,28 @@ impl<
     fn new(
         load_balancing: LB,
         keyspace_holder: Arc<KeyspaceHolder>,
+        keyspace_receiver: watch::Receiver<Option<String>>,
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
         contact_points: Vec<SocketAddr>,
-        connection_manager: Arc<CM>,
+        connection_manager: CM,
         event_channel_capacity: usize,
         version: Version,
+        connection_pool_config: ConnectionPoolConfig,
     ) -> Self {
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            connection_pool_config,
+            version,
+            connection_manager,
+            keyspace_receiver,
+        ));
+
         let contact_points = contact_points
             .into_iter()
             .map(|contact_point| {
                 Arc::new(Node::new_with_state(
-                    connection_manager.clone(),
+                    connection_pool_factory.clone(),
                     contact_point,
                     None,
                     None,
@@ -539,7 +557,7 @@ impl<
 
         let cluster_metadata_manager = Arc::new(ClusterMetadataManager::new(
             contact_points.clone(),
-            connection_manager,
+            connection_pool_factory,
             session_context.clone(),
             node_distance_evaluator,
             version,
@@ -610,10 +628,12 @@ where
     C: GenericClusterConfig<T, CM>,
     LB: LoadBalancingStrategy<T, CM> + Sized + Send + Sync + 'static,
 {
-    let connection_manager = Arc::new(config.create_manager().await?);
+    let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
+    let connection_manager = config.create_manager(keyspace_holder.clone()).await?;
     Ok(Session::new(
         load_balancing,
-        Default::default(),
+        keyspace_holder,
+        keyspace_receiver,
         retry_policy.0,
         reconnection_policy.0,
         node_distance_evaluator.0,
@@ -621,6 +641,7 @@ where
         connection_manager,
         config.event_channel_capacity(),
         config.version(),
+        config.connection_pool_config(),
     ))
 }
 
@@ -637,6 +658,8 @@ struct SessionConfig<
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
     event_channel_capacity: usize,
+    connection_pool_config: ConnectionPoolConfig,
+    keyspace: Option<String>,
     _connection_manager: PhantomData<CM>,
     _transport: PhantomData<T>,
 }
@@ -644,32 +667,51 @@ struct SessionConfig<
 impl<
         T: CdrsTransport,
         CM: ConnectionManager<T>,
-        LB: LoadBalancingStrategy<T, CM> + Send + Sync,
+        LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
     > SessionConfig<T, CM, LB>
 {
-    #[allow(clippy::too_many_arguments)]
-    fn new(
-        compression: Compression,
-        transport_buffer_size: usize,
-        tcp_nodelay: bool,
-        load_balancing: LB,
-        retry_policy: Box<dyn RetryPolicy + Send + Sync>,
-        reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
-        node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
-        event_channel_capacity: usize,
-    ) -> Self {
+    fn new(load_balancing: LB) -> Self {
         SessionConfig {
-            compression,
-            transport_buffer_size,
-            tcp_nodelay,
+            compression: Compression::None,
+            transport_buffer_size: DEFAULT_TRANSPORT_BUFFER_SIZE,
+            tcp_nodelay: true,
             load_balancing,
-            retry_policy,
-            reconnection_policy,
-            node_distance_evaluator,
-            event_channel_capacity,
+            retry_policy: Box::new(DefaultRetryPolicy::default()),
+            reconnection_policy: Arc::new(ExponentialReconnectionPolicy::default()),
+            node_distance_evaluator: Box::new(AllLocalNodeDistanceEvaluator::default()),
+            event_channel_capacity: DEFAULT_EVENT_CHANNEL_CAPACITY,
+            connection_pool_config: Default::default(),
+            keyspace: None,
             _connection_manager: Default::default(),
             _transport: Default::default(),
         }
+    }
+
+    fn into_session(
+        self,
+        keyspace_holder: Arc<KeyspaceHolder>,
+        keyspace_receiver: watch::Receiver<Option<String>>,
+        contact_points: Vec<SocketAddr>,
+        connection_manager: CM,
+        version: Version,
+    ) -> Session<T, CM, LB> {
+        if let Some(keyspace) = self.keyspace {
+            keyspace_holder.update_current_keyspace_without_notification(keyspace);
+        }
+
+        Session::new(
+            self.load_balancing,
+            keyspace_holder,
+            keyspace_receiver,
+            self.retry_policy,
+            self.reconnection_policy,
+            self.node_distance_evaluator,
+            contact_points,
+            connection_manager,
+            self.event_channel_capacity,
+            version,
+            self.connection_pool_config,
+        )
     }
 }
 
@@ -712,6 +754,17 @@ pub trait SessionBuilder<
     /// some events might get dropped. This can result in the driver operating in a sub-optimal way.
     fn with_event_channel_capacity(self, event_channel_capacity: usize) -> Self;
 
+    /// Sets node connection pool configuration for given session.
+    fn with_connection_pool_config(self, connection_pool_config: ConnectionPoolConfig) -> Self;
+
+    /// Sets the keyspace to use. If not using a keyspace explicitly in queries, one should be set
+    /// either by calling this function, or by a `USE` statement. Due to the asynchronous nature of
+    /// the driver and the usage of connection pools, the effect of switching current keyspace via
+    /// `USE` might not propagate immediately to all active connections, resulting in queries
+    /// using a wrong keyspace. If one is known upfront, it's safer to set it while building
+    /// the [`Session`].
+    fn with_keyspace(self, keyspace: String) -> Self;
+
     /// Builds the resulting session.
     fn build(self) -> Session<T, CM, LB>;
 }
@@ -724,23 +777,14 @@ pub struct TcpSessionBuilder<
     node_config: NodeTcpConfig,
 }
 
-impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync>
+impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync + 'static>
     TcpSessionBuilder<LB>
 {
     //noinspection DuplicatedCode
     /// Creates a new builder with default session configuration.
     pub fn new(load_balancing: LB, node_config: NodeTcpConfig) -> Self {
         TcpSessionBuilder {
-            config: SessionConfig::new(
-                Compression::None,
-                DEFAULT_TRANSPORT_BUFFER_SIZE,
-                true,
-                load_balancing,
-                Box::new(DefaultRetryPolicy::default()),
-                Arc::new(ExponentialReconnectionPolicy::default()),
-                Box::new(AllLocalNodeDistanceEvaluator::default()),
-                DEFAULT_EVENT_CHANNEL_CAPACITY,
-            ),
+            config: SessionConfig::new(load_balancing),
             node_config,
         }
     }
@@ -790,9 +834,19 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         self
     }
 
+    fn with_connection_pool_config(mut self, connection_pool_config: ConnectionPoolConfig) -> Self {
+        self.config.connection_pool_config = connection_pool_config;
+        self
+    }
+
+    fn with_keyspace(mut self, keyspace: String) -> Self {
+        self.config.keyspace = Some(keyspace);
+        self
+    }
+
     fn build(self) -> Session<TransportTcp, TcpConnectionManager, LB> {
-        let keyspace_holder = Arc::new(KeyspaceHolder::default());
-        let connection_manager = Arc::new(TcpConnectionManager::new(
+        let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
+        let connection_manager = TcpConnectionManager::new(
             self.node_config.authenticator_provider,
             keyspace_holder.clone(),
             self.config.reconnection_policy.clone(),
@@ -800,17 +854,13 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
             self.config.transport_buffer_size,
             self.config.tcp_nodelay,
             self.node_config.version,
-        ));
+        );
 
-        Session::new(
-            self.config.load_balancing,
+        self.config.into_session(
             keyspace_holder,
-            self.config.retry_policy,
-            self.config.reconnection_policy,
-            self.config.node_distance_evaluator,
+            keyspace_receiver,
             self.node_config.contact_points,
             connection_manager,
-            self.config.event_channel_capacity,
             self.node_config.version,
         )
     }
@@ -819,7 +869,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
 #[cfg(feature = "rust-tls")]
 /// Builder for TLS sessions.
 pub struct RustlsSessionBuilder<
-    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync,
+    LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync + 'static,
 > {
     config: SessionConfig<TransportRustls, RustlsConnectionManager, LB>,
     node_config: NodeRustlsConfig,
@@ -833,16 +883,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
     /// Creates a new builder with default session configuration.
     pub fn new(load_balancing: LB, node_config: NodeRustlsConfig) -> Self {
         RustlsSessionBuilder {
-            config: SessionConfig::new(
-                Compression::None,
-                DEFAULT_TRANSPORT_BUFFER_SIZE,
-                true,
-                load_balancing,
-                Box::new(DefaultRetryPolicy::default()),
-                Arc::new(ExponentialReconnectionPolicy::default()),
-                Box::new(AllLocalNodeDistanceEvaluator::default()),
-                DEFAULT_EVENT_CHANNEL_CAPACITY,
-            ),
+            config: SessionConfig::new(load_balancing),
             node_config,
         }
     }
@@ -894,9 +935,19 @@ impl<
         self
     }
 
+    fn with_connection_pool_config(mut self, connection_pool_config: ConnectionPoolConfig) -> Self {
+        self.config.connection_pool_config = connection_pool_config;
+        self
+    }
+
+    fn with_keyspace(mut self, keyspace: String) -> Self {
+        self.config.keyspace = Some(keyspace);
+        self
+    }
+
     fn build(self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
-        let keyspace_holder = Arc::new(KeyspaceHolder::default());
-        let connection_manager = Arc::new(RustlsConnectionManager::new(
+        let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
+        let connection_manager = RustlsConnectionManager::new(
             self.node_config.dns_name,
             self.node_config.authenticator_provider,
             self.node_config.config,
@@ -906,17 +957,13 @@ impl<
             self.config.transport_buffer_size,
             self.config.tcp_nodelay,
             self.node_config.version,
-        ));
+        );
 
-        Session::new(
-            self.config.load_balancing,
+        self.config.into_session(
             keyspace_holder,
-            self.config.retry_policy,
-            self.config.reconnection_policy,
-            self.config.node_distance_evaluator,
+            keyspace_receiver,
             self.node_config.contact_points,
             connection_manager,
-            self.config.event_channel_capacity,
             self.node_config.version,
         )
     }

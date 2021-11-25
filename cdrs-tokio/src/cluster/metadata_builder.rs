@@ -3,6 +3,7 @@ use std::collections::hash_map::Entry;
 use std::sync::Arc;
 use tracing::*;
 
+use crate::cluster::connection_pool::ConnectionPoolFactory;
 use crate::cluster::topology::{KeyspaceMetadata, Node, NodeState};
 use crate::cluster::{ClusterMetadata, ConnectionManager, NodeInfo};
 use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
@@ -12,7 +13,7 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_infos: Vec<NodeInfo>,
     keyspaces: FxHashMap<String, KeyspaceMetadata>,
     contact_points: &[Arc<Node<T, CM>>],
-    connection_manager: &Arc<CM>,
+    connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
     node_distance_evaluator: &(dyn NodeDistanceEvaluator + Send + Sync),
 ) -> ClusterMetadata<T, CM> {
     let mut nodes = FxHashMap::with_capacity_and_hasher(node_infos.len(), Default::default());
@@ -28,7 +29,7 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
             } else {
                 debug!(?node_info, "Adding new node.");
                 Arc::new(Node::new_with_state(
-                    connection_manager.clone(),
+                    connection_pool_factory.clone(),
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
@@ -55,7 +56,7 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
 pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_infos: &[NodeInfo],
     old_metadata: &ClusterMetadata<T, CM>,
-    connection_manager: &Arc<CM>,
+    connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
     node_distance_evaluator: &dyn NodeDistanceEvaluator,
 ) -> ClusterMetadata<T, CM> {
     let old_nodes = old_metadata.nodes();
@@ -83,7 +84,7 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                 debug!(?node_info, "Adding new node.");
 
                 let node = Arc::new(Node::new(
-                    connection_manager.clone(),
+                    connection_pool_factory.clone(),
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
@@ -104,7 +105,7 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
 pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_info: NodeInfo,
     old_metadata: &ClusterMetadata<T, CM>,
-    connection_manager: &Arc<CM>,
+    connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
     state: NodeState,
 ) -> ClusterMetadata<T, CM> {
     let old_node = old_metadata.find_node_by_host_id(&node_info.host_id);
@@ -122,7 +123,7 @@ pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
     }
 
     old_metadata.clone_with_node(Node::with_state(
-        connection_manager.clone(),
+        connection_pool_factory.clone(),
         node_info.broadcast_rpc_address,
         node_info.broadcast_address,
         Some(node_info.host_id),
@@ -136,11 +137,14 @@ pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
 //noinspection DuplicatedCode
 #[cfg(test)]
 mod tests {
+    use cassandra_protocol::frame::Version;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::Arc;
+    use tokio::sync::watch;
     use uuid::Uuid;
 
     use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::connection_pool::ConnectionPoolFactory;
     use crate::cluster::metadata_builder::{
         add_new_node, build_initial_metadata, refresh_metadata,
     };
@@ -149,6 +153,21 @@ mod tests {
     use crate::cluster::{ClusterMetadata, NodeInfo};
     use crate::load_balancing::node_distance_evaluator::MockNodeDistanceEvaluator;
     use crate::transport::MockCdrsTransport;
+
+    fn create_connection_pool_factory(
+    ) -> Arc<ConnectionPoolFactory<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>>
+    {
+        let (_, keyspace_receiver) = watch::channel(None);
+        let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        let connection_pool_factory = ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+        );
+
+        Arc::new(connection_pool_factory)
+    }
 
     #[tokio::test]
     async fn should_create_initial_metadata_from_all_new_nodes() {
@@ -161,7 +180,7 @@ mod tests {
             "".into(),
         )];
 
-        let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        let connection_pool_factory = create_connection_pool_factory();
 
         let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
         node_distance_evaluator
@@ -172,7 +191,7 @@ mod tests {
             node_infos.clone(),
             Default::default(),
             &[],
-            &Arc::new(connection_manager),
+            &connection_pool_factory,
             &node_distance_evaluator,
         )
         .await;
@@ -190,7 +209,8 @@ mod tests {
 
     #[tokio::test]
     async fn should_copy_old_node() {
-        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let connection_pool_factory = create_connection_pool_factory();
+
         let node_distance_evaluator = MockNodeDistanceEvaluator::new();
 
         let node_infos = vec![NodeInfo::new(
@@ -204,7 +224,7 @@ mod tests {
 
         let contact_points = [Arc::new(
             Node::new(
-                connection_manager.clone(),
+                connection_pool_factory.clone(),
                 node_infos[0].broadcast_rpc_address,
                 node_infos[0].broadcast_address,
                 Some(node_infos[0].host_id),
@@ -220,7 +240,7 @@ mod tests {
             node_infos.clone(),
             Default::default(),
             &contact_points,
-            &connection_manager,
+            &connection_pool_factory,
             &node_distance_evaluator,
         )
         .await;
@@ -235,7 +255,7 @@ mod tests {
 
     #[test]
     fn should_replace_old_metadata_nodes_with_new() {
-        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let connection_pool_factory = create_connection_pool_factory();
 
         let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
         node_distance_evaluator
@@ -257,7 +277,7 @@ mod tests {
         old_nodes.insert(
             old_host_id,
             Arc::new(Node::new(
-                connection_manager.clone(),
+                connection_pool_factory.clone(),
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 Some(old_host_id),
@@ -273,7 +293,7 @@ mod tests {
         let metadata = refresh_metadata(
             &node_infos,
             &old_metadata,
-            &connection_manager,
+            &connection_pool_factory,
             &node_distance_evaluator,
         );
 
@@ -290,7 +310,8 @@ mod tests {
 
     #[test]
     fn should_update_old_metadata_nodes_with_new_info() {
-        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let connection_pool_factory = create_connection_pool_factory();
+
         let node_distance_evaluator = MockNodeDistanceEvaluator::new();
 
         let node_infos = [NodeInfo::new(
@@ -306,7 +327,7 @@ mod tests {
         old_nodes.insert(
             node_infos[0].host_id,
             Arc::new(Node::new(
-                connection_manager.clone(),
+                connection_pool_factory.clone(),
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 Some(node_infos[0].host_id),
@@ -322,7 +343,7 @@ mod tests {
         let metadata = refresh_metadata(
             &node_infos,
             &old_metadata,
-            &connection_manager,
+            &connection_pool_factory,
             &node_distance_evaluator,
         );
 
@@ -339,7 +360,7 @@ mod tests {
 
     #[test]
     fn should_not_add_already_existing_node() {
-        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let connection_pool_factory = create_connection_pool_factory();
 
         let node_info = NodeInfo::new(
             Uuid::new_v4(),
@@ -351,7 +372,7 @@ mod tests {
         );
 
         let old_node = Node::with_distance(
-            connection_manager.clone(),
+            connection_pool_factory.clone(),
             node_info.broadcast_rpc_address,
             None,
             Some(node_info.host_id),
@@ -368,7 +389,7 @@ mod tests {
         let metadata = add_new_node(
             node_info.clone(),
             &old_metadata,
-            &connection_manager,
+            &connection_pool_factory,
             NodeState::Up,
         );
 
@@ -393,7 +414,7 @@ mod tests {
 
     #[test]
     fn should_update_existing_node() {
-        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let connection_pool_factory = create_connection_pool_factory();
 
         let node_info = NodeInfo::new(
             Uuid::new_v4(),
@@ -405,7 +426,7 @@ mod tests {
         );
 
         let old_node = Node::with_distance(
-            connection_manager.clone(),
+            connection_pool_factory.clone(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
             None,
             Some(node_info.host_id),
@@ -422,7 +443,7 @@ mod tests {
         let metadata = add_new_node(
             node_info.clone(),
             &old_metadata,
-            &connection_manager,
+            &connection_pool_factory,
             NodeState::Up,
         );
 
@@ -444,7 +465,7 @@ mod tests {
 
     #[test]
     fn should_add_new_node() {
-        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let connection_pool_factory = create_connection_pool_factory();
 
         let node_info = NodeInfo::new(
             Uuid::new_v4(),
@@ -460,7 +481,7 @@ mod tests {
         let metadata = add_new_node(
             node_info.clone(),
             &old_metadata,
-            &connection_manager,
+            &connection_pool_factory,
             NodeState::Up,
         );
 

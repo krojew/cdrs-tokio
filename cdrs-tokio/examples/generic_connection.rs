@@ -21,6 +21,7 @@ use cdrs_tokio::{
 
 use cdrs_tokio_helpers_derive::*;
 
+use cdrs_tokio::cluster::connection_pool::ConnectionPoolConfig;
 use cdrs_tokio::cluster::session::{
     NodeDistanceEvaluatorWrapper, ReconnectionPolicyWrapper, RetryPolicyWrapper,
     DEFAULT_TRANSPORT_BUFFER_SIZE,
@@ -56,7 +57,6 @@ struct VirtualClusterConfig {
     authenticator: Arc<dyn SaslAuthenticatorProvider + Sync + Send>,
     mask: Ipv4Addr,
     actual: Ipv4Addr,
-    keyspace_holder: Arc<KeyspaceHolder>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     version: Version,
 }
@@ -105,11 +105,14 @@ impl ConnectionManager<TransportTcp> for VirtualConnectionManager {
 }
 
 impl VirtualConnectionManager {
-    async fn new(config: &VirtualClusterConfig) -> Result<Self> {
+    async fn new(
+        config: &VirtualClusterConfig,
+        keyspace_holder: Arc<KeyspaceHolder>,
+    ) -> Result<Self> {
         Ok(VirtualConnectionManager {
             inner: TcpConnectionManager::new(
                 config.authenticator.clone(),
-                config.keyspace_holder.clone(),
+                keyspace_holder,
                 config.reconnection_policy.clone(),
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
@@ -123,10 +126,13 @@ impl VirtualConnectionManager {
 }
 
 impl GenericClusterConfig<TransportTcp, VirtualConnectionManager> for VirtualClusterConfig {
-    fn create_manager(&self) -> BoxFuture<Result<VirtualConnectionManager>> {
+    fn create_manager(
+        &self,
+        keyspace_holder: Arc<KeyspaceHolder>,
+    ) -> BoxFuture<Result<VirtualConnectionManager>> {
         // create a connection manager that points at the rewritten address so that's where it connects, but
         // then return a manager with the 'virtual' address for internal purposes.
-        VirtualConnectionManager::new(self).boxed()
+        VirtualConnectionManager::new(self, keyspace_holder).boxed()
     }
 
     fn event_channel_capacity(&self) -> usize {
@@ -135,6 +141,10 @@ impl GenericClusterConfig<TransportTcp, VirtualConnectionManager> for VirtualClu
 
     fn version(&self) -> Version {
         self.version
+    }
+
+    fn connection_pool_config(&self) -> ConnectionPoolConfig {
+        Default::default()
     }
 }
 
@@ -152,7 +162,6 @@ async fn main() {
         authenticator,
         mask,
         actual,
-        keyspace_holder: Default::default(),
         reconnection_policy: reconnection_policy.clone(),
         version: Version::V4,
     };

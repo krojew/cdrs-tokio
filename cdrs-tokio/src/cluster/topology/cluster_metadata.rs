@@ -31,7 +31,7 @@ fn build_datacenter_info<T: CdrsTransport, CM: ConnectionManager<T>>(
 
 /// Immutable metadata of the Cassandra cluster that this driver instance is connected to.
 #[derive(Debug, Clone)]
-pub struct ClusterMetadata<T: CdrsTransport, CM: ConnectionManager<T>> {
+pub struct ClusterMetadata<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
     nodes: NodeMap<T, CM>,
     token_map: TokenMap<T, CM>,
     keyspaces: FxHashMap<String, KeyspaceMetadata>,
@@ -243,25 +243,35 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Default for ClusterMetadata<T, 
 //noinspection DuplicatedCode
 #[cfg(test)]
 mod tests {
+    use cassandra_protocol::frame::Version;
     use fxhash::FxHashMap;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::Arc;
+    use tokio::sync::watch;
     use uuid::Uuid;
 
     use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::connection_pool::ConnectionPoolFactory;
     use crate::cluster::topology::cluster_metadata::build_datacenter_info;
     use crate::cluster::topology::Node;
     use crate::transport::MockCdrsTransport;
 
     #[test]
     fn should_build_datacenter_info() {
-        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let (_, keyspace_receiver) = watch::channel(None);
+        let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+        ));
 
         let mut nodes = FxHashMap::default();
         nodes.insert(
             Uuid::new_v4(),
             Arc::new(Node::new(
-                connection_manager.clone(),
+                connection_pool_factory.clone(),
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 None,
@@ -274,7 +284,7 @@ mod tests {
         nodes.insert(
             Uuid::new_v4(),
             Arc::new(Node::new(
-                connection_manager.clone(),
+                connection_pool_factory.clone(),
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 None,
@@ -287,7 +297,7 @@ mod tests {
         nodes.insert(
             Uuid::new_v4(),
             Arc::new(Node::new(
-                connection_manager.clone(),
+                connection_pool_factory.clone(),
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 None,
@@ -300,7 +310,7 @@ mod tests {
         nodes.insert(
             Uuid::new_v4(),
             Arc::new(Node::new(
-                connection_manager,
+                connection_pool_factory,
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 None,

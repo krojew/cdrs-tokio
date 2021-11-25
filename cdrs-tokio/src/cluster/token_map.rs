@@ -9,7 +9,7 @@ use crate::transport::CdrsTransport;
 use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// Map of tokens to nodes.
-pub struct TokenMap<T: CdrsTransport, CM: ConnectionManager<T>> {
+pub struct TokenMap<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
     token_ring: BTreeMap<Murmur3Token, Arc<Node<T, CM>>>,
 }
 
@@ -106,17 +106,20 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
 
 #[cfg(test)]
 mod tests {
+    use cassandra_protocol::frame::Version;
+    use cassandra_protocol::query::query_params::Murmur3Token;
     use itertools::Itertools;
     use lazy_static::lazy_static;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::Arc;
+    use tokio::sync::watch;
     use uuid::Uuid;
 
     use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::connection_pool::ConnectionPoolFactory;
     use crate::cluster::topology::{Node, NodeMap};
     use crate::cluster::TokenMap;
     use crate::transport::MockCdrsTransport;
-    use cassandra_protocol::query::query_params::Murmur3Token;
 
     lazy_static! {
         static ref HOST_ID_1: Uuid = Uuid::new_v4();
@@ -125,13 +128,20 @@ mod tests {
     }
 
     fn prepare_nodes() -> NodeMap<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
-        let connection_manager = Arc::new(MockConnectionManager::<MockCdrsTransport>::new());
+        let (_, keyspace_receiver) = watch::channel(None);
+        let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+        ));
 
         let mut nodes = NodeMap::default();
         nodes.insert(
             *HOST_ID_1,
             Arc::new(Node::new(
-                connection_manager.clone(),
+                connection_pool_factory.clone(),
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 Some(*HOST_ID_1),
@@ -148,7 +158,7 @@ mod tests {
         nodes.insert(
             *HOST_ID_2,
             Arc::new(Node::new(
-                connection_manager.clone(),
+                connection_pool_factory.clone(),
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 Some(*HOST_ID_2),
@@ -161,7 +171,7 @@ mod tests {
         nodes.insert(
             *HOST_ID_3,
             Arc::new(Node::new(
-                connection_manager,
+                connection_pool_factory,
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
                 None,
                 Some(*HOST_ID_3),

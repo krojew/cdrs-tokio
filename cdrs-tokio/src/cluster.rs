@@ -14,16 +14,19 @@ pub(crate) use self::session_context::SessionContext;
 pub use self::tcp_connection_manager::TcpConnectionManager;
 pub use self::token_map::TokenMap;
 pub use self::topology::cluster_metadata::ClusterMetadata;
+use crate::cluster::connection_pool::ConnectionPoolConfig;
 use crate::future::BoxFuture;
 use crate::transport::CdrsTransport;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::Version;
+use std::sync::Arc;
 
 mod cluster_metadata_manager;
 #[cfg(feature = "rust-tls")]
 mod config_rustls;
 mod config_tcp;
 pub(crate) mod connection_manager;
+pub mod connection_pool;
 mod control_connection;
 mod keyspace_holder;
 mod metadata_builder;
@@ -43,12 +46,15 @@ pub mod topology;
 /// Generic connection configuration trait that can be used to create user-supplied
 /// connection objects that can be used with the `session::connect()` function.
 pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send + Sync {
-    fn create_manager(&self) -> BoxFuture<error::Result<CM>>;
+    fn create_manager(&self, keyspace_holder: Arc<KeyspaceHolder>) -> BoxFuture<error::Result<CM>>;
 
     /// Returns desired event channel capacity. Take a look at
     /// [`Session`](self::session::Session) builders for more info.
     fn event_channel_capacity(&self) -> usize;
 
-    /// Cassandra protocol version to use
+    /// Cassandra protocol version to use.
     fn version(&self) -> Version;
+
+    /// Connection pool configuration.
+    fn connection_pool_config(&self) -> ConnectionPoolConfig;
 }

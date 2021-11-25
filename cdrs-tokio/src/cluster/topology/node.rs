@@ -1,7 +1,9 @@
 use atomic::Atomic;
+use cassandra_protocol::error::{Error, Result};
+use cassandra_protocol::frame::Frame;
+use cassandra_protocol::query::query_params::Murmur3Token;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
-use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -9,17 +11,15 @@ use tokio::sync::RwLock;
 use tracing::*;
 use uuid::Uuid;
 
+use crate::cluster::connection_pool::{ConnectionPool, ConnectionPoolFactory};
 use crate::cluster::topology::{NodeDistance, NodeState};
 use crate::cluster::{ConnectionManager, NodeInfo};
 use crate::transport::CdrsTransport;
-use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::frame::Frame;
-use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// Metadata about a Cassandra node in the cluster, along with a connection.
-pub struct Node<T: CdrsTransport, CM: ConnectionManager<T>> {
-    connection_manager: Arc<CM>,
-    connection: RwLock<Option<Arc<T>>>,
+pub struct Node<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
+    connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
+    connection_pool: RwLock<Option<Arc<ConnectionPool<T, CM>>>>,
     broadcast_rpc_address: SocketAddr,
     broadcast_address: Option<SocketAddr>,
     distance: Option<NodeDistance>,
@@ -49,7 +49,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Creates a node from an address. The node state and distance is unknown at this time.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        connection_manager: Arc<CM>,
+        connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
         host_id: Option<Uuid>,
@@ -59,8 +59,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         datacenter: String,
     ) -> Self {
         Node {
-            connection_manager,
-            connection: Default::default(),
+            connection_pool_factory,
+            connection_pool: Default::default(),
             broadcast_rpc_address,
             broadcast_address,
             distance,
@@ -75,7 +75,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Creates a node from full state.
     #[allow(clippy::too_many_arguments)]
     pub fn new_with_state(
-        connection_manager: Arc<CM>,
+        connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
         host_id: Option<Uuid>,
@@ -86,8 +86,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         datacenter: String,
     ) -> Self {
         Node {
-            connection_manager,
-            connection: Default::default(),
+            connection_pool_factory,
+            connection_pool: Default::default(),
             broadcast_rpc_address,
             broadcast_address,
             distance,
@@ -102,7 +102,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Creates a node from an address. The node distance is unknown at this time.
     #[allow(clippy::too_many_arguments)]
     pub fn with_state(
-        connection_manager: Arc<CM>,
+        connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
         host_id: Option<Uuid>,
@@ -112,8 +112,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         datacenter: String,
     ) -> Self {
         Node {
-            connection_manager,
-            connection: Default::default(),
+            connection_pool_factory,
+            connection_pool: Default::default(),
             broadcast_rpc_address,
             broadcast_address,
             distance: None,
@@ -127,15 +127,15 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
 
     #[cfg(test)]
     pub fn with_distance(
-        connection_manager: Arc<CM>,
+        connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
         host_id: Option<Uuid>,
         distance: NodeDistance,
     ) -> Self {
         Node {
-            connection_manager,
-            connection: Default::default(),
+            connection_pool_factory,
+            connection_pool: Default::default(),
             broadcast_rpc_address,
             broadcast_address,
             distance: Some(distance),
@@ -191,35 +191,32 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         &self.rack
     }
 
-    /// Returns connection to given node.
+    /// Returns a connection to given node.
+    #[inline]
     pub async fn persistent_connection(&self) -> Result<Arc<T>> {
         {
-            let connection = self.connection.read().await;
-            if let Some(connection) = connection.deref() {
-                if !connection.is_broken() {
-                    return Ok(connection.clone());
-                }
-
-                // note: make sure this is protected by connection guard
-                self.state.store(NodeState::Down, Ordering::Relaxed);
+            if let Some(pool) = self.connection_pool.read().await.as_ref() {
+                return pool.connection().await;
             }
         }
 
-        let mut connection = self.connection.write().await;
-        if let Some(connection) = connection.deref() {
-            if !connection.is_broken() {
-                // somebody established connection in the meantime
-                return Ok(connection.clone());
-            }
+        let mut pool = self.connection_pool.write().await;
+        if let Some(pool) = pool.as_ref() {
+            return pool.connection().await;
         }
 
-        let new_connection = Arc::new(self.new_connection(None, None).await?);
-        *connection = Some(new_connection.clone());
+        let new_pool = self
+            .connection_pool_factory
+            .create(
+                self.distance.unwrap_or(NodeDistance::Remote),
+                self.broadcast_rpc_address,
+            )
+            .await?;
 
-        // note: make sure this is protected by connection guard
-        self.state.store(NodeState::Up, Ordering::Relaxed);
+        let connection = new_pool.connection().await?;
+        *pool = Some(new_pool);
 
-        Ok(new_connection)
+        Ok(connection)
     }
 
     /// Creates a new connection to the node with optional event and error handlers.
@@ -229,7 +226,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         error_handler: Option<Sender<Error>>,
     ) -> Result<T> {
         debug!("Establishing new connection to node...");
-        self.connection_manager
+        self.connection_pool_factory
+            .connection_manager()
             .connection(event_handler, error_handler, self.broadcast_rpc_address)
             .await
     }
@@ -261,8 +259,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     #[inline]
     pub(crate) fn clone_with_node_info(&self, node_info: NodeInfo) -> Self {
         Node {
-            connection_manager: self.connection_manager.clone(),
-            connection: Default::default(),
+            connection_pool_factory: self.connection_pool_factory.clone(),
+            connection_pool: Default::default(),
             broadcast_rpc_address: node_info.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
             // since address could change, we can't be sure of distance or state
@@ -279,8 +277,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     pub(crate) async fn clone_as_contact_point(&self, node_info: NodeInfo) -> Self {
         // control points might have valid state already, so no need to reset
         Node {
-            connection_manager: self.connection_manager.clone(),
-            connection: RwLock::new(self.connection.read().await.clone()),
+            connection_pool_factory: self.connection_pool_factory.clone(),
+            connection_pool: RwLock::new(self.connection_pool.read().await.clone()),
             broadcast_rpc_address: self.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
             distance: self.distance,
@@ -299,8 +297,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         state: NodeState,
     ) -> Self {
         Node {
-            connection_manager: self.connection_manager.clone(),
-            connection: Default::default(),
+            connection_pool_factory: self.connection_pool_factory.clone(),
+            connection_pool: Default::default(),
             broadcast_rpc_address: node_info.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
             // since address could change, we can't be sure of distance
@@ -316,8 +314,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     #[inline]
     pub(crate) fn clone_with_node_state(&self, state: NodeState) -> Self {
         Node {
-            connection_manager: self.connection_manager.clone(),
-            connection: Default::default(),
+            connection_pool_factory: self.connection_pool_factory.clone(),
+            connection_pool: Default::default(),
             broadcast_rpc_address: self.broadcast_rpc_address,
             broadcast_address: self.broadcast_address,
             distance: self.distance,

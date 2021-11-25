@@ -1,5 +1,6 @@
 use crate::frame::Flags;
 
+#[inline]
 pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Flags {
     let mut flags = Flags::empty();
 
@@ -12,6 +13,12 @@ pub fn prepare_flags(with_tracing: bool, with_warnings: bool) -> Flags {
     }
 
     flags
+}
+
+/// Returns the identifier in a format appropriate for concatenation in a CQL query.
+#[inline]
+pub fn quote(text: &str) -> String {
+    format!("\"{}\"", text.replace('"', "\"\""))
 }
 
 #[cfg(test)]
