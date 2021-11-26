@@ -1,5 +1,6 @@
 //! `frame` module contains general Frame functionality.
 use bitflags::bitflags;
+use derivative::Derivative;
 use derive_more::Display;
 use std::convert::TryFrom;
 use std::io::Cursor;
@@ -70,13 +71,15 @@ fn next_stream_id() -> StreamId {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Derivative, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derivative(Debug)]
 pub struct Frame {
     pub version: Version,
     pub direction: Direction,
     pub flags: Flags,
     pub opcode: Opcode,
     pub stream: StreamId,
+    #[derivative(Debug = "ignore")]
     pub body: Vec<u8>,
     pub tracing_id: Option<Uuid>,
     pub warnings: Vec<String>,
