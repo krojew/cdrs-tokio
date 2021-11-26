@@ -216,3 +216,9 @@ impl TryFrom<String> for Murmur3Token {
             .map(Murmur3Token::new)
     }
 }
+
+impl From<i64> for Murmur3Token {
+    fn from(value: i64) -> Self {
+        Murmur3Token::new(value)
+    }
+}

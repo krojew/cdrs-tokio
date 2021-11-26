@@ -1,6 +1,7 @@
 use arc_swap::ArcSwap;
 use fxhash::FxHashMap;
 use itertools::Itertools;
+use rand::{thread_rng, Rng};
 use serde_json::{Map, Value as JsonValue};
 use std::convert::TryInto;
 use std::net::{IpAddr, SocketAddr};
@@ -26,6 +27,7 @@ use cassandra_protocol::frame::events::{
 };
 use cassandra_protocol::frame::frame_error::{AdditionalErrorInfo, ErrorBody};
 use cassandra_protocol::frame::{Frame, Version};
+use cassandra_protocol::query::query_params::Murmur3Token;
 use cassandra_protocol::query::utils::prepare_flags;
 use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
 use cassandra_protocol::types::list::List;
@@ -126,7 +128,11 @@ fn build_node_info(row: &Row, broadcast_rpc_address: SocketAddr) -> Result<NodeI
             datacenter,
             tokens
                 .into_iter()
-                .filter_map(|token| token.try_into().ok()) // ignore unsupported tokens
+                .map(|token| {
+                    token.try_into().unwrap_or_else(|_| {
+                    warn!(%broadcast_rpc_address, "Unsupported token type - using a dummy value.");
+                    Murmur3Token::new(thread_rng().gen()) })
+                })
                 .collect(),
             rack,
         ))
