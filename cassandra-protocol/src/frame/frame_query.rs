@@ -9,7 +9,7 @@ use std::io::Cursor;
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct BodyReqQuery {
     /// Query string.
-    pub query: CStringLong,
+    pub query: String,
     /// Query parameters.
     pub query_params: QueryParams,
 }
@@ -28,7 +28,7 @@ impl BodyReqQuery {
         is_idempotent: bool,
     ) -> BodyReqQuery {
         BodyReqQuery {
-            query: CStringLong::new(query),
+            query,
             query_params: QueryParams {
                 consistency,
                 with_names,
@@ -48,7 +48,7 @@ impl BodyReqQuery {
 
 impl FromCursor for BodyReqQuery {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyReqQuery> {
-        let query = CStringLong::from_cursor(cursor)?;
+        let query = from_cursor_str_long(cursor)?.to_string();
         let query_params = QueryParams::from_cursor(cursor)?;
 
         Ok(BodyReqQuery {
@@ -61,7 +61,7 @@ impl FromCursor for BodyReqQuery {
 impl Serialize for BodyReqQuery {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.query.serialize(cursor);
+        serialize_str_long(cursor, &self.query);
         self.query_params.serialize(cursor);
     }
 }
