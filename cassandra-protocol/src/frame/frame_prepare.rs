@@ -6,22 +6,20 @@ use crate::types::*;
 /// Struct that represents a body of a frame of type `prepare`
 #[derive(Debug)]
 pub struct BodyReqPrepare {
-    query: CStringLong,
+    query: String,
 }
 
 impl BodyReqPrepare {
     /// Creates new body of a frame of type `prepare` that prepares query `query`.
     pub fn new(query: String) -> BodyReqPrepare {
-        BodyReqPrepare {
-            query: CStringLong::new(query),
-        }
+        BodyReqPrepare { query }
     }
 }
 
 impl Serialize for BodyReqPrepare {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.query.serialize(cursor);
+        serialize_str_long(cursor, &self.query);
     }
 }
 

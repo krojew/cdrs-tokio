@@ -108,7 +108,7 @@ pub struct BatchQuery {
 #[derive(Debug, Clone)]
 pub enum BatchQuerySubj {
     PreparedId(PreparedQuery),
-    QueryString(CStringLong),
+    QueryString(String),
 }
 
 impl Serialize for BatchQuery {
@@ -121,12 +121,8 @@ impl Serialize for BatchQuery {
         }
 
         match &self.subject {
-            BatchQuerySubj::PreparedId(s) => {
-                s.id.serialize(cursor);
-            }
-            BatchQuerySubj::QueryString(s) => {
-                s.serialize(cursor);
-            }
+            BatchQuerySubj::PreparedId(s) => s.id.serialize(cursor),
+            BatchQuerySubj::QueryString(s) => serialize_str_long(cursor, s),
         }
 
         let len = self.values.len() as CIntShort;

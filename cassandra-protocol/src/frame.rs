@@ -409,7 +409,7 @@ mod tests {
     use crate::query::query_params::QueryParams;
     use crate::query::query_values::QueryValues;
     use crate::types::value::Value;
-    use crate::types::{CBytes, CStringLong};
+    use crate::types::CBytes;
 
     #[test]
     fn test_frame_version_as_byte() {
@@ -569,7 +569,7 @@ mod tests {
             warnings: vec![],
         };
         let body = RequestBody::Query(BodyReqQuery {
-            query: CStringLong::new("blah".into()),
+            query: "blah".into(),
             query_params: QueryParams {
                 consistency: Consistency::Any,
                 with_names: true,
@@ -607,7 +607,7 @@ mod tests {
             warnings: vec![],
         };
         let body = RequestBody::Query(BodyReqQuery {
-            query: CStringLong::new("some query".into()),
+            query: "some query".into(),
             query_params: QueryParams {
                 consistency: Consistency::Serial,
                 with_names: false,
@@ -641,7 +641,7 @@ mod tests {
             warnings: vec![],
         };
         let body = RequestBody::Query(BodyReqQuery {
-            query: CStringLong::new("another query".into()),
+            query: "another query".into(),
             query_params: QueryParams {
                 consistency: Consistency::Three,
                 with_names: true,
