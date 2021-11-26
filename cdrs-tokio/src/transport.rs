@@ -89,6 +89,7 @@ impl TransportTcp {
                     addr,
                     compression,
                     buffer_size,
+                    false,
                     read_half,
                     write_half,
                     event_handler,
@@ -149,6 +150,7 @@ impl TransportRustls {
                 addr,
                 compression,
                 buffer_size,
+                true,
                 read_half,
                 write_half,
                 event_handler,
@@ -198,6 +200,7 @@ impl AsyncTransport {
         addr: SocketAddr,
         compression: Compression,
         buffer_size: usize,
+        needs_flush: bool,
         read_half: ReadHalf<T>,
         write_half: WriteHalf<T>,
         event_handler: Option<mpsc::Sender<Frame>>,
@@ -216,6 +219,7 @@ impl AsyncTransport {
             keyspace_holder,
             is_broken.clone(),
             compression,
+            needs_flush,
         ));
 
         AsyncTransport {
@@ -268,10 +272,17 @@ impl AsyncTransport {
         keyspace_holder: Arc<KeyspaceHolder>,
         is_broken: Arc<AtomicBool>,
         compression: Compression,
+        needs_flush: bool,
     ) {
         let response_handler_map = ResponseHandlerMap::new();
 
-        let writer = Self::start_writing(write_receiver, write_half, &response_handler_map);
+        let writer = Self::start_writing(
+            write_receiver,
+            write_half,
+            &response_handler_map,
+            needs_flush,
+        );
+
         let reader = Self::start_reading(
             read_half,
             event_handler,
@@ -340,6 +351,7 @@ impl AsyncTransport {
         mut write_receiver: mpsc::Receiver<Request>,
         mut write_half: WriteHalf<T>,
         response_handler_map: &ResponseHandlerMap,
+        needs_flush: bool,
     ) -> Result<()> {
         while let Some(request) = write_receiver.recv().await {
             response_handler_map.add_handler(request.stream_id, request.handler);
@@ -349,7 +361,7 @@ impl AsyncTransport {
                 return Err(Error::General("Write channel failure!".into()));
             }
 
-            if cfg!(feature = "rust-tls") {
+            if needs_flush {
                 // TLS sometimes waits for more data, thus stalling communication
                 if let Err(error) = write_half.flush().await {
                     response_handler_map.send_response(request.stream_id, Err(error.into()))?;
