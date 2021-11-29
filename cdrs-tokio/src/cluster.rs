@@ -35,7 +35,7 @@ mod node_info;
 mod pager;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_manager;
-mod send_frame;
+pub mod send_frame;
 pub mod session;
 mod session_context;
 mod tcp_connection_manager;
