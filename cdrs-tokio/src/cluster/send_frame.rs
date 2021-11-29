@@ -8,6 +8,8 @@ use cassandra_protocol::error;
 use cassandra_protocol::frame::Frame;
 use cassandra_protocol::query::query_params::Murmur3Token;
 
+/// Mid-level interface for sending frames to the cluster. Uses a query plan to route frame to
+/// appropriate node, and retry policy for error handling.
 pub async fn send_frame<
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T> + Send + Sync + 'static,

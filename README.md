@@ -1,19 +1,19 @@
 # CDRS tokio [![crates.io version](https://img.shields.io/crates/v/cdrs-tokio.svg)](https://crates.io/crates/cdrs-tokio) ![build status](https://github.com/krojew/cdrs-tokio/actions/workflows/rust.yml/badge.svg)
 
-<p align="center">
-  <img src="./cdrs-logo.png" alt="CDRS tokio - async Apache Cassandra driver using tokio"/>
-</p>
+![CDRS tokio - async Apache Cassandra driver using tokio](./cdrs-logo.png)
 
-CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u**s**t.
+CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u**s**t. Focuses on providing high
+level of configurability to suite most use cases at any scale, as its Java counterpart, while also leveraging the
+safety and performance of Rust.
 
 ## Features
 
 - Asynchronous API;
-- TCP/TLS connection;
+- TCP/TLS connection (rustls);
 - Topology-aware dynamic and configurable load balancing;
-- Configurable connection strategies;
+- Configurable connection strategies and pools;
 - LZ4, Snappy compression;
-- Cassandra-to-Rust data deserialization;
+- Cassandra-to-Rust data serialization/deserialization with custom type support;
 - Pluggable authentication strategies;
 - [ScyllaDB](https://www.scylladb.com/) support;
 - Server events listening;
@@ -35,14 +35,14 @@ CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u*
 
 ## Getting started
 
-This example configures a cluster consisting of a single node, and uses round-robin load balancing.
+This example configures a cluster consisting of a single node without authentication, and uses round-robin 
+load balancing. Other options are kept as default.
 
 ```rust
 use cdrs_tokio::cluster::session::{TcpSessionBuilder, SessionBuilder};
 use cdrs_tokio::cluster::NodeTcpConfigBuilder;
-use cdrs_tokio::load_balancing::RoundRobinBalancingStrategy;
+use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
 use cdrs_tokio::query::*;
-use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
@@ -51,7 +51,7 @@ async fn main() {
         .build()
         .await
         .unwrap();
-    let session = TcpSessionBuilder::new(RoundRobinBalancingStrategy::new(), cluster_config).build();
+    let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config).build();
 
     let create_ks = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
                      'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
