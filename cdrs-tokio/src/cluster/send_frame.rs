@@ -8,7 +8,7 @@ use cassandra_protocol::error;
 use cassandra_protocol::frame::Frame;
 use cassandra_protocol::query::query_params::Murmur3Token;
 
-pub(crate) async fn send_frame<
+pub async fn send_frame<
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T> + Send + Sync + 'static,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
