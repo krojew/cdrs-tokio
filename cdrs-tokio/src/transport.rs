@@ -10,6 +10,11 @@
 //! * [`TransportRustls`] is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::frame::frame_result::ResultKind;
+use cassandra_protocol::frame::{Frame, StreamId};
+use cassandra_protocol::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
+use cassandra_protocol::types::INT_LEN;
 use derive_more::Constructor;
 use futures::FutureExt;
 use fxhash::FxHashMap;
@@ -17,7 +22,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::io::{split, AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::io::{split, AsyncRead, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -33,11 +38,6 @@ use crate::frame_parser::parse_frame;
 use crate::future::BoxFuture;
 use crate::Error;
 use crate::Result;
-use cassandra_protocol::compression::Compression;
-use cassandra_protocol::frame::frame_result::ResultKind;
-use cassandra_protocol::frame::{Frame, StreamId};
-use cassandra_protocol::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
-use cassandra_protocol::types::INT_LEN;
 
 /// General CDRS transport trait.
 pub trait CdrsTransport: Send + Sync {
@@ -89,7 +89,6 @@ impl TransportTcp {
                     addr,
                     compression,
                     buffer_size,
-                    false,
                     read_half,
                     write_half,
                     event_handler,
@@ -150,7 +149,6 @@ impl TransportRustls {
                 addr,
                 compression,
                 buffer_size,
-                true,
                 read_half,
                 write_half,
                 event_handler,
@@ -200,7 +198,6 @@ impl AsyncTransport {
         addr: SocketAddr,
         compression: Compression,
         buffer_size: usize,
-        needs_flush: bool,
         read_half: ReadHalf<T>,
         write_half: WriteHalf<T>,
         event_handler: Option<mpsc::Sender<Frame>>,
@@ -219,7 +216,6 @@ impl AsyncTransport {
             keyspace_holder,
             is_broken.clone(),
             compression,
-            needs_flush,
         ));
 
         AsyncTransport {
@@ -272,15 +268,13 @@ impl AsyncTransport {
         keyspace_holder: Arc<KeyspaceHolder>,
         is_broken: Arc<AtomicBool>,
         compression: Compression,
-        needs_flush: bool,
     ) {
         let response_handler_map = ResponseHandlerMap::new();
 
         let writer = Self::start_writing(
             write_receiver,
-            write_half,
+            BufWriter::new(write_half),
             &response_handler_map,
-            needs_flush,
         );
 
         let reader = Self::start_reading(
@@ -347,26 +341,29 @@ impl AsyncTransport {
         }
     }
 
-    async fn start_writing<T: AsyncWrite>(
+    async fn start_writing(
         mut write_receiver: mpsc::Receiver<Request>,
-        mut write_half: WriteHalf<T>,
+        mut write_half: impl AsyncWrite + Unpin,
         response_handler_map: &ResponseHandlerMap,
-        needs_flush: bool,
     ) -> Result<()> {
-        while let Some(request) = write_receiver.recv().await {
-            response_handler_map.add_handler(request.stream_id, request.handler);
+        while let Some(mut request) = write_receiver.recv().await {
+            loop {
+                response_handler_map.add_handler(request.stream_id, request.handler);
 
-            if let Err(error) = write_half.write_all(&request.data).await {
-                response_handler_map.send_response(request.stream_id, Err(error.into()))?;
-                return Err(Error::General("Write channel failure!".into()));
-            }
-
-            if needs_flush {
-                // TLS sometimes waits for more data, thus stalling communication
-                if let Err(error) = write_half.flush().await {
+                if let Err(error) = write_half.write_all(&request.data).await {
                     response_handler_map.send_response(request.stream_id, Err(error.into()))?;
                     return Err(Error::General("Write channel failure!".into()));
                 }
+
+                request = match write_receiver.try_recv() {
+                    Ok(request) => request,
+                    Err(_) => break,
+                }
+            }
+
+            if let Err(error) = write_half.flush().await {
+                response_handler_map.send_response(request.stream_id, Err(error.into()))?;
+                return Err(Error::General("Write channel failure!".into()));
             }
         }
 
