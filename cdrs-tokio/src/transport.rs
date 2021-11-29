@@ -22,7 +22,9 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::io::{split, AsyncRead, AsyncWrite, AsyncWriteExt, BufWriter, ReadHalf, WriteHalf};
+use tokio::io::{
+    split, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter, ReadHalf, WriteHalf,
+};
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
@@ -278,7 +280,7 @@ impl AsyncTransport {
         );
 
         let reader = Self::start_reading(
-            read_half,
+            BufReader::new(read_half),
             event_handler,
             compression,
             keyspace_holder,
@@ -298,8 +300,8 @@ impl AsyncTransport {
         }
     }
 
-    async fn start_reading<T: AsyncRead>(
-        mut read_half: ReadHalf<T>,
+    async fn start_reading(
+        mut read_half: impl AsyncRead + Unpin,
         event_handler: Option<mpsc::Sender<Frame>>,
         compression: Compression,
         keyspace_holder: Arc<KeyspaceHolder>,
