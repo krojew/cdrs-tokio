@@ -1,10 +1,9 @@
 //! `frame` module contains general Frame functionality.
 use bitflags::bitflags;
 use derivative::Derivative;
-use derive_more::Display;
+use derive_more::{Constructor, Display};
 use std::convert::TryFrom;
 use std::io::Cursor;
-use std::sync::atomic::{AtomicI16, Ordering};
 use uuid::Uuid;
 
 use crate::compression::{Compression, CompressionError};
@@ -45,40 +44,27 @@ pub mod traits;
 
 use crate::error;
 
-const INITIAL_STREAM_ID: i16 = 1;
 pub const EVENT_STREAM_ID: i16 = -1;
-
-static STREAM_ID: AtomicI16 = AtomicI16::new(INITIAL_STREAM_ID);
 
 pub type StreamId = i16;
 
-fn next_stream_id() -> StreamId {
-    loop {
-        let stream = STREAM_ID.fetch_add(1, Ordering::SeqCst);
-        if stream < 0 {
-            match STREAM_ID.compare_exchange_weak(
-                stream,
-                INITIAL_STREAM_ID,
-                Ordering::SeqCst,
-                Ordering::Relaxed,
-            ) {
-                Ok(_) => return INITIAL_STREAM_ID,
-                Err(_) => continue,
-            }
-        }
-
-        return stream;
-    }
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Constructor)]
+pub struct ParsedFrame {
+    /// How many bytes from the buffer have been read.
+    pub frame_len: usize,
+    /// Stream id associated with given frame
+    pub stream_id: StreamId,
+    /// The parsed frame.
+    pub frame: Frame,
 }
 
-#[derive(Derivative, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Derivative, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Constructor)]
 #[derivative(Debug)]
 pub struct Frame {
     pub version: Version,
     pub direction: Direction,
     pub flags: Flags,
     pub opcode: Opcode,
-    pub stream: StreamId,
     #[derivative(Debug = "ignore")]
     pub body: Vec<u8>,
     pub tracing_id: Option<Uuid>,
@@ -86,32 +72,12 @@ pub struct Frame {
 }
 
 impl Frame {
-    pub fn new(
-        version: Version,
-        direction: Direction,
-        flags: Flags,
-        opcode: Opcode,
-        body: Vec<u8>,
-        tracing_id: Option<Uuid>,
-        warnings: Vec<String>,
-    ) -> Self {
-        let stream = next_stream_id();
-        Frame {
-            version,
-            direction,
-            flags,
-            opcode,
-            stream,
-            body,
-            tracing_id,
-            warnings,
-        }
-    }
-
+    #[inline]
     pub fn request_body(&self) -> error::Result<RequestBody> {
         RequestBody::try_from(self.body.as_slice(), self.opcode)
     }
 
+    #[inline]
     pub fn response_body(&self) -> error::Result<ResponseBody> {
         ResponseBody::try_from(self.body.as_slice(), self.opcode, self.version)
     }
@@ -129,15 +95,13 @@ impl Frame {
     /// Parses the raw bytes of a cassandra frame returning a [`Frame`] struct.
     /// The typical use case is reading from a buffer that may contain 0 or more frames and where the last frame may be incomplete.
     /// The possible return values are:
-    /// * `Ok(Frame, usize)` - The first frame in the buffer has been succesfully parsed.
-    ///     + [`Frame`] - The parsed frame
-    ///     + `usize` - How many bytes from the buffer have been read.
+    /// * `Ok(ParsedFrame)` - The first frame in the buffer has been successfully parsed.
     /// * `Err(ParseFrameError::NotEnoughBytes)` - There are not enough bytes to parse a single frame, [`Frame::from_buffer`] should be recalled when it is possible that there are more bytes.
     /// * `Err(_)` - The frame is malformed and you should close the connection as this method does not provide a way to tell how many bytes to advance the buffer in this case.
     pub fn from_buffer(
         data: &[u8],
         compressor: Compression,
-    ) -> Result<(Frame, usize), ParseFrameError> {
+    ) -> Result<ParsedFrame, ParseFrameError> {
         if data.len() < HEADER_LEN {
             return Err(ParseFrameError::NotEnoughBytes);
         }
@@ -152,7 +116,7 @@ impl Frame {
             .map_err(|_| ParseFrameError::UnsupportedVersion(data[0] & 0x7f))?;
         let direction = Direction::from(data[0]);
         let flags = Flags::from_bits_truncate(data[1]);
-        let stream = try_i16_from_bytes(&data[2..4]).unwrap();
+        let stream_id = try_i16_from_bytes(&data[2..4]).unwrap();
         let opcode =
             Opcode::try_from(data[4]).map_err(|_| ParseFrameError::UnsupportedOpcode(data[4]))?;
 
@@ -190,22 +154,26 @@ impl Frame {
         std::io::Read::read_to_end(&mut body_cursor, &mut body)
             .expect("Read cannot fail because cursor is backed by slice");
 
-        Ok((
+        Ok(ParsedFrame::new(
+            frame_len,
+            stream_id,
             Frame {
                 version,
                 direction,
                 flags,
                 opcode,
-                stream,
                 body,
                 tracing_id,
                 warnings,
             },
-            frame_len,
         ))
     }
 
-    pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
+    pub fn encode_with(
+        &self,
+        stream_id: StreamId,
+        compressor: Compression,
+    ) -> error::Result<Vec<u8>> {
         let combined_version_byte = u8::from(self.version) | u8::from(self.direction);
         let flag_byte = self.flags.bits();
         let opcode_byte = u8::from(self.opcode);
@@ -214,7 +182,7 @@ impl Frame {
 
         v.push(combined_version_byte);
         v.push(flag_byte);
-        v.extend_from_slice(&self.stream.to_be_bytes());
+        v.extend_from_slice(&stream_id.to_be_bytes());
         v.push(opcode_byte);
 
         if compressor.is_compressed() {
@@ -404,6 +372,7 @@ impl TryFrom<u8> for Opcode {
     }
 }
 
+//noinspection DuplicatedCode
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -489,7 +458,7 @@ mod tests {
             "encoded body did not match frames body"
         );
 
-        let encoded_frame = frame.encode_with(Compression::None).unwrap();
+        let encoded_frame = frame.encode_with(0, Compression::None).unwrap();
         assert_eq!(
             raw_frame, &encoded_frame,
             "encoded frame did not match expected raw frame"
@@ -513,7 +482,7 @@ mod tests {
             "encoded body did not match frames body"
         );
 
-        let encoded_frame = frame.encode_with(Compression::None).unwrap();
+        let encoded_frame = frame.encode_with(0, Compression::None).unwrap();
         assert_eq!(
             raw_frame, &encoded_frame,
             "encoded frame did not match expected raw frame"
@@ -547,7 +516,6 @@ mod tests {
             direction: Direction::Request,
             flags: Flags::empty(),
             opcode: Opcode::Ready,
-            stream: 0,
             body: vec![],
             tracing_id: None,
             warnings: vec![],
@@ -566,7 +534,6 @@ mod tests {
             direction: Direction::Request,
             flags: Flags::empty(),
             opcode: Opcode::Query,
-            stream: 0,
             body: vec![0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64],
             tracing_id: None,
             warnings: vec![],
@@ -601,7 +568,6 @@ mod tests {
             direction: Direction::Request,
             flags: Flags::empty(),
             opcode: Opcode::Query,
-            stream: 0,
             body: vec![
                 0, 0, 0, 10, 115, 111, 109, 101, 32, 113, 117, 101, 114, 121, 0, 8, 1, 0, 2, 0, 0,
                 0, 3, 1, 2, 3, 255, 255, 255, 255,
@@ -638,7 +604,6 @@ mod tests {
             direction: Direction::Request,
             flags: Flags::empty(),
             opcode: Opcode::Query,
-            stream: 0,
             body: vec![],
             tracing_id: None,
             warnings: vec![],

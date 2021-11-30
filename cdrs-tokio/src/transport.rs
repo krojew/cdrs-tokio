@@ -20,7 +20,7 @@ use futures::FutureExt;
 use fxhash::FxHashMap;
 use std::io;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::io::{
     split, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter, ReadHalf, WriteHalf,
@@ -40,6 +40,8 @@ use crate::frame_parser::parse_frame;
 use crate::future::BoxFuture;
 use crate::Error;
 use crate::Result;
+
+const INITIAL_STREAM_ID: i16 = 1;
 
 /// General CDRS transport trait.
 pub trait CdrsTransport: Send + Sync {
@@ -241,17 +243,18 @@ impl AsyncTransport {
 
     async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
         let (sender, receiver) = oneshot::channel();
-        let stream_id = frame.stream;
+
+        // leave stream id empty for now and generate it later
 
         // startup message is never compressed
         let data = if frame.opcode != Opcode::Startup {
-            frame.encode_with(self.compression)?
+            frame.encode_with(0, self.compression)?
         } else {
-            frame.encode_with(Compression::None)?
+            frame.encode_with(0, Compression::None)?
         };
 
         self.write_sender
-            .send(Request::new(data, stream_id, sender))
+            .send(Request::new(data, sender))
             .await
             .map_err(|_| Error::General("Connection closed when writing data!".into()))?;
 
@@ -308,10 +311,10 @@ impl AsyncTransport {
         response_handler_map: &ResponseHandlerMap,
     ) -> Result<()> {
         loop {
-            let frame = parse_frame(&mut read_half, compression).await;
-            match frame {
-                Ok(frame) => {
-                    if frame.stream >= 0 {
+            let result = parse_frame(&mut read_half, compression).await;
+            match result {
+                Ok((stream_id, frame)) => {
+                    if stream_id >= 0 {
                         // in case we get a SetKeyspace result, we need to store current keyspace
                         // checks are done manually for speed
                         if frame.opcode == Opcode::Result {
@@ -330,8 +333,8 @@ impl AsyncTransport {
                         }
 
                         // normal response to query
-                        response_handler_map.send_response(frame.stream, Ok(frame))?;
-                    } else if frame.stream == EVENT_STREAM_ID {
+                        response_handler_map.send_response(stream_id, Ok(frame))?;
+                    } else if stream_id == EVENT_STREAM_ID {
                         // server event
                         if let Some(event_handler) = &event_handler {
                             let _ = event_handler.send(frame).await;
@@ -350,22 +353,27 @@ impl AsyncTransport {
     ) -> Result<()> {
         while let Some(mut request) = write_receiver.recv().await {
             loop {
-                response_handler_map.add_handler(request.stream_id, request.handler);
+                let stream_id = response_handler_map.next_stream_id();
+
+                request.set_stream_id(stream_id);
+                response_handler_map.add_handler(stream_id, request.handler);
 
                 if let Err(error) = write_half.write_all(&request.data).await {
-                    response_handler_map.send_response(request.stream_id, Err(error.into()))?;
+                    response_handler_map.send_response(stream_id, Err(error.into()))?;
                     return Err(Error::General("Write channel failure!".into()));
                 }
 
                 request = match write_receiver.try_recv() {
                     Ok(request) => request,
-                    Err(_) => break,
-                }
-            }
+                    Err(_) => {
+                        if let Err(error) = write_half.flush().await {
+                            response_handler_map.send_response(stream_id, Err(error.into()))?;
+                            return Err(Error::General("Write channel failure!".into()));
+                        }
 
-            if let Err(error) = write_half.flush().await {
-                response_handler_map.send_response(request.stream_id, Err(error.into()))?;
-                return Err(Error::General("Write channel failure!".into()));
+                        break;
+                    }
+                }
             }
         }
 
@@ -375,14 +383,18 @@ impl AsyncTransport {
 
 type ResponseHandler = oneshot::Sender<Result<Frame>>;
 
-#[derive(Default)]
 struct ResponseHandlerMap {
     stream_handlers: Mutex<FxHashMap<StreamId, ResponseHandler>>,
+    available_stream_id: AtomicI16,
 }
 
 impl ResponseHandlerMap {
+    #[inline]
     pub fn new() -> Self {
-        Default::default()
+        ResponseHandlerMap {
+            stream_handlers: Default::default(),
+            available_stream_id: AtomicI16::new(INITIAL_STREAM_ID),
+        }
     }
 
     #[inline]
@@ -412,11 +424,36 @@ impl ResponseHandlerMap {
             let _ = handler.send(Err(Error::General(error.to_string())));
         }
     }
+
+    pub fn next_stream_id(&self) -> StreamId {
+        loop {
+            let stream = self.available_stream_id.fetch_add(1, Ordering::Relaxed);
+            if stream < 0 {
+                match self.available_stream_id.compare_exchange(
+                    stream,
+                    INITIAL_STREAM_ID,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => return INITIAL_STREAM_ID,
+                    Err(_) => continue,
+                }
+            }
+
+            return stream;
+        }
+    }
 }
 
 #[derive(Constructor)]
 struct Request {
     data: Vec<u8>,
-    stream_id: StreamId,
     handler: ResponseHandler,
+}
+
+impl Request {
+    #[inline]
+    fn set_stream_id(&mut self, stream_d: StreamId) {
+        self.data[2..4].copy_from_slice(&stream_d.to_be_bytes());
+    }
 }
