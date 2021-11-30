@@ -3,7 +3,7 @@
 ![CDRS tokio - async Apache Cassandra driver using tokio](./cdrs-logo.png)
 
 CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u**s**t. Focuses on providing high
-level of configurability to suite most use cases at any scale, as its Java counterpart, while also leveraging the
+level of configurability to suit most use cases at any scale, as its Java counterpart, while also leveraging the
 safety and performance of Rust.
 
 ## Features
@@ -30,7 +30,7 @@ safety and performance of Rust.
 
 - [User guide](./documentation).
 - [Examples](./cdrs-tokio/examples).
-- API docs (release).
+- [API docs](https://docs.rs/cdrs-tokio/latest/cdrs_tokio/).
 - Using ScyllaDB with RUST [lesson](https://university.scylladb.com/courses/using-scylla-drivers/lessons/rust-and-scylla/).
 
 ## Getting started
