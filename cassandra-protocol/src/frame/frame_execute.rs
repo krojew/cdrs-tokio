@@ -17,6 +17,15 @@ impl<'a> Serialize for BodyReqExecute<'a> {
         self.id.serialize(cursor);
         self.query_parameters.serialize(cursor);
     }
+
+    #[inline]
+    fn serialize_to_vec(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(self.id.serialized_len());
+
+        // ignore error, since it can only happen when going over 2^64 bytes size
+        let _ = self.serialize(&mut Cursor::new(&mut buf));
+        buf
+    }
 }
 
 impl Frame {

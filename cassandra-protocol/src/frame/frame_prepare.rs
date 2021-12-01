@@ -21,6 +21,15 @@ impl Serialize for BodyReqPrepare {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         serialize_str_long(cursor, &self.query);
     }
+
+    #[inline]
+    fn serialize_to_vec(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(INT_LEN + self.query.len());
+
+        // ignore error, since it can only happen when going over 2^64 bytes size
+        let _ = self.serialize(&mut Cursor::new(&mut buf));
+        buf
+    }
 }
 
 impl Frame {
