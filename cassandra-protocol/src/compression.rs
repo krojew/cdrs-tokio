@@ -128,7 +128,7 @@ impl Compression {
         let len = bytes.len() as i32;
         result[..4].copy_from_slice(&len.to_be_bytes());
 
-        let compressed_len = lz4_flex::compress_into(bytes, &mut result, 4)
+        let compressed_len = lz4_flex::compress_into(bytes, &mut result[4..])
             .map_err(|error| CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error)))?;
 
         result.truncate(4 + compressed_len);

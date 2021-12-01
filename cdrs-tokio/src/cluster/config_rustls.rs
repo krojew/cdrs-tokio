@@ -5,12 +5,13 @@ use crate::cluster::NodeAddress;
 use cassandra_protocol::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider};
 use cassandra_protocol::error::Result;
 use cassandra_protocol::frame::Version;
+use rustls::ServerName;
 
 /// Single node TLS connection config.
 #[derive(Clone)]
 pub struct NodeRustlsConfig {
     pub contact_points: Vec<SocketAddr>,
-    pub dns_name: webpki::DNSName,
+    pub dns_name: ServerName,
     pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub config: Arc<rustls::ClientConfig>,
     pub version: Version,
@@ -19,14 +20,14 @@ pub struct NodeRustlsConfig {
 /// Builder structure that helps to configure TLS connection for node.
 pub struct NodeRustlsConfigBuilder {
     addrs: Vec<NodeAddress>,
-    dns_name: webpki::DNSName,
+    dns_name: ServerName,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<rustls::ClientConfig>,
     version: Version,
 }
 
 impl NodeRustlsConfigBuilder {
-    pub fn new(dns_name: webpki::DNSName, config: Arc<rustls::ClientConfig>) -> Self {
+    pub fn new(dns_name: ServerName, config: Arc<rustls::ClientConfig>) -> Self {
         NodeRustlsConfigBuilder {
             addrs: vec![],
             dns_name,
