@@ -573,16 +573,13 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
         {
-            self.metadata.store(Arc::new(
-                build_initial_metadata(
-                    node_infos,
-                    keyspaces,
-                    &self.contact_points,
-                    &self.connection_pool_factory,
-                    self.node_distance_evaluator.as_ref(),
-                )
-                .await,
-            ));
+            self.metadata.store(Arc::new(build_initial_metadata(
+                node_infos,
+                keyspaces,
+                &self.contact_points,
+                &self.connection_pool_factory,
+                self.node_distance_evaluator.as_ref(),
+            )));
         } else {
             self.metadata.rcu(move |old_metadata| {
                 refresh_metadata(

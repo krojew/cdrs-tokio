@@ -9,7 +9,7 @@ use crate::cluster::{ClusterMetadata, ConnectionManager, NodeInfo};
 use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::transport::CdrsTransport;
 
-pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
+pub fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_infos: Vec<NodeInfo>,
     keyspaces: FxHashMap<String, KeyspaceMetadata>,
     contact_points: &[Arc<Node<T, CM>>],
@@ -25,7 +25,7 @@ pub async fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
 
             let node = if let Some(contact_point) = contact_point {
                 debug!(?node_info, "Copying contact point.");
-                Arc::new(contact_point.clone_as_contact_point(node_info).await)
+                Arc::new(contact_point.clone_as_contact_point(node_info))
             } else {
                 debug!(?node_info, "Adding new node.");
                 Arc::new(Node::new_with_state(
@@ -169,8 +169,8 @@ mod tests {
         Arc::new(connection_pool_factory)
     }
 
-    #[tokio::test]
-    async fn should_create_initial_metadata_from_all_new_nodes() {
+    #[test]
+    fn should_create_initial_metadata_from_all_new_nodes() {
         let node_infos = vec![NodeInfo::new(
             Uuid::new_v4(),
             SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
@@ -193,8 +193,7 @@ mod tests {
             &[],
             &connection_pool_factory,
             &node_distance_evaluator,
-        )
-        .await;
+        );
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
@@ -207,8 +206,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn should_copy_old_node() {
+    #[test]
+    fn should_copy_old_node() {
         let connection_pool_factory = create_connection_pool_factory();
 
         let node_distance_evaluator = MockNodeDistanceEvaluator::new();
@@ -242,8 +241,7 @@ mod tests {
             &contact_points,
             &connection_pool_factory,
             &node_distance_evaluator,
-        )
-        .await;
+        );
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);

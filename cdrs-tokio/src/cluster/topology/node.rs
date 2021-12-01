@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use tokio::sync::RwLock;
+use tokio::sync::OnceCell;
 use tracing::*;
 use uuid::Uuid;
 
@@ -19,7 +19,7 @@ use crate::transport::CdrsTransport;
 /// Metadata about a Cassandra node in the cluster, along with a connection.
 pub struct Node<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
     connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
-    connection_pool: RwLock<Option<Arc<ConnectionPool<T, CM>>>>,
+    connection_pool: OnceCell<Arc<ConnectionPool<T, CM>>>,
     broadcast_rpc_address: SocketAddr,
     broadcast_address: Option<SocketAddr>,
     distance: Option<NodeDistance>,
@@ -194,29 +194,17 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Returns a connection to given node.
     #[inline]
     pub async fn persistent_connection(&self) -> Result<Arc<T>> {
-        {
-            if let Some(pool) = self.connection_pool.read().await.as_ref() {
-                return pool.connection().await;
-            }
-        }
-
-        let mut pool = self.connection_pool.write().await;
-        if let Some(pool) = pool.as_ref() {
-            return pool.connection().await;
-        }
-
-        let new_pool = self
-            .connection_pool_factory
-            .create(
-                self.distance.unwrap_or(NodeDistance::Remote),
-                self.broadcast_rpc_address,
-            )
+        let pool = self
+            .connection_pool
+            .get_or_try_init(|| {
+                self.connection_pool_factory.create(
+                    self.distance.unwrap_or(NodeDistance::Remote),
+                    self.broadcast_rpc_address,
+                )
+            })
             .await?;
 
-        let connection = new_pool.connection().await?;
-        *pool = Some(new_pool);
-
-        Ok(connection)
+        pool.connection().await
     }
 
     /// Creates a new connection to the node with optional event and error handlers.
@@ -274,11 +262,11 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     }
 
     #[inline]
-    pub(crate) async fn clone_as_contact_point(&self, node_info: NodeInfo) -> Self {
+    pub(crate) fn clone_as_contact_point(&self, node_info: NodeInfo) -> Self {
         // control points might have valid state already, so no need to reset
         Node {
             connection_pool_factory: self.connection_pool_factory.clone(),
-            connection_pool: RwLock::new(self.connection_pool.read().await.clone()),
+            connection_pool: self.connection_pool.clone(),
             broadcast_rpc_address: self.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
             distance: self.distance,
