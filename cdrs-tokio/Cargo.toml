@@ -20,10 +20,8 @@ arc-swap ="1.4"
 atomic = "0.5"
 bytes = "1.1"
 derive_more = "0.99"
-float_eq = "0.6"
 futures = { version = "0.3", default_features = false, features = ["alloc"] }
 fxhash = "0.2"
-lz4_flex = "0.8"
 num_cpus = "1"
 itertools = "0.10"
 rand = "0.8"
@@ -42,6 +40,7 @@ default-features = false
 
 [dev-dependencies]
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "3.2.0-beta.2" }
+float_eq = "0.7"
 maplit = "1.0.0"
 mockall = "0.10"
 lazy_static = "1.4"
