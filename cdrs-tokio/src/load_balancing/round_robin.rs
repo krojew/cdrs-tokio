@@ -26,7 +26,6 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> RoundRobinLoadBalancingStrategy
 impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
     for RoundRobinLoadBalancingStrategy<T, CM>
 {
-    //noinspection DuplicatedCode
     fn query_plan(
         &self,
         _request: Option<Request>,

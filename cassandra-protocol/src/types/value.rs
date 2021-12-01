@@ -264,38 +264,47 @@ impl From<DateTime<Utc>> for Bytes {
     }
 }
 
-impl<T: Into<Bytes> + Clone> From<Vec<T>> for Bytes {
+impl<T: Into<Bytes>> From<Vec<T>> for Bytes {
     fn from(vec: Vec<T>) -> Bytes {
-        let mut bytes = vec![];
-        let len = vec.len() as i32;
+        let mut bytes = Vec::with_capacity(INT_LEN);
+        let len = vec.len() as CInt;
 
         bytes.extend_from_slice(&len.to_be_bytes());
-        bytes = vec.iter().fold(bytes, |mut acc, v| {
-            let b: Bytes = v.clone().into();
-            acc.append(&mut Value::new(b).serialize_to_vec());
-            acc
-        });
+
+        let mut cursor = Cursor::new(&mut bytes);
+        cursor.set_position(INT_LEN as u64);
+
+        for v in vec {
+            let b: Bytes = v.into();
+            Value::new(b).serialize(&mut cursor);
+        }
+
         Bytes(bytes)
     }
 }
 
 impl<K, V> From<HashMap<K, V>> for Bytes
 where
-    K: Into<Bytes> + Clone + Debug + Hash + Eq,
-    V: Into<Bytes> + Clone + Debug,
+    K: Into<Bytes> + Hash + Eq,
+    V: Into<Bytes>,
 {
     fn from(map: HashMap<K, V>) -> Bytes {
-        let mut bytes: Vec<u8> = vec![];
-        let len = map.len() as i32;
+        let mut bytes = Vec::with_capacity(INT_LEN);
+        let len = map.len() as CInt;
 
         bytes.extend_from_slice(&len.to_be_bytes());
-        bytes = map.iter().fold(bytes, |mut acc, (k, v)| {
-            let key_bytes: Bytes = k.clone().into();
-            let val_bytes: Bytes = v.clone().into();
-            acc.append(&mut Value::new(key_bytes).serialize_to_vec());
-            acc.append(&mut Value::new(val_bytes).serialize_to_vec());
-            acc
-        });
+
+        let mut cursor = Cursor::new(&mut bytes);
+        cursor.set_position(INT_LEN as u64);
+
+        for (k, v) in map {
+            let key_bytes: Bytes = k.into();
+            let val_bytes: Bytes = v.into();
+
+            Value::new(key_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
+        }
+
         Bytes(bytes)
     }
 }
