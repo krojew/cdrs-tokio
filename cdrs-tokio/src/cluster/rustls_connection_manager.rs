@@ -16,7 +16,7 @@ use cassandra_protocol::error::{Error, Result};
 use cassandra_protocol::frame::{Frame, Version};
 
 pub struct RustlsConnectionManager {
-    dns_name: webpki::DNSName,
+    dns_name: rustls::ServerName,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<rustls::ClientConfig>,
     keyspace_holder: Arc<KeyspaceHolder>,
@@ -57,7 +57,7 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
 impl RustlsConnectionManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        dns_name: webpki::DNSName,
+        dns_name: rustls::ServerName,
         authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
         config: Arc<rustls::ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,

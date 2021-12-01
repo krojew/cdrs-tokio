@@ -132,7 +132,7 @@ impl TransportRustls {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         addr: SocketAddr,
-        dns_name: webpki::DNSName,
+        dns_name: rustls::ServerName,
         config: Arc<rustls::ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Frame>>,
@@ -145,7 +145,7 @@ impl TransportRustls {
         stream.set_nodelay(tcp_nodelay)?;
 
         let connector = RustlsConnector::from(config.clone());
-        let stream = connector.connect(dns_name.as_ref(), stream).await?;
+        let stream = connector.connect(dns_name, stream).await?;
         let (read_half, write_half) = split(stream);
 
         Ok(Self {
