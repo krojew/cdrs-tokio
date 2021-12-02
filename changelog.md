@@ -22,6 +22,7 @@ understated.
 * New `ClusterMetadata` representing information about a cluster.
 * Extracted protocol functionality to separate `cassandra-protocol` crate.
 * Passing final auth data from the server to `SaslAuthenticator`.
+* `SpeculativeExecutionPolicy` for speculative execution control.
 
 ### Changed
 

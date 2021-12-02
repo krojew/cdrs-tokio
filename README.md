@@ -12,6 +12,7 @@ safety and performance of Rust.
 - TCP/TLS connection (rustls);
 - Topology-aware dynamic and configurable load balancing;
 - Configurable connection strategies and pools;
+- Configurable speculative execution;
 - LZ4, Snappy compression;
 - Cassandra-to-Rust data serialization/deserialization with custom type support;
 - Pluggable authentication strategies;
