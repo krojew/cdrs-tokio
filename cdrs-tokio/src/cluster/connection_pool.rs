@@ -28,7 +28,7 @@ async fn new_connection<T: CdrsTransport, CM: ConnectionManager<T>>(
         )
         .await
         .map_err(|_| {
-            Error::General(format!(
+            Error::Timeout(format!(
                 "Timeout waiting for connection to: {}",
                 broadcast_rpc_address
             ))

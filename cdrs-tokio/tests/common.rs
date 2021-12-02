@@ -2,8 +2,6 @@
 use std::sync::Arc;
 
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
-#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::Session;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
@@ -23,7 +21,7 @@ use cdrs_tokio::transport::TransportTcp;
 use regex::Regex;
 
 #[cfg(feature = "e2e-tests")]
-const ADDR: &str = "127.0.0.1:9042";
+pub const ADDR: &str = "127.0.0.1:9042";
 
 #[cfg(feature = "e2e-tests")]
 type CurrentSession = Session<
@@ -42,7 +40,6 @@ pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
 pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSession> {
     let cluster_config = NodeTcpConfigBuilder::new()
         .with_contact_point(ADDR.into())
-        .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
         .build()
         .await
         .unwrap();

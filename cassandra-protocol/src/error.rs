@@ -39,6 +39,9 @@ pub enum Error {
     /// Server error.
     #[error("Server error: {0:?}")]
     Server(ErrorBody),
+    /// Timed out waiting for an operation to complete.
+    #[error("Timeout: {0}")]
+    Timeout(String),
 }
 
 pub fn column_is_empty_err<T: Display>(column_name: T) -> Error {

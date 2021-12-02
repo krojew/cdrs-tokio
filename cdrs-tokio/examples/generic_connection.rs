@@ -178,6 +178,7 @@ async fn main() {
         RetryPolicyWrapper(Box::new(DefaultRetryPolicy::default())),
         ReconnectionPolicyWrapper(reconnection_policy),
         NodeDistanceEvaluatorWrapper(Box::new(AllLocalNodeDistanceEvaluator::default())),
+        None,
     )
     .await
     .expect("session should be created");

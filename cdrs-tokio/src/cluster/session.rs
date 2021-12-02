@@ -1,11 +1,28 @@
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::consistency::Consistency;
+use cassandra_protocol::error;
+use cassandra_protocol::events::ServerEvent;
+use cassandra_protocol::frame::frame_result::{BodyResResultPrepared, TableSpec};
+use cassandra_protocol::frame::{Frame, Serialize, Version};
+use cassandra_protocol::query::query_params::Murmur3Token;
+use cassandra_protocol::query::utils::prepare_flags;
+use cassandra_protocol::query::{
+    PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
+};
+use cassandra_protocol::types::value::Value;
+use cassandra_protocol::types::{CIntShort, SHORT_LEN};
+use futures::stream::FuturesUnordered;
+use futures::{FutureExt, StreamExt};
 use itertools::Itertools;
 use std::io::{Cursor, Write};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tokio::time::sleep;
+use tokio::{pin, select};
 use tracing::*;
 
 use crate::cluster::connection_manager::ConnectionManager;
@@ -29,20 +46,10 @@ use crate::load_balancing::{
 use crate::retry::{
     DefaultRetryPolicy, ExponentialReconnectionPolicy, ReconnectionPolicy, RetryPolicy,
 };
+use crate::speculative_execution::{Context, SpeculativeExecutionPolicy};
 #[cfg(feature = "rust-tls")]
 use crate::transport::TransportRustls;
 use crate::transport::{CdrsTransport, TransportTcp};
-use cassandra_protocol::compression::Compression;
-use cassandra_protocol::error;
-use cassandra_protocol::events::ServerEvent;
-use cassandra_protocol::frame::frame_result::{BodyResResultPrepared, TableSpec};
-use cassandra_protocol::frame::{Frame, Serialize, Version};
-use cassandra_protocol::query::utils::prepare_flags;
-use cassandra_protocol::query::{
-    PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
-};
-use cassandra_protocol::types::value::Value;
-use cassandra_protocol::types::{CIntShort, SHORT_LEN};
 
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
@@ -125,6 +132,7 @@ pub struct Session<
     load_balancing: Arc<InitializingWrapperLoadBalancingStrategy<T, CM, LB>>,
     keyspace_holder: Arc<KeyspaceHolder>,
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
+    speculative_execution_policy: Option<Box<dyn SpeculativeExecutionPolicy + Send + Sync>>,
     control_connection_handle: JoinHandle<()>,
     event_sender: Sender<ServerEvent>,
     cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
@@ -188,16 +196,16 @@ impl<
                 QueryValues::NamedValues(_) => None,
             });
 
-        let mut result = send_frame(
-            self,
-            options_frame,
-            query_parameters.is_idempotent,
-            keyspace,
-            query_parameters.token,
-            routing_key.as_deref(),
-            Some(consistency),
-        )
-        .await;
+        let mut result = self
+            .send_frame(
+                options_frame,
+                query_parameters.is_idempotent,
+                keyspace,
+                query_parameters.token,
+                routing_key.as_deref(),
+                Some(consistency),
+            )
+            .await;
 
         if let Err(error::Error::Server(error)) = &result {
             // if query is unprepared
@@ -216,16 +224,16 @@ impl<
                     let flags = prepare_flags(with_tracing, with_warnings);
                     let options_frame =
                         Frame::new_req_execute(&new.id, &query_parameters, flags, self.version);
-                    result = send_frame(
-                        self,
-                        options_frame,
-                        query_parameters.is_idempotent,
-                        keyspace,
-                        query_parameters.token,
-                        routing_key.as_deref(),
-                        Some(consistency),
-                    )
-                    .await;
+                    result = self
+                        .send_frame(
+                            options_frame,
+                            query_parameters.is_idempotent,
+                            keyspace,
+                            query_parameters.token,
+                            routing_key.as_deref(),
+                            Some(consistency),
+                        )
+                        .await;
                 }
             }
         }
@@ -297,7 +305,7 @@ impl<
 
         let query_frame = Frame::new_req_prepare(query.to_string(), flags, self.version);
 
-        send_frame(self, query_frame, false, None, None, None, None)
+        self.send_frame(query_frame, false, None, None, None, None)
             .await
             .and_then(|response| response.response_body())
             .and_then(|body| {
@@ -356,8 +364,7 @@ impl<
 
         let query_frame = Frame::new_req_batch(batch, flags, self.version);
 
-        send_frame(
-            self,
+        self.send_frame(
             query_frame,
             is_idempotent,
             keyspace.as_deref(),
@@ -399,8 +406,7 @@ impl<
         let flags = prepare_flags(with_tracing, with_warnings);
         let query_frame = Frame::new_query(query, flags, version);
 
-        send_frame(
-            self,
+        self.send_frame(
             query_frame,
             is_idempotent,
             keyspace.as_deref(),
@@ -506,6 +512,134 @@ impl<
         self.retry_policy.as_ref()
     }
 
+    async fn send_frame(
+        &self,
+        frame: Frame,
+        is_idempotent: bool,
+        keyspace: Option<&str>,
+        token: Option<Murmur3Token>,
+        routing_key: Option<&[u8]>,
+        consistency: Option<Consistency>,
+    ) -> error::Result<Frame> {
+        let current_keyspace = self.current_keyspace();
+        let request = Request::new(
+            keyspace.or_else(|| current_keyspace.as_ref().map(|keyspace| &***keyspace)),
+            token,
+            routing_key,
+            consistency,
+        );
+
+        let query_plan = self.query_plan(Some(request));
+
+        struct SharedQueryPlan<
+            T: CdrsTransport + 'static,
+            CM: ConnectionManager<T> + 'static,
+            I: Iterator<Item = Arc<Node<T, CM>>>,
+        > {
+            current_node: Mutex<I>,
+        }
+
+        impl<
+                T: CdrsTransport + 'static,
+                CM: ConnectionManager<T> + 'static,
+                I: Iterator<Item = Arc<Node<T, CM>>>,
+            > SharedQueryPlan<T, CM, I>
+        {
+            fn new(current_node: I) -> Self {
+                SharedQueryPlan {
+                    current_node: Mutex::new(current_node),
+                }
+            }
+        }
+
+        impl<
+                T: CdrsTransport + 'static,
+                CM: ConnectionManager<T> + 'static,
+                I: Iterator<Item = Arc<Node<T, CM>>>,
+            > Iterator for &SharedQueryPlan<T, CM, I>
+        {
+            type Item = Arc<Node<T, CM>>;
+
+            fn next(&mut self) -> Option<Self::Item> {
+                self.current_node.lock().unwrap().next()
+            }
+        }
+
+        match &self.speculative_execution_policy {
+            Some(speculative_execution_policy) if is_idempotent => {
+                let shared_query_plan = SharedQueryPlan::new(query_plan.into_iter());
+
+                let mut context = Context::new(1);
+                let mut async_tasks = FuturesUnordered::new();
+                async_tasks.push(send_frame(
+                    &shared_query_plan,
+                    &frame,
+                    is_idempotent,
+                    self.retry_policy.new_session(),
+                ));
+
+                let sleep_fut = sleep(
+                    speculative_execution_policy
+                        .execution_interval(&context)
+                        .unwrap_or_default(),
+                )
+                .fuse();
+
+                pin!(sleep_fut);
+
+                let mut last_error = None;
+
+                loop {
+                    select! {
+                        _ = &mut sleep_fut => {
+                            if let Some(interval) =
+                                speculative_execution_policy.execution_interval(&context)
+                            {
+                                context.running_executions += 1;
+                                async_tasks.push(send_frame(
+                                    &shared_query_plan,
+                                    &frame,
+                                    is_idempotent,
+                                    self.retry_policy.new_session(),
+                                ));
+
+                                sleep_fut.set(sleep(interval).fuse());
+                            }
+                        }
+                        result = async_tasks.select_next_some() => {
+                            match result {
+                                Some(result) => {
+                                    match result {
+                                        Err(error::Error::Io(_)) | Err(error::Error::Timeout(_)) => {
+                                            last_error = Some(result);
+                                        },
+                                        _ => return result,
+                                    }
+                                }
+                                None => {
+                                    if async_tasks.is_empty() {
+                                        // at this point, we exhausted all available nodes and
+                                        // there's no request in flight, which can potentially
+                                        // reach a node
+                                        return last_error.unwrap_or_else(|| Err("No nodes available in query plan!".into()));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => send_frame(
+                query_plan.into_iter(),
+                &frame,
+                is_idempotent,
+                self.retry_policy.new_session(),
+            )
+            .await
+            .unwrap_or_else(|| Err("No nodes available in query plan!".into())),
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn new(
         load_balancing: LB,
@@ -514,6 +648,7 @@ impl<
         retry_policy: Box<dyn RetryPolicy + Send + Sync>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
+        speculative_execution_policy: Option<Box<dyn SpeculativeExecutionPolicy + Send + Sync>>,
         contact_points: Vec<SocketAddr>,
         connection_manager: CM,
         event_channel_capacity: usize,
@@ -583,6 +718,7 @@ impl<
             load_balancing,
             keyspace_holder,
             retry_policy,
+            speculative_execution_policy,
             control_connection_handle,
             event_sender,
             cluster_metadata_manager,
@@ -605,6 +741,10 @@ pub struct ReconnectionPolicyWrapper(pub Arc<dyn ReconnectionPolicy + Send + Syn
 #[repr(transparent)]
 pub struct NodeDistanceEvaluatorWrapper(pub Box<dyn NodeDistanceEvaluator + Send + Sync>);
 
+/// Workaround for <https://github.com/rust-lang/rust/issues/63033>
+#[repr(transparent)]
+pub struct SpeculativeExecutionPolicyWrapper(pub Box<dyn SpeculativeExecutionPolicy + Send + Sync>);
+
 /// This function uses a user-supplied connection configuration to initialize all the
 /// connections in the session. It can be used to supply your own transport and load
 /// balancing mechanisms in order to support unusual node discovery mechanisms
@@ -620,6 +760,7 @@ pub async fn connect_generic<T, C, A, CM, LB>(
     retry_policy: RetryPolicyWrapper,
     reconnection_policy: ReconnectionPolicyWrapper,
     node_distance_evaluator: NodeDistanceEvaluatorWrapper,
+    speculative_execution_policy: Option<SpeculativeExecutionPolicyWrapper>,
 ) -> error::Result<Session<T, CM, LB>>
 where
     A: IntoIterator<Item = SocketAddr>,
@@ -637,6 +778,7 @@ where
         retry_policy.0,
         reconnection_policy.0,
         node_distance_evaluator.0,
+        speculative_execution_policy.map(|policy| policy.0),
         initial_nodes.into_iter().collect(),
         connection_manager,
         config.event_channel_capacity(),
@@ -657,6 +799,7 @@ struct SessionConfig<
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
+    speculative_execution_policy: Option<Box<dyn SpeculativeExecutionPolicy + Send + Sync>>,
     event_channel_capacity: usize,
     connection_pool_config: ConnectionPoolConfig,
     keyspace: Option<String>,
@@ -679,6 +822,7 @@ impl<
             retry_policy: Box::new(DefaultRetryPolicy::default()),
             reconnection_policy: Arc::new(ExponentialReconnectionPolicy::default()),
             node_distance_evaluator: Box::new(AllLocalNodeDistanceEvaluator::default()),
+            speculative_execution_policy: None,
             event_channel_capacity: DEFAULT_EVENT_CHANNEL_CAPACITY,
             connection_pool_config: Default::default(),
             keyspace: None,
@@ -706,6 +850,7 @@ impl<
             self.retry_policy,
             self.reconnection_policy,
             self.node_distance_evaluator,
+            self.speculative_execution_policy,
             contact_points,
             connection_manager,
             self.event_channel_capacity,
@@ -741,6 +886,12 @@ pub trait SessionBuilder<
     fn with_node_distance_evaluator(
         self,
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
+    ) -> Self;
+
+    /// Sets new speculative execution policy.
+    fn with_speculative_execution_policy(
+        self,
+        speculative_execution_policy: Box<dyn SpeculativeExecutionPolicy + Send + Sync>,
     ) -> Self;
 
     /// Sets new transport buffer size. High values are recommended with large amounts of in flight
@@ -816,6 +967,14 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
     ) -> Self {
         self.config.node_distance_evaluator = node_distance_evaluator;
+        self
+    }
+
+    fn with_speculative_execution_policy(
+        mut self,
+        speculative_execution_policy: Box<dyn SpeculativeExecutionPolicy + Send + Sync>,
+    ) -> Self {
+        self.config.speculative_execution_policy = Some(speculative_execution_policy);
         self
     }
 
@@ -917,6 +1076,14 @@ impl<
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
     ) -> Self {
         self.config.node_distance_evaluator = node_distance_evaluator;
+        self
+    }
+
+    fn with_speculative_execution_policy(
+        mut self,
+        speculative_execution_policy: Box<dyn SpeculativeExecutionPolicy + Send + Sync>,
+    ) -> Self {
+        self.config.speculative_execution_policy = Some(speculative_execution_policy);
         self
     }
 

@@ -46,6 +46,7 @@ pub mod load_balancing;
 
 pub mod future;
 pub mod retry;
+pub mod speculative_execution;
 pub mod transport;
 
 pub use cassandra_protocol::authenticators;
