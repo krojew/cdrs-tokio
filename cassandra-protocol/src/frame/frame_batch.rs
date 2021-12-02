@@ -144,7 +144,7 @@ impl Frame {
             opcode,
             query.serialize_to_vec(),
             None,
-            vec![],
+            None,
         )
     }
 }

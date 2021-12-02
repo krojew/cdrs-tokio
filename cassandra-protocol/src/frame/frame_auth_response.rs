@@ -32,7 +32,7 @@ impl Frame {
             opcode,
             body.serialize_to_vec(),
             None,
-            vec![],
+            None,
         )
     }
 }

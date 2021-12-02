@@ -45,25 +45,27 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
         Compression::None.decode(body_bytes)?
     };
 
+    let body_len = full_body.len();
+
     // Use cursor to get tracing id, warnings and actual body
     let mut body_cursor = Cursor::new(full_body.as_slice());
 
     let tracing_id = if flags.contains(Flags::TRACING) {
-        let mut tracing_bytes = vec![0; UUID_LEN];
+        let mut tracing_bytes = [0; UUID_LEN];
         std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes)?;
 
-        decode_timeuuid(tracing_bytes.as_slice()).ok()
+        decode_timeuuid(&tracing_bytes).ok()
     } else {
         None
     };
 
     let warnings = if flags.contains(Flags::WARNING) {
-        CStringList::from_cursor(&mut body_cursor)?.into_plain()
+        Some(CStringList::from_cursor(&mut body_cursor)?.into_plain())
     } else {
-        vec![]
+        None
     };
 
-    let mut body = vec![];
+    let mut body = Vec::with_capacity(body_len - body_cursor.position() as usize);
 
     std::io::Read::read_to_end(&mut body_cursor, &mut body)?;
 
