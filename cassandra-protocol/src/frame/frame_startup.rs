@@ -86,6 +86,6 @@ mod test {
         assert_eq!(frame.flags, Flags::empty());
         assert_eq!(frame.opcode, Opcode::Startup);
         assert_eq!(frame.tracing_id, None);
-        assert_eq!(frame.warnings, vec![] as Vec<String>);
+        assert!(frame.warnings.is_none());
     }
 }
