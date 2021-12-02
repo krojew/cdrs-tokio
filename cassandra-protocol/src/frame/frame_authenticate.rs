@@ -19,9 +19,9 @@ impl Serialize for BodyResAuthenticate {
 }
 
 impl FromCursor for BodyResAuthenticate {
-    fn from_cursor(mut cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResAuthenticate> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResAuthenticate> {
         Ok(BodyResAuthenticate {
-            data: from_cursor_str(&mut cursor)?.to_string(),
+            data: from_cursor_str(cursor)?.to_string(),
         })
     }
 }
