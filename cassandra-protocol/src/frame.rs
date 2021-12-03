@@ -10,7 +10,7 @@ use crate::compression::{Compression, CompressionError};
 use crate::frame::frame_request::RequestBody;
 use crate::frame::frame_response::ResponseBody;
 use crate::types::data_serialization_types::decode_timeuuid;
-use crate::types::{try_i16_from_bytes, try_i32_from_bytes, CStringList, UUID_LEN};
+use crate::types::{from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN};
 
 pub use crate::frame::traits::*;
 
@@ -145,9 +145,8 @@ impl Frame {
 
         let warnings = if flags.contains(Flags::WARNING) {
             Some(
-                CStringList::from_cursor(&mut body_cursor)
-                    .map_err(ParseFrameError::InvalidWarnings)?
-                    .into_plain(),
+                from_cursor_string_list(&mut body_cursor)
+                    .map_err(ParseFrameError::InvalidWarnings)?,
             )
         } else {
             None

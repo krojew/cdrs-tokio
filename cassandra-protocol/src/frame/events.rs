@@ -5,7 +5,7 @@ use std::io::Cursor;
 use crate::error;
 use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
-use crate::types::{from_cursor_str, serialize_str, CInet, CIntShort, CStringList};
+use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CInet, CIntShort};
 
 // Event types
 const TOPOLOGY_CHANGE: &str = "TOPOLOGY_CHANGE";
@@ -43,18 +43,12 @@ pub enum SimpleServerEvent {
 }
 
 impl SimpleServerEvent {
-    pub fn as_string(&self) -> String {
+    pub fn as_str(&self) -> &'static str {
         match *self {
-            SimpleServerEvent::TopologyChange => String::from(TOPOLOGY_CHANGE),
-            SimpleServerEvent::StatusChange => String::from(STATUS_CHANGE),
-            SimpleServerEvent::SchemaChange => String::from(SCHEMA_CHANGE),
+            SimpleServerEvent::TopologyChange => TOPOLOGY_CHANGE,
+            SimpleServerEvent::StatusChange => STATUS_CHANGE,
+            SimpleServerEvent::SchemaChange => SCHEMA_CHANGE,
         }
-    }
-}
-
-impl ToString for SimpleServerEvent {
-    fn to_string(&self) -> String {
-        self.as_string()
     }
 }
 
@@ -65,12 +59,6 @@ impl From<ServerEvent> for SimpleServerEvent {
             ServerEvent::StatusChange(_) => SimpleServerEvent::StatusChange,
             ServerEvent::SchemaChange(_) => SimpleServerEvent::SchemaChange,
         }
-    }
-}
-
-impl From<SimpleServerEvent> for String {
-    fn from(event: SimpleServerEvent) -> Self {
-        event.to_string()
     }
 }
 
@@ -407,7 +395,7 @@ impl SchemaChangeOptions {
     ) -> error::Result<SchemaChangeOptions> {
         let keyspace = from_cursor_str(cursor)?.to_string();
         let name = from_cursor_str(cursor)?.to_string();
-        let types = CStringList::from_cursor(cursor)?.into_plain();
+        let types = from_cursor_string_list(cursor)?;
         Ok(SchemaChangeOptions::FunctionAggregate(
             keyspace, name, types,
         ))
@@ -424,27 +412,6 @@ fn test_encode_decode(bytes: &[u8], expected: ServerEvent) {
     let mut cursor = Cursor::new(&mut buffer);
     expected.serialize(&mut cursor);
     assert_eq!(buffer, bytes);
-}
-
-#[cfg(test)]
-mod simple_server_event_test {
-    use super::*;
-
-    #[test]
-    fn as_string() {
-        assert_eq!(
-            SimpleServerEvent::TopologyChange.as_string(),
-            "TOPOLOGY_CHANGE".to_string()
-        );
-        assert_eq!(
-            SimpleServerEvent::StatusChange.as_string(),
-            "STATUS_CHANGE".to_string()
-        );
-        assert_eq!(
-            SimpleServerEvent::SchemaChange.as_string(),
-            "SCHEMA_CHANGE".to_string()
-        );
-    }
 }
 
 #[cfg(test)]

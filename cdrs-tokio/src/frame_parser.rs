@@ -6,10 +6,12 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::frame_response::ResponseBody;
 use cassandra_protocol::frame::{
-    Direction, Flags, Frame, FromCursor, Opcode, StreamId, Version, LENGTH_LEN, STREAM_LEN,
+    Direction, Flags, Frame, Opcode, StreamId, Version, LENGTH_LEN, STREAM_LEN,
 };
 use cassandra_protocol::types::data_serialization_types::decode_timeuuid;
-use cassandra_protocol::types::{try_i16_from_bytes, try_i32_from_bytes, CStringList, UUID_LEN};
+use cassandra_protocol::types::{
+    from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN,
+};
 
 async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
@@ -60,7 +62,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     };
 
     let warnings = if flags.contains(Flags::WARNING) {
-        Some(CStringList::from_cursor(&mut body_cursor)?.into_plain())
+        Some(from_cursor_string_list(&mut body_cursor)?)
     } else {
         None
     };
