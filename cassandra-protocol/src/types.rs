@@ -237,41 +237,29 @@ pub(crate) fn from_cursor_str_long<'a>(cursor: &mut Cursor<&'a [u8]>) -> CDRSRes
     std::str::from_utf8(body_bytes).map_err(Into::into)
 }
 
-#[derive(Debug, Clone, Constructor, PartialEq, Ord, PartialOrd, Eq, Hash)]
-pub struct CStringList {
-    pub list: Vec<String>,
-}
+pub(crate) fn serialize_str_list<'a>(
+    cursor: &mut Cursor<&mut Vec<u8>>,
+    list: impl ExactSizeIterator<Item = &'a str>,
+) {
+    let len = list.len() as CIntShort;
+    len.serialize(cursor);
 
-impl CStringList {
-    pub fn into_plain(self) -> Vec<String> {
-        self.list
+    for string in list {
+        serialize_str(cursor, string);
     }
 }
 
-impl Serialize for CStringList {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        let len = self.list.len() as CIntShort;
-        len.serialize(cursor);
+pub fn from_cursor_string_list(cursor: &mut Cursor<&[u8]>) -> CDRSResult<Vec<String>> {
+    let mut buff = [0; SHORT_LEN];
+    cursor.read_exact(&mut buff)?;
 
-        for string in &self.list {
-            serialize_str(cursor, string);
-        }
+    let len = i16::from_be_bytes(buff);
+    let mut list = Vec::with_capacity(len as usize);
+    for _ in 0..len {
+        list.push(from_cursor_str(cursor)?.to_string());
     }
-}
 
-impl FromCursor for CStringList {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CStringList> {
-        let mut buff = [0; SHORT_LEN];
-        cursor.read_exact(&mut buff)?;
-
-        let len = i16::from_be_bytes(buff);
-        let mut list = Vec::with_capacity(len as usize);
-        for _ in 0..len {
-            list.push(from_cursor_str(cursor)?.to_string());
-        }
-
-        Ok(CStringList { list })
-    }
+    Ok(list)
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
@@ -543,17 +531,13 @@ mod tests {
         assert_eq!(buf, &[0, 0, 0, 3, 102, 111, 111]);
     }
 
-    // CStringList
     #[test]
     fn test_cstringlist() {
-        let a = &[0, 2, 0, 3, 102, 111, 111, 0, 3, 102, 111, 111];
+        let a = &[0, 2, 0, 3, 102, 111, 111, 0, 3, 102, 111, 112];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
-        let list = CStringList::from_cursor(&mut cursor).unwrap();
-        let plain = list.into_plain();
-        assert_eq!(plain.len(), 2);
-        for s in plain.iter() {
-            assert_eq!(s.as_str(), "foo");
-        }
+        let list = from_cursor_string_list(&mut cursor).unwrap();
+
+        assert_eq!(list, vec!("foo".to_string(), "fop".to_string()));
     }
 
     // CBytes

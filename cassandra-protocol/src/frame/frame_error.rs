@@ -323,15 +323,15 @@ pub struct FunctionFailureError {
     pub keyspace: String,
     /// The name of the failed function
     pub function: String,
-    /// `CStringList` one string for each argument type (as CQL type) of the failed function.
-    pub arg_types: CStringList,
+    /// One string for each argument type (as CQL type) of the failed function.
+    pub arg_types: Vec<String>,
 }
 
 impl Serialize for FunctionFailureError {
     fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
         serialize_str(cursor, &self.keyspace);
         serialize_str(cursor, &self.function);
-        self.arg_types.serialize(cursor);
+        serialize_str_list(cursor, self.arg_types.iter().map(|x| x.as_str()));
     }
 }
 
@@ -339,7 +339,7 @@ impl FromCursor for FunctionFailureError {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<FunctionFailureError> {
         let keyspace = from_cursor_str(cursor)?.to_string();
         let function = from_cursor_str(cursor)?.to_string();
-        let arg_types = CStringList::from_cursor(cursor)?;
+        let arg_types = from_cursor_string_list(cursor)?;
 
         Ok(FunctionFailureError {
             keyspace,

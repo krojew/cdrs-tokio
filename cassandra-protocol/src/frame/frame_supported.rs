@@ -3,7 +3,7 @@ use std::io::{Cursor, Read};
 
 use crate::error;
 use crate::frame::FromCursor;
-use crate::types::{from_cursor_str, serialize_str, CStringList, SHORT_LEN};
+use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, SHORT_LEN};
 
 use super::Serialize;
 
@@ -32,7 +32,7 @@ impl FromCursor for BodyResSupported {
         let mut data: HashMap<String, Vec<String>> = HashMap::with_capacity(l);
         for _ in 0..l {
             let name = from_cursor_str(cursor)?.to_string();
-            let val = CStringList::from_cursor(cursor)?.into_plain();
+            let val = from_cursor_string_list(cursor)?;
             data.insert(name, val);
         }
 
