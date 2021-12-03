@@ -32,7 +32,7 @@ impl Frame {
             opcode,
             body.serialize_to_vec(),
             None,
-            None,
+            vec![],
         )
     }
 }
@@ -58,6 +58,6 @@ mod tests {
         assert_eq!(frame.opcode, Opcode::AuthResponse);
         assert_eq!(frame.body, &[0, 0, 0, 3, 1, 2, 3]);
         assert_eq!(frame.tracing_id, None);
-        assert!(frame.warnings.is_none());
+        assert!(frame.warnings.is_empty());
     }
 }

@@ -68,7 +68,7 @@ pub struct Frame {
     #[derivative(Debug = "ignore")]
     pub body: Vec<u8>,
     pub tracing_id: Option<Uuid>,
-    pub warnings: Option<Vec<String>>,
+    pub warnings: Vec<String>,
 }
 
 impl Frame {
@@ -88,7 +88,7 @@ impl Frame {
     }
 
     #[inline]
-    pub fn warnings(&self) -> &Option<Vec<String>> {
+    pub fn warnings(&self) -> &[String] {
         &self.warnings
     }
 
@@ -144,12 +144,9 @@ impl Frame {
         };
 
         let warnings = if flags.contains(Flags::WARNING) {
-            Some(
-                from_cursor_string_list(&mut body_cursor)
-                    .map_err(ParseFrameError::InvalidWarnings)?,
-            )
+            from_cursor_string_list(&mut body_cursor).map_err(ParseFrameError::InvalidWarnings)?
         } else {
-            None
+            vec![]
         };
 
         let mut body = Vec::with_capacity(body_len - body_cursor.position() as usize);
@@ -521,7 +518,7 @@ mod tests {
             opcode: Opcode::Ready,
             body: vec![],
             tracing_id: None,
-            warnings: None,
+            warnings: vec![],
         };
         let body = ResponseBody::Ready;
         test_encode_decode_roundtrip_response(&raw_frame, frame, body);
@@ -539,7 +536,7 @@ mod tests {
             opcode: Opcode::Query,
             body: vec![0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64],
             tracing_id: None,
-            warnings: None,
+            warnings: vec![],
         };
         let body = RequestBody::Query(BodyReqQuery {
             query: "blah".into(),
@@ -576,7 +573,7 @@ mod tests {
                 0, 3, 1, 2, 3, 255, 255, 255, 255,
             ],
             tracing_id: None,
-            warnings: None,
+            warnings: vec![],
         };
         let body = RequestBody::Query(BodyReqQuery {
             query: "some query".into(),
@@ -609,7 +606,7 @@ mod tests {
             opcode: Opcode::Query,
             body: vec![],
             tracing_id: None,
-            warnings: None,
+            warnings: vec![],
         };
         let body = RequestBody::Query(BodyReqQuery {
             query: "another query".into(),

@@ -52,7 +52,7 @@ impl Frame {
             opcode,
             body.serialize_to_vec(),
             None,
-            None,
+            vec![],
         )
     }
 }
@@ -86,6 +86,6 @@ mod test {
         assert_eq!(frame.flags, Flags::empty());
         assert_eq!(frame.opcode, Opcode::Startup);
         assert_eq!(frame.tracing_id, None);
-        assert!(frame.warnings.is_none());
+        assert!(frame.warnings.is_empty());
     }
 }

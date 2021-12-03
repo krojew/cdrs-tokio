@@ -62,9 +62,9 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     };
 
     let warnings = if flags.contains(Flags::WARNING) {
-        Some(from_cursor_string_list(&mut body_cursor)?)
+        from_cursor_string_list(&mut body_cursor)?
     } else {
-        None
+        vec![]
     };
 
     let mut body = Vec::with_capacity(body_len - body_cursor.position() as usize);
