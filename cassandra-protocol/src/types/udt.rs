@@ -23,18 +23,14 @@ pub struct Udt {
 }
 
 impl Udt {
-    pub fn new(data: Vec<CBytes>, metadata: &CUdt) -> Udt {
-        let meta_iter = metadata.descriptions.iter();
-
-        let acc: HashMap<String, (ColTypeOption, CBytes)> =
+    pub fn new(fields: Vec<CBytes>, metadata: &CUdt) -> Udt {
+        let mut data: HashMap<String, (ColTypeOption, CBytes)> =
             HashMap::with_capacity(metadata.descriptions.len());
-        let d = meta_iter.zip(data.iter()).fold(acc, |mut a, v| {
-            let ((name, val_type), val_b) = v;
-            a.insert(name.clone(), (val_type.clone(), val_b.clone()));
-            a
-        });
 
-        Udt { data: d }
+        for ((name, val_type), val_b) in metadata.descriptions.iter().zip(fields.into_iter()) {
+            data.insert(name.clone(), (val_type.clone(), val_b));
+        }
+        Udt { data }
     }
 }
 
