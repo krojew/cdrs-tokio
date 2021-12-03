@@ -22,7 +22,6 @@ bytes = "1.1"
 derive_more = "0.99"
 futures = { version = "0.3", default_features = false, features = ["alloc"] }
 fxhash = "0.2"
-num_cpus = "1"
 itertools = "0.10"
 lazy_static = "1.4"
 rand = "0.8"

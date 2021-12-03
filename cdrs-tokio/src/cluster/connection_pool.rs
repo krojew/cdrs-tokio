@@ -2,7 +2,6 @@ use arc_swap::{ArcSwap, AsRaw};
 use cassandra_protocol::frame::{Frame, Version};
 use cassandra_protocol::query::utils::quote;
 use futures::future::{join_all, try_join_all};
-use num_cpus::get_physical;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -54,8 +53,8 @@ pub struct ConnectionPoolConfig {
 impl Default for ConnectionPoolConfig {
     fn default() -> Self {
         ConnectionPoolConfig {
-            local_size: get_physical() * 2,
-            remote_size: 2,
+            local_size: 1,
+            remote_size: 1,
             connect_timeout: None,
         }
     }
