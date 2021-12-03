@@ -1,9 +1,13 @@
+use crate::retry::RetryPolicy;
 use cassandra_protocol::query::QueryParams;
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
+use std::sync::Arc;
+
+use crate::speculative_execution::SpeculativeExecutionPolicy;
 
 /// Parameters of Query for query operation.
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Default, Clone)]
 pub struct StatementParams {
     /// Protocol-level parameters.
     pub query_params: QueryParams,
@@ -24,4 +28,8 @@ pub struct StatementParams {
     pub tracing: bool,
     /// Should warnings be enabled.
     pub warnings: bool,
+    /// Custom statement speculative execution policy.
+    pub speculative_execution_policy: Option<Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
+    /// Custom statement retry policy.
+    pub retry_policy: Option<Arc<dyn RetryPolicy + Send + Sync>>,
 }

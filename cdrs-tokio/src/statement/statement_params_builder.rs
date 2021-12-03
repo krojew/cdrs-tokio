@@ -3,10 +3,13 @@ use cassandra_protocol::query::{QueryFlags, QueryParams, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
 use cassandra_protocol::types::CBytes;
+use std::sync::Arc;
 
+use crate::retry::RetryPolicy;
+use crate::speculative_execution::SpeculativeExecutionPolicy;
 use crate::statement::StatementParams;
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct StatementParamsBuilder {
     consistency: Consistency,
     flags: Option<QueryFlags>,
@@ -22,6 +25,8 @@ pub struct StatementParamsBuilder {
     routing_key: Option<Vec<Value>>,
     tracing: bool,
     warnings: bool,
+    speculative_execution_policy: Option<Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
+    retry_policy: Option<Arc<dyn RetryPolicy + Send + Sync>>,
 }
 
 impl StatementParamsBuilder {
@@ -114,6 +119,21 @@ impl StatementParamsBuilder {
         self
     }
 
+    /// Sets custom statement speculative execution policy.
+    pub fn with_speculative_execution_policy(
+        mut self,
+        speculative_execution_policy: Arc<dyn SpeculativeExecutionPolicy + Send + Sync>,
+    ) -> Self {
+        self.speculative_execution_policy = Some(speculative_execution_policy);
+        self
+    }
+
+    /// Sets custom statement retry policy.
+    pub fn with_retry_policy(mut self, retry_policy: Arc<dyn RetryPolicy + Send + Sync>) -> Self {
+        self.retry_policy = Some(retry_policy);
+        self
+    }
+
     pub fn build(self) -> StatementParams {
         StatementParams {
             query_params: QueryParams {
@@ -131,6 +151,8 @@ impl StatementParamsBuilder {
             routing_key: self.routing_key,
             tracing: self.tracing,
             warnings: self.warnings,
+            speculative_execution_policy: self.speculative_execution_policy,
+            retry_policy: self.retry_policy,
         }
     }
 }

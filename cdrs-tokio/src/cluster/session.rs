@@ -207,6 +207,8 @@ impl<
                 parameters.token,
                 routing_key.as_deref(),
                 Some(consistency),
+                parameters.speculative_execution_policy.as_ref(),
+                parameters.retry_policy.as_ref(),
             )
             .await;
 
@@ -239,6 +241,8 @@ impl<
                             parameters.token,
                             routing_key.as_deref(),
                             Some(consistency),
+                            parameters.speculative_execution_policy.as_ref(),
+                            parameters.retry_policy.as_ref(),
                         )
                         .await;
                 }
@@ -283,7 +287,7 @@ impl<
 
         let query_frame = Frame::new_req_prepare(query.to_string(), flags, self.version);
 
-        self.send_frame(query_frame, false, None, None, None, None)
+        self.send_frame(query_frame, false, None, None, None, None, None, None)
             .await
             .and_then(|response| response.response_body())
             .and_then(|body| {
@@ -344,19 +348,19 @@ impl<
         parameters: &StatementParams,
     ) -> error::Result<Frame> {
         let flags = prepare_flags(parameters.tracing, parameters.warnings);
-        let is_idempotent = parameters.is_idempotent;
-        let keyspace = parameters.keyspace.as_deref();
         let consistency = batch.consistency;
 
         let query_frame = Frame::new_req_batch(batch, flags, self.version);
 
         self.send_frame(
             query_frame,
-            is_idempotent,
-            keyspace,
+            parameters.is_idempotent,
+            parameters.keyspace.as_deref(),
             None,
             None,
             Some(consistency),
+            parameters.speculative_execution_policy.as_ref(),
+            parameters.retry_policy.as_ref(),
         )
         .await
     }
@@ -414,6 +418,8 @@ impl<
             token,
             routing_key.as_deref(),
             Some(consistency),
+            parameters.speculative_execution_policy.as_ref(),
+            parameters.retry_policy.as_ref(),
         )
         .await
     }
@@ -450,6 +456,7 @@ impl<
         self.retry_policy.as_ref()
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn send_frame(
         &self,
         frame: Frame,
@@ -458,6 +465,8 @@ impl<
         token: Option<Murmur3Token>,
         routing_key: Option<&[u8]>,
         consistency: Option<Consistency>,
+        speculative_execution_policy: Option<&Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
+        retry_policy: Option<&Arc<dyn RetryPolicy + Send + Sync>>,
     ) -> error::Result<Frame> {
         let current_keyspace = self.current_keyspace();
         let request = Request::new(
@@ -503,7 +512,15 @@ impl<
             }
         }
 
-        match &self.speculative_execution_policy {
+        let speculative_execution_policy = speculative_execution_policy
+            .map(|speculative_execution_policy| speculative_execution_policy.as_ref())
+            .or_else(|| self.speculative_execution_policy.as_deref());
+
+        let retry_policy = retry_policy
+            .map(|retry_policy| retry_policy.as_ref())
+            .unwrap_or_else(|| self.retry_policy.as_ref());
+
+        match speculative_execution_policy {
             Some(speculative_execution_policy) if is_idempotent => {
                 let shared_query_plan = SharedQueryPlan::new(query_plan.into_iter());
 
@@ -513,7 +530,7 @@ impl<
                     &shared_query_plan,
                     &frame,
                     is_idempotent,
-                    self.retry_policy.new_session(),
+                    retry_policy.new_session(),
                 ));
 
                 let sleep_fut = sleep(
@@ -538,7 +555,7 @@ impl<
                                     &shared_query_plan,
                                     &frame,
                                     is_idempotent,
-                                    self.retry_policy.new_session(),
+                                    retry_policy.new_session(),
                                 ));
 
                                 sleep_fut.set(sleep(interval).fuse());
@@ -571,7 +588,7 @@ impl<
                 query_plan.into_iter(),
                 &frame,
                 is_idempotent,
-                self.retry_policy.new_session(),
+                retry_policy.new_session(),
             )
             .await
             .unwrap_or_else(|| Err("No nodes available in query plan!".into())),
