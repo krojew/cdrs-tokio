@@ -94,11 +94,8 @@ async fn batch_few_queries(session: &mut CurrentSession, query: &str) {
     let batch = BatchQueryBuilder::new()
         .add_query_prepared(prepared_query, row_1.into_query_values())
         .add_query(query, row_2.into_query_values())
-        .finalize()
+        .build()
         .expect("batch builder");
 
-    session
-        .batch_with_params(batch)
-        .await
-        .expect("batch query error");
+    session.batch(batch).await.expect("batch query error");
 }

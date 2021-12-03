@@ -25,7 +25,6 @@ impl BodyReqQuery {
         paging_state: Option<CBytes>,
         serial_consistency: Option<Consistency>,
         timestamp: Option<i64>,
-        is_idempotent: bool,
     ) -> BodyReqQuery {
         BodyReqQuery {
             query,
@@ -37,10 +36,6 @@ impl BodyReqQuery {
                 paging_state,
                 serial_consistency,
                 timestamp,
-                is_idempotent,
-                keyspace: None,
-                token: None,
-                routing_key: None,
             },
         }
     }
@@ -87,7 +82,6 @@ impl Frame {
         serial_consistency: Option<Consistency>,
         timestamp: Option<i64>,
         flags: Flags,
-        is_idempotent: bool,
         version: Version,
     ) -> Frame {
         let direction = Direction::Request;
@@ -101,7 +95,6 @@ impl Frame {
             paging_state,
             serial_consistency,
             timestamp,
-            is_idempotent,
         );
 
         Frame::new(
@@ -127,7 +120,6 @@ impl Frame {
             query.params.serial_consistency,
             query.params.timestamp,
             flags,
-            query.params.is_idempotent,
             version,
         )
     }

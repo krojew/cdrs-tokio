@@ -1,4 +1,18 @@
 use arc_swap::ArcSwap;
+use cassandra_protocol::error::{Error, Result};
+use cassandra_protocol::events::{SchemaChange, ServerEvent};
+use cassandra_protocol::frame::events::{
+    SchemaChangeOptions, SchemaChangeType, StatusChange, StatusChangeType, TopologyChange,
+    TopologyChangeType,
+};
+use cassandra_protocol::frame::frame_error::{AdditionalErrorInfo, ErrorBody};
+use cassandra_protocol::frame::{Frame, Version};
+use cassandra_protocol::query::utils::prepare_flags;
+use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
+use cassandra_protocol::token::Murmur3Token;
+use cassandra_protocol::types::list::List;
+use cassandra_protocol::types::rows::Row;
+use cassandra_protocol::types::{AsRustType, ByName, IntoRustByName};
 use fxhash::FxHashMap;
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
@@ -19,20 +33,6 @@ use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::cluster::{NodeInfo, SessionContext};
 use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::transport::CdrsTransport;
-use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::events::{SchemaChange, ServerEvent};
-use cassandra_protocol::frame::events::{
-    SchemaChangeOptions, SchemaChangeType, StatusChange, StatusChangeType, TopologyChange,
-    TopologyChangeType,
-};
-use cassandra_protocol::frame::frame_error::{AdditionalErrorInfo, ErrorBody};
-use cassandra_protocol::frame::{Frame, Version};
-use cassandra_protocol::query::query_params::Murmur3Token;
-use cassandra_protocol::query::utils::prepare_flags;
-use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
-use cassandra_protocol::types::list::List;
-use cassandra_protocol::types::rows::Row;
-use cassandra_protocol::types::{AsRustType, ByName, IntoRustByName};
 
 fn find_in_peers(
     peers: &[Row],
@@ -56,7 +56,7 @@ async fn send_query<T: CdrsTransport>(
     transport: &T,
     version: Version,
 ) -> Result<Option<Vec<Row>>> {
-    let query_params = QueryParamsBuilder::new().idempotent(true).finalize();
+    let query_params = QueryParamsBuilder::new().build();
     send_query_with_params(query, query_params, transport, version).await
 }
 
@@ -66,10 +66,7 @@ async fn send_query_with_values<T: CdrsTransport, V: Into<QueryValues>>(
     transport: &T,
     version: Version,
 ) -> Result<Option<Vec<Row>>> {
-    let query_params = QueryParamsBuilder::new()
-        .idempotent(true)
-        .values(values.into())
-        .finalize();
+    let query_params = QueryParamsBuilder::new().with_values(values.into()).build();
     send_query_with_params(query, query_params, transport, version).await
 }
 

@@ -1,8 +1,7 @@
+use cassandra_protocol::token::Murmur3Token;
 use derive_more::Constructor;
 use std::net::SocketAddr;
 use uuid::Uuid;
-
-use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// Information about a node.
 #[derive(Debug, Constructor, Clone)]

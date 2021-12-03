@@ -159,8 +159,8 @@ async fn paged_with_value(session: &CurrentSession) {
     let mut query_pager = pager.query_with_param(
         q,
         QueryParamsBuilder::new()
-            .values(query_values!(1, 2))
-            .finalize(),
+            .with_values(query_values!(1, 2))
+            .build(),
     );
 
     // Oddly enough, this returns false the first time...
@@ -184,8 +184,8 @@ async fn paged_with_values_list(session: &CurrentSession) {
     let mut query_pager = pager.query_with_param(
         q,
         QueryParamsBuilder::new()
-            .values(query_values!(vec![100, 101, 102, 103, 104]))
-            .finalize(),
+            .with_values(query_values!(vec![100, 101, 102, 103, 104]))
+            .build(),
     );
 
     // Macro instead of a function or closure, since problem with lifetimes

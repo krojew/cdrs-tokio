@@ -139,7 +139,6 @@ async fn set_keyspace<T: CdrsTransport>(
             None,
             None,
             Default::default(),
-            false,
             version,
         );
 

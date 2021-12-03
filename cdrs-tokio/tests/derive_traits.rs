@@ -12,9 +12,9 @@ use cdrs_tokio::frame::{TryFromRow, TryFromUdt};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query::QueryValues;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::query::*;
-#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query_values;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::statement::StatementParamsBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
@@ -26,14 +26,13 @@ use cdrs_tokio_helpers_derive::*;
 #[cfg(feature = "e2e-tests")]
 use maplit::hashmap;
 #[cfg(feature = "e2e-tests")]
+use std::collections::HashMap;
+#[cfg(feature = "e2e-tests")]
 use std::str::FromStr;
 #[cfg(feature = "e2e-tests")]
 use time::PrimitiveDateTime;
 #[cfg(feature = "e2e-tests")]
 use uuid::Uuid;
-
-#[cfg(feature = "e2e-tests")]
-use std::collections::HashMap;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
@@ -305,9 +304,9 @@ async fn update_list_with_udt() {
         .prepare("UPDATE cdrs_test.update_list_with_udt SET udts_set = udts_set + ? WHERE id = ?")
         .await
         .expect("prepare query");
-    let params = QueryParamsBuilder::new()
-        .consistency(Consistency::Quorum)
-        .values(query_values!(
+    let params = StatementParamsBuilder::new()
+        .with_consistency(Consistency::Quorum)
+        .with_values(query_values!(
             vec![MyUdt {
                 id: Uuid::parse_str("68f49fa5-934b-4aff-8a87-f3a32872a6ba").expect("udt id"),
                 text: "abc".into(),
@@ -315,7 +314,7 @@ async fn update_list_with_udt() {
             Uuid::parse_str("5bd8877a-e2b2-4d6f-aafd-c3f72a6964cf").unwrap()
         ));
     session
-        .exec_with_params(&query, params.finalize())
+        .exec_with_params(&query, &params.build())
         .await
         .expect("update set");
 

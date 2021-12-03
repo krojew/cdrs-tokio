@@ -1,7 +1,7 @@
 use atomic::Atomic;
 use cassandra_protocol::error::{Error, Result};
 use cassandra_protocol::frame::Frame;
-use cassandra_protocol::query::query_params::Murmur3Token;
+use cassandra_protocol::token::Murmur3Token;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;

@@ -1,7 +1,5 @@
 use super::{QueryFlags, QueryParams, QueryValues};
 use crate::consistency::Consistency;
-use crate::query::query_params::Murmur3Token;
-use crate::types::value::Value;
 use crate::types::CBytes;
 
 #[derive(Debug, Default)]
@@ -14,10 +12,6 @@ pub struct QueryParamsBuilder {
     paging_state: Option<CBytes>,
     serial_consistency: Option<Consistency>,
     timestamp: Option<i64>,
-    is_idempotent: bool,
-    keyspace: Option<String>,
-    token: Option<Murmur3Token>,
-    routing_key: Option<Vec<Value>>,
 }
 
 impl QueryParamsBuilder {
@@ -27,16 +21,19 @@ impl QueryParamsBuilder {
     }
 
     /// Sets new query consistency
-    pub fn consistency(mut self, consistency: Consistency) -> Self {
+    pub fn with_consistency(mut self, consistency: Consistency) -> Self {
         self.consistency = consistency;
         self
     }
 
     // Sets new flags.
-    builder_opt_field!(flags, QueryFlags);
+    pub fn with_flags(mut self, flags: QueryFlags) -> Self {
+        self.flags = Some(flags);
+        self
+    }
 
-    /// Sets new query values
-    pub fn values(mut self, values: QueryValues) -> Self {
+    /// Sets new query values.
+    pub fn with_values(mut self, values: QueryValues) -> Self {
         self.with_names = values.has_names();
         self.values = Some(values);
         self.flags = self.flags.or_else(|| {
@@ -56,36 +53,36 @@ impl QueryParamsBuilder {
         self
     }
 
-    /// Sets new query consistency
-    pub fn page_size(mut self, size: i32) -> Self {
+    /// Sets new query consistency.
+    pub fn with_page_size(mut self, size: i32) -> Self {
         self.page_size = Some(size);
         self.flags = self.flags.or(Some(QueryFlags::PAGE_SIZE));
 
         self
     }
 
-    /// Sets new query consistency
-    pub fn paging_state(mut self, state: CBytes) -> Self {
+    /// Sets new query consistency.
+    pub fn with_paging_state(mut self, state: CBytes) -> Self {
         self.paging_state = Some(state);
         self.flags = self.flags.or(Some(QueryFlags::WITH_PAGING_STATE));
 
         self
     }
 
-    builder_opt_field!(serial_consistency, Consistency);
-    builder_opt_field!(timestamp, i64);
-    builder_opt_field!(keyspace, String);
-    builder_opt_field!(token, Murmur3Token);
-    builder_opt_field!(routing_key, Vec<Value>);
+    /// Sets new serial consistency.
+    pub fn with_serial_consistency(mut self, serial_consistency: Consistency) -> Self {
+        self.serial_consistency = Some(serial_consistency);
+        self
+    }
 
-    /// Marks the query as idempotent or not
-    pub fn idempotent(mut self, value: bool) -> Self {
-        self.is_idempotent = value;
+    /// Sets new timestamp.
+    pub fn with_timestamp(mut self, timestamp: i64) -> Self {
+        self.timestamp = Some(timestamp);
         self
     }
 
     /// Finalizes query building process and returns query itself
-    pub fn finalize(self) -> QueryParams {
+    pub fn build(self) -> QueryParams {
         QueryParams {
             consistency: self.consistency,
             values: self.values,
@@ -94,10 +91,6 @@ impl QueryParamsBuilder {
             paging_state: self.paging_state,
             serial_consistency: self.serial_consistency,
             timestamp: self.timestamp,
-            is_idempotent: self.is_idempotent,
-            keyspace: self.keyspace,
-            token: self.token,
-            routing_key: self.routing_key,
         }
     }
 }

@@ -24,6 +24,7 @@ futures = { version = "0.3", default_features = false, features = ["alloc"] }
 fxhash = "0.2"
 num_cpus = "1"
 itertools = "0.10"
+lazy_static = "1.4"
 rand = "0.8"
 serde_json = "1.0"
 tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }

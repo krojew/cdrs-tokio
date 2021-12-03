@@ -548,10 +548,6 @@ mod tests {
                 paging_state: None,
                 serial_consistency: None,
                 timestamp: None,
-                is_idempotent: false,
-                keyspace: None,
-                token: None,
-                routing_key: None,
             },
         });
         test_encode_decode_roundtrip_request(&raw_frame, frame, body);
@@ -588,10 +584,6 @@ mod tests {
                 paging_state: None,
                 serial_consistency: None,
                 timestamp: None,
-                is_idempotent: false,
-                keyspace: None,
-                token: None,
-                routing_key: None,
             },
         });
         test_encode_decode_roundtrip_request(&raw_frame, frame, body);
@@ -626,10 +618,6 @@ mod tests {
                 paging_state: Some(CBytes::new(vec![0, 1, 2, 3])),
                 serial_consistency: Some(Consistency::One),
                 timestamp: Some(2000),
-                is_idempotent: false,
-                keyspace: None,
-                token: None,
-                routing_key: None,
             },
         });
         test_encode_decode_roundtrip_nondeterministic_request(frame, body);

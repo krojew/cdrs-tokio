@@ -1,13 +1,15 @@
-use crate::cluster::session::Session;
-use crate::cluster::ConnectionManager;
-use crate::load_balancing::LoadBalancingStrategy;
-use crate::transport::CdrsTransport;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::frame_result::{RowsMetadata, RowsMetadataFlags};
 use cassandra_protocol::query::{PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
 use cassandra_protocol::types::rows::Row;
 use cassandra_protocol::types::CBytes;
+
+use crate::cluster::session::Session;
+use crate::cluster::ConnectionManager;
+use crate::load_balancing::LoadBalancingStrategy;
+use crate::statement::StatementParamsBuilder;
+use crate::transport::CdrsTransport;
 
 pub struct SessionPager<
     'a,
@@ -66,8 +68,8 @@ impl<
         self.query_with_param(
             query,
             QueryParamsBuilder::new()
-                .consistency(Consistency::One)
-                .finalize(),
+                .with_consistency(Consistency::One)
+                .build(),
         )
     }
 
@@ -123,22 +125,22 @@ impl<
     }
 
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
-        let mut params = QueryParamsBuilder::new()
-            .consistency(self.consistency)
-            .page_size(self.pager.page_size);
+        let mut params = StatementParamsBuilder::new()
+            .with_consistency(self.consistency)
+            .with_page_size(self.pager.page_size);
 
         if let Some(qv) = &self.qv {
-            params = params.values(qv.clone());
+            params = params.with_values(qv.clone());
         }
         if let Some(cursor) = &self.pager_state.cursor {
-            params = params.paging_state(cursor.clone());
+            params = params.with_paging_state(cursor.clone());
         }
         let query = self.query.to_string();
 
         let body = self
             .pager
             .session
-            .query_with_params(query, params.finalize())
+            .query_with_params(query, params.build())
             .await
             .and_then(|frame| frame.response_body())?;
 
@@ -183,15 +185,15 @@ impl<
     }
 
     pub async fn next(&mut self) -> error::Result<Vec<Row>> {
-        let mut params = QueryParamsBuilder::new().page_size(self.pager.page_size);
+        let mut params = StatementParamsBuilder::new().with_page_size(self.pager.page_size);
         if let Some(cursor) = &self.pager_state.cursor {
-            params = params.paging_state(cursor.clone());
+            params = params.with_paging_state(cursor.clone());
         }
 
         let body = self
             .pager
             .session
-            .exec_with_params(self.query, params.finalize())
+            .exec_with_params(self.query, &params.build())
             .await
             .and_then(|frame| frame.response_body())?;
 
@@ -203,16 +205,19 @@ impl<
         self.pager_state.has_more_pages =
             Some(metadata.flags.contains(RowsMetadataFlags::HAS_MORE_PAGES));
         self.pager_state.cursor = metadata.paging_state;
+
         body.into_rows()
             .ok_or_else(|| "Pager query should yield a vector of rows".into())
     }
 
+    #[inline]
     pub fn has_more(&self) -> bool {
         self.pager_state.has_more_pages.unwrap_or(false)
     }
 
     /// This method returns a copy of pager state so
     /// the state may be used later for continuing paging.
+    #[inline]
     pub fn pager_state(&self) -> PagerState {
         self.pager_state.clone()
     }
@@ -253,14 +258,17 @@ impl PagerState {
         Self::new_with_cursor_and_more_flag(cursor, has_more)
     }
 
+    #[inline]
     pub fn has_more(&self) -> bool {
         self.has_more_pages.unwrap_or(false)
     }
 
+    #[inline]
     pub fn cursor(&self) -> Option<CBytes> {
         self.cursor.clone()
     }
 
+    #[inline]
     pub fn into_cursor(self) -> Option<CBytes> {
         self.cursor
     }

@@ -12,8 +12,6 @@ pub struct BatchQueryBuilder {
     consistency: Consistency,
     serial_consistency: Option<Consistency>,
     timestamp: Option<i64>,
-    is_idempotent: bool,
-    keyspace: Option<String>,
 }
 
 impl Default for BatchQueryBuilder {
@@ -24,8 +22,6 @@ impl Default for BatchQueryBuilder {
             consistency: Consistency::One,
             serial_consistency: None,
             timestamp: None,
-            is_idempotent: false,
-            keyspace: None,
         }
     }
 }
@@ -35,7 +31,7 @@ impl BatchQueryBuilder {
         Default::default()
     }
 
-    pub fn batch_type(mut self, batch_type: BatchType) -> Self {
+    pub fn with_batch_type(mut self, batch_type: BatchType) -> Self {
         self.batch_type = batch_type;
         self
     }
@@ -65,21 +61,22 @@ impl BatchQueryBuilder {
         self
     }
 
-    pub fn consistency(mut self, consistency: Consistency) -> Self {
+    pub fn with_consistency(mut self, consistency: Consistency) -> Self {
         self.consistency = consistency;
         self
     }
 
-    builder_opt_field!(serial_consistency, Consistency);
-    builder_opt_field!(timestamp, i64);
-    builder_opt_field!(keyspace, String);
-
-    pub fn idempotent(mut self, value: bool) -> Self {
-        self.is_idempotent = value;
+    pub fn with_serial_consistency(mut self, serial_consistency: Consistency) -> Self {
+        self.serial_consistency = Some(serial_consistency);
         self
     }
 
-    pub fn finalize(self) -> CResult<BodyReqBatch> {
+    pub fn with_timestamp(mut self, timestamp: i64) -> Self {
+        self.timestamp = Some(timestamp);
+        self
+    }
+
+    pub fn build(self) -> CResult<BodyReqBatch> {
         let mut flags = QueryFlags::empty();
 
         if self.serial_consistency.is_some() {
@@ -114,8 +111,6 @@ impl BatchQueryBuilder {
             consistency: self.consistency,
             serial_consistency: self.serial_consistency,
             timestamp: self.timestamp,
-            is_idempotent: self.is_idempotent,
-            keyspace: self.keyspace,
         })
     }
 }

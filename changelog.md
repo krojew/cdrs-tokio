@@ -48,6 +48,9 @@ understated.
 * Renamed `ChangeSchemeOptions` to `SchemaChangeOptions`.
 * Protocol version can now be selected at run time.
 * `Value` now directly contains the value in the `Some` variant instead of a separate body field.
+* Consistent naming convention in all builders.
+* Split protocol-level parameters from high-level statement parameters (`QueryParams` vs `StatementParams`) and
+  simplified API.
 
 ## 5.0.0
 

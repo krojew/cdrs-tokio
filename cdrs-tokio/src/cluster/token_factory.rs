@@ -1,8 +1,7 @@
 use bytes::Buf;
+use cassandra_protocol::token::Murmur3Token;
 use std::cmp::min;
 use std::num::Wrapping;
-
-use cassandra_protocol::query::query_params::Murmur3Token;
 
 const C1: Wrapping<i64> = Wrapping(0x87c3_7b91_1142_53d5_u64 as i64);
 const C2: Wrapping<i64> = Wrapping(0x4cf5_ad43_2745_937f_u64 as i64);

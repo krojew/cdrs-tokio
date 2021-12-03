@@ -137,7 +137,6 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ConnectionPoolFactory<T, CM> {
                         None,
                         None,
                         Default::default(),
-                        false,
                         version,
                     ));
 

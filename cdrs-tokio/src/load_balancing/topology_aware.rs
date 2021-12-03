@@ -1,3 +1,5 @@
+use cassandra_protocol::consistency::Consistency;
+use cassandra_protocol::token::Murmur3Token;
 use fxhash::{FxHashMap, FxHashSet};
 use itertools::Itertools;
 use rand::prelude::*;
@@ -11,8 +13,6 @@ use crate::cluster::topology::{KeyspaceMetadata, Node, NodeDistance, Replication
 use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
 use crate::transport::CdrsTransport;
-use cassandra_protocol::consistency::Consistency;
-use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// Topology-aware load balancing strategy. Depends on up-to-date topology information, which is
 /// constantly monitored in the background by a control connection. For best results, a
@@ -297,7 +297,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
 #[cfg(test)]
 mod tests {
     use cassandra_protocol::frame::Version;
-    use cassandra_protocol::query::query_params::Murmur3Token;
+    use cassandra_protocol::token::Murmur3Token;
     use fxhash::FxHashMap;
     use lazy_static::lazy_static;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};

@@ -1,3 +1,4 @@
+use cassandra_protocol::token::Murmur3Token;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
@@ -6,7 +7,6 @@ use std::sync::Arc;
 use crate::cluster::topology::{Node, NodeMap};
 use crate::cluster::ConnectionManager;
 use crate::transport::CdrsTransport;
-use cassandra_protocol::query::query_params::Murmur3Token;
 
 /// Map of tokens to nodes.
 pub struct TokenMap<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
@@ -107,7 +107,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
 #[cfg(test)]
 mod tests {
     use cassandra_protocol::frame::Version;
-    use cassandra_protocol::query::query_params::Murmur3Token;
+    use cassandra_protocol::token::Murmur3Token;
     use itertools::Itertools;
     use lazy_static::lazy_static;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};

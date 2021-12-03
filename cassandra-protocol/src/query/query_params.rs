@@ -1,6 +1,4 @@
-use derive_more::Constructor;
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::io::{Cursor, Read};
 
 use crate::consistency::Consistency;
@@ -29,19 +27,6 @@ pub struct QueryParams {
     pub serial_consistency: Option<Consistency>,
     /// Timestamp.
     pub timestamp: Option<i64>,
-    /// Is the query idempotent.
-    pub is_idempotent: bool,
-    /// Query keyspace. If not using a global one, setting it explicitly might help the load
-    /// balancer use more appropriate nodes. Note: prepared statements with keyspace information
-    /// take precedence over this field.
-    pub keyspace: Option<String>,
-    /// The token to use for token-aware routing. A load balancer may use this information to
-    /// determine which nodes to contact. Takes precedence over `routing_key`.
-    pub token: Option<Murmur3Token>,
-    /// The partition key to use for token-aware routing. A load balancer may use this information
-    /// to determine which nodes to contact. Alternative to `token`. Note: prepared statements
-    /// with bound primary key values take precedence over this field.
-    pub routing_key: Option<Vec<Value>>,
 }
 
 impl QueryParams {
@@ -178,12 +163,6 @@ impl FromCursor for QueryParams {
 
         let with_names = flags.contains(QueryFlags::WITH_NAMES_FOR_VALUES);
 
-        // We set these to default values as they arent actually part of the cassandra protocol
-        let is_idempotent = false;
-        let keyspace = None;
-        let token = None;
-        let routing_key = None;
-
         Ok(QueryParams {
             consistency,
             with_names,
@@ -192,33 +171,6 @@ impl FromCursor for QueryParams {
             paging_state,
             serial_consistency,
             timestamp,
-            is_idempotent,
-            keyspace,
-            token,
-            routing_key,
         })
-    }
-}
-
-/// A token on the ring. Only Murmur3 tokens are supported for now.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Default, Debug, Hash, Constructor)]
-pub struct Murmur3Token {
-    pub value: i64,
-}
-
-impl TryFrom<String> for Murmur3Token {
-    type Error = Error;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        value
-            .parse()
-            .map_err(|error| format!("Error parsing token: {}", error).into())
-            .map(Murmur3Token::new)
-    }
-}
-
-impl From<i64> for Murmur3Token {
-    fn from(value: i64) -> Self {
-        Murmur3Token::new(value)
     }
 }

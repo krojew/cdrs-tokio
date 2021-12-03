@@ -4,16 +4,15 @@ use cassandra_protocol::error;
 use cassandra_protocol::events::ServerEvent;
 use cassandra_protocol::frame::frame_result::{BodyResResultPrepared, TableSpec};
 use cassandra_protocol::frame::{Frame, Serialize, Version};
-use cassandra_protocol::query::query_params::Murmur3Token;
 use cassandra_protocol::query::utils::prepare_flags;
-use cassandra_protocol::query::{
-    PreparedQuery, Query, QueryBatch, QueryParams, QueryParamsBuilder, QueryValues,
-};
+use cassandra_protocol::query::{PreparedQuery, Query, QueryBatch, QueryValues};
+use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
 use cassandra_protocol::types::{CIntShort, SHORT_LEN};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use std::io::{Cursor, Write};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
@@ -47,12 +46,17 @@ use crate::retry::{
     DefaultRetryPolicy, ExponentialReconnectionPolicy, ReconnectionPolicy, RetryPolicy,
 };
 use crate::speculative_execution::{Context, SpeculativeExecutionPolicy};
+use crate::statement::{StatementParams, StatementParamsBuilder};
 #[cfg(feature = "rust-tls")]
 use crate::transport::TransportRustls;
 use crate::transport::{CdrsTransport, TransportTcp};
 
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
+
+lazy_static! {
+    static ref DEFAULT_STATEMET_PARAMETERS: StatementParams = Default::default();
+}
 
 fn create_keyspace_holder() -> (Arc<KeyspaceHolder>, watch::Receiver<Option<String>>) {
     let (keyspace_sender, keyspace_receiver) = watch::channel(None);
@@ -163,31 +167,30 @@ impl<
         SessionPager::new(self, page_size)
     }
 
-    /// Executes given prepared query with query parameters and optional tracing, and warnings.
-    pub async fn exec_with_params_tw(
+    /// Executes given prepared query with query parameters.
+    pub async fn exec_with_params(
         &self,
         prepared: &PreparedQuery,
-        query_parameters: QueryParams,
-        with_tracing: bool,
-        with_warnings: bool,
+        parameters: &StatementParams,
     ) -> error::Result<Frame> {
-        let consistency = query_parameters.consistency;
-        let flags = prepare_flags(with_tracing, with_warnings);
+        let consistency = parameters.query_params.consistency;
+        let flags = prepare_flags(parameters.tracing, parameters.warnings);
         let options_frame =
-            Frame::new_req_execute(&prepared.id, &query_parameters, flags, self.version);
+            Frame::new_req_execute(&prepared.id, &parameters.query_params, flags, self.version);
 
         let keyspace = prepared
             .keyspace
             .as_deref()
-            .or_else(|| query_parameters.keyspace.as_deref());
+            .or_else(|| parameters.keyspace.as_deref());
 
-        let routing_key = query_parameters
+        let routing_key = parameters
+            .query_params
             .values
             .as_ref()
             .and_then(|values| match values {
                 QueryValues::SimpleValues(values) => {
                     serialize_routing_key_with_indexes(values, &prepared.pk_indexes).or_else(|| {
-                        query_parameters
+                        parameters
                             .routing_key
                             .as_ref()
                             .map(|values| serialize_routing_key(values))
@@ -199,9 +202,9 @@ impl<
         let mut result = self
             .send_frame(
                 options_frame,
-                query_parameters.is_idempotent,
+                parameters.is_idempotent,
                 keyspace,
-                query_parameters.token,
+                parameters.token,
                 routing_key.as_deref(),
                 Some(consistency),
             )
@@ -221,15 +224,19 @@ impl<
                         return Err("Re-preparing an unprepared statement resulted in a different id - probably schema changed on the server.".into());
                     }
 
-                    let flags = prepare_flags(with_tracing, with_warnings);
-                    let options_frame =
-                        Frame::new_req_execute(&new.id, &query_parameters, flags, self.version);
+                    let flags = prepare_flags(parameters.tracing, parameters.warnings);
+                    let options_frame = Frame::new_req_execute(
+                        &new.id,
+                        &parameters.query_params,
+                        flags,
+                        self.version,
+                    );
                     result = self
                         .send_frame(
                             options_frame,
-                            query_parameters.is_idempotent,
+                            parameters.is_idempotent,
                             keyspace,
-                            query_parameters.token,
+                            parameters.token,
                             routing_key.as_deref(),
                             Some(consistency),
                         )
@@ -240,55 +247,26 @@ impl<
         result
     }
 
-    /// Executes given prepared query with query parameters.
-    pub async fn exec_with_params(
-        &self,
-        prepared: &PreparedQuery,
-        query_parameters: QueryParams,
-    ) -> error::Result<Frame> {
-        self.exec_with_params_tw(prepared, query_parameters, false, false)
-            .await
-    }
-
-    /// Executes given prepared query with query values and optional tracing, and warnings.
-    pub async fn exec_with_values_tw<V: Into<QueryValues>>(
-        &self,
-        prepared: &PreparedQuery,
-        values: V,
-        with_tracing: bool,
-        with_warnings: bool,
-    ) -> error::Result<Frame> {
-        let query_params_builder = QueryParamsBuilder::new();
-        let query_params = query_params_builder.values(values.into()).finalize();
-        self.exec_with_params_tw(prepared, query_params, with_tracing, with_warnings)
-            .await
-    }
-
     /// Executes given prepared query with query values.
     pub async fn exec_with_values<V: Into<QueryValues>>(
         &self,
         prepared: &PreparedQuery,
         values: V,
     ) -> error::Result<Frame> {
-        self.exec_with_values_tw(prepared, values, false, false)
-            .await
-    }
-
-    /// Executes given prepared query with optional tracing and warnings.
-    pub async fn exec_tw(
-        &self,
-        prepared: &PreparedQuery,
-        with_tracing: bool,
-        with_warnings: bool,
-    ) -> error::Result<Frame> {
-        let query_params = QueryParamsBuilder::new().finalize();
-        self.exec_with_params_tw(prepared, query_params, with_tracing, with_warnings)
-            .await
+        self.exec_with_params(
+            prepared,
+            &StatementParamsBuilder::new()
+                .with_values(values.into())
+                .build(),
+        )
+        .await
     }
 
     /// Executes given prepared query.
+    #[inline]
     pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Frame> {
-        self.exec_tw(prepared, false, false).await
+        self.exec_with_params(prepared, &DEFAULT_STATEMET_PARAMETERS)
+            .await
     }
 
     /// Prepares a query for execution. Along with query itself, the
@@ -316,6 +294,7 @@ impl<
 
     /// Prepares query without additional tracing information and warnings.
     /// Returns the raw prepared query result.
+    #[inline]
     pub async fn prepare_raw<Q: ToString>(&self, query: Q) -> error::Result<BodyResResultPrepared> {
         self.prepare_raw_tw(query, false, false).await
     }
@@ -346,20 +325,27 @@ impl<
 
     /// It prepares query without additional tracing information and warnings.
     /// Returns the prepared query.
+    #[inline]
     pub async fn prepare<Q: ToString>(&self, query: Q) -> error::Result<PreparedQuery> {
         self.prepare_tw(query, false, false).await
     }
 
-    /// Executes batch query with optional tracing and warnings.
-    pub async fn batch_with_params_tw(
+    /// Executes batch query.
+    #[inline]
+    pub async fn batch(&self, batch: QueryBatch) -> error::Result<Frame> {
+        self.batch_with_params(batch, &DEFAULT_STATEMET_PARAMETERS)
+            .await
+    }
+
+    /// Executes batch query with parameters.
+    pub async fn batch_with_params(
         &self,
-        mut batch: QueryBatch,
-        with_tracing: bool,
-        with_warnings: bool,
+        batch: QueryBatch,
+        parameters: &StatementParams,
     ) -> error::Result<Frame> {
-        let flags = prepare_flags(with_tracing, with_warnings);
-        let is_idempotent = batch.is_idempotent;
-        let keyspace = batch.keyspace.take();
+        let flags = prepare_flags(parameters.tracing, parameters.warnings);
+        let is_idempotent = parameters.is_idempotent;
+        let keyspace = parameters.keyspace.as_deref();
         let consistency = batch.consistency;
 
         let query_frame = Frame::new_req_batch(batch, flags, self.version);
@@ -367,7 +353,7 @@ impl<
         self.send_frame(
             query_frame,
             is_idempotent,
-            keyspace.as_deref(),
+            keyspace,
             None,
             None,
             Some(consistency),
@@ -375,36 +361,51 @@ impl<
         .await
     }
 
-    /// Executes batch query.
-    pub async fn batch_with_params(&self, batch: QueryBatch) -> error::Result<Frame> {
-        self.batch_with_params_tw(batch, false, false).await
+    /// Executes a query.
+    #[inline]
+    pub async fn query<Q: ToString>(&self, query: Q) -> error::Result<Frame> {
+        self.query_with_params(query, DEFAULT_STATEMET_PARAMETERS.clone())
+            .await
     }
 
-    /// Executes a query with parameters and ability to trace it and see warnings.
-    pub async fn query_with_params_tw<Q: ToString>(
+    /// Executes a query with bounded values (either with or without names).
+    #[inline]
+    pub async fn query_with_values<Q: ToString, V: Into<QueryValues>>(
         &self,
         query: Q,
-        mut query_params: QueryParams,
-        with_tracing: bool,
-        with_warnings: bool,
-        version: Version,
+        values: V,
     ) -> error::Result<Frame> {
-        let is_idempotent = query_params.is_idempotent;
-        let consistency = query_params.consistency;
-        let keyspace = query_params.keyspace.take();
-        let token = query_params.token.take();
-        let routing_key = query_params
+        self.query_with_params(
+            query,
+            StatementParamsBuilder::new()
+                .with_values(values.into())
+                .build(),
+        )
+        .await
+    }
+
+    /// Executes a query with query parameters.
+    pub async fn query_with_params<Q: ToString>(
+        &self,
+        query: Q,
+        parameters: StatementParams,
+    ) -> error::Result<Frame> {
+        let is_idempotent = parameters.is_idempotent;
+        let consistency = parameters.query_params.consistency;
+        let keyspace = parameters.keyspace;
+        let token = parameters.token;
+        let routing_key = parameters
             .routing_key
             .as_ref()
             .map(|values| serialize_routing_key(values));
 
         let query = Query {
             query: query.to_string(),
-            params: query_params,
+            params: parameters.query_params,
         };
 
-        let flags = prepare_flags(with_tracing, with_warnings);
-        let query_frame = Frame::new_query(query, flags, version);
+        let flags = prepare_flags(parameters.tracing, parameters.warnings);
+        let query_frame = Frame::new_query(query, flags, self.version);
 
         self.send_frame(
             query_frame,
@@ -415,69 +416,6 @@ impl<
             Some(consistency),
         )
         .await
-    }
-
-    /// Executes a query.
-    pub async fn query<Q: ToString>(&self, query: Q) -> error::Result<Frame> {
-        self.query_tw(query, false, false).await
-    }
-
-    /// Executes a query with ability to trace it and see warnings.
-    pub async fn query_tw<Q: ToString>(
-        &self,
-        query: Q,
-        with_tracing: bool,
-        with_warnings: bool,
-    ) -> error::Result<Frame> {
-        let query_params = QueryParamsBuilder::new().finalize();
-        self.query_with_params_tw(
-            query,
-            query_params,
-            with_tracing,
-            with_warnings,
-            self.version,
-        )
-        .await
-    }
-
-    /// Executes a query with bounded values (either with or without names).
-    pub async fn query_with_values<Q: ToString, V: Into<QueryValues>>(
-        &self,
-        query: Q,
-        values: V,
-    ) -> error::Result<Frame> {
-        self.query_with_values_tw(query, values, false, false).await
-    }
-
-    /// Executes a query with bounded values (either with or without names)
-    /// and ability to see warnings, trace a request and default parameters.
-    pub async fn query_with_values_tw<Q: ToString, V: Into<QueryValues>>(
-        &self,
-        query: Q,
-        values: V,
-        with_tracing: bool,
-        with_warnings: bool,
-    ) -> error::Result<Frame> {
-        let query_params_builder = QueryParamsBuilder::new();
-        let query_params = query_params_builder.values(values.into()).finalize();
-        self.query_with_params_tw(
-            query,
-            query_params,
-            with_tracing,
-            with_warnings,
-            self.version,
-        )
-        .await
-    }
-
-    /// Executes a query with query params without warnings and tracing.
-    pub async fn query_with_params<Q: ToString>(
-        &self,
-        query: Q,
-        query_params: QueryParams,
-    ) -> error::Result<Frame> {
-        self.query_with_params_tw(query, query_params, false, false, self.version)
-            .await
     }
 
     /// Returns currently set global keyspace.
