@@ -47,17 +47,15 @@ impl Hash for Tuple {
 }
 
 impl Tuple {
-    pub fn new(data: Vec<CBytes>, metadata: &CTuple) -> Tuple {
-        let meta_iter = metadata.types.iter();
-
-        let acc = Vec::with_capacity(metadata.types.len());
-        let d = meta_iter.zip(data.iter()).fold(acc, |mut a, v| {
-            let (val_type, val_b) = v;
-            a.push((val_type.clone(), val_b.clone()));
-            a
-        });
-
-        Tuple { data: d }
+    pub fn new(elements: Vec<CBytes>, metadata: &CTuple) -> Tuple {
+        Tuple {
+            data: metadata
+                .types
+                .iter()
+                .zip(elements.into_iter())
+                .map(|(val_type, val_b)| (val_type.clone(), val_b))
+                .collect(),
+        }
     }
 }
 
