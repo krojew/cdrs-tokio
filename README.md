@@ -27,6 +27,24 @@ safety and performance of Rust.
 - Support for interleaved queries;
 - Support for Yugabyte YCQL JSONB;
 
+## Performance
+
+Due to high configurability of **CDRS**, the performance will vary depending on use case. The following benchmarks
+have been made against the latest (master as of 03-12-2012) versions of respective libraries (except 
+cassandra-cpp: 2.16.0).
+
+- `scylladb-rust` - `scylla` crate
+- `cassandra-cpp` - Rust bindings for Datastax C++ Driver, running on multiple threads using Tokio
+- `gocql` - a driver written in Go
+- `cdrs-tokio-large-pool` - **CDRS** with node connection pool equal to double of physical CPU cores
+- `cdrs-tokio-small-pool` - **CDRS** with a single connection per node
+
+![insert benchmark](./perf-inserts.png)
+![select benchmark](./perf-selects.png)
+![mixed benchmark](./perf-mixed.png)
+
+Knowing given use case, CDRS can be optimized for peak performance.
+
 ## Documentation and examples
 
 - [User guide](./documentation).
