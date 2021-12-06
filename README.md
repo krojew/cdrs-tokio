@@ -33,11 +33,12 @@ Due to high configurability of **CDRS**, the performance will vary depending on 
 have been made against the latest (master as of 03-12-2012) versions of respective libraries (except 
 cassandra-cpp: 2.16.0).
 
-- `scylladb-rust` - `scylla` crate
-- `cassandra-cpp` - Rust bindings for Datastax C++ Driver, running on multiple threads using Tokio
-- `gocql` - a driver written in Go
 - `cdrs-tokio-large-pool` - **CDRS** with node connection pool equal to double of physical CPU cores
 - `cdrs-tokio-small-pool` - **CDRS** with a single connection per node
+- `scylladb-rust-large-pool` - `scylla` crate with node connection pool equal to double of physical CPU cores
+- `scylladb-rust-small-pool` - `scylla` crate with a single connection per node
+- `cassandra-cpp` - Rust bindings for Datastax C++ Driver, running on multiple threads using Tokio
+- `gocql` - a driver written in Go
 
 ![insert benchmark](./perf-inserts.png)
 ![select benchmark](./perf-selects.png)
