@@ -11,6 +11,7 @@ use crate::types::data_serialization_types::decode_inet;
 
 pub const SHORT_LEN: usize = 2;
 pub const INT_LEN: usize = 4;
+pub const LONG_LEN: usize = 8;
 pub const UUID_LEN: usize = 16;
 
 const NULL_INT_LEN: CInt = -1;
@@ -221,7 +222,7 @@ pub(crate) fn from_cursor_str<'a>(cursor: &mut Cursor<&'a [u8]>) -> CDRSResult<&
     let mut buff = [0; SHORT_LEN];
     cursor.read_exact(&mut buff)?;
 
-    let len = i16::from_be_bytes(buff);
+    let len = CIntShort::from_be_bytes(buff);
     let body_bytes = cursor_next_value_ref(cursor, len as usize)?;
 
     std::str::from_utf8(body_bytes).map_err(Into::into)
@@ -231,7 +232,7 @@ pub(crate) fn from_cursor_str_long<'a>(cursor: &mut Cursor<&'a [u8]>) -> CDRSRes
     let mut buff = [0; INT_LEN];
     cursor.read_exact(&mut buff)?;
 
-    let len = i32::from_be_bytes(buff);
+    let len = CInt::from_be_bytes(buff);
     let body_bytes = cursor_next_value_ref(cursor, len as usize)?;
 
     std::str::from_utf8(body_bytes).map_err(Into::into)
@@ -333,7 +334,7 @@ impl Serialize for CBytes {
 }
 
 /// Cassandra short bytes
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
 pub struct CBytesShort {
     bytes: Option<Vec<u8>>,
 }
@@ -398,7 +399,7 @@ impl FromCursor for CInt {
         let mut buff = [0; INT_LEN];
         cursor.read_exact(&mut buff)?;
 
-        Ok(i32::from_be_bytes(buff))
+        Ok(CInt::from_be_bytes(buff))
     }
 }
 
@@ -410,7 +411,19 @@ impl FromCursor for CIntShort {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
-        Ok(i16::from_be_bytes(buff))
+        Ok(CIntShort::from_be_bytes(buff))
+    }
+}
+
+/// Cassandra long type.
+pub type CLong = i64;
+
+impl FromCursor for CLong {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<Self> {
+        let mut buff = [0; LONG_LEN];
+        cursor.read_exact(&mut buff)?;
+
+        Ok(CLong::from_be_bytes(buff))
     }
 }
 

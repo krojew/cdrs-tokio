@@ -51,6 +51,7 @@ understated.
 * Consistent naming convention in all builders.
 * Split protocol-level parameters from high-level statement parameters (`QueryParams` vs `StatementParams`) and
   simplified API.
+* `add_query_prepared` for batch queries now takes `PreparedQuery` by reference.
 
 ## 5.0.0
 

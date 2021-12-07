@@ -1,5 +1,6 @@
 use derive_more::Display;
 use std::cmp::PartialEq;
+use std::convert::TryFrom;
 use std::io::Cursor;
 
 use crate::error;
@@ -68,6 +69,19 @@ impl<'a> From<&'a ServerEvent> for SimpleServerEvent {
             ServerEvent::TopologyChange(_) => SimpleServerEvent::TopologyChange,
             ServerEvent::StatusChange(_) => SimpleServerEvent::StatusChange,
             ServerEvent::SchemaChange(_) => SimpleServerEvent::SchemaChange,
+        }
+    }
+}
+
+impl TryFrom<&str> for SimpleServerEvent {
+    type Error = error::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            TOPOLOGY_CHANGE => Ok(SimpleServerEvent::TopologyChange),
+            STATUS_CHANGE => Ok(SimpleServerEvent::StatusChange),
+            SCHEMA_CHANGE => Ok(SimpleServerEvent::SchemaChange),
+            value => Err(format!("Unknown server event: {}", value).into()),
         }
     }
 }

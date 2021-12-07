@@ -1,14 +1,16 @@
-use std::io::Cursor;
+use std::convert::TryInto;
+use std::io::{Cursor, Read};
 
 use crate::consistency::Consistency;
 use crate::frame::*;
+use crate::query::QueryFlags;
 use crate::query::QueryValues;
-use crate::query::{PreparedQuery, QueryFlags};
+use crate::types::value::Value;
 use crate::types::*;
 use crate::Error;
 
 /// `BodyResReady`
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Constructor, PartialEq, Eq)]
 pub struct BodyReqBatch {
     pub batch_type: BatchType,
     pub queries: Vec<BatchQuery>,
@@ -16,7 +18,7 @@ pub struct BodyReqBatch {
     // **IMPORTANT NOTE:** with names flag does not work and should not be used.
     pub query_flags: QueryFlags,
     pub serial_consistency: Option<Consistency>,
-    pub timestamp: Option<i64>,
+    pub timestamp: Option<CLong>,
 }
 
 impl Serialize for BodyReqBatch {
@@ -31,7 +33,7 @@ impl Serialize for BodyReqBatch {
             query.serialize(cursor);
         }
 
-        let consistency: i16 = self.consistency.into();
+        let consistency: CIntShort = self.consistency.into();
         consistency.serialize(cursor);
 
         let flag_byte = self.query_flags.bits();
@@ -39,13 +41,56 @@ impl Serialize for BodyReqBatch {
         flag_byte.serialize(cursor);
 
         if let Some(serial_consistency) = self.serial_consistency {
-            let serial_consistency: i16 = serial_consistency.into();
+            let serial_consistency: CIntShort = serial_consistency.into();
             serial_consistency.serialize(cursor);
         }
 
         if let Some(timestamp) = self.timestamp {
             timestamp.serialize(cursor);
         }
+    }
+}
+
+impl FromCursor for BodyReqBatch {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
+        let mut batch_type = [0];
+        cursor.read_exact(&mut batch_type)?;
+
+        let batch_type = BatchType::try_from(batch_type[0])?;
+        let len = CIntShort::from_cursor(cursor)?;
+
+        let mut queries = Vec::with_capacity(len as usize);
+        for _ in 0..len {
+            queries.push(BatchQuery::from_cursor(cursor)?);
+        }
+
+        let consistency = CIntShort::from_cursor(cursor).and_then(TryInto::try_into)?;
+
+        let mut query_flags = [0];
+        cursor.read_exact(&mut query_flags)?;
+
+        let query_flags = QueryFlags::from_bits_truncate(query_flags[0]);
+
+        let serial_consistency = if query_flags.contains(QueryFlags::WITH_SERIAL_CONSISTENCY) {
+            Some(CIntShort::from_cursor(cursor).and_then(TryInto::try_into)?)
+        } else {
+            None
+        };
+
+        let timestamp = if query_flags.contains(QueryFlags::WITH_DEFAULT_TIMESTAMP) {
+            Some(CLong::from_cursor(cursor)?)
+        } else {
+            None
+        };
+
+        Ok(BodyReqBatch::new(
+            batch_type,
+            queries,
+            consistency,
+            query_flags,
+            serial_consistency,
+            timestamp,
+        ))
     }
 }
 
@@ -85,12 +130,19 @@ impl From<BatchType> for u8 {
     }
 }
 
+/// Contains either an id of prepared query or CQL string.
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum BatchQuerySubj {
+    PreparedId(CBytesShort),
+    QueryString(String),
+}
+
 /// The structure that represents a query to be batched.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Constructor, PartialEq, Eq)]
 pub struct BatchQuery {
-    /// It indicates if a query was prepared.
+    /// Indicates if a query was prepared.
     pub is_prepared: bool,
-    /// It contains either id of prepared query of a query itself.
+    /// Contains either id of prepared query or a query itself.
     pub subject: BatchQuerySubj,
     /// It is the optional name of the following <value_i>. It must be present
     /// if and only if the 0x40 flag is provided for the batch.
@@ -100,13 +152,6 @@ pub struct BatchQuery {
     /// protocol. See <https://issues.apache.org/jira/browse/CASSANDRA-10246> for
     /// more details
     pub values: QueryValues,
-}
-
-/// It contains either an id of prepared query or CQL string.
-#[derive(Debug, Clone)]
-pub enum BatchQuerySubj {
-    PreparedId(PreparedQuery),
-    QueryString(String),
 }
 
 impl Serialize for BatchQuery {
@@ -119,18 +164,48 @@ impl Serialize for BatchQuery {
         }
 
         match &self.subject {
-            BatchQuerySubj::PreparedId(s) => s.id.serialize(cursor),
+            BatchQuerySubj::PreparedId(id) => id.serialize(cursor),
             BatchQuerySubj::QueryString(s) => serialize_str_long(cursor, s),
         }
 
         let len = self.values.len() as CIntShort;
         len.serialize(cursor);
+
         self.values.serialize(cursor);
     }
 }
 
+impl FromCursor for BatchQuery {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
+        let mut is_prepared = [0];
+        cursor.read_exact(&mut is_prepared)?;
+
+        let is_prepared = is_prepared[0] != 0;
+
+        let subject = if is_prepared {
+            BatchQuerySubj::PreparedId(CBytesShort::from_cursor(cursor)?)
+        } else {
+            BatchQuerySubj::QueryString(from_cursor_str_long(cursor).map(Into::into)?)
+        };
+
+        let len = CIntShort::from_cursor(cursor)?;
+
+        // assuming names are not present due to
+        // https://issues.apache.org/jira/browse/CASSANDRA-10246
+        let mut values = Vec::with_capacity(len as usize);
+        for _ in 0..len {
+            values.push(Value::from_cursor(cursor)?);
+        }
+
+        Ok(BatchQuery::new(
+            is_prepared,
+            subject,
+            QueryValues::SimpleValues(values),
+        ))
+    }
+}
+
 impl Frame {
-    /// **Note:** This function should be used internally for building query request frames.
     pub fn new_req_batch(query: BodyReqBatch, flags: Flags, version: Version) -> Frame {
         let direction = Direction::Request;
         let opcode = Opcode::Batch;
@@ -144,5 +219,44 @@ impl Frame {
             None,
             vec![],
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use crate::consistency::Consistency;
+    use crate::frame::frame_batch::{BatchQuery, BatchQuerySubj, BatchType, BodyReqBatch};
+    use crate::frame::FromCursor;
+    use crate::query::{QueryFlags, QueryValues};
+    use crate::types::prelude::Value;
+
+    #[test]
+    fn should_deserialize_query() {
+        let data = [0, 0, 0, 0, 1, 65, 0, 1, 0xff, 0xff, 0xff, 0xfe];
+        let mut cursor = Cursor::new(data.as_slice());
+
+        let query = BatchQuery::from_cursor(&mut cursor).unwrap();
+        assert!(!query.is_prepared);
+        assert_eq!(query.subject, BatchQuerySubj::QueryString("A".into()));
+        assert_eq!(query.values, QueryValues::SimpleValues(vec![Value::NotSet]));
+    }
+
+    #[test]
+    fn should_deserialize_body() {
+        let data = [0, 0, 0, 0, 0, 0x10 | 0x20, 0, 1, 1, 2, 3, 4, 5, 6, 7, 8];
+        let mut cursor = Cursor::new(data.as_slice());
+
+        let body = BodyReqBatch::from_cursor(&mut cursor).unwrap();
+        assert_eq!(body.batch_type, BatchType::Logged);
+        assert!(body.queries.is_empty());
+        assert_eq!(body.consistency, Consistency::Any);
+        assert_eq!(
+            body.query_flags,
+            QueryFlags::WITH_SERIAL_CONSISTENCY | QueryFlags::WITH_DEFAULT_TIMESTAMP
+        );
+        assert_eq!(body.serial_consistency, Some(Consistency::One));
+        assert_eq!(body.timestamp, Some(0x0102030405060708));
     }
 }

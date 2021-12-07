@@ -92,7 +92,7 @@ async fn batch_few_queries(session: &mut CurrentSession, query: &str) {
     let row_2 = RowStruct { key: 2001 };
 
     let batch = BatchQueryBuilder::new()
-        .add_query_prepared(prepared_query, row_1.into_query_values())
+        .add_query_prepared(&prepared_query, row_1.into_query_values())
         .add_query(query, row_2.into_query_values())
         .build()
         .expect("batch builder");

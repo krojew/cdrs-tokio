@@ -4,7 +4,7 @@ use std::io::Cursor;
 use crate::frame::*;
 use crate::types::CBytes;
 
-#[derive(Debug, Constructor)]
+#[derive(Debug, Constructor, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BodyReqAuthResponse {
     data: CBytes,
 }
@@ -16,7 +16,11 @@ impl Serialize for BodyReqAuthResponse {
     }
 }
 
-// Frame implementation related to BodyReqStartup
+impl FromCursor for BodyReqAuthResponse {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
+        CBytes::from_cursor(cursor).map(BodyReqAuthResponse::new)
+    }
+}
 
 impl Frame {
     /// Creates new frame of type `AuthResponse`.

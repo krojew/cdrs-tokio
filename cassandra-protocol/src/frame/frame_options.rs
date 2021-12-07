@@ -3,15 +3,20 @@ use std::io::Cursor;
 use crate::frame::*;
 
 /// The structure which represents a body of a frame of type `options`.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
 pub struct BodyReqOptions;
 
 impl Serialize for BodyReqOptions {
-    #[inline]
+    #[inline(always)]
     fn serialize(&self, _cursor: &mut Cursor<&mut Vec<u8>>) {}
 }
 
-// Frame implementation related to BodyReqStartup
+impl FromCursor for BodyReqOptions {
+    #[inline(always)]
+    fn from_cursor(_cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
+        Ok(BodyReqOptions)
+    }
+}
 
 impl Frame {
     /// Creates new frame of type `options`.

@@ -1,7 +1,7 @@
 #![warn(missing_docs)]
 //! The module contains Rust representation of Cassandra consistency levels.
 use derive_more::Display;
-use std::convert::From;
+use std::convert::{From, TryFrom, TryInto};
 use std::default::Default;
 use std::io;
 use std::str::FromStr;
@@ -71,9 +71,6 @@ pub enum Consistency {
     /// in an offline datacenter to prevent automatic connection
     /// to online nodes in other data centers if an offline node goes down.
     LocalOne,
-    /// This is an error scenario either the client code doesn't support it or server is sending
-    /// bad headers
-    Unknown,
 }
 
 impl Default for Consistency {
@@ -117,26 +114,28 @@ impl Serialize for Consistency {
     }
 }
 
-impl From<i16> for Consistency {
-    fn from(bytes: i16) -> Consistency {
-        match bytes {
-            0x0000 => Consistency::Any,
-            0x0001 => Consistency::One,
-            0x0002 => Consistency::Two,
-            0x0003 => Consistency::Three,
-            0x0004 => Consistency::Quorum,
-            0x0005 => Consistency::All,
-            0x0006 => Consistency::LocalQuorum,
-            0x0007 => Consistency::EachQuorum,
-            0x0008 => Consistency::Serial,
-            0x0009 => Consistency::LocalSerial,
-            0x000A => Consistency::LocalOne,
-            _ => Consistency::Unknown,
+impl TryFrom<CIntShort> for Consistency {
+    type Error = error::Error;
+
+    fn try_from(value: CIntShort) -> Result<Self, Self::Error> {
+        match value {
+            0x0000 => Ok(Consistency::Any),
+            0x0001 => Ok(Consistency::One),
+            0x0002 => Ok(Consistency::Two),
+            0x0003 => Ok(Consistency::Three),
+            0x0004 => Ok(Consistency::Quorum),
+            0x0005 => Ok(Consistency::All),
+            0x0006 => Ok(Consistency::LocalQuorum),
+            0x0007 => Ok(Consistency::EachQuorum),
+            0x0008 => Ok(Consistency::Serial),
+            0x0009 => Ok(Consistency::LocalSerial),
+            0x000A => Ok(Consistency::LocalOne),
+            _ => Err(format!("Unknown consistency: {}", value).into()),
         }
     }
 }
 
-impl From<Consistency> for i16 {
+impl From<Consistency> for CIntShort {
     fn from(value: Consistency) -> Self {
         match value {
             Consistency::Any => 0x0000,
@@ -150,8 +149,6 @@ impl From<Consistency> for i16 {
             Consistency::Serial => 0x0008,
             Consistency::LocalSerial => 0x0009,
             Consistency::LocalOne => 0x000A,
-            Consistency::Unknown => 0x0063,
-            // giving Unknown a value of 99
         }
     }
 }
@@ -160,13 +157,13 @@ impl FromBytes for Consistency {
     fn from_bytes(bytes: &[u8]) -> error::Result<Consistency> {
         try_i16_from_bytes(bytes)
             .map_err(Into::into)
-            .map(Into::into)
+            .and_then(TryInto::try_into)
     }
 }
 
 impl FromCursor for Consistency {
     fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<Consistency> {
-        CIntShort::from_cursor(cursor).map(Into::into)
+        CIntShort::from_cursor(cursor).and_then(TryInto::try_into)
     }
 }
 
@@ -200,23 +197,21 @@ mod tests {
         assert_eq!(Consistency::Serial.serialize_to_vec(), &[0, 8]);
         assert_eq!(Consistency::LocalSerial.serialize_to_vec(), &[0, 9]);
         assert_eq!(Consistency::LocalOne.serialize_to_vec(), &[0, 10]);
-        assert_eq!(Consistency::Unknown.serialize_to_vec(), &[0, 99]);
     }
 
     #[test]
     fn test_consistency_from() {
-        assert_eq!(Consistency::from(0), Consistency::Any);
-        assert_eq!(Consistency::from(1), Consistency::One);
-        assert_eq!(Consistency::from(2), Consistency::Two);
-        assert_eq!(Consistency::from(3), Consistency::Three);
-        assert_eq!(Consistency::from(4), Consistency::Quorum);
-        assert_eq!(Consistency::from(5), Consistency::All);
-        assert_eq!(Consistency::from(6), Consistency::LocalQuorum);
-        assert_eq!(Consistency::from(7), Consistency::EachQuorum);
-        assert_eq!(Consistency::from(8), Consistency::Serial);
-        assert_eq!(Consistency::from(9), Consistency::LocalSerial);
-        assert_eq!(Consistency::from(10), Consistency::LocalOne);
-        assert_eq!(Consistency::from(11), Consistency::Unknown);
+        assert_eq!(Consistency::try_from(0).unwrap(), Consistency::Any);
+        assert_eq!(Consistency::try_from(1).unwrap(), Consistency::One);
+        assert_eq!(Consistency::try_from(2).unwrap(), Consistency::Two);
+        assert_eq!(Consistency::try_from(3).unwrap(), Consistency::Three);
+        assert_eq!(Consistency::try_from(4).unwrap(), Consistency::Quorum);
+        assert_eq!(Consistency::try_from(5).unwrap(), Consistency::All);
+        assert_eq!(Consistency::try_from(6).unwrap(), Consistency::LocalQuorum);
+        assert_eq!(Consistency::try_from(7).unwrap(), Consistency::EachQuorum);
+        assert_eq!(Consistency::try_from(8).unwrap(), Consistency::Serial);
+        assert_eq!(Consistency::try_from(9).unwrap(), Consistency::LocalSerial);
+        assert_eq!(Consistency::try_from(10).unwrap(), Consistency::LocalOne);
     }
 
     #[test]
@@ -253,10 +248,7 @@ mod tests {
             Consistency::from_bytes(&[0, 10]).unwrap(),
             Consistency::LocalOne
         );
-        assert_eq!(
-            Consistency::from_bytes(&[0, 11]).unwrap(),
-            Consistency::Unknown
-        );
+        assert!(Consistency::from_bytes(&[0, 11]).is_err());
     }
 
     #[test]

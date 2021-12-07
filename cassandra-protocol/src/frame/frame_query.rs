@@ -6,7 +6,7 @@ use crate::types::*;
 use std::io::Cursor;
 
 /// Structure which represents body of Query request
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct BodyReqQuery {
     /// Query string.
     pub query: String,

@@ -7,7 +7,7 @@ use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, SHOR
 
 use super::Serialize;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct BodyResSupported {
     pub data: HashMap<String, Vec<String>>,
 }

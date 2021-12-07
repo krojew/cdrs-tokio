@@ -53,10 +53,11 @@ impl Serialize for Value {
 impl FromCursor for Value {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> Result<Value, Error> {
         let value_size = {
-            let mut buff = [0; 4];
+            let mut buff = [0; INT_LEN];
             cursor.read_exact(&mut buff)?;
-            i32::from_be_bytes(buff)
+            CInt::from_be_bytes(buff)
         };
+
         if value_size > 0 {
             Ok(Value::Some(cursor_next_value(cursor, value_size as usize)?))
         } else if value_size == -1 {

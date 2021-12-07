@@ -6,8 +6,8 @@ use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
-use crate::types::CBytes;
 use crate::types::{from_cursor_str, value::Value, CIntShort};
+use crate::types::{CBytes, CLong};
 use crate::Error;
 
 /// Parameters of Query for query operation.
@@ -26,7 +26,7 @@ pub struct QueryParams {
     /// Serial `Consistency`.
     pub serial_consistency: Option<Consistency>,
     /// Timestamp.
-    pub timestamp: Option<i64>,
+    pub timestamp: Option<CLong>,
 }
 
 impl QueryParams {

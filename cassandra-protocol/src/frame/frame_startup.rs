@@ -8,23 +8,24 @@ const CQL_VERSION: &str = "CQL_VERSION";
 const CQL_VERSION_VAL: &str = "3.0.0";
 const COMPRESSION: &str = "COMPRESSION";
 
-#[derive(Debug)]
-pub struct BodyReqStartup<'a> {
-    pub map: HashMap<&'static str, &'a str>,
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+pub struct BodyReqStartup {
+    pub map: HashMap<String, String>,
 }
 
-impl<'a> BodyReqStartup<'a> {
-    pub fn new(compression: Option<&str>) -> BodyReqStartup {
+impl BodyReqStartup {
+    pub fn new(compression: Option<String>) -> BodyReqStartup {
         let mut map = HashMap::new();
-        map.insert(CQL_VERSION, CQL_VERSION_VAL);
+        map.insert(CQL_VERSION.into(), CQL_VERSION_VAL.into());
         if let Some(c) = compression {
-            map.insert(COMPRESSION, c);
+            map.insert(COMPRESSION.into(), c);
         }
+
         BodyReqStartup { map }
     }
 }
 
-impl<'a> Serialize for BodyReqStartup<'a> {
+impl Serialize for BodyReqStartup {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
         let num = self.map.len() as CIntShort;
         num.serialize(cursor);
@@ -36,11 +37,27 @@ impl<'a> Serialize for BodyReqStartup<'a> {
     }
 }
 
+impl FromCursor for BodyReqStartup {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
+        let num = CInt::from_cursor(cursor)?;
+
+        let mut map = HashMap::with_capacity(num as usize);
+        for _ in 0..num {
+            map.insert(
+                from_cursor_str(cursor)?.to_string(),
+                from_cursor_str(cursor)?.to_string(),
+            );
+        }
+
+        Ok(BodyReqStartup { map })
+    }
+}
+
 // Frame implementation related to BodyReqStartup
 
 impl Frame {
     /// Creates new frame of type `startup`.
-    pub fn new_req_startup(compression: Option<&str>, version: Version) -> Frame {
+    pub fn new_req_startup(compression: Option<String>, version: Version) -> Frame {
         let direction = Direction::Request;
         let opcode = Opcode::Startup;
         let body = BodyReqStartup::new(compression);
@@ -65,22 +82,31 @@ mod test {
     #[test]
     fn new_body_req_startup_some_compression() {
         let compression = "test_compression";
-        let body = BodyReqStartup::new(Some(compression));
-        assert_eq!(body.map.get("CQL_VERSION"), Some(&"3.0.0"));
-        assert_eq!(body.map.get("COMPRESSION"), Some(&compression));
+        let body = BodyReqStartup::new(Some(compression.into()));
+        assert_eq!(
+            body.map.get("CQL_VERSION"),
+            Some("3.0.0".to_string()).as_ref()
+        );
+        assert_eq!(
+            body.map.get("COMPRESSION"),
+            Some(compression.to_string()).as_ref()
+        );
         assert_eq!(body.map.len(), 2);
     }
 
     #[test]
     fn new_body_req_startup_none_compression() {
         let body = BodyReqStartup::new(None);
-        assert_eq!(body.map.get("CQL_VERSION"), Some(&"3.0.0"));
+        assert_eq!(
+            body.map.get("CQL_VERSION"),
+            Some("3.0.0".to_string()).as_ref()
+        );
         assert_eq!(body.map.len(), 1);
     }
 
     #[test]
     fn new_req_startup() {
-        let compression = Some("test_compression");
+        let compression = Some("test_compression".to_string());
         let frame = Frame::new_req_startup(compression, Version::V4);
         assert_eq!(frame.version, Version::V4);
         assert_eq!(frame.flags, Flags::empty());

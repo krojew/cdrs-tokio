@@ -53,7 +53,7 @@ pub async fn startup<
     compression: Compression,
     version: Version,
 ) -> Result<()> {
-    let startup_frame = Frame::new_req_startup(compression.as_str(), version);
+    let startup_frame = Frame::new_req_startup(compression.as_str().map(String::from), version);
     let start_response = transport.write_frame(&startup_frame).await?;
 
     if start_response.opcode == Opcode::Ready {
