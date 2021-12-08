@@ -31,7 +31,7 @@ tokio-rustls = { version = "0.23", optional = true }
 tracing = "0.1"
 uuid = "0.8"
 webpki = { version = "0.22", optional = true }
-cassandra-protocol = { path = "../cassandra-protocol", version = "1.0.0-beta.2" }
+cassandra-protocol = { path = "../cassandra-protocol", version = "1.0.0-beta.3" }
 
 [dependencies.rustls]
 version = "0.20"
