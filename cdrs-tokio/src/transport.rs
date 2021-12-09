@@ -248,9 +248,9 @@ impl AsyncTransport {
 
         // startup message is never compressed
         let data = if frame.opcode != Opcode::Startup {
-            frame.encode_with(0, self.compression)?
+            frame.encode_with(self.compression)?
         } else {
-            frame.encode_with(0, Compression::None)?
+            frame.encode_with(Compression::None)?
         };
 
         self.write_sender
@@ -313,8 +313,8 @@ impl AsyncTransport {
         loop {
             let result = parse_frame(&mut read_half, compression).await;
             match result {
-                Ok((stream_id, frame)) => {
-                    if stream_id >= 0 {
+                Ok(frame) => {
+                    if frame.stream_id >= 0 {
                         // in case we get a SetKeyspace result, we need to store current keyspace
                         // checks are done manually for speed
                         if frame.opcode == Opcode::Result {
@@ -333,8 +333,8 @@ impl AsyncTransport {
                         }
 
                         // normal response to query
-                        response_handler_map.send_response(stream_id, Ok(frame))?;
-                    } else if stream_id == EVENT_STREAM_ID {
+                        response_handler_map.send_response(frame.stream_id, Ok(frame))?;
+                    } else if frame.stream_id == EVENT_STREAM_ID {
                         // server event
                         if let Some(event_handler) = &event_handler {
                             let _ = event_handler.send(frame).await;

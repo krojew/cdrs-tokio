@@ -5,9 +5,7 @@ use tokio::io::AsyncReadExt;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::frame_response::ResponseBody;
-use cassandra_protocol::frame::{
-    Direction, Flags, Frame, Opcode, StreamId, Version, LENGTH_LEN, STREAM_LEN,
-};
+use cassandra_protocol::frame::{Direction, Flags, Frame, Opcode, Version, LENGTH_LEN, STREAM_LEN};
 use cassandra_protocol::types::data_serialization_types::decode_timeuuid;
 use cassandra_protocol::types::{
     from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN,
@@ -16,7 +14,7 @@ use cassandra_protocol::types::{
 async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
     compressor: Compression,
-) -> error::Result<(StreamId, Frame)> {
+) -> error::Result<Frame> {
     let mut version_bytes = [0; Version::BYTE_LENGTH];
     let mut flag_bytes = [0; Flags::BYTE_LENGTH];
     let mut opcode_bytes = [0; Opcode::BYTE_LENGTH];
@@ -76,31 +74,29 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
         direction,
         flags,
         opcode,
+        stream_id,
         body,
         tracing_id,
         warnings,
     };
 
-    Ok((stream_id, frame))
+    Ok(frame)
 }
 
 pub async fn parse_frame<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
     compressor: Compression,
-) -> error::Result<(StreamId, Frame)> {
-    let (stream_id, frame) = parse_raw_frame(cursor, compressor).await?;
-    convert_frame_into_result(stream_id, frame)
+) -> error::Result<Frame> {
+    let frame = parse_raw_frame(cursor, compressor).await?;
+    convert_frame_into_result(frame)
 }
 
-fn convert_frame_into_result(
-    stream_id: StreamId,
-    frame: Frame,
-) -> error::Result<(StreamId, Frame)> {
+fn convert_frame_into_result(frame: Frame) -> error::Result<Frame> {
     match frame.opcode {
         Opcode::Error => frame.response_body().and_then(|err| match err {
             ResponseBody::Error(err) => Err(error::Error::Server(err)),
             _ => unreachable!(),
         }),
-        _ => Ok((stream_id, frame)),
+        _ => Ok(frame),
     }
 }

@@ -67,6 +67,7 @@ impl Frame {
             direction,
             flags,
             opcode,
+            0,
             body.serialize_to_vec(),
             None,
             vec![],

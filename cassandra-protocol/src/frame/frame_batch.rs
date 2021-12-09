@@ -1,3 +1,4 @@
+use derive_more::Constructor;
 use std::convert::TryInto;
 use std::io::{Cursor, Read};
 
@@ -215,6 +216,7 @@ impl Frame {
             direction,
             flags,
             opcode,
+            0,
             query.serialize_to_vec(),
             None,
             vec![],

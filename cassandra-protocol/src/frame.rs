@@ -52,19 +52,18 @@ pub type StreamId = i16;
 pub struct ParsedFrame {
     /// How many bytes from the buffer have been read.
     pub frame_len: usize,
-    /// Stream id associated with given frame
-    pub stream_id: StreamId,
     /// The parsed frame.
     pub frame: Frame,
 }
 
-#[derive(Derivative, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Constructor)]
+#[derive(Derivative, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 #[derivative(Debug)]
 pub struct Frame {
     pub version: Version,
     pub direction: Direction,
     pub flags: Flags,
     pub opcode: Opcode,
+    pub stream_id: StreamId,
     #[derivative(Debug = "ignore")]
     pub body: Vec<u8>,
     pub tracing_id: Option<Uuid>,
@@ -72,6 +71,30 @@ pub struct Frame {
 }
 
 impl Frame {
+    #[inline]
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        version: Version,
+        direction: Direction,
+        flags: Flags,
+        opcode: Opcode,
+        stream_id: StreamId,
+        body: Vec<u8>,
+        tracing_id: Option<Uuid>,
+        warnings: Vec<String>,
+    ) -> Self {
+        Frame {
+            version,
+            direction,
+            flags,
+            opcode,
+            stream_id,
+            body,
+            tracing_id,
+            warnings,
+        }
+    }
+
     #[inline]
     pub fn request_body(&self) -> error::Result<RequestBody> {
         RequestBody::try_from(self.body.as_slice(), self.opcode)
@@ -156,12 +179,12 @@ impl Frame {
 
         Ok(ParsedFrame::new(
             frame_len,
-            stream_id,
             Frame {
                 version,
                 direction,
                 flags,
                 opcode,
+                stream_id,
                 body,
                 tracing_id,
                 warnings,
@@ -169,11 +192,7 @@ impl Frame {
         ))
     }
 
-    pub fn encode_with(
-        &self,
-        stream_id: StreamId,
-        compressor: Compression,
-    ) -> error::Result<Vec<u8>> {
+    pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
         let combined_version_byte = u8::from(self.version) | u8::from(self.direction);
         let flag_byte = self.flags.bits();
         let opcode_byte = u8::from(self.opcode);
@@ -182,7 +201,7 @@ impl Frame {
 
         v.push(combined_version_byte);
         v.push(flag_byte);
-        v.extend_from_slice(&stream_id.to_be_bytes());
+        v.extend_from_slice(&self.stream_id.to_be_bytes());
         v.push(opcode_byte);
 
         if compressor.is_compressed() {
@@ -458,7 +477,7 @@ mod tests {
             "encoded body did not match frames body"
         );
 
-        let encoded_frame = frame.encode_with(0, Compression::None).unwrap();
+        let encoded_frame = frame.encode_with(Compression::None).unwrap();
         assert_eq!(
             raw_frame, &encoded_frame,
             "encoded frame did not match expected raw frame"
@@ -482,7 +501,7 @@ mod tests {
             "encoded body did not match frames body"
         );
 
-        let encoded_frame = frame.encode_with(0, Compression::None).unwrap();
+        let encoded_frame = frame.encode_with(Compression::None).unwrap();
         assert_eq!(
             raw_frame, &encoded_frame,
             "encoded frame did not match expected raw frame"
@@ -516,6 +535,7 @@ mod tests {
             direction: Direction::Request,
             flags: Flags::empty(),
             opcode: Opcode::Ready,
+            stream_id: 0,
             body: vec![],
             tracing_id: None,
             warnings: vec![],
@@ -534,6 +554,7 @@ mod tests {
             direction: Direction::Request,
             flags: Flags::empty(),
             opcode: Opcode::Query,
+            stream_id: 0,
             body: vec![0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64],
             tracing_id: None,
             warnings: vec![],
@@ -564,6 +585,7 @@ mod tests {
             direction: Direction::Request,
             flags: Flags::empty(),
             opcode: Opcode::Query,
+            stream_id: 0,
             body: vec![
                 0, 0, 0, 10, 115, 111, 109, 101, 32, 113, 117, 101, 114, 121, 0, 8, 1, 0, 2, 0, 0,
                 0, 3, 1, 2, 3, 255, 255, 255, 255,
@@ -596,6 +618,7 @@ mod tests {
             direction: Direction::Request,
             flags: Flags::empty(),
             opcode: Opcode::Query,
+            stream_id: 0,
             body: vec![],
             tracing_id: None,
             warnings: vec![],

@@ -42,6 +42,7 @@ impl Frame {
             direction,
             Flags::empty(),
             opcode,
+            0,
             register_body.serialize_to_vec(),
             None,
             vec![],
