@@ -5,9 +5,13 @@ use std::io::{Cursor, Read};
 use std::net::{IpAddr, SocketAddr};
 
 use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
+use crate::frame::frame_result::{ColType, ColTypeOption, ColTypeOptionValue};
 use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
-use crate::types::data_serialization_types::decode_inet;
+use crate::types::data_serialization_types::*;
+use crate::types::list::List;
+
+use self::cassandra_type::CassandraType;
 
 pub const SHORT_LEN: usize = 2;
 pub const INT_LEN: usize = 4;
@@ -19,6 +23,7 @@ const NULL_SHORT_LEN: CIntShort = -1;
 
 #[macro_use]
 pub mod blob;
+pub mod cassandra_type;
 pub mod data_serialization_types;
 pub mod decimal;
 pub mod from_cdrs;
@@ -41,6 +46,84 @@ pub mod prelude {
     pub use crate::types::udt::Udt;
     pub use crate::types::value::{Bytes, Value};
     pub use crate::types::AsRustType;
+}
+
+pub trait AsCassandraType {
+    fn as_cassandra_type(&self) -> CDRSResult<Option<CassandraType>>;
+
+    fn get_wrapper_fn(&self, col_type: ColTypeOption) -> Box<dyn Fn(&CBytes) -> CassandraType> {
+        match col_type.id {
+            ColType::Blob => Box::new(move |bytes: &CBytes| {
+                CassandraType::Blob(as_rust_type!(col_type, bytes, Blob).unwrap().unwrap())
+            }),
+
+            ColType::Ascii => Box::new(move |bytes: &CBytes| {
+                CassandraType::Ascii(as_rust_type!(col_type, bytes, String).unwrap().unwrap())
+            }),
+            ColType::Int => Box::new(move |bytes: &CBytes| {
+                CassandraType::Int(as_rust_type!(col_type, bytes, i32).unwrap().unwrap())
+            }),
+            ColType::List => Box::new(move |bytes| {
+                let list = as_rust_type!(col_type, bytes, List).unwrap().unwrap();
+
+                list.as_cassandra_type().unwrap().unwrap()
+            }),
+            ColType::Custom => todo!(),
+            ColType::Bigint => Box::new(move |bytes| {
+                CassandraType::Bigint(as_rust_type!(col_type, bytes, BigInt).unwrap().unwrap())
+            }),
+            ColType::Boolean => Box::new(move |bytes| {
+                CassandraType::Boolean(as_rust_type!(col_type, bytes, bool).unwrap().unwrap())
+            }),
+            ColType::Counter => Box::new(move |bytes| {
+                CassandraType::Counter(as_rust_type!(col_type, bytes, i64).unwrap().unwrap())
+            }),
+            ColType::Decimal => Box::new(move |bytes| {
+                CassandraType::Decimal(as_rust_type!(col_type, bytes, Decimal).unwrap().unwrap())
+            }),
+            ColType::Double => Box::new(move |bytes| {
+                CassandraType::Double(as_rust_type!(col_type, bytes, f64).unwrap().unwrap())
+            }),
+            ColType::Float => Box::new(move |bytes| {
+                CassandraType::Float(as_rust_type!(col_type, bytes, f32).unwrap().unwrap())
+            }),
+            ColType::Timestamp => Box::new(move |bytes| {
+                CassandraType::Timestamp(as_rust_type!(col_type, bytes, i64).unwrap().unwrap())
+            }),
+            ColType::Uuid => Box::new(move |bytes| {
+                CassandraType::Uuid(as_rust_type!(col_type, bytes, Uuid).unwrap().unwrap())
+            }),
+            ColType::Varchar => Box::new(move |bytes| {
+                CassandraType::Varchar(as_rust_type!(col_type, bytes, String).unwrap().unwrap())
+            }),
+            ColType::Varint => Box::new(move |bytes| {
+                CassandraType::Varint(as_rust_type!(col_type, bytes, BigInt).unwrap().unwrap())
+            }),
+            ColType::Timeuuid => Box::new(move |bytes| {
+                CassandraType::Timeuuid(as_rust_type!(col_type, bytes, Uuid).unwrap().unwrap())
+            }),
+            ColType::Inet => Box::new(move |bytes| {
+                CassandraType::Inet(as_rust_type!(col_type, bytes, IpAddr).unwrap().unwrap())
+            }),
+            ColType::Date => Box::new(move |bytes| {
+                CassandraType::Date(as_rust_type!(col_type, bytes, i32).unwrap().unwrap())
+            }),
+            ColType::Time => Box::new(move |bytes| {
+                CassandraType::Time(as_rust_type!(col_type, bytes, i64).unwrap().unwrap())
+            }),
+            ColType::Smallint => Box::new(move |bytes| {
+                CassandraType::Smallint(as_rust_type!(col_type, bytes, i16).unwrap().unwrap())
+            }),
+            ColType::Tinyint => Box::new(move |bytes| {
+                CassandraType::Tinyint(as_rust_type!(col_type, bytes, i8).unwrap().unwrap())
+            }),
+            ColType::Map => todo!(),
+            ColType::Set => todo!(),
+            ColType::Udt => todo!(),
+            ColType::Tuple => todo!(),
+            ColType::Null => todo!(),
+        }
+    }
 }
 
 /// Should be used to represent a single column as a Rust value.

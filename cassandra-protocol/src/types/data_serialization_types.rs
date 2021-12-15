@@ -242,7 +242,6 @@ pub fn decode_tuple(bytes: &[u8], l: usize) -> Result<Vec<CBytes>, io::Error> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::super::error::*;
     use super::super::super::frame::frame_result::*;
     use super::*;
     use crate::types::{to_float, to_float_big};

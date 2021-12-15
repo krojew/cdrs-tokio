@@ -245,3 +245,5 @@ map_as_rust!({ Tuple }, { Udt });
 map_as_rust!({ Tuple }, { Tuple });
 map_as_rust!({ Tuple }, { Decimal });
 map_as_rust!({ Tuple }, { BigInt });
+
+map_as_cassandra_type!();

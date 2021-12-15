@@ -7,6 +7,7 @@ use std::net::IpAddr;
 use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 
 use chrono::prelude::*;
+use num::BigInt;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -281,6 +282,12 @@ impl<T: Into<Bytes>> From<Vec<T>> for Bytes {
         }
 
         Bytes(bytes)
+    }
+}
+
+impl From<BigInt> for Bytes {
+    fn from(value: BigInt) -> Self {
+        Self(value.serialize_to_vec())
     }
 }
 

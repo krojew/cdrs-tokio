@@ -55,6 +55,70 @@ macro_rules! list_as_rust {
     );
 }
 
+macro_rules! list_as_cassandra_type {
+    () => {
+        impl crate::types::AsCassandraType for List {
+            fn as_cassandra_type(
+                &self,
+            ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::error::Error;
+                use crate::types::cassandra_type::CassandraType;
+                use std::ops::Deref;
+
+                match self.metadata.value {
+                    Some(ColTypeOptionValue::CList(ref type_option))
+                    | Some(ColTypeOptionValue::CSet(ref type_option)) => {
+                        let type_option_ref = type_option.deref().clone();
+                        let wrapper = self.get_wrapper_fn(type_option_ref);
+                        let convert = self.map(|bytes| wrapper(bytes));
+                        Ok(Some(CassandraType::List(convert)))
+                    }
+                    _ => Err(Error::General(format!(
+                        "Invalid conversion. \
+                            Cannot convert {:?} into List (valid types: List, Set).",
+                        self.metadata.value
+                    ))),
+                }
+            }
+        }
+    };
+}
+
+macro_rules! map_as_cassandra_type {
+    () => {
+        impl crate::types::AsCassandraType for Map {
+            fn as_cassandra_type(
+                &self,
+            ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::types::cassandra_type::CassandraType;
+                use std::ops::Deref;
+
+                if let Some(ColTypeOptionValue::CMap(
+                    ref key_col_type_option,
+                    ref value_col_type_option,
+                )) = self.metadata.value
+                {
+                    let key_col_type_option = key_col_type_option.deref().clone();
+                    let value_col_type_option = value_col_type_option.deref().clone();
+
+                    let key_wrapper = self.get_wrapper_fn(key_col_type_option);
+                    let value_wrapper = self.get_wrapper_fn(value_col_type_option);
+
+                    let map = self
+                        .data
+                        .iter()
+                        .map(|(key, value)| (key_wrapper(key), value_wrapper(value)))
+                        .collect::<Vec<(CassandraType, CassandraType)>>();
+
+                    return Ok(Some(CassandraType::Map(map)));
+                } else {
+                    panic!("not  amap")
+                }
+            }
+        }
+    };
+}
+
 macro_rules! map_as_rust {
     ({ $($key_type:tt)+ }, { $($val_type:tt)+ }) => (
         impl AsRustType<HashMap<$($key_type)+, $($val_type)+>> for Map {
@@ -153,17 +217,18 @@ macro_rules! as_res_opt {
 /// plus the matching Rust type.
 macro_rules! as_rust_type {
     ($data_type_option:ident, $data_value:ident, Blob) => {
+
         match $data_type_option.id {
             ColType::Blob => as_res_opt!($data_value, decode_blob),
             ColType::Custom => {
                 let unmarshal = || {
-                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                    if let Some(crate::frame::frame_result::ColTypeOptionValue::CString(value)) = &$data_type_option.value {
                         if value.as_str() == "org.apache.cassandra.db.marshal.BytesType" {
                             return as_res_opt!($data_value, decode_blob);
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into Vec<u8> (valid types: org.apache.cassandra.db.marshal.BytesType).",
                         $data_type_option
@@ -172,7 +237,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into Vec<u8> (valid types: Blob).",
                 $data_type_option.id
@@ -188,7 +253,7 @@ macro_rules! as_rust_type {
             // it's not mentioned in
             // https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L582
             // ColType::XXX => decode_text($data_value)?
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into String (valid types: Custom, Ascii, Varchar).",
                 $data_type_option.id
@@ -206,7 +271,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into bool (valid types: org.apache.cassandra.db.marshal.BooleanType).",
                         $data_type_option
@@ -215,7 +280,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into bool (valid types: Boolean).",
                 $data_type_option.id
@@ -239,7 +304,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into i64 (valid types: org.apache.cassandra.db.marshal.{{LongType|IntegerType|CounterColumnType|TimestampType|TimeType}}).",
                         $data_type_option
@@ -248,7 +313,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
                  Counter).",
@@ -262,7 +327,7 @@ macro_rules! as_rust_type {
             ColType::Date => as_res_opt!($data_value, decode_date),
             ColType::Custom => {
                 let unmarshal = || {
-                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                    if let Some(crate::frame::frame_result::ColTypeOptionValue::CString(value)) = &$data_type_option.value {
                         match value.as_str() {
                             "org.apache.cassandra.db.marshal.Int32Type" => return as_res_opt!($data_value, decode_int),
                             "org.apache.cassandra.db.marshal.SimpleDateType" => return as_res_opt!($data_value, decode_date),
@@ -270,7 +335,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into i32 (valid types: org.apache.cassandra.db.marshal.Int32Type).",
                         $data_type_option
@@ -279,7 +344,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i32 (valid types: Int, Date).",
                 $data_type_option.id
@@ -297,7 +362,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into i16 (valid types: org.apache.cassandra.db.marshal.ShortType).",
                         $data_type_option
@@ -306,7 +371,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i16 (valid types: Smallint).",
                 $data_type_option.id
@@ -324,7 +389,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into i8 (valid types: org.apache.cassandra.db.marshal.ByteType).",
                         $data_type_option
@@ -333,7 +398,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i8 (valid types: Tinyint).",
                 $data_type_option.id
@@ -483,7 +548,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into f64 (valid types: org.apache.cassandra.db.marshal.DoubleType).",
                         $data_type_option
@@ -492,7 +557,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into f64 (valid types: Double).",
                 $data_type_option.id
@@ -510,7 +575,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into f32 (valid types: org.apache.cassandra.db.marshal.FloatType).",
                         $data_type_option
@@ -519,7 +584,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into f32 (valid types: Float).",
                 $data_type_option.id
@@ -537,7 +602,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into IpAddr (valid types: org.apache.cassandra.db.marshal.InetAddressType).",
                         $data_type_option
@@ -546,7 +611,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into IpAddr (valid types: Inet).",
                 $data_type_option.id
@@ -565,7 +630,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into Uuid (valid types: org.apache.cassandra.db.marshal.{{UUIDType|TimeUUIDType}}).",
                         $data_type_option
@@ -574,7 +639,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into Uuid (valid types: Uuid, Timeuuid).",
                 $data_type_option.id
@@ -589,7 +654,7 @@ macro_rules! as_rust_type {
                     .map_err(Into::into),
                 None => Ok(None),
             },
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into List (valid types: List, Set).",
                 $data_type_option.id
@@ -673,7 +738,7 @@ macro_rules! as_rust_type {
                 Some(ref bytes) => decode_decimal(bytes).map(Some).map_err(Into::into),
                 None => Ok(None),
             },
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into Decimal (valid types: Decimal).",
                 $data_type_option.id
@@ -730,7 +795,7 @@ macro_rules! as_rust_type {
                         }
                     }
 
-                    Err(Error::General(format!(
+                    Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
                          Cannot convert marshaled type {:?} into BigInt (valid types: org.apache.cassandra.db.marshal.IntegerType).",
                         $data_type_option
@@ -739,7 +804,7 @@ macro_rules! as_rust_type {
 
                 unmarshal()
             }
-            _ => Err(Error::General(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
                  Counter).",
