@@ -81,3 +81,5 @@ into_rust_by_index!(Tuple, Decimal);
 into_rust_by_index!(Tuple, NaiveDateTime);
 into_rust_by_index!(Tuple, DateTime<Utc>);
 into_rust_by_index!(Tuple, BigInt);
+
+tuple_as_cassandra_type!();

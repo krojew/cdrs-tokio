@@ -119,6 +119,29 @@ macro_rules! map_as_cassandra_type {
     };
 }
 
+macro_rules! tuple_as_cassandra_type {
+    () => {
+        impl crate::types::AsCassandraType for Tuple {
+            fn as_cassandra_type(
+                &self,
+            ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::types::cassandra_type::CassandraType;
+
+                let values = self
+                    .data
+                    .iter()
+                    .map(|(col_type, bytes)| {
+                        let wrapper = self.get_wrapper_fn(col_type.clone());
+                        wrapper(&bytes)
+                    })
+                    .collect();
+
+                Ok(Some(CassandraType::Tuple(values)))
+            }
+        }
+    };
+}
+
 macro_rules! map_as_rust {
     ({ $($key_type:tt)+ }, { $($val_type:tt)+ }) => (
         impl AsRustType<HashMap<$($key_type)+, $($val_type)+>> for Map {
