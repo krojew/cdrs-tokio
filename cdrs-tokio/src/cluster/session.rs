@@ -181,7 +181,7 @@ impl<
         let keyspace = prepared
             .keyspace
             .as_deref()
-            .or_else(|| parameters.keyspace.as_deref());
+            .or(parameters.keyspace.as_deref());
 
         let routing_key = parameters
             .query_params
@@ -514,7 +514,7 @@ impl<
 
         let speculative_execution_policy = speculative_execution_policy
             .map(|speculative_execution_policy| speculative_execution_policy.as_ref())
-            .or_else(|| self.speculative_execution_policy.as_deref());
+            .or(self.speculative_execution_policy.as_deref());
 
         let retry_policy = retry_policy
             .map(|retry_policy| retry_policy.as_ref())
