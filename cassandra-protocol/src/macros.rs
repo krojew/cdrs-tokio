@@ -142,6 +142,29 @@ macro_rules! tuple_as_cassandra_type {
     };
 }
 
+macro_rules! udt_as_cassandra_type {
+    () => {
+        impl crate::types::AsCassandraType for Udt {
+            fn as_cassandra_type(
+                &self,
+            ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::types::cassandra_type::CassandraType;
+                use std::collections::HashMap;
+
+                let mut map = HashMap::new();
+
+                self.data.iter().for_each(|(key, (col_type, bytes))| {
+                    let wrapper = self.get_wrapper_fn(col_type.clone());
+                    let value = wrapper(&bytes);
+                    map.insert(key.clone(), value);
+                });
+
+                Ok(Some(CassandraType::Udt(map)))
+            }
+        }
+    };
+}
+
 macro_rules! map_as_rust {
     ({ $($key_type:tt)+ }, { $($val_type:tt)+ }) => (
         impl AsRustType<HashMap<$($key_type)+, $($val_type)+>> for Map {
