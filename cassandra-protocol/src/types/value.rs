@@ -1,5 +1,5 @@
 use std::cmp::Eq;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::Into;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -297,6 +297,32 @@ where
     V: Into<Bytes>,
 {
     fn from(map: HashMap<K, V>) -> Bytes {
+        let mut bytes = Vec::with_capacity(INT_LEN);
+        let len = map.len() as CInt;
+
+        bytes.extend_from_slice(&len.to_be_bytes());
+
+        let mut cursor = Cursor::new(&mut bytes);
+        cursor.set_position(INT_LEN as u64);
+
+        for (k, v) in map {
+            let key_bytes: Bytes = k.into();
+            let val_bytes: Bytes = v.into();
+
+            Value::new(key_bytes).serialize(&mut cursor);
+            Value::new(val_bytes).serialize(&mut cursor);
+        }
+
+        Bytes(bytes)
+    }
+}
+
+impl<K, V> From<BTreeMap<K, V>> for Bytes
+where
+    K: Into<Bytes> + Hash + Eq,
+    V: Into<Bytes>,
+{
+    fn from(map: BTreeMap<K, V>) -> Bytes {
         let mut bytes = Vec::with_capacity(INT_LEN);
         let len = map.len() as CInt;
 
