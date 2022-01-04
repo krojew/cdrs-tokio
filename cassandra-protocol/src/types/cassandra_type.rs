@@ -4,7 +4,7 @@ use std::net::IpAddr;
 
 use super::prelude::{Blob, Decimal};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CassandraType {
     Ascii(String),
     Bigint(BigInt),
