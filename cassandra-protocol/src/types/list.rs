@@ -50,3 +50,5 @@ list_as_rust!(Udt);
 list_as_rust!(Tuple);
 list_as_rust!(Decimal);
 list_as_rust!(BigInt);
+
+list_as_cassandra_type!();

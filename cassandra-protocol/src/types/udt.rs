@@ -60,3 +60,5 @@ into_rust_by_name!(Udt, NonZeroI64);
 into_rust_by_name!(Udt, NaiveDateTime);
 into_rust_by_name!(Udt, DateTime<Utc>);
 into_rust_by_name!(Udt, BigInt);
+
+udt_as_cassandra_type!();
