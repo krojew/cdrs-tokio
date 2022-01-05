@@ -5,13 +5,12 @@ use std::io::{Cursor, Read};
 use std::net::{IpAddr, SocketAddr};
 
 use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
-use crate::frame::frame_result::{ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::frame_result::{ColType, ColTypeOption};
 use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
 use crate::types::data_serialization_types::*;
-use crate::types::list::List;
 
-use self::cassandra_type::CassandraType;
+use self::cassandra_type::{wrappers, CassandraType};
 
 pub const SHORT_LEN: usize = 2;
 pub const INT_LEN: usize = 4;
@@ -51,169 +50,31 @@ pub mod prelude {
 pub trait AsCassandraType {
     fn as_cassandra_type(&self) -> CDRSResult<Option<CassandraType>>;
 
-    fn get_wrapper_fn(&self, col_type: ColTypeOption) -> Box<dyn Fn(&CBytes) -> CassandraType> {
+    fn get_wrapper_fn(
+        col_type: &ColTypeOption,
+    ) -> &'static dyn Fn(&CBytes, &ColTypeOption) -> CassandraType {
         match col_type.id {
-            ColType::Blob => Box::new(move |bytes: &CBytes| {
-                let t = as_rust_type!(col_type, bytes, Blob).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Blob(t),
-                    None => CassandraType::Null,
-                }
-            }),
-
-            ColType::Ascii => Box::new(move |bytes: &CBytes| {
-                let t = as_rust_type!(col_type, bytes, String).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Ascii(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Int => Box::new(move |bytes: &CBytes| {
-                let t = as_rust_type!(col_type, bytes, i32).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Int(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::List => Box::new(move |bytes| {
-                let list = as_rust_type!(col_type, bytes, List).unwrap();
-                match list {
-                    Some(t) => t.as_cassandra_type().unwrap().unwrap(),
-                    None => CassandraType::Null,
-                }
-            }),
+            ColType::Blob => &wrappers::blob,
+            ColType::Ascii => &wrappers::ascii,
+            ColType::Int => &wrappers::int,
+            ColType::List => &wrappers::list,
             ColType::Custom => todo!(),
-            ColType::Bigint => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, BigInt).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Bigint(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Boolean => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, bool).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Boolean(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Counter => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, i64).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Counter(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Decimal => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, Decimal).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Decimal(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Double => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, f64).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Double(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Float => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, f32).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Float(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Timestamp => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, i64).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Timestamp(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Uuid => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, Uuid).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Uuid(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Varchar => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, String).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Varchar(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Varint => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, BigInt).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Varint(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Timeuuid => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, Uuid).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Timeuuid(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Inet => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, IpAddr).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Inet(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Date => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, i32).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Date(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Time => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, i64).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Time(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Smallint => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, i16).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Smallint(t),
-                    None => CassandraType::Null,
-                }
-            }),
-            ColType::Tinyint => Box::new(move |bytes| {
-                let t = as_rust_type!(col_type, bytes, i8).unwrap();
-
-                match t {
-                    Some(t) => CassandraType::Tinyint(t),
-                    None => CassandraType::Null,
-                }
-            }),
+            ColType::Bigint => &wrappers::bigint,
+            ColType::Boolean => &wrappers::bool,
+            ColType::Counter => &wrappers::counter,
+            ColType::Decimal => &wrappers::decimal,
+            ColType::Double => &wrappers::double,
+            ColType::Float => &wrappers::float,
+            ColType::Timestamp => &wrappers::timestamp,
+            ColType::Uuid => &wrappers::uuid,
+            ColType::Varchar => &wrappers::varchar,
+            ColType::Varint => &wrappers::varint,
+            ColType::Timeuuid => &wrappers::timeuuid,
+            ColType::Inet => &wrappers::inet,
+            ColType::Date => &wrappers::date,
+            ColType::Time => &wrappers::time,
+            ColType::Smallint => &wrappers::smallint,
+            ColType::Tinyint => &wrappers::tinyint,
             ColType::Map => todo!(),
             ColType::Set => todo!(),
             ColType::Udt => todo!(),
