@@ -7,7 +7,7 @@ use super::prelude::{Blob, Decimal};
 #[derive(Debug, PartialEq, Clone)]
 pub enum CassandraType {
     Ascii(String),
-    Bigint(BigInt),
+    Bigint(i64),
     Blob(Blob),
     Boolean(bool),
     Counter(i64),
@@ -77,7 +77,7 @@ pub mod wrappers {
     }
 
     pub fn bigint(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, BigInt).unwrap();
+        let t = as_rust_type!(col_type, bytes, i64).unwrap();
 
         match t {
             Some(t) => CassandraType::Bigint(t),
