@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 
 use super::prelude::{Blob, Decimal};
+use crate::frame::frame_result::{ColType, ColTypeOption};
+use crate::types::CBytes;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum CassandraType {
@@ -31,6 +33,40 @@ pub enum CassandraType {
     Udt(HashMap<String, CassandraType>),
     Tuple(Vec<CassandraType>),
     Null,
+}
+
+/// Get a function to convert `CBytes` and `ColTypeOption` into a `CassandraType`
+pub fn get_wrapper_fn(
+    col_type: &ColType,
+) -> &'static dyn Fn(&CBytes, &ColTypeOption) -> CassandraType {
+    match col_type {
+        ColType::Blob => &wrappers::blob,
+        ColType::Ascii => &wrappers::ascii,
+        ColType::Int => &wrappers::int,
+        ColType::List => &wrappers::list,
+        ColType::Custom => todo!(),
+        ColType::Bigint => &wrappers::bigint,
+        ColType::Boolean => &wrappers::bool,
+        ColType::Counter => &wrappers::counter,
+        ColType::Decimal => &wrappers::decimal,
+        ColType::Double => &wrappers::double,
+        ColType::Float => &wrappers::float,
+        ColType::Timestamp => &wrappers::timestamp,
+        ColType::Uuid => &wrappers::uuid,
+        ColType::Varchar => &wrappers::varchar,
+        ColType::Varint => &wrappers::varint,
+        ColType::Timeuuid => &wrappers::timeuuid,
+        ColType::Inet => &wrappers::inet,
+        ColType::Date => &wrappers::date,
+        ColType::Time => &wrappers::time,
+        ColType::Smallint => &wrappers::smallint,
+        ColType::Tinyint => &wrappers::tinyint,
+        ColType::Map => todo!(),
+        ColType::Set => todo!(),
+        ColType::Udt => todo!(),
+        ColType::Tuple => todo!(),
+        ColType::Null => todo!(),
+    }
 }
 
 pub mod wrappers {

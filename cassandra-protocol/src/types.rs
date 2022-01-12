@@ -5,12 +5,11 @@ use std::io::{Cursor, Read};
 use std::net::{IpAddr, SocketAddr};
 
 use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
-use crate::frame::frame_result::{ColType, ColTypeOption};
 use crate::frame::traits::FromCursor;
 use crate::frame::Serialize;
 use crate::types::data_serialization_types::*;
 
-use self::cassandra_type::{wrappers, CassandraType};
+use self::cassandra_type::CassandraType;
 
 pub const SHORT_LEN: usize = 2;
 pub const INT_LEN: usize = 4;
@@ -49,39 +48,6 @@ pub mod prelude {
 
 pub trait AsCassandraType {
     fn as_cassandra_type(&self) -> CDRSResult<Option<CassandraType>>;
-
-    fn get_wrapper_fn(
-        col_type: &ColTypeOption,
-    ) -> &'static dyn Fn(&CBytes, &ColTypeOption) -> CassandraType {
-        match col_type.id {
-            ColType::Blob => &wrappers::blob,
-            ColType::Ascii => &wrappers::ascii,
-            ColType::Int => &wrappers::int,
-            ColType::List => &wrappers::list,
-            ColType::Custom => todo!(),
-            ColType::Bigint => &wrappers::bigint,
-            ColType::Boolean => &wrappers::bool,
-            ColType::Counter => &wrappers::counter,
-            ColType::Decimal => &wrappers::decimal,
-            ColType::Double => &wrappers::double,
-            ColType::Float => &wrappers::float,
-            ColType::Timestamp => &wrappers::timestamp,
-            ColType::Uuid => &wrappers::uuid,
-            ColType::Varchar => &wrappers::varchar,
-            ColType::Varint => &wrappers::varint,
-            ColType::Timeuuid => &wrappers::timeuuid,
-            ColType::Inet => &wrappers::inet,
-            ColType::Date => &wrappers::date,
-            ColType::Time => &wrappers::time,
-            ColType::Smallint => &wrappers::smallint,
-            ColType::Tinyint => &wrappers::tinyint,
-            ColType::Map => todo!(),
-            ColType::Set => todo!(),
-            ColType::Udt => todo!(),
-            ColType::Tuple => todo!(),
-            ColType::Null => todo!(),
-        }
-    }
 }
 
 /// Should be used to represent a single column as a Rust value.
