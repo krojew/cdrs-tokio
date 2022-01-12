@@ -61,11 +61,11 @@ pub fn get_wrapper_fn(
         ColType::Time => &wrappers::time,
         ColType::Smallint => &wrappers::smallint,
         ColType::Tinyint => &wrappers::tinyint,
-        ColType::Map => todo!(),
-        ColType::Set => todo!(),
-        ColType::Udt => todo!(),
-        ColType::Tuple => todo!(),
-        ColType::Null => todo!(),
+        ColType::Map => &wrappers::map,
+        ColType::Set => &wrappers::set,
+        ColType::Udt => &wrappers::udt,
+        ColType::Tuple => &wrappers::tuple,
+        ColType::Null => &wrappers::null,
     }
 }
 
@@ -76,6 +76,69 @@ pub mod wrappers {
     use crate::types::list::List;
     use crate::types::AsCassandraType;
     use crate::types::CBytes;
+    use crate::types::{map::Map, tuple::Tuple, udt::Udt};
+
+    pub fn map(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
+        if let Some(actual_bytes) = bytes.as_slice() {
+            let decoded_map = decode_map(actual_bytes).unwrap();
+
+            Map::new(decoded_map, col_type.clone())
+                .as_cassandra_type()
+                .unwrap()
+                .unwrap()
+        } else {
+            CassandraType::Null
+        }
+    }
+
+    pub fn set(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
+        if let Some(actual_bytes) = bytes.as_slice() {
+            let decoded_set = decode_set(actual_bytes).unwrap();
+
+            List::new(col_type.clone(), decoded_set)
+                .as_cassandra_type()
+                .unwrap()
+                .unwrap()
+        } else {
+            CassandraType::Null
+        }
+    }
+
+    pub fn udt(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
+        if let Some(ColTypeOptionValue::UdtType(ref list_type_option)) = col_type.value {
+            if let Some(actual_bytes) = bytes.as_slice() {
+                let len = list_type_option.descriptions.len();
+                let decoded_udt = decode_udt(actual_bytes, len).unwrap();
+
+                return Udt::new(decoded_udt, list_type_option)
+                    .as_cassandra_type()
+                    .unwrap()
+                    .unwrap();
+            }
+        }
+
+        CassandraType::Null
+    }
+
+    pub fn tuple(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
+        if let Some(ColTypeOptionValue::TupleType(ref list_type_option)) = col_type.value {
+            if let Some(actual_bytes) = bytes.as_slice() {
+                let len = list_type_option.types.len();
+                let decoded_tuple = decode_tuple(actual_bytes, len).unwrap();
+
+                return Tuple::new(decoded_tuple, list_type_option)
+                    .as_cassandra_type()
+                    .unwrap()
+                    .unwrap();
+            }
+        }
+
+        CassandraType::Null
+    }
+
+    pub fn null(_: &CBytes, _col_type: &ColTypeOption) -> CassandraType {
+        CassandraType::Null
+    }
 
     pub fn blob(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
         let t = as_rust_type!(col_type, bytes, Blob).unwrap();
