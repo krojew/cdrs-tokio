@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 
 use super::prelude::{Blob, Decimal};
+use crate::error::Result as CDRSResult;
+use crate::frame::frame_result::{ColType, ColTypeOption};
+use crate::types::CBytes;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum CassandraType {
@@ -33,190 +36,284 @@ pub enum CassandraType {
     Null,
 }
 
+/// Get a function to convert `CBytes` and `ColTypeOption` into a `CassandraType`
+pub fn wrapper_fn(
+    col_type: &ColType,
+) -> &'static dyn Fn(&CBytes, &ColTypeOption) -> CDRSResult<CassandraType> {
+    match col_type {
+        ColType::Blob => &wrappers::blob,
+        ColType::Ascii => &wrappers::ascii,
+        ColType::Int => &wrappers::int,
+        ColType::List => &wrappers::list,
+        ColType::Custom => todo!(),
+        ColType::Bigint => &wrappers::bigint,
+        ColType::Boolean => &wrappers::bool,
+        ColType::Counter => &wrappers::counter,
+        ColType::Decimal => &wrappers::decimal,
+        ColType::Double => &wrappers::double,
+        ColType::Float => &wrappers::float,
+        ColType::Timestamp => &wrappers::timestamp,
+        ColType::Uuid => &wrappers::uuid,
+        ColType::Varchar => &wrappers::varchar,
+        ColType::Varint => &wrappers::varint,
+        ColType::Timeuuid => &wrappers::timeuuid,
+        ColType::Inet => &wrappers::inet,
+        ColType::Date => &wrappers::date,
+        ColType::Time => &wrappers::time,
+        ColType::Smallint => &wrappers::smallint,
+        ColType::Tinyint => &wrappers::tinyint,
+        ColType::Map => &wrappers::map,
+        ColType::Set => &wrappers::set,
+        ColType::Udt => &wrappers::udt,
+        ColType::Tuple => &wrappers::tuple,
+        ColType::Null => &wrappers::null,
+    }
+}
+
 pub mod wrappers {
     use super::CassandraType;
+    use crate::error::Result as CDRSResult;
     use crate::frame::frame_result::{ColType, ColTypeOption, ColTypeOptionValue};
     use crate::types::data_serialization_types::*;
     use crate::types::list::List;
     use crate::types::AsCassandraType;
     use crate::types::CBytes;
+    use crate::types::{map::Map, tuple::Tuple, udt::Udt};
 
-    pub fn blob(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, Blob).unwrap();
+    pub fn map(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        if let Some(actual_bytes) = bytes.as_slice() {
+            let decoded_map = decode_map(actual_bytes)?;
 
-        match t {
+            Ok(Map::new(decoded_map, col_type.clone())
+                .as_cassandra_type()?
+                .unwrap_or(CassandraType::Null))
+        } else {
+            Ok(CassandraType::Null)
+        }
+    }
+
+    pub fn set(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        if let Some(actual_bytes) = bytes.as_slice() {
+            let decoded_set = decode_set(actual_bytes)?;
+
+            Ok(List::new(col_type.clone(), decoded_set)
+                .as_cassandra_type()?
+                .unwrap_or(CassandraType::Null))
+        } else {
+            Ok(CassandraType::Null)
+        }
+    }
+
+    pub fn udt(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        if let Some(ColTypeOptionValue::UdtType(ref list_type_option)) = col_type.value {
+            if let Some(actual_bytes) = bytes.as_slice() {
+                let len = list_type_option.descriptions.len();
+                let decoded_udt = decode_udt(actual_bytes, len)?;
+
+                return Ok(Udt::new(decoded_udt, list_type_option)
+                    .as_cassandra_type()?
+                    .unwrap_or(CassandraType::Null));
+            }
+        }
+
+        Ok(CassandraType::Null)
+    }
+
+    pub fn tuple(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        if let Some(ColTypeOptionValue::TupleType(ref list_type_option)) = col_type.value {
+            if let Some(actual_bytes) = bytes.as_slice() {
+                let len = list_type_option.types.len();
+                let decoded_tuple = decode_tuple(actual_bytes, len)?;
+
+                return Ok(Tuple::new(decoded_tuple, list_type_option)
+                    .as_cassandra_type()?
+                    .unwrap_or(CassandraType::Null));
+            }
+        }
+
+        Ok(CassandraType::Null)
+    }
+
+    pub fn null(_: &CBytes, _col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        Ok(CassandraType::Null)
+    }
+
+    pub fn blob(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, Blob)?;
+
+        Ok(match t {
             Some(t) => CassandraType::Blob(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn ascii(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, String).unwrap();
+    pub fn ascii(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, String)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Ascii(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn int(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, i32).unwrap();
+    pub fn int(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, i32)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Int(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn list(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let list = as_rust_type!(col_type, bytes, List).unwrap();
-        match list {
-            Some(t) => t.as_cassandra_type().unwrap().unwrap(),
+    pub fn list(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let list = as_rust_type!(col_type, bytes, List)?;
+        Ok(match list {
+            Some(t) => t.as_cassandra_type()?.unwrap_or(CassandraType::Null),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn bigint(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, i64).unwrap();
+    pub fn bigint(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, i64)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Bigint(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn counter(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, i64).unwrap();
+    pub fn counter(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, i64)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Counter(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn decimal(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, Decimal).unwrap();
+    pub fn decimal(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, Decimal)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Decimal(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn double(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, f64).unwrap();
+    pub fn double(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, f64)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Double(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn float(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, f32).unwrap();
+    pub fn float(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, f32)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Float(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn timestamp(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, i64).unwrap();
+    pub fn timestamp(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, i64)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Timestamp(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn uuid(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, Uuid).unwrap();
+    pub fn uuid(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, Uuid)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Uuid(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn varchar(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, String).unwrap();
+    pub fn varchar(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, String)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Varchar(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn varint(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, BigInt).unwrap();
+    pub fn varint(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, BigInt)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Varint(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn timeuuid(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, Uuid).unwrap();
+    pub fn timeuuid(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, Uuid)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Timeuuid(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn inet(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, IpAddr).unwrap();
+    pub fn inet(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, IpAddr)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Inet(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn date(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, i32).unwrap();
+    pub fn date(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, i32)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Date(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn time(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, i64).unwrap();
+    pub fn time(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, i64)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Time(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn smallint(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, i16).unwrap();
+    pub fn smallint(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, i16)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Smallint(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn tinyint(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, i8).unwrap();
+    pub fn tinyint(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, i8)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Tinyint(t),
             None => CassandraType::Null,
-        }
+        })
     }
 
-    pub fn bool(bytes: &CBytes, col_type: &ColTypeOption) -> CassandraType {
-        let t = as_rust_type!(col_type, bytes, bool).unwrap();
+    pub fn bool(bytes: &CBytes, col_type: &ColTypeOption) -> CDRSResult<CassandraType> {
+        let t = as_rust_type!(col_type, bytes, bool)?;
 
-        match t {
+        Ok(match t {
             Some(t) => CassandraType::Boolean(t),
             None => CassandraType::Null,
-        }
+        })
     }
 }

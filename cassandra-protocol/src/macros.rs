@@ -62,6 +62,7 @@ macro_rules! list_as_cassandra_type {
                 &self,
             ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
                 use crate::error::Error;
+                use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
                 use std::ops::Deref;
 
@@ -69,10 +70,8 @@ macro_rules! list_as_cassandra_type {
                     Some(ColTypeOptionValue::CList(ref type_option))
                     | Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.deref().clone();
-                        let wrapper = <List as crate::types::AsCassandraType>::get_wrapper_fn(
-                            &type_option_ref,
-                        );
-                        let convert = self.map(|bytes| wrapper(bytes, &type_option_ref));
+                        let wrapper = wrapper_fn(&type_option_ref.id);
+                        let convert = self.map(|bytes| wrapper(bytes, &type_option_ref).unwrap());
                         Ok(Some(CassandraType::List(convert)))
                     }
                     _ => Err(Error::General(format!(
@@ -92,6 +91,7 @@ macro_rules! map_as_cassandra_type {
             fn as_cassandra_type(
                 &self,
             ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
                 use std::ops::Deref;
 
@@ -103,21 +103,17 @@ macro_rules! map_as_cassandra_type {
                     let key_col_type_option = key_col_type_option.deref().clone();
                     let value_col_type_option = value_col_type_option.deref().clone();
 
-                    let key_wrapper = <Map as crate::types::AsCassandraType>::get_wrapper_fn(
-                        &key_col_type_option,
-                    );
+                    let key_wrapper = wrapper_fn(&key_col_type_option.id);
 
-                    let value_wrapper = <Map as crate::types::AsCassandraType>::get_wrapper_fn(
-                        &value_col_type_option,
-                    );
+                    let value_wrapper = wrapper_fn(&value_col_type_option.id);
 
                     let map = self
                         .data
                         .iter()
                         .map(|(key, value)| {
                             (
-                                key_wrapper(key, &key_col_type_option),
-                                value_wrapper(value, &value_col_type_option),
+                                key_wrapper(key, &key_col_type_option).unwrap(),
+                                value_wrapper(value, &value_col_type_option).unwrap(),
                             )
                         })
                         .collect::<Vec<(CassandraType, CassandraType)>>();
@@ -137,15 +133,15 @@ macro_rules! tuple_as_cassandra_type {
             fn as_cassandra_type(
                 &self,
             ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
 
                 let values = self
                     .data
                     .iter()
                     .map(|(col_type, bytes)| {
-                        let wrapper =
-                            <Tuple as crate::types::AsCassandraType>::get_wrapper_fn(&col_type);
-                        wrapper(&bytes, col_type)
+                        let wrapper = wrapper_fn(&col_type.id);
+                        wrapper(&bytes, col_type).unwrap()
                     })
                     .collect();
 
@@ -161,14 +157,15 @@ macro_rules! udt_as_cassandra_type {
             fn as_cassandra_type(
                 &self,
             ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
                 use std::collections::HashMap;
 
                 let mut map = HashMap::new();
 
                 self.data.iter().for_each(|(key, (col_type, bytes))| {
-                    let wrapper = <Udt as crate::types::AsCassandraType>::get_wrapper_fn(&col_type);
-                    let value = wrapper(&bytes, col_type);
+                    let wrapper = wrapper_fn(&col_type.id);
+                    let value = wrapper(&bytes, col_type).unwrap();
                     map.insert(key.clone(), value);
                 });
 
