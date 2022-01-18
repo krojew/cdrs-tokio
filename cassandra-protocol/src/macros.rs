@@ -338,7 +338,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into bool (valid types: Boolean).",
+                 Cannot convert {:?} into bool (valid types: Boolean, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -371,8 +371,8 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
-                 Counter).",
+                 Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time,\
+                 Counter, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -402,7 +402,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i32 (valid types: Int, Date).",
+                 Cannot convert {:?} into i32 (valid types: Int, Date, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -429,7 +429,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i16 (valid types: Smallint).",
+                 Cannot convert {:?} into i16 (valid types: Smallint, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -456,7 +456,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i8 (valid types: Tinyint).",
+                 Cannot convert {:?} into i8 (valid types: Tinyint, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -496,8 +496,8 @@ macro_rules! as_rust_type {
             }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
-                 Counter).",
+                 Cannot convert {:?} into NonZeroI64 (valid types: Bigint, Timestamp, Time,\
+                 Counter, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -531,7 +531,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i32 (valid types: Int, Date).",
+                 Cannot convert {:?} into NonZeroI32 (valid types: Int, Date, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -550,7 +550,7 @@ macro_rules! as_rust_type {
 
                     Err(Error::General(format!(
                         "Invalid conversion. \
-                         Cannot convert marshaled type {:?} into i16 (valid types: org.apache.cassandra.db.marshal.ShortType).",
+                         Cannot convert marshaled type {:?} into NonZeroI16 (valid types: org.apache.cassandra.db.marshal.ShortType).",
                         $data_type_option
                     )))
                 };
@@ -559,7 +559,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i16 (valid types: Smallint).",
+                 Cannot convert {:?} into NonZeroI16 (valid types: Smallint, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -579,7 +579,7 @@ macro_rules! as_rust_type {
 
                     Err(Error::General(format!(
                         "Invalid conversion. \
-                         Cannot convert marshaled type {:?} into i8 (valid types: org.apache.cassandra.db.marshal.ByteType).",
+                         Cannot convert marshaled type {:?} into NonZeroI8 (valid types: org.apache.cassandra.db.marshal.ByteType).",
                         $data_type_option
                     )))
                 };
@@ -588,7 +588,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i8 (valid types: Tinyint).",
+                 Cannot convert {:?} into NonZeroI8 (valid types: Tinyint, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -615,7 +615,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into f64 (valid types: Double).",
+                 Cannot convert {:?} into f64 (valid types: Double, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -642,7 +642,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into f32 (valid types: Float).",
+                 Cannot convert {:?} into f32 (valid types: Float, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -669,7 +669,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into IpAddr (valid types: Inet).",
+                 Cannot convert {:?} into IpAddr (valid types: Inet, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -697,7 +697,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into Uuid (valid types: Uuid, Timeuuid).",
+                 Cannot convert {:?} into Uuid (valid types: Uuid, Timeuuid, Custom).",
                 $data_type_option.id
             ))),
         }
@@ -763,7 +763,7 @@ macro_rules! as_rust_type {
             },
             _ => Err(Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into Tuple (valid types: tuple).",
+                 Cannot convert {:?} into Tuple (valid types: Tuple).",
                 $data_type_option.id
             ))),
         }
@@ -843,6 +843,9 @@ macro_rules! as_rust_type {
     };
     ($data_type_option:ident, $data_value:ident, BigInt) => {
         match $data_type_option.id {
+            ColType::Varint => {
+                as_res_opt!($data_value, decode_varint)
+            }
             ColType::Custom => {
                 let unmarshal = || {
                     if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
@@ -853,7 +856,7 @@ macro_rules! as_rust_type {
 
                     Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
-                         Cannot convert marshaled type {:?} into BigInt (valid types: org.apache.cassandra.db.marshal.IntegerType).",
+                         Cannot convert marshalled type {:?} into BigInt (valid types: org.apache.cassandra.db.marshal.IntegerType).",
                         $data_type_option
                     )))
                 };
@@ -862,8 +865,7 @@ macro_rules! as_rust_type {
             }
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
-                 Cannot convert {:?} into i64 (valid types: Bigint, Timestamp, Time, Variant,\
-                 Counter).",
+                 Cannot convert {:?} into BigInt (valid types: Varint, Custom)",
                 $data_type_option.id
             ))),
         }
