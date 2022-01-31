@@ -825,12 +825,15 @@ pub trait SessionBuilder<
 >
 {
     /// Sets new compression.
+    #[must_use]
     fn with_compression(self, compression: Compression) -> Self;
 
     /// Set new retry policy.
+    #[must_use]
     fn with_retry_policy(self, retry_policy: Box<dyn RetryPolicy + Send + Sync>) -> Self;
 
     /// Set new reconnection policy.
+    #[must_use]
     fn with_reconnection_policy(
         self,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
@@ -838,12 +841,14 @@ pub trait SessionBuilder<
 
     /// Sets new node distance evaluator. Computing node distance is fundamental to proper
     /// topology-aware load balancing - see [`NodeDistanceEvaluator`].
+    #[must_use]
     fn with_node_distance_evaluator(
         self,
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
     ) -> Self;
 
     /// Sets new speculative execution policy.
+    #[must_use]
     fn with_speculative_execution_policy(
         self,
         speculative_execution_policy: Box<dyn SpeculativeExecutionPolicy + Send + Sync>,
@@ -851,16 +856,20 @@ pub trait SessionBuilder<
 
     /// Sets new transport buffer size. High values are recommended with large amounts of in flight
     /// queries.
+    #[must_use]
     fn with_transport_buffer_size(self, transport_buffer_size: usize) -> Self;
 
     /// Sets NODELAY for given session connections.
+    #[must_use]
     fn with_tcp_nodelay(self, tcp_nodelay: bool) -> Self;
 
     /// Sets event channel capacity. If the driver receives more server events than the capacity,
     /// some events might get dropped. This can result in the driver operating in a sub-optimal way.
+    #[must_use]
     fn with_event_channel_capacity(self, event_channel_capacity: usize) -> Self;
 
     /// Sets node connection pool configuration for given session.
+    #[must_use]
     fn with_connection_pool_config(self, connection_pool_config: ConnectionPoolConfig) -> Self;
 
     /// Sets the keyspace to use. If not using a keyspace explicitly in queries, one should be set
@@ -869,6 +878,7 @@ pub trait SessionBuilder<
     /// `USE` might not propagate immediately to all active connections, resulting in queries
     /// using a wrong keyspace. If one is known upfront, it's safer to set it while building
     /// the [`Session`].
+    #[must_use]
     fn with_keyspace(self, keyspace: String) -> Self;
 
     /// Builds the resulting session.

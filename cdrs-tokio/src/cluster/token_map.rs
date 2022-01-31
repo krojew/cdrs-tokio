@@ -77,6 +77,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
     }
 
     /// Creates a new map with a new node inserted.
+    #[must_use]
     pub fn clone_with_node(&self, node: Arc<Node<T, CM>>) -> Self {
         let mut map = self.clone();
         for token in node.tokens() {
@@ -87,6 +88,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
     }
 
     /// Creates a new map with a node removed.
+    #[must_use]
     pub fn clone_without_node(&self, broadcast_rpc_address: SocketAddr) -> Self {
         let token_ring = self
             .token_ring
