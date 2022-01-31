@@ -42,7 +42,7 @@ default-features = false
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "3.2.0" }
 float_eq = "0.7"
 maplit = "1.0.0"
-mockall = "0.10"
+mockall = "0.11"
 lazy_static = "1.4"
 regex = "1.5"
 uuid = { version = "0.8", features = ["v4"] }
