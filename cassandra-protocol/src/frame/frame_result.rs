@@ -333,6 +333,16 @@ impl FromCursor for RowsMetadata {
             None
         };
 
+        if flags.contains(RowsMetadataFlags::NO_METADATA) {
+            return Ok(RowsMetadata {
+                flags,
+                columns_count,
+                paging_state,
+                global_table_spec: None,
+                col_specs: vec![],
+            });
+        }
+
         let has_global_table_space = flags.contains(RowsMetadataFlags::GLOBAL_TABLE_SPACE);
         let global_table_spec = extract_global_table_space(cursor, has_global_table_space)?;
 
@@ -517,7 +527,7 @@ impl TryFrom<i16> for ColType {
             0x0030 => Ok(ColType::Udt),
             0x0031 => Ok(ColType::Tuple),
             0x0080 => Ok(ColType::Varchar),
-            _ => Err("Unexpected column type".into()),
+            _ => Err(format!("Unexpected column type {:?}", value).into()),
         }
     }
 }
@@ -1290,14 +1300,14 @@ mod rows {
         let bytes = &[
             0, 0, 0, 2, // rows flag
             0, 0, 0, 4, // rows metadataflag
-            0, 0, 0, 0, // columns count
+            0, 0, 0, 3, // columns count
             0, 0, 0, 0, // rows count
         ];
 
         let expected = ResResultBody::Rows(BodyResResultRows {
             metadata: RowsMetadata {
                 flags: RowsMetadataFlags::NO_METADATA,
-                columns_count: 0,
+                columns_count: 3,
                 paging_state: None,
                 global_table_spec: None,
                 col_specs: vec![],
