@@ -306,6 +306,12 @@ impl CBytes {
             Some(bytes) => bytes.is_empty(),
         }
     }
+
+    #[inline]
+    #[deprecated(note = "Use into_bytes().")]
+    pub fn into_plain(self) -> Option<Vec<u8>> {
+        self.bytes
+    }
 }
 
 impl FromCursor for CBytes {
@@ -361,6 +367,12 @@ impl CBytesShort {
             } else {
                 0
             }
+    }
+
+    #[inline]
+    #[deprecated(note = "Use into_bytes().")]
+    pub fn into_plain(self) -> Option<Vec<u8>> {
+        self.bytes
     }
 }
 
