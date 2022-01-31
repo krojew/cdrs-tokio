@@ -57,6 +57,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     }
 
     /// Creates a new metadata with a keyspace replaced/added.
+    #[must_use]
     pub fn clone_with_keyspace(&self, keyspace_name: String, keyspace: KeyspaceMetadata) -> Self {
         let mut keyspaces = self.keyspaces.clone();
         keyspaces.insert(keyspace_name, keyspace);
@@ -70,6 +71,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     }
 
     /// Creates a new metadata with a keyspace removed.
+    #[must_use]
     pub fn clone_without_keyspace(&self, keyspace: &str) -> Self {
         let mut keyspaces = self.keyspaces.clone();
         keyspaces.remove(keyspace);
@@ -83,6 +85,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     }
 
     /// Creates a new metadata with a node replaced/added. The node must have a host id.
+    #[must_use]
     pub fn clone_with_node(&self, node: Node<T, CM>) -> Self {
         let node = Arc::new(node);
         let token_map = self.token_map.clone_with_node(node.clone());
@@ -104,6 +107,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     }
 
     /// Creates a new metadata with a node removed.
+    #[must_use]
     pub fn clone_without_node(&self, broadcast_rpc_address: SocketAddr) -> Self {
         let nodes = self
             .nodes

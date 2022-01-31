@@ -38,6 +38,7 @@ impl NodeTcpConfigBuilder {
 
     /// Sets new authenticator.
     #[deprecated(note = "Use with_authenticator_provider().")]
+    #[must_use]
     pub fn authenticator(
         self,
         authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
@@ -46,6 +47,7 @@ impl NodeTcpConfigBuilder {
     }
 
     /// Sets new authenticator.
+    #[must_use]
     pub fn with_authenticator_provider(
         mut self,
         authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
@@ -56,18 +58,21 @@ impl NodeTcpConfigBuilder {
 
     /// Adds initial node address (a contact point). Contact points are considered local to the
     /// driver until a topology refresh occurs.
+    #[must_use]
     pub fn with_contact_point(mut self, addr: NodeAddress) -> Self {
         self.addrs.push(addr);
         self
     }
 
     /// Adds initial node addresses
+    #[must_use]
     pub fn with_contact_points(mut self, addr: Vec<NodeAddress>) -> Self {
         self.addrs.extend(addr);
         self
     }
 
     /// Set cassandra protocol version
+    #[must_use]
     pub fn with_version(mut self, version: Version) -> Self {
         self.version = version;
         self
