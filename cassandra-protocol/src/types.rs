@@ -290,7 +290,7 @@ impl CBytes {
 
     /// Converts `CBytes` into a plain array of bytes
     #[inline]
-    pub fn into_plain(self) -> Option<Vec<u8>> {
+    pub fn into_bytes(self) -> Option<Vec<u8>> {
         self.bytes
     }
 
@@ -308,7 +308,8 @@ impl CBytes {
     }
 
     #[inline]
-    pub fn into_bytes(self) -> Option<Vec<u8>> {
+    #[deprecated(note = "Use into_bytes().")]
+    pub fn into_plain(self) -> Option<Vec<u8>> {
         self.bytes
     }
 }
@@ -352,9 +353,9 @@ impl CBytesShort {
         CBytesShort { bytes: Some(bytes) }
     }
 
-    /// Converts `CBytesShort` into plain vector of bytes;
+    /// Converts `CBytesShort` into plain vector of bytes
     #[inline]
-    pub fn into_plain(self) -> Option<Vec<u8>> {
+    pub fn into_bytes(self) -> Option<Vec<u8>> {
         self.bytes
     }
 
@@ -366,6 +367,12 @@ impl CBytesShort {
             } else {
                 0
             }
+    }
+
+    #[inline]
+    #[deprecated(note = "Use into_bytes().")]
+    pub fn into_plain(self) -> Option<Vec<u8>> {
+        self.bytes
     }
 }
 
@@ -568,7 +575,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cbytes_into_plain() {
+    fn test_cbytes_into_bytes() {
         let cbytes = CBytes::new(vec![1, 2, 3]);
         assert_eq!(cbytes.into_bytes().unwrap(), &[1, 2, 3]);
     }
@@ -596,9 +603,9 @@ mod tests {
     }
 
     #[test]
-    fn test_cbytesshort_into_plain() {
+    fn test_cbytesshort_into_bytes() {
         let cbytes = CBytesShort::new(vec![1, 2, 3]);
-        assert_eq!(cbytes.into_plain().unwrap(), vec![1, 2, 3]);
+        assert_eq!(cbytes.into_bytes().unwrap(), vec![1, 2, 3]);
     }
 
     #[test]
@@ -606,7 +613,7 @@ mod tests {
         let a = &[0, 3, 1, 2, 3];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
         let cbytes = CBytesShort::from_cursor(&mut cursor).unwrap();
-        assert_eq!(cbytes.into_plain().unwrap(), vec![1, 2, 3]);
+        assert_eq!(cbytes.into_bytes().unwrap(), vec![1, 2, 3]);
     }
 
     #[test]
