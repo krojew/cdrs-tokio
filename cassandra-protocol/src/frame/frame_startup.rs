@@ -39,7 +39,7 @@ impl Serialize for BodyReqStartup {
 
 impl FromCursor for BodyReqStartup {
     fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
-        let num = CInt::from_cursor(cursor)?;
+        let num = CIntShort::from_cursor(cursor)?;
 
         let mut map = HashMap::with_capacity(num as usize);
         for _ in 0..num {
@@ -53,8 +53,7 @@ impl FromCursor for BodyReqStartup {
     }
 }
 
-// Frame implementation related to BodyReqStartup
-
+/// Frame implementation related to BodyReqStartup
 impl Frame {
     /// Creates new frame of type `startup`.
     pub fn new_req_startup(compression: Option<String>, version: Version) -> Frame {
@@ -114,5 +113,18 @@ mod test {
         assert_eq!(frame.opcode, Opcode::Startup);
         assert_eq!(frame.tracing_id, None);
         assert!(frame.warnings.is_empty());
+    }
+
+    #[test]
+    fn body_req_startup_from_cursor() {
+        let bytes = vec![
+            0, 3, 0, 11, 68, 82, 73, 86, 69, 82, 95, 78, 65, 77, 69, 0, 22, 68, 97, 116, 97, 83,
+            116, 97, 120, 32, 80, 121, 116, 104, 111, 110, 32, 68, 114, 105, 118, 101, 114, 0, 14,
+            68, 82, 73, 86, 69, 82, 95, 86, 69, 82, 83, 73, 79, 78, 0, 6, 51, 46, 50, 53, 46, 48,
+            0, 11, 67, 81, 76, 95, 86, 69, 82, 83, 73, 79, 78, 0, 5, 51, 46, 52, 46, 53,
+        ];
+
+        let mut cursor = Cursor::new(bytes.as_slice());
+        BodyReqStartup::from_cursor(&mut cursor).unwrap();
     }
 }
