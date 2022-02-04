@@ -89,6 +89,13 @@ impl<T: Into<Bytes>> From<Option<T>> for Value {
 #[derive(Debug, Clone, Constructor)]
 pub struct Bytes(Vec<u8>);
 
+impl Bytes {
+    /// Consumes `Bytes` and returns the inner `Vec<u8>`
+    pub fn into_inner(self) -> Vec<u8> {
+        self.0
+    }
+}
+
 impl From<String> for Bytes {
     #[inline]
     fn from(value: String) -> Self {
