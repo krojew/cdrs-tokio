@@ -645,4 +645,114 @@ mod tests {
         });
         test_encode_decode_roundtrip_nondeterministic_request(frame, body);
     }
+
+    #[test]
+    fn test_result_prepared_statement() {
+        use crate::frame::frame_result::{
+            BodyResResultPrepared, ColSpec, ColType, ColTypeOption, PreparedMetadata,
+            ResResultBody, RowsMetadata, RowsMetadataFlags, TableSpec,
+        };
+        use crate::types::CBytesShort;
+        let raw_frame = [
+            132, 0, 0, 0, 8, 0, 0, 0, 97, // cassandra header
+            0, 0, 0, 4, // prepared statement result
+            0, 16, 195, 165, 42, 38, 120, 170, 232, 144, 214, 187, 158, 200, 160, 226, 27,
+            73, // id
+            0, 0, 0, 1, // prepared metadata flags
+            0, 0, 0, 3, // columns count
+            0, 0, 0, 1, // pk count
+            0, 0, // pk index 1
+            0, 23, 116, 101, 115, 116, 95, 112, 114, 101, 112, 97, 114, 101, 95, 115, 116, 97, 116,
+            101, 109, 101, 110, 116,
+            115, // global_table_spec.ks_name = test_prepare_statements
+            0, 7, 116, 97, 98, 108, 101, 95, 49, // global_table_spec.table_name = table_1
+            0, 2, 105, 100, // ColSpec.name = "id"
+            0, 9, // ColSpec.col_type = Int
+            0, 1, 120, // ColSpec.name = "x"
+            0, 9, // ColSpec.col_type = Int
+            0, 4, 110, 97, 109, 101, // ColSpec.name = "name"
+            0, 13, // ColSpec.col_type = VarChar
+            0, 0, 0, 4, // row metadata flags
+            0, 0, 0, 0, // columns count
+        ];
+        let frame = Frame {
+            version: Version::V4,
+            direction: Direction::Response,
+            flags: Flags::empty(),
+            opcode: Opcode::Result,
+            stream_id: 0,
+            body: vec![
+                0, 0, 0, 4, // prepared statement result
+                0, 16, 195, 165, 42, 38, 120, 170, 232, 144, 214, 187, 158, 200, 160, 226, 27,
+                73, // id
+                0, 0, 0, 1, // prepared metadata flags
+                0, 0, 0, 3, // columns count
+                0, 0, 0, 1, // pk count
+                0, 0, // pk index 1
+                0, 23, 116, 101, 115, 116, 95, 112, 114, 101, 112, 97, 114, 101, 95, 115, 116, 97,
+                116, 101, 109, 101, 110, 116,
+                115, // global_table_spec.ks_name = test_prepare_statements
+                0, 7, 116, 97, 98, 108, 101, 95, 49, // global_table_spec.table_name = table_1
+                0, 2, 105, 100, // ColSpec.name = "id"
+                0, 9, // ColSpec.col_type = Int
+                0, 1, 120, // ColSpec.name = "x"
+                0, 9, // ColSpec.col_type = Int
+                0, 4, 110, 97, 109, 101, // ColSpec.name = "name"
+                0, 13, // ColSpec.col_type = VarChar
+                0, 0, 0, 4, // row metadata flags
+                0, 0, 0, 0, // columns count
+            ],
+            tracing_id: None,
+            warnings: vec![],
+        };
+        let body = ResponseBody::Result(ResResultBody::Prepared(BodyResResultPrepared {
+            id: CBytesShort::new(vec![
+                195, 165, 42, 38, 120, 170, 232, 144, 214, 187, 158, 200, 160, 226, 27, 73,
+            ]),
+            metadata: PreparedMetadata {
+                columns_count: 3,
+                pk_count: 1,
+                pk_indexes: vec![0],
+                global_table_spec: Some(TableSpec {
+                    ks_name: "test_prepare_statements".into(),
+                    table_name: "table_1".into(),
+                }),
+                col_specs: vec![
+                    ColSpec {
+                        table_spec: None,
+                        name: "id".into(),
+                        col_type: ColTypeOption {
+                            id: ColType::Int,
+                            value: None,
+                        },
+                    },
+                    ColSpec {
+                        table_spec: None,
+                        name: "x".into(),
+                        col_type: ColTypeOption {
+                            id: ColType::Int,
+                            value: None,
+                        },
+                    },
+                    ColSpec {
+                        table_spec: None,
+                        name: "name".into(),
+                        col_type: ColTypeOption {
+                            id: ColType::Varchar,
+                            value: None,
+                        },
+                    },
+                ],
+            },
+            result_metadata: RowsMetadata {
+                flags: RowsMetadataFlags::NO_METADATA,
+                columns_count: 0,
+                paging_state: None,
+                global_table_spec: None,
+                col_specs: vec![],
+            },
+        }));
+
+        test_encode_decode_roundtrip_response(&raw_frame, frame, body);
+    }
 }
