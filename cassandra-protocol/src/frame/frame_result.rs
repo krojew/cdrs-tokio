@@ -800,7 +800,6 @@ impl Serialize for PreparedMetadataFlags {
 /// The structure that represents metadata of prepared response.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct PreparedMetadata {
-    pub flags: PreparedMetadataFlags,
     pub columns_count: i32,
     pub pk_count: i32,
     pub pk_indexes: Vec<i16>,
@@ -811,21 +810,13 @@ pub struct PreparedMetadata {
 impl Serialize for PreparedMetadata {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        match self
-            .flags
-            .contains(PreparedMetadataFlags::GLOBAL_TABLE_SPACE)
-        {
-            false => {
-                assert!(self.global_table_spec.is_none());
-                assert!(!self.col_specs.is_empty());
-            }
-            true => {
-                assert!(self.global_table_spec.is_some());
-                assert!(self.col_specs.is_empty());
-            }
+        if self.global_table_spec.is_some() {
+            PreparedMetadataFlags::GLOBAL_TABLE_SPACE
+        } else {
+            PreparedMetadataFlags::empty()
         }
+        .serialize(cursor);
 
-        self.flags.serialize(cursor);
         self.columns_count.serialize(cursor);
         self.pk_count.serialize(cursor);
         self.pk_indexes.iter().for_each(|f| f.serialize(cursor));
@@ -867,7 +858,6 @@ impl PreparedMetadata {
         let col_specs = ColSpec::parse_colspecs(cursor, columns_count, has_global_table_space)?;
 
         Ok(PreparedMetadata {
-            flags,
             columns_count,
             pk_count,
             pk_indexes,
@@ -1188,6 +1178,7 @@ mod rows_metadata {
 
         let expected = RowsMetadata {
             flags: RowsMetadataFlags::empty(),
+
             columns_count: 2,
             paging_state: None,
             global_table_spec: None,
@@ -1365,7 +1356,6 @@ mod prepared_metadata {
         ];
 
         let expected = PreparedMetadata {
-            flags: PreparedMetadataFlags::empty(),
             columns_count: 2,
             pk_count: 1,
             pk_indexes: vec![0],
@@ -1456,7 +1446,6 @@ mod prepared {
         let expected = ResResultBody::Prepared(BodyResResultPrepared {
             id: CBytesShort::new(to_short(1)),
             metadata: PreparedMetadata {
-                flags: PreparedMetadataFlags::empty(),
                 columns_count: 2,
                 pk_count: 1,
                 pk_indexes: vec![0],
