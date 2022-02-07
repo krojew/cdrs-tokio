@@ -710,8 +710,6 @@ mod tests {
                 195, 165, 42, 38, 120, 170, 232, 144, 214, 187, 158, 200, 160, 226, 27, 73,
             ]),
             metadata: PreparedMetadata {
-                columns_count: 3,
-                pk_count: 1,
                 pk_indexes: vec![0],
                 global_table_spec: Some(TableSpec {
                     ks_name: "test_prepare_statements".into(),

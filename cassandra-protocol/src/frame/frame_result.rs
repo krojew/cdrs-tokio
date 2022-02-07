@@ -800,8 +800,6 @@ impl Serialize for PreparedMetadataFlags {
 /// The structure that represents metadata of prepared response.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct PreparedMetadata {
-    pub columns_count: i32,
-    pub pk_count: i32,
     pub pk_indexes: Vec<i16>,
     pub global_table_spec: Option<TableSpec>,
     pub col_specs: Vec<ColSpec>,
@@ -817,8 +815,12 @@ impl Serialize for PreparedMetadata {
         }
         .serialize(cursor);
 
-        self.columns_count.serialize(cursor);
-        self.pk_count.serialize(cursor);
+        let columns_count = self.col_specs.len() as i32;
+        columns_count.serialize(cursor);
+
+        let pk_count = self.pk_indexes.len() as i32;
+        pk_count.serialize(cursor);
+
         self.pk_indexes.iter().for_each(|f| f.serialize(cursor));
 
         if let Some(global_table_spec) = &self.global_table_spec {
@@ -858,8 +860,6 @@ impl PreparedMetadata {
         let col_specs = ColSpec::parse_colspecs(cursor, columns_count, has_global_table_space)?;
 
         Ok(PreparedMetadata {
-            columns_count,
-            pk_count,
             pk_indexes,
             global_table_spec,
             col_specs,
@@ -1356,8 +1356,6 @@ mod prepared_metadata {
         ];
 
         let expected = PreparedMetadata {
-            columns_count: 2,
-            pk_count: 1,
             pk_indexes: vec![0],
             global_table_spec: None,
             col_specs: vec![
@@ -1446,8 +1444,6 @@ mod prepared {
         let expected = ResResultBody::Prepared(BodyResResultPrepared {
             id: CBytesShort::new(to_short(1)),
             metadata: PreparedMetadata {
-                columns_count: 2,
-                pk_count: 1,
                 pk_indexes: vec![0],
                 global_table_spec: None,
                 col_specs: vec![
