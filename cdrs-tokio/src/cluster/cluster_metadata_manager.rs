@@ -243,8 +243,10 @@ fn build_keyspace(row: &Row) -> Result<(String, KeyspaceMetadata)> {
     Ok((keyspace_name, KeyspaceMetadata::new(replication_strategy)))
 }
 
-fn build_replication_strategy(properties: Map<String, JsonValue>) -> Result<ReplicationStrategy> {
-    match properties.get("class") {
+fn build_replication_strategy(
+    mut properties: Map<String, JsonValue>,
+) -> Result<ReplicationStrategy> {
+    match properties.remove("class") {
         Some(JsonValue::String(class)) => Ok(match class.as_str() {
             "org.apache.cassandra.locator.SimpleStrategy" | "SimpleStrategy" => {
                 ReplicationStrategy::SimpleStrategy {
@@ -287,7 +289,9 @@ fn extract_replication_factor(value: Option<&JsonValue>) -> Result<usize> {
                 usize::from_str(replication_factor)
             };
 
-            result.map_err(|error| format!("Error parsing replication factor: {}", error).into())
+            result.map_err(|error| {
+                format!("Failed to parse ('{}'): {}", replication_factor, error).into()
+            })
         }
         _ => Err("Missing replication factor!".into()),
     }
