@@ -1,6 +1,6 @@
 [package]
 name = "cdrs-tokio"
-version = "6.0.1"
+version = "6.1.0"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 description = "Async Cassandra DB driver written in Rust"
@@ -31,7 +31,7 @@ tokio-rustls = { version = "0.23", optional = true }
 tracing = "0.1"
 uuid = "0.8"
 webpki = { version = "0.22", optional = true }
-cassandra-protocol = { path = "../cassandra-protocol", version = "1.0.0" }
+cassandra-protocol = { path = "../cassandra-protocol", version = "1.1.0" }
 
 [dependencies.rustls]
 version = "0.20"

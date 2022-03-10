@@ -1,3 +1,13 @@
+## 6.1.0
+
+### New
+
+* `#[must_use]` on some functions.
+
+### Fixed
+
+* Fixed parsing `NetworkTopologyStrategy`.
+
 ## 6.0.0
 
 This version is a departure from legacy API design, stemming from the sync version migration. Due to large
@@ -6,7 +16,7 @@ the ties and focus on delivering the best functionality without legacy burden. T
 quite large, but everyone is encouraged to update - the performance improvements and new features cannot be
 understated.
 
-## New
+### New
 
 * Topology-aware load balancing: `TopologyAwareNodeDistanceEvaluator` and `TopologyAwareLoadBalancingStrategy`.
 * New `ReconnectionPolicy` used when trying to re-establish connections to downed nodes.
