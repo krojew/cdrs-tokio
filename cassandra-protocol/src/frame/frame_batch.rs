@@ -143,10 +143,8 @@ pub enum BatchQuerySubj {
 pub struct BatchQuery {
     /// Contains either id of prepared query or a query itself.
     pub subject: BatchQuerySubj,
-    /// It is the optional name of the following <value_i>. It must be present
-    /// if and only if the 0x40 flag is provided for the batch.
-    /// **Important note:** this feature does not work and should not be
-    /// used. It is specified in a way that makes it impossible for the server
+    /// **Important note:** QueryValues::NamedValues does not work and should not be
+    /// used for batches. It is specified in a way that makes it impossible for the server
     /// to implement. This will be fixed in a future version of the native
     /// protocol. See <https://issues.apache.org/jira/browse/CASSANDRA-10246> for
     /// more details
