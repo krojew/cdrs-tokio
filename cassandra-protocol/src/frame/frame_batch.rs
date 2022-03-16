@@ -141,8 +141,6 @@ pub enum BatchQuerySubj {
 /// The structure that represents a query to be batched.
 #[derive(Debug, Clone, Constructor, PartialEq, Eq)]
 pub struct BatchQuery {
-    /// Indicates if a query was prepared.
-    pub is_prepared: bool,
     /// Contains either id of prepared query or a query itself.
     pub subject: BatchQuerySubj,
     /// It is the optional name of the following <value_i>. It must be present
@@ -157,16 +155,15 @@ pub struct BatchQuery {
 
 impl Serialize for BatchQuery {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        // kind
-        if self.is_prepared {
-            1u8.serialize(cursor);
-        } else {
-            0u8.serialize(cursor);
-        }
-
         match &self.subject {
-            BatchQuerySubj::PreparedId(id) => id.serialize(cursor),
-            BatchQuerySubj::QueryString(s) => serialize_str_long(cursor, s),
+            BatchQuerySubj::PreparedId(id) => {
+                1u8.serialize(cursor);
+                id.serialize(cursor);
+            }
+            BatchQuerySubj::QueryString(s) => {
+                0u8.serialize(cursor);
+                serialize_str_long(cursor, s);
+            }
         }
 
         let len = self.values.len() as CIntShort;
@@ -198,11 +195,7 @@ impl FromCursor for BatchQuery {
             values.push(Value::from_cursor(cursor)?);
         }
 
-        Ok(BatchQuery::new(
-            is_prepared,
-            subject,
-            QueryValues::SimpleValues(values),
-        ))
+        Ok(BatchQuery::new(subject, QueryValues::SimpleValues(values)))
     }
 }
 
@@ -240,7 +233,6 @@ mod tests {
         let mut cursor = Cursor::new(data.as_slice());
 
         let query = BatchQuery::from_cursor(&mut cursor).unwrap();
-        assert!(!query.is_prepared);
         assert_eq!(query.subject, BatchQuerySubj::QueryString("A".into()));
         assert_eq!(query.values, QueryValues::SimpleValues(vec![Value::NotSet]));
     }
