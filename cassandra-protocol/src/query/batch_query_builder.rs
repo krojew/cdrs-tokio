@@ -39,7 +39,6 @@ impl BatchQueryBuilder {
     /// Add a query (non-prepared one)
     pub fn add_query<T: Into<String>>(mut self, query: T, values: QueryValues) -> Self {
         self.queries.push(BatchQuery {
-            is_prepared: false,
             subject: BatchQuerySubj::QueryString(query.into()),
             values,
         });
@@ -49,7 +48,6 @@ impl BatchQueryBuilder {
     /// Add a query (prepared one)
     pub fn add_query_prepared(mut self, query: &PreparedQuery, values: QueryValues) -> Self {
         self.queries.push(BatchQuery {
-            is_prepared: true,
             subject: BatchQuerySubj::PreparedId(query.id.clone()),
             values,
         });
