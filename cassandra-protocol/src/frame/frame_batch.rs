@@ -16,8 +16,6 @@ pub struct BodyReqBatch {
     pub batch_type: BatchType,
     pub queries: Vec<BatchQuery>,
     pub consistency: Consistency,
-    // **IMPORTANT NOTE:** with names flag does not work and should not be used.
-    pub query_flags: QueryFlags,
     pub serial_consistency: Option<Consistency>,
     pub timestamp: Option<CLong>,
 }
@@ -37,9 +35,14 @@ impl Serialize for BodyReqBatch {
         let consistency: CIntShort = self.consistency.into();
         consistency.serialize(cursor);
 
-        let flag_byte = self.query_flags.bits();
-
-        flag_byte.serialize(cursor);
+        let mut flags = QueryFlags::empty();
+        if self.serial_consistency.is_some() {
+            flags.insert(QueryFlags::WITH_SERIAL_CONSISTENCY)
+        }
+        if self.timestamp.is_some() {
+            flags.insert(QueryFlags::WITH_DEFAULT_TIMESTAMP)
+        }
+        flags.bits().serialize(cursor);
 
         if let Some(serial_consistency) = self.serial_consistency {
             let serial_consistency: CIntShort = serial_consistency.into();
@@ -88,7 +91,6 @@ impl FromCursor for BodyReqBatch {
             batch_type,
             queries,
             consistency,
-            query_flags,
             serial_consistency,
             timestamp,
         ))
@@ -222,7 +224,7 @@ mod tests {
     use crate::consistency::Consistency;
     use crate::frame::frame_batch::{BatchQuery, BatchQuerySubj, BatchType, BodyReqBatch};
     use crate::frame::FromCursor;
-    use crate::query::{QueryFlags, QueryValues};
+    use crate::query::QueryValues;
     use crate::types::prelude::Value;
 
     #[test]
@@ -244,10 +246,6 @@ mod tests {
         assert_eq!(body.batch_type, BatchType::Logged);
         assert!(body.queries.is_empty());
         assert_eq!(body.consistency, Consistency::Any);
-        assert_eq!(
-            body.query_flags,
-            QueryFlags::WITH_SERIAL_CONSISTENCY | QueryFlags::WITH_DEFAULT_TIMESTAMP
-        );
         assert_eq!(body.serial_consistency, Some(Consistency::One));
         assert_eq!(body.timestamp, Some(0x0102030405060708));
     }
