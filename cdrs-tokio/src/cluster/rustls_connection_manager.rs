@@ -37,18 +37,8 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
         async move {
             let mut schedule = self.reconnection_policy.new_node_schedule();
 
-            loop {
-                let transport = self
-                    .establish_connection(event_handler.clone(), error_handler.clone(), addr)
-                    .await;
-                match transport {
-                    Ok(transport) => return Ok(transport),
-                    Err(error) => {
-                        let delay = schedule.next_delay().ok_or(error)?;
-                        sleep(delay).await;
-                    }
-                }
-            }
+                self.establish_connection(event_handler.clone(), error_handler.clone(), addr)
+                    .await
         }
         .boxed()
     }

@@ -16,6 +16,7 @@ pub async fn send_frame<T: CdrsTransport + 'static, CM: ConnectionManager<T> + '
     is_idempotent: bool,
     mut retry_session: Box<dyn RetrySession + Send + Sync>,
 ) -> Option<error::Result<Frame>> {
+    let mut errors = vec![];
     'next_node: for node in query_plan {
         loop {
             let transport = node.persistent_connection().await;
@@ -35,9 +36,16 @@ pub async fn send_frame<T: CdrsTransport + 'static, CM: ConnectionManager<T> + '
                         }
                     }
                 },
-                Err(error) => return Some(Err(error)),
+                Err(error) => {
+                    errors.push(error);
+                    continue 'next_node;
+                }
             }
         }
+    }
+
+    if errors.len() > 0 {
+        return Some(Err(errors.remove(1)));
     }
 
     None
