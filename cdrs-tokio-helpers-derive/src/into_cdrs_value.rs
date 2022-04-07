@@ -34,6 +34,9 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
         quote! {
             impl From<#name> for cdrs_tokio::types::value::Bytes {
               fn from(value: #name) -> Self {
+                #[allow(unused_imports)]
+                use cdrs_tokio::frame::Serialize;
+
                 let mut bytes: Vec<u8> = Vec::new();
                 let mut cursor = std::io::Cursor::new(&mut bytes);
                 #(#convert_into_bytes)*

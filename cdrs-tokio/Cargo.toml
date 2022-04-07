@@ -14,11 +14,14 @@ license = "MIT/Apache-2.0"
 [features]
 rust-tls = ["rustls", "tokio-rustls", "webpki"]
 e2e-tests = []
+derive = ["cdrs-tokio-helpers-derive"]
 
 [dependencies]
 arc-swap ="1.4"
 atomic = "0.5"
 bytes = "1.1"
+cassandra-protocol = { path = "../cassandra-protocol", version = "1.1.0" }
+cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "4", optional = true }
 derive_more = "0.99"
 futures = { version = "0.3", default_features = false, features = ["alloc"] }
 fxhash = "0.2"
@@ -31,7 +34,6 @@ tokio-rustls = { version = "0.23", optional = true }
 tracing = "0.1"
 uuid = "0.8"
 webpki = { version = "0.22", optional = true }
-cassandra-protocol = { path = "../cassandra-protocol", version = "1.1.0" }
 
 [dependencies.rustls]
 version = "0.20"
@@ -39,7 +41,6 @@ optional = true
 default-features = false
 
 [dev-dependencies]
-cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "3.2.0" }
 float_eq = "0.7"
 maplit = "1.0.0"
 mockall = "0.11"

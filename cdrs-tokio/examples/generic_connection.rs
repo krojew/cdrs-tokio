@@ -15,11 +15,9 @@ use cdrs_tokio::{
     query_values,
     retry::DefaultRetryPolicy,
     transport::TransportTcp,
-    types::from_cdrs::FromCdrsByName,
     types::prelude::*,
+    TryFromRow, TryFromUdt,
 };
-
-use cdrs_tokio_helpers_derive::*;
 
 use cdrs_tokio::cluster::connection_pool::ConnectionPoolConfig;
 use cdrs_tokio::cluster::session::{
@@ -28,10 +26,11 @@ use cdrs_tokio::cluster::session::{
 };
 use cdrs_tokio::cluster::{ConnectionManager, KeyspaceHolder};
 use cdrs_tokio::compression::Compression;
-use cdrs_tokio::frame::{Frame, Serialize, Version};
+use cdrs_tokio::frame::{Frame, Version};
 use cdrs_tokio::future::BoxFuture;
 use cdrs_tokio::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
+use cdrs_tokio::IntoCdrsValue;
 use futures::FutureExt;
 use maplit::hashmap;
 use tokio::sync::mpsc::Sender;

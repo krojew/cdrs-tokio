@@ -22,7 +22,7 @@ use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::AsRustType;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio_helpers_derive::*;
+use cdrs_tokio::IntoCdrsValue;
 #[cfg(feature = "e2e-tests")]
 use maplit::hashmap;
 #[cfg(feature = "e2e-tests")]

@@ -60,3 +60,6 @@ pub use cassandra_protocol::types;
 
 pub type Error = error::Error;
 pub type Result<T> = error::Result<T>;
+
+#[cfg(feature = "derive")]
+pub use cdrs_tokio_helpers_derive::{DbMirror, IntoCdrsValue, TryFromRow, TryFromUdt};
