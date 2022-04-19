@@ -1,3 +1,9 @@
+## 6.2.0
+
+### New
+
+* `derive` feature built into the main crate - no need to explicitly `use cdrs_tokio_helpers_derive::*` anymore.
+
 ## 6.1.0
 
 ### New

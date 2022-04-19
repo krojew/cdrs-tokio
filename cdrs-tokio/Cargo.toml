@@ -1,6 +1,6 @@
 [package]
 name = "cdrs-tokio"
-version = "6.1.0"
+version = "6.2.0"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 description = "Async Cassandra DB driver written in Rust"
@@ -20,7 +20,7 @@ derive = ["cdrs-tokio-helpers-derive"]
 arc-swap ="1.4"
 atomic = "0.5"
 bytes = "1.1"
-cassandra-protocol = { path = "../cassandra-protocol", version = "1.1.0" }
+cassandra-protocol = { path = "../cassandra-protocol", version = "1" }
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "4", optional = true }
 derive_more = "0.99"
 futures = { version = "0.3", default_features = false, features = ["alloc"] }

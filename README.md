@@ -40,9 +40,9 @@ cassandra-cpp: 2.16.0).
 - `cassandra-cpp` - Rust bindings for Datastax C++ Driver, running on multiple threads using Tokio
 - `gocql` - a driver written in Go
 
-![insert benchmark](./perf-inserts.png)
-![select benchmark](./perf-selects.png)
-![mixed benchmark](./perf-mixed.png)
+<img src="./perf-inserts.png" alt="insert benchmark">
+<img src="./perf-selects.png" alt="select benchmark">
+<img src="./perf-mixed.png" alt="mixed benchmark">
 
 Knowing given use case, CDRS can be optimized for peak performance.
 
