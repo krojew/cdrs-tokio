@@ -25,5 +25,5 @@ lz4_flex = "0.9"
 snap = "1"
 thiserror = "1"
 time = { version = "0.3", features = ["std", "macros"] }
-uuid = "0.8"
+uuid = "1.0"
 derivative = "2.2.0"
