@@ -116,10 +116,18 @@ impl ReconnectionSchedule for ExponentialReconnectionSchedule {
 
         self.attempt += 1;
 
-        let delay = ((1 << self.attempt) * self.base_delay).min(self.max_delay);
+        let delay = self
+            .base_delay
+            .saturating_mul(1u32.checked_shl(self.attempt as u32).unwrap_or(u32::MAX))
+            .min(self.max_delay);
+
         let jitter = thread_rng().gen_range(85..116);
 
-        Some((jitter * delay / 100).clamp(self.base_delay, self.max_delay))
+        Some(
+            (delay / 100)
+                .saturating_mul(jitter)
+                .clamp(self.base_delay, self.max_delay),
+        )
     }
 }
 
@@ -131,5 +139,23 @@ impl ExponentialReconnectionSchedule {
             max_attempts,
             attempt: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::retry::reconnection_policy::ExponentialReconnectionSchedule;
+    use crate::retry::ReconnectionSchedule;
+
+    #[test]
+    fn should_reach_max_exponential_delay_without_panic() {
+        let mut schedule = ExponentialReconnectionSchedule {
+            base_delay: Default::default(),
+            max_delay: Default::default(),
+            max_attempts: usize::MAX,
+            attempt: usize::MAX - 1,
+        };
+
+        schedule.next_delay();
     }
 }
