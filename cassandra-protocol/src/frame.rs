@@ -192,18 +192,18 @@ impl Frame {
         ))
     }
 
-    pub fn check_frame(data: &[u8]) -> Result<usize, CheckFrameError> {
+    pub fn check_frame_size(data: &[u8]) -> Result<usize, CheckFrameSizeError> {
         if data.len() < HEADER_LEN {
-            return Err(CheckFrameError::NotEnoughBytes);
+            return Err(CheckFrameSizeError::NotEnoughBytes);
         }
 
         let body_len = try_i32_from_bytes(&data[5..9]).unwrap() as usize;
         let frame_len = HEADER_LEN + body_len;
         if data.len() < frame_len {
-            return Err(CheckFrameError::NotEnoughBytes);
+            return Err(CheckFrameSizeError::NotEnoughBytes);
         }
         let _ = Version::try_from(data[0])
-            .map_err(|_| CheckFrameError::UnsupportedVersion(data[0] & 0x7f))?;
+            .map_err(|_| CheckFrameSizeError::UnsupportedVersion(data[0] & 0x7f))?;
 
         Ok(frame_len)
     }
@@ -237,7 +237,7 @@ impl Frame {
 }
 
 #[derive(Debug)]
-pub enum CheckFrameError {
+pub enum CheckFrameSizeError {
     NotEnoughBytes,
     UnsupportedVersion(u8),
     UnsupportedOpcode(u8),
