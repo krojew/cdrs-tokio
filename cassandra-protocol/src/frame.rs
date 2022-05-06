@@ -192,6 +192,22 @@ impl Frame {
         ))
     }
 
+    pub fn check_frame_size(data: &[u8]) -> Result<usize, CheckFrameSizeError> {
+        if data.len() < HEADER_LEN {
+            return Err(CheckFrameSizeError::NotEnoughBytes);
+        }
+
+        let body_len = try_i32_from_bytes(&data[5..9]).unwrap() as usize;
+        let frame_len = HEADER_LEN + body_len;
+        if data.len() < frame_len {
+            return Err(CheckFrameSizeError::NotEnoughBytes);
+        }
+        let _ = Version::try_from(data[0])
+            .map_err(|_| CheckFrameSizeError::UnsupportedVersion(data[0] & 0x7f))?;
+
+        Ok(frame_len)
+    }
+
     pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
         let combined_version_byte = u8::from(self.version) | u8::from(self.direction);
         let flag_byte = self.flags.bits();
@@ -218,6 +234,13 @@ impl Frame {
 
         Ok(v)
     }
+}
+
+#[derive(Debug)]
+pub enum CheckFrameSizeError {
+    NotEnoughBytes,
+    UnsupportedVersion(u8),
+    UnsupportedOpcode(u8),
 }
 
 #[derive(Debug)]
