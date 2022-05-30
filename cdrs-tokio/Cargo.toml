@@ -23,6 +23,7 @@ bytes = "1.1"
 cassandra-protocol = { path = "../cassandra-protocol", version = "1" }
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "4", optional = true }
 derive_more = "0.99"
+derivative = "2.1.1"
 futures = { version = "0.3", default_features = false, features = ["alloc"] }
 fxhash = "0.2"
 itertools = "0.10"
