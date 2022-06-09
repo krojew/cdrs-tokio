@@ -344,7 +344,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     async fn process_event(&self, event: ServerEvent) {
-        trace!(?event);
+        debug!(?event);
 
         match event {
             ServerEvent::TopologyChange(event) => self.process_topology_event(event).await,
