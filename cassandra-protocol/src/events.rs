@@ -1,14 +1,14 @@
 use crate::frame::events::{
-    SchemaChange as FrameSchemaChange, ServerEvent as FrameServerEvent,
-    SimpleServerEvent as FrameSimpleServerEvent,
+    SchemaChange as MessageSchemaChange, ServerEvent as MessageServerEvent,
+    SimpleServerEvent as MessageSimpleServerEvent,
 };
 
-/// Full Server Event which includes all details about occured change.
-pub type ServerEvent = FrameServerEvent;
+/// Full Server Event which includes all details about occurred change.
+pub type ServerEvent = MessageServerEvent;
 
 /// Simplified Server event. It should be used to represent an event
 /// which consumer wants listen to.
-pub type SimpleServerEvent = FrameSimpleServerEvent;
+pub type SimpleServerEvent = MessageSimpleServerEvent;
 
-/// Reexport of `FrameSchemaChange`.
-pub type SchemaChange = FrameSchemaChange;
+/// Reexport of `MessageSchemaChange`.
+pub type SchemaChange = MessageSchemaChange;

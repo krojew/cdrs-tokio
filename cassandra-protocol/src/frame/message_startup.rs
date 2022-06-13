@@ -1,12 +1,15 @@
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use crate::frame::*;
-use crate::types::*;
+use crate::error;
+use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
+use crate::types::{from_cursor_str, serialize_str, CIntShort};
 
 const CQL_VERSION: &str = "CQL_VERSION";
 const CQL_VERSION_VAL: &str = "3.0.0";
 const COMPRESSION: &str = "COMPRESSION";
+const DRIVER_NAME: &str = "DRIVER_NAME";
+const DRIVER_VERSION: &str = "DRIVER_VERSION";
 
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 pub struct BodyReqStartup {
@@ -14,11 +17,18 @@ pub struct BodyReqStartup {
 }
 
 impl BodyReqStartup {
-    pub fn new(compression: Option<String>) -> BodyReqStartup {
+    pub fn new(compression: Option<String>, version: Version) -> BodyReqStartup {
         let mut map = HashMap::new();
         map.insert(CQL_VERSION.into(), CQL_VERSION_VAL.into());
         if let Some(c) = compression {
             map.insert(COMPRESSION.into(), c);
+        }
+
+        if version >= Version::V5 {
+            map.insert(DRIVER_NAME.into(), "cdrs-tokio".into());
+            if let Some(version) = option_env!("CARGO_PKG_VERSION") {
+                map.insert(DRIVER_VERSION.into(), version.into());
+            }
         }
 
         BodyReqStartup { map }
@@ -26,20 +36,20 @@ impl BodyReqStartup {
 }
 
 impl Serialize for BodyReqStartup {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         let num = self.map.len() as CIntShort;
-        num.serialize(cursor);
+        num.serialize(cursor, version);
 
         for (key, val) in &self.map {
-            serialize_str(cursor, key);
-            serialize_str(cursor, val);
+            serialize_str(cursor, key, version);
+            serialize_str(cursor, val, version);
         }
     }
 }
 
 impl FromCursor for BodyReqStartup {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
-        let num = CIntShort::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<Self> {
+        let num = CIntShort::from_cursor(cursor, version)?;
 
         let mut map = HashMap::with_capacity(num as usize);
         for _ in 0..num {
@@ -53,21 +63,20 @@ impl FromCursor for BodyReqStartup {
     }
 }
 
-/// Frame implementation related to BodyReqStartup
-impl Frame {
-    /// Creates new frame of type `startup`.
-    pub fn new_req_startup(compression: Option<String>, version: Version) -> Frame {
+impl Envelope {
+    /// Creates new envelope of type `startup`.
+    pub fn new_req_startup(compression: Option<String>, version: Version) -> Envelope {
         let direction = Direction::Request;
         let opcode = Opcode::Startup;
-        let body = BodyReqStartup::new(compression);
+        let body = BodyReqStartup::new(compression, version);
 
-        Frame::new(
+        Envelope::new(
             version,
             direction,
             Flags::empty(),
             opcode,
             0,
-            body.serialize_to_vec(),
+            body.serialize_to_vec(version),
             None,
             vec![],
         )
@@ -77,12 +86,12 @@ impl Frame {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::frame::{Flags, Frame, Opcode, Version};
+    use crate::frame::{Envelope, Flags, Opcode, Version};
 
     #[test]
     fn new_body_req_startup_some_compression() {
         let compression = "test_compression";
-        let body = BodyReqStartup::new(Some(compression.into()));
+        let body = BodyReqStartup::new(Some(compression.into()), Version::V4);
         assert_eq!(
             body.map.get("CQL_VERSION"),
             Some("3.0.0".to_string()).as_ref()
@@ -96,7 +105,7 @@ mod test {
 
     #[test]
     fn new_body_req_startup_none_compression() {
-        let body = BodyReqStartup::new(None);
+        let body = BodyReqStartup::new(None, Version::V4);
         assert_eq!(
             body.map.get("CQL_VERSION"),
             Some("3.0.0".to_string()).as_ref()
@@ -107,7 +116,7 @@ mod test {
     #[test]
     fn new_req_startup() {
         let compression = Some("test_compression".to_string());
-        let frame = Frame::new_req_startup(compression, Version::V4);
+        let frame = Envelope::new_req_startup(compression, Version::V4);
         assert_eq!(frame.version, Version::V4);
         assert_eq!(frame.flags, Flags::empty());
         assert_eq!(frame.opcode, Opcode::Startup);
@@ -125,6 +134,6 @@ mod test {
         ];
 
         let mut cursor = Cursor::new(bytes.as_slice());
-        BodyReqStartup::from_cursor(&mut cursor).unwrap();
+        BodyReqStartup::from_cursor(&mut cursor, Version::V4).unwrap();
     }
 }

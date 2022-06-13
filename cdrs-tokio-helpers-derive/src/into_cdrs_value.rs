@@ -10,21 +10,23 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
         let convert_into_bytes = fields.iter().map(|field| {
             let field_ident = field.ident.clone().unwrap();
             return if get_ident_string(&field.ty).as_str() == "Option" {
+                // We are assuming here primitive value serialization will not change across protocol
+                // versions, which gives us simpler user API.
                 quote! {
                   match value.#field_ident {
                     Some(ref val) => {
                       let field_bytes: Self = val.clone().into();
-                      cdrs_tokio::types::value::Value::new(field_bytes).serialize(&mut cursor);
+                      cdrs_tokio::types::value::Value::new(field_bytes).serialize(&mut cursor, cdrs_tokio::frame::Version::V4);
                     },
                     None => {
-                      cdrs_tokio::types::value::Value::NotSet.serialize(&mut cursor);
+                      cdrs_tokio::types::value::Value::NotSet.serialize(&mut cursor, cdrs_tokio::frame::Version::V4);
                     }
                   }
                 }
             } else {
                 quote! {
                   let field_bytes: Self = value.#field_ident.into();
-                  cdrs_tokio::types::value::Value::new(field_bytes).serialize(&mut cursor);
+                  cdrs_tokio::types::value::Value::new(field_bytes).serialize(&mut cursor, cdrs_tokio::frame::Version::V4);
                 }
             };
         });

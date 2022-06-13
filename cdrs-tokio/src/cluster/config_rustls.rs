@@ -15,6 +15,7 @@ pub struct NodeRustlsConfig {
     pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub config: Arc<rustls::ClientConfig>,
     pub version: Version,
+    pub beta_protocol: bool,
 }
 
 /// Builder structure that helps to configure TLS connection for node.
@@ -24,6 +25,7 @@ pub struct NodeRustlsConfigBuilder {
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<rustls::ClientConfig>,
     version: Version,
+    beta_protocol: bool,
 }
 
 impl NodeRustlsConfigBuilder {
@@ -34,19 +36,12 @@ impl NodeRustlsConfigBuilder {
             authenticator_provider: Arc::new(NoneAuthenticatorProvider),
             config,
             version: Version::V4,
+            beta_protocol: false,
         }
     }
 
     /// Sets new authenticator.
-    #[deprecated(note = "Use with_authenticator_provider().")]
-    pub fn authenticator(
-        self,
-        authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
-    ) -> Self {
-        self.with_authenticator_provider(authenticator)
-    }
-
-    /// Sets new authenticator.
+    #[must_use]
     pub fn with_authenticator_provider(
         mut self,
         authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
@@ -57,20 +52,30 @@ impl NodeRustlsConfigBuilder {
 
     /// Adds initial node address (a contact point). Contact points are considered local to the
     /// driver until a topology refresh occurs.
+    #[must_use]
     pub fn with_contact_point(mut self, addr: NodeAddress) -> Self {
         self.addrs.push(addr);
         self
     }
 
     /// Adds initial node addresses
+    #[must_use]
     pub fn with_contact_points(mut self, addr: Vec<NodeAddress>) -> Self {
         self.addrs.extend(addr);
         self
     }
 
     /// Set cassandra protocol version
+    #[must_use]
     pub fn with_version(mut self, version: Version) -> Self {
         self.version = version;
+        self
+    }
+
+    /// Sets beta protocol usage flag
+    #[must_use]
+    pub fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.beta_protocol = beta_protocol;
         self
     }
 
@@ -88,6 +93,7 @@ impl NodeRustlsConfigBuilder {
             authenticator_provider: self.authenticator_provider,
             config: self.config,
             version: self.version,
+            beta_protocol: self.beta_protocol,
         })
     }
 }

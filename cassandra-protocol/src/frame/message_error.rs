@@ -1,28 +1,23 @@
 /// This modules contains [Cassandra's errors](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 /// which server could respond to client.
 use derive_more::Display;
-use std::io;
-use std::io::Read;
-use std::result;
+use std::collections::HashMap;
+use std::io::{Cursor, Read};
 
 use crate::consistency::Consistency;
 use crate::error;
 use crate::frame::traits::FromCursor;
-use crate::frame::Frame;
+use crate::frame::Version;
 use crate::types::*;
 
 use super::Serialize;
 
-/// CDRS specific `Result` which contains a [`Frame`] in case of `Ok` and `ErrorBody` if `Err`.
-pub type Result = result::Result<Frame, ErrorBody>;
-
-/// CDRS error which could be returned by Cassandra server as a response. As it goes
-/// from the specification it contains an error code and an error message. Apart of those
-/// depending of type of error it could contain an additional information about an error.
-/// This additional information is represented by `additional_info` property which is `ErrorKind`.
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
+/// CDRS error which could be returned by Cassandra server as a response. As in the specification,
+/// it contains an error code and an error message. Apart of those depending of type of error,
+/// it could contain additional information represented by `additional_info` property.
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ErrorBody {
-    /// `i32` that points to a type of error.
+    /// `CInt` that points to a type of error.
     pub error_code: CInt,
     /// Error message string.
     pub message: String,
@@ -31,18 +26,19 @@ pub struct ErrorBody {
 }
 
 impl Serialize for ErrorBody {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.error_code.serialize(cursor);
-        serialize_str(cursor, &self.message);
-        self.additional_info.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.error_code.serialize(cursor, version);
+        serialize_str(cursor, &self.message, version);
+        self.additional_info.serialize(cursor, version);
     }
 }
 
 impl FromCursor for ErrorBody {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<ErrorBody> {
-        let error_code = CInt::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<ErrorBody> {
+        let error_code = CInt::from_cursor(cursor, version)?;
         let message = from_cursor_str(cursor)?.to_string();
-        let additional_info = AdditionalErrorInfo::from_cursor_with_code(cursor, error_code)?;
+        let additional_info =
+            AdditionalErrorInfo::from_cursor_with_code(cursor, error_code, version)?;
 
         Ok(ErrorBody {
             error_code,
@@ -52,10 +48,57 @@ impl FromCursor for ErrorBody {
     }
 }
 
+/// Protocol-dependent failure information. V5 contains a map of endpoint->code entries, while
+/// previous versions contain only error count.
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub enum FailureInfo {
+    /// Represents the number of nodes that experience a failure while executing the request.
+    NumFailures(CInt),
+    /// Error code map for affected nodes.
+    ReasonMap(HashMap<CInet, CIntShort>),
+}
+
+impl Serialize for FailureInfo {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        match self {
+            FailureInfo::NumFailures(count) => count.serialize(cursor, version),
+            FailureInfo::ReasonMap(map) => {
+                let num_failures = map.len() as CInt;
+                num_failures.serialize(cursor, version);
+
+                for (endpoint, error_code) in map {
+                    endpoint.serialize(cursor, version);
+                    error_code.serialize(cursor, version);
+                }
+            }
+        }
+    }
+}
+
+impl FromCursor for FailureInfo {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<Self> {
+        Ok(match version {
+            Version::V3 | Version::V4 => Self::NumFailures(CInt::from_cursor(cursor, version)?),
+            Version::V5 => {
+                let num_failures = CInt::from_cursor(cursor, version)?;
+                let mut map = HashMap::with_capacity(num_failures as usize);
+
+                for _ in 0..num_failures {
+                    let endpoint = CInet::from_cursor(cursor, version)?;
+                    let error_code = CIntShort::from_cursor(cursor, version)?;
+                    map.insert(endpoint, error_code);
+                }
+
+                Self::ReasonMap(map)
+            }
+        })
+    }
+}
+
 /// Additional error info in accordance to
 /// [Cassandra protocol v4]
 /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AdditionalErrorInfo {
     Server,
     Protocol,
@@ -78,18 +121,28 @@ pub enum AdditionalErrorInfo {
 }
 
 impl Serialize for AdditionalErrorInfo {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
-            AdditionalErrorInfo::Unavailable(unavailable) => unavailable.serialize(cursor),
-            AdditionalErrorInfo::WriteTimeout(write_timeout) => write_timeout.serialize(cursor),
-            AdditionalErrorInfo::ReadTimeout(read_timeout) => read_timeout.serialize(cursor),
-            AdditionalErrorInfo::ReadFailure(read_failure) => read_failure.serialize(cursor),
-            AdditionalErrorInfo::FunctionFailure(function_failure) => {
-                function_failure.serialize(cursor)
+            AdditionalErrorInfo::Unavailable(unavailable) => unavailable.serialize(cursor, version),
+            AdditionalErrorInfo::WriteTimeout(write_timeout) => {
+                write_timeout.serialize(cursor, version)
             }
-            AdditionalErrorInfo::WriteFailure(write_failure) => write_failure.serialize(cursor),
-            AdditionalErrorInfo::AlreadyExists(already_exists) => already_exists.serialize(cursor),
-            AdditionalErrorInfo::Unprepared(unprepared) => unprepared.serialize(cursor),
+            AdditionalErrorInfo::ReadTimeout(read_timeout) => {
+                read_timeout.serialize(cursor, version)
+            }
+            AdditionalErrorInfo::ReadFailure(read_failure) => {
+                read_failure.serialize(cursor, version)
+            }
+            AdditionalErrorInfo::FunctionFailure(function_failure) => {
+                function_failure.serialize(cursor, version)
+            }
+            AdditionalErrorInfo::WriteFailure(write_failure) => {
+                write_failure.serialize(cursor, version)
+            }
+            AdditionalErrorInfo::AlreadyExists(already_exists) => {
+                already_exists.serialize(cursor, version)
+            }
+            AdditionalErrorInfo::Unprepared(unprepared) => unprepared.serialize(cursor, version),
             _ => {}
         }
     }
@@ -97,44 +150,41 @@ impl Serialize for AdditionalErrorInfo {
 
 impl AdditionalErrorInfo {
     pub fn from_cursor_with_code(
-        cursor: &mut io::Cursor<&[u8]>,
+        cursor: &mut Cursor<&[u8]>,
         error_code: CInt,
+        version: Version,
     ) -> error::Result<AdditionalErrorInfo> {
         match error_code {
             0x0000 => Ok(AdditionalErrorInfo::Server),
             0x000A => Ok(AdditionalErrorInfo::Protocol),
             0x0100 => Ok(AdditionalErrorInfo::Authentication),
-            0x1000 => Ok(AdditionalErrorInfo::Unavailable(
-                UnavailableError::from_cursor(cursor)?,
-            )),
+            0x1000 => {
+                UnavailableError::from_cursor(cursor, version).map(AdditionalErrorInfo::Unavailable)
+            }
             0x1001 => Ok(AdditionalErrorInfo::Overloaded),
             0x1002 => Ok(AdditionalErrorInfo::IsBootstrapping),
             0x1003 => Ok(AdditionalErrorInfo::Truncate),
-            0x1100 => Ok(AdditionalErrorInfo::WriteTimeout(
-                WriteTimeoutError::from_cursor(cursor)?,
-            )),
-            0x1200 => Ok(AdditionalErrorInfo::ReadTimeout(
-                ReadTimeoutError::from_cursor(cursor)?,
-            )),
-            0x1300 => Ok(AdditionalErrorInfo::ReadFailure(
-                ReadFailureError::from_cursor(cursor)?,
-            )),
-            0x1400 => Ok(AdditionalErrorInfo::FunctionFailure(
-                FunctionFailureError::from_cursor(cursor)?,
-            )),
-            0x1500 => Ok(AdditionalErrorInfo::WriteFailure(
-                WriteFailureError::from_cursor(cursor)?,
-            )),
+            0x1100 => WriteTimeoutError::from_cursor(cursor, version)
+                .map(AdditionalErrorInfo::WriteTimeout),
+            0x1200 => {
+                ReadTimeoutError::from_cursor(cursor, version).map(AdditionalErrorInfo::ReadTimeout)
+            }
+            0x1300 => {
+                ReadFailureError::from_cursor(cursor, version).map(AdditionalErrorInfo::ReadFailure)
+            }
+            0x1400 => FunctionFailureError::from_cursor(cursor, version)
+                .map(AdditionalErrorInfo::FunctionFailure),
+            0x1500 => WriteFailureError::from_cursor(cursor, version)
+                .map(AdditionalErrorInfo::WriteFailure),
             0x2000 => Ok(AdditionalErrorInfo::Syntax),
             0x2100 => Ok(AdditionalErrorInfo::Unauthorized),
             0x2200 => Ok(AdditionalErrorInfo::Invalid),
             0x2300 => Ok(AdditionalErrorInfo::Config),
-            0x2400 => Ok(AdditionalErrorInfo::AlreadyExists(
-                AlreadyExistsError::from_cursor(cursor)?,
-            )),
-            0x2500 => Ok(AdditionalErrorInfo::Unprepared(
-                UnpreparedError::from_cursor(cursor)?,
-            )),
+            0x2400 => AlreadyExistsError::from_cursor(cursor, version)
+                .map(AdditionalErrorInfo::AlreadyExists),
+            0x2500 => {
+                UnpreparedError::from_cursor(cursor, version).map(AdditionalErrorInfo::Unprepared)
+            }
             _ => Err(format!("Unexpected additional error info: {}", error_code).into()),
         }
     }
@@ -154,18 +204,21 @@ pub struct UnavailableError {
 }
 
 impl Serialize for UnavailableError {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.cl.serialize(cursor);
-        self.required.serialize(cursor);
-        self.alive.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.cl.serialize(cursor, version);
+        self.required.serialize(cursor, version);
+        self.alive.serialize(cursor, version);
     }
 }
 
 impl FromCursor for UnavailableError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<UnavailableError> {
-        let cl = Consistency::from_cursor(cursor)?;
-        let required = CInt::from_cursor(cursor)?;
-        let alive = CInt::from_cursor(cursor)?;
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<UnavailableError> {
+        let cl = Consistency::from_cursor(cursor, version)?;
+        let required = CInt::from_cursor(cursor, version)?;
+        let alive = CInt::from_cursor(cursor, version)?;
 
         Ok(UnavailableError {
             cl,
@@ -189,20 +242,23 @@ pub struct WriteTimeoutError {
 }
 
 impl Serialize for WriteTimeoutError {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.cl.serialize(cursor);
-        self.received.serialize(cursor);
-        self.block_for.serialize(cursor);
-        self.write_type.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.cl.serialize(cursor, version);
+        self.received.serialize(cursor, version);
+        self.block_for.serialize(cursor, version);
+        self.write_type.serialize(cursor, version);
     }
 }
 
 impl FromCursor for WriteTimeoutError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<WriteTimeoutError> {
-        let cl = Consistency::from_cursor(cursor)?;
-        let received = CInt::from_cursor(cursor)?;
-        let block_for = CInt::from_cursor(cursor)?;
-        let write_type = WriteType::from_cursor(cursor)?;
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<WriteTimeoutError> {
+        let cl = Consistency::from_cursor(cursor, version)?;
+        let received = CInt::from_cursor(cursor, version)?;
+        let block_for = CInt::from_cursor(cursor, version)?;
+        let write_type = WriteType::from_cursor(cursor, version)?;
 
         Ok(WriteTimeoutError {
             cl,
@@ -226,11 +282,11 @@ pub struct ReadTimeoutError {
 }
 
 impl Serialize for ReadTimeoutError {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.cl.serialize(cursor);
-        self.received.serialize(cursor);
-        self.block_for.serialize(cursor);
-        self.data_present.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.cl.serialize(cursor, version);
+        self.received.serialize(cursor, version);
+        self.block_for.serialize(cursor, version);
+        self.data_present.serialize(cursor, version);
     }
 }
 
@@ -243,10 +299,13 @@ impl ReadTimeoutError {
 }
 
 impl FromCursor for ReadTimeoutError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<ReadTimeoutError> {
-        let cl = Consistency::from_cursor(cursor)?;
-        let received = CInt::from_cursor(cursor)?;
-        let block_for = CInt::from_cursor(cursor)?;
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<ReadTimeoutError> {
+        let cl = Consistency::from_cursor(cursor, version)?;
+        let received = CInt::from_cursor(cursor, version)?;
+        let block_for = CInt::from_cursor(cursor, version)?;
 
         let mut buff = [0];
         cursor.read_exact(&mut buff)?;
@@ -263,26 +322,26 @@ impl FromCursor for ReadTimeoutError {
 }
 
 /// A non-timeout exception during a read request.
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Copy, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ReadFailureError {
     /// Consistency level of query.
     pub cl: Consistency,
-    /// `i32` representing the number of nodes having acknowledged the request.
+    /// The number of nodes having acknowledged the request.
     pub received: CInt,
-    /// `i32` representing the number of replicas whose acknowledgement is required to achieve `cl`.
+    /// The number of replicas whose acknowledgement is required to achieve `cl`.
     pub block_for: CInt,
-    /// Represents the number of nodes that experience a failure while executing the request.
-    pub num_failures: CInt,
+    /// Failure information.
+    pub failure_info: FailureInfo,
     data_present: u8,
 }
 
 impl Serialize for ReadFailureError {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.cl.serialize(cursor);
-        self.received.serialize(cursor);
-        self.block_for.serialize(cursor);
-        self.num_failures.serialize(cursor);
-        self.data_present.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.cl.serialize(cursor, version);
+        self.received.serialize(cursor, version);
+        self.block_for.serialize(cursor, version);
+        self.failure_info.serialize(cursor, version);
+        self.data_present.serialize(cursor, version);
     }
 }
 
@@ -295,11 +354,14 @@ impl ReadFailureError {
 }
 
 impl FromCursor for ReadFailureError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<ReadFailureError> {
-        let cl = Consistency::from_cursor(cursor)?;
-        let received = CInt::from_cursor(cursor)?;
-        let block_for = CInt::from_cursor(cursor)?;
-        let num_failures = CInt::from_cursor(cursor)?;
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<ReadFailureError> {
+        let cl = Consistency::from_cursor(cursor, version)?;
+        let received = CInt::from_cursor(cursor, version)?;
+        let block_for = CInt::from_cursor(cursor, version)?;
+        let failure_info = FailureInfo::from_cursor(cursor, version)?;
 
         let mut buff = [0];
         cursor.read_exact(&mut buff)?;
@@ -310,7 +372,7 @@ impl FromCursor for ReadFailureError {
             cl,
             received,
             block_for,
-            num_failures,
+            failure_info,
             data_present,
         })
     }
@@ -328,15 +390,18 @@ pub struct FunctionFailureError {
 }
 
 impl Serialize for FunctionFailureError {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, &self.keyspace);
-        serialize_str(cursor, &self.function);
-        serialize_str_list(cursor, self.arg_types.iter().map(|x| x.as_str()));
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        serialize_str(cursor, &self.keyspace, version);
+        serialize_str(cursor, &self.function, version);
+        serialize_str_list(cursor, self.arg_types.iter().map(|x| x.as_str()), version);
     }
 }
 
 impl FromCursor for FunctionFailureError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<FunctionFailureError> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<FunctionFailureError> {
         let keyspace = from_cursor_str(cursor)?.to_string();
         let function = from_cursor_str(cursor)?.to_string();
         let arg_types = from_cursor_string_list(cursor)?;
@@ -350,44 +415,46 @@ impl FromCursor for FunctionFailureError {
 }
 
 /// A non-timeout exception during a write request.
-/// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1106)
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WriteFailureError {
     /// Consistency of the query having triggered the exception.
     pub cl: Consistency,
-    /// Represents the number of nodes having answered the request.
+    /// The number of nodes having answered the request.
     pub received: CInt,
-    /// Represents the number of replicas whose acknowledgement is required to achieve `cl`.
+    /// The number of replicas whose acknowledgement is required to achieve `cl`.
     pub block_for: CInt,
-    /// Represents the number of nodes that experience a failure while executing the request.
-    pub num_failures: CInt,
+    /// Failure information.
+    pub failure_info: FailureInfo,
     /// describes the type of the write that failed.
     pub write_type: WriteType,
 }
 
 impl Serialize for WriteFailureError {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.cl.serialize(cursor);
-        self.received.serialize(cursor);
-        self.block_for.serialize(cursor);
-        self.num_failures.serialize(cursor);
-        self.write_type.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.cl.serialize(cursor, version);
+        self.received.serialize(cursor, version);
+        self.block_for.serialize(cursor, version);
+        self.failure_info.serialize(cursor, version);
+        self.write_type.serialize(cursor, version);
     }
 }
 
 impl FromCursor for WriteFailureError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<WriteFailureError> {
-        let cl = Consistency::from_cursor(cursor)?;
-        let received = CInt::from_cursor(cursor)?;
-        let block_for = CInt::from_cursor(cursor)?;
-        let num_failures = CInt::from_cursor(cursor)?;
-        let write_type = WriteType::from_cursor(cursor)?;
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<WriteFailureError> {
+        let cl = Consistency::from_cursor(cursor, version)?;
+        let received = CInt::from_cursor(cursor, version)?;
+        let block_for = CInt::from_cursor(cursor, version)?;
+        let failure_info = FailureInfo::from_cursor(cursor, version)?;
+        let write_type = WriteType::from_cursor(cursor, version)?;
 
         Ok(WriteFailureError {
             cl,
             received,
             block_for,
-            num_failures,
+            failure_info,
             write_type,
         })
     }
@@ -413,19 +480,19 @@ pub enum WriteType {
 }
 
 impl Serialize for WriteType {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
-            WriteType::Simple => serialize_str(cursor, "SIMPLE"),
-            WriteType::Batch => serialize_str(cursor, "BATCH"),
-            WriteType::UnloggedBatch => serialize_str(cursor, "UNLOGGED_BATCH"),
-            WriteType::Counter => serialize_str(cursor, "COUNTER"),
-            WriteType::BatchLog => serialize_str(cursor, "BATCH_LOG"),
+            WriteType::Simple => serialize_str(cursor, "SIMPLE", version),
+            WriteType::Batch => serialize_str(cursor, "BATCH", version),
+            WriteType::UnloggedBatch => serialize_str(cursor, "UNLOGGED_BATCH", version),
+            WriteType::Counter => serialize_str(cursor, "COUNTER", version),
+            WriteType::BatchLog => serialize_str(cursor, "BATCH_LOG", version),
         }
     }
 }
 
 impl FromCursor for WriteType {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<WriteType> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> error::Result<WriteType> {
         match from_cursor_str(cursor)? {
             "SIMPLE" => Ok(WriteType::Simple),
             "BATCH" => Ok(WriteType::Batch),
@@ -449,14 +516,17 @@ pub struct AlreadyExistsError {
 }
 
 impl Serialize for AlreadyExistsError {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, &self.ks);
-        serialize_str(cursor, &self.table);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        serialize_str(cursor, &self.ks, version);
+        serialize_str(cursor, &self.table, version);
     }
 }
 
 impl FromCursor for AlreadyExistsError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<AlreadyExistsError> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<AlreadyExistsError> {
         let ks = from_cursor_str(cursor)?.to_string();
         let table = from_cursor_str(cursor)?.to_string();
 
@@ -475,14 +545,14 @@ pub struct UnpreparedError {
 }
 
 impl Serialize for UnpreparedError {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
-        self.id.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.id.serialize(cursor, version);
     }
 }
 
 impl FromCursor for UnpreparedError {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<UnpreparedError> {
-        let id = CBytesShort::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<UnpreparedError> {
+        let id = CBytesShort::from_cursor(cursor, version)?;
         Ok(UnpreparedError { id })
     }
 }
@@ -490,15 +560,15 @@ impl FromCursor for UnpreparedError {
 #[cfg(test)]
 fn test_encode_decode(bytes: &[u8], expected: ErrorBody) {
     {
-        let mut cursor: io::Cursor<&[u8]> = io::Cursor::new(bytes);
-        let result = ErrorBody::from_cursor(&mut cursor).unwrap();
+        let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+        let result = ErrorBody::from_cursor(&mut cursor, Version::V4).unwrap();
         assert_eq!(expected, result);
     }
 
     {
         let mut buffer = Vec::new();
-        let mut cursor = io::Cursor::new(&mut buffer);
-        expected.serialize(&mut cursor);
+        let mut cursor = Cursor::new(&mut buffer);
+        expected.serialize(&mut cursor, Version::V4);
         assert_eq!(buffer, bytes);
     }
 }
@@ -684,7 +754,7 @@ mod error_tests {
                 cl: Consistency::Any,
                 received: 1,
                 block_for: 1,
-                num_failures: 1,
+                failure_info: FailureInfo::NumFailures(1),
                 data_present: 0,
             }),
         };

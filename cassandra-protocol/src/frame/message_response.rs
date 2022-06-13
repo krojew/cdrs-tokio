@@ -1,15 +1,15 @@
 use std::io::Cursor;
 
 use crate::error;
-use crate::frame::frame_auth_challenge::*;
-use crate::frame::frame_auth_success::BodyReqAuthSuccess;
-use crate::frame::frame_authenticate::BodyResAuthenticate;
-use crate::frame::frame_error::ErrorBody;
-use crate::frame::frame_event::BodyResEvent;
-use crate::frame::frame_result::{
+use crate::frame::message_auth_challenge::BodyResAuthChallenge;
+use crate::frame::message_auth_success::BodyReqAuthSuccess;
+use crate::frame::message_authenticate::BodyResAuthenticate;
+use crate::frame::message_error::ErrorBody;
+use crate::frame::message_event::BodyResEvent;
+use crate::frame::message_result::{
     BodyResResultPrepared, BodyResResultRows, BodyResResultSetKeyspace, ResResultBody, RowsMetadata,
 };
-use crate::frame::frame_supported::*;
+use crate::frame::message_supported::BodyResSupported;
 use crate::frame::{FromCursor, Opcode, Version};
 use crate::types::rows::Row;
 
@@ -30,29 +30,29 @@ pub enum ResponseBody {
 use crate::frame::Serialize;
 #[cfg(test)]
 impl Serialize for ResponseBody {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
             ResponseBody::Error(error_body) => {
-                error_body.serialize(cursor);
+                error_body.serialize(cursor, version);
             }
             ResponseBody::Ready => {}
             ResponseBody::Authenticate(auth) => {
-                auth.serialize(cursor);
+                auth.serialize(cursor, version);
             }
             ResponseBody::Supported(supported) => {
-                supported.serialize(cursor);
+                supported.serialize(cursor, version);
             }
             ResponseBody::Result(result) => {
-                result.serialize(cursor);
+                result.serialize(cursor, version);
             }
             ResponseBody::Event(event) => {
-                event.serialize(cursor);
+                event.serialize(cursor, version);
             }
             ResponseBody::AuthChallenge(auth_challenge) => {
-                auth_challenge.serialize(cursor);
+                auth_challenge.serialize(cursor, version);
             }
             ResponseBody::AuthSuccess(auth_success) => {
-                auth_success.serialize(cursor);
+                auth_success.serialize(cursor, version);
             }
         }
     }
@@ -66,25 +66,24 @@ impl ResponseBody {
     ) -> error::Result<ResponseBody> {
         let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
         match response_type {
-            Opcode::Error => Ok(ResponseBody::Error(ErrorBody::from_cursor(&mut cursor)?)),
+            Opcode::Error => ErrorBody::from_cursor(&mut cursor, version).map(ResponseBody::Error),
             Opcode::Ready => Ok(ResponseBody::Ready),
-            Opcode::Authenticate => Ok(ResponseBody::Authenticate(
-                BodyResAuthenticate::from_cursor(&mut cursor)?,
-            )),
-            Opcode::Supported => Ok(ResponseBody::Supported(BodyResSupported::from_cursor(
-                &mut cursor,
-            )?)),
-            Opcode::Result => Ok(ResponseBody::Result(ResResultBody::from_cursor(
-                &mut cursor,
-                version,
-            )?)),
-            Opcode::Event => Ok(ResponseBody::Event(BodyResEvent::from_cursor(&mut cursor)?)),
-            Opcode::AuthChallenge => Ok(ResponseBody::AuthChallenge(
-                BodyResAuthChallenge::from_cursor(&mut cursor)?,
-            )),
-            Opcode::AuthSuccess => Ok(ResponseBody::AuthSuccess(BodyReqAuthSuccess::from_cursor(
-                &mut cursor,
-            )?)),
+            Opcode::Authenticate => BodyResAuthenticate::from_cursor(&mut cursor, version)
+                .map(ResponseBody::Authenticate),
+            Opcode::Supported => {
+                BodyResSupported::from_cursor(&mut cursor, version).map(ResponseBody::Supported)
+            }
+            Opcode::Result => {
+                ResResultBody::from_cursor(&mut cursor, version).map(ResponseBody::Result)
+            }
+            Opcode::Event => {
+                BodyResEvent::from_cursor(&mut cursor, version).map(ResponseBody::Event)
+            }
+            Opcode::AuthChallenge => BodyResAuthChallenge::from_cursor(&mut cursor, version)
+                .map(ResponseBody::AuthChallenge),
+            Opcode::AuthSuccess => {
+                BodyReqAuthSuccess::from_cursor(&mut cursor, version).map(ResponseBody::AuthSuccess)
+            }
             _ => Err(format!("opcode {} is not a response", response_type).into()),
         }
     }
@@ -96,9 +95,9 @@ impl ResponseBody {
         }
     }
 
-    pub fn as_rows_metadata(&self) -> Option<RowsMetadata> {
-        match *self {
-            ResponseBody::Result(ref res) => res.as_rows_metadata(),
+    pub fn as_rows_metadata(&self) -> Option<&RowsMetadata> {
+        match self {
+            ResponseBody::Result(res) => res.as_rows_metadata(),
             _ => None,
         }
     }
@@ -111,7 +110,7 @@ impl ResponseBody {
     }
 
     /// Unwraps body and returns BodyResResultPrepared which contains an exact result of
-    /// PREPARE query. If frame body is not of type `Result` this method returns `None`.
+    /// PREPARE query.
     pub fn into_prepared(self) -> Option<BodyResResultPrepared> {
         match self {
             ResponseBody::Result(res) => res.into_prepared(),
@@ -120,7 +119,7 @@ impl ResponseBody {
     }
 
     /// Unwraps body and returns BodyResResultPrepared which contains an exact result of
-    /// use keyspace query. If frame body is not of type `Result` this method returns `None`.
+    /// use keyspace query.
     pub fn into_set_keyspace(self) -> Option<BodyResResultSetKeyspace> {
         match self {
             ResponseBody::Result(res) => res.into_set_keyspace(),
@@ -129,7 +128,6 @@ impl ResponseBody {
     }
 
     /// Unwraps body and returns BodyResEvent.
-    /// If frame body is not of type `Result` this method returns `None`.
     pub fn into_server_event(self) -> Option<BodyResEvent> {
         match self {
             ResponseBody::Event(event) => Some(event),

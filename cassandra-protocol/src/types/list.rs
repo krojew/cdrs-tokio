@@ -4,7 +4,8 @@ use std::net::IpAddr;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::frame::frame_result::{ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::message_result::{ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
@@ -20,6 +21,7 @@ pub struct List {
     /// a type of list items.
     metadata: ColTypeOption,
     data: Vec<CBytes>,
+    protocol_version: Version,
 }
 
 impl List {

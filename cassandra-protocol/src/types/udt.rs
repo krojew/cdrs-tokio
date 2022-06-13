@@ -7,7 +7,8 @@ use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 use crate::error::{column_is_empty_err, Error, Result};
-use crate::frame::frame_result::{CUdt, ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::message_result::{CUdt, ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
@@ -20,17 +21,21 @@ use num::BigInt;
 #[derive(Clone, Debug)]
 pub struct Udt {
     data: HashMap<String, (ColTypeOption, CBytes)>,
+    protocol_version: Version,
 }
 
 impl Udt {
-    pub fn new(fields: Vec<CBytes>, metadata: &CUdt) -> Udt {
+    pub fn new(fields: Vec<CBytes>, metadata: &CUdt, protocol_version: Version) -> Udt {
         let mut data: HashMap<String, (ColTypeOption, CBytes)> =
             HashMap::with_capacity(metadata.descriptions.len());
 
         for ((name, val_type), val_b) in metadata.descriptions.iter().zip(fields.into_iter()) {
             data.insert(name.clone(), (val_type.clone(), val_b));
         }
-        Udt { data }
+        Udt {
+            data,
+            protocol_version,
+        }
     }
 }
 

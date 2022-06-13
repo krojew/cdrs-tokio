@@ -3,7 +3,7 @@ use float_eq::*;
 use num::BigInt;
 use std::io::Cursor;
 
-use crate::frame::Serialize;
+use crate::frame::{Serialize, Version};
 
 /// Cassandra Decimal type
 #[derive(Debug, Clone, PartialEq, Constructor, Ord, PartialOrd, Eq, Hash)]
@@ -13,16 +13,18 @@ pub struct Decimal {
 }
 
 impl Decimal {
-    /// Method that returns plain `f64` value.
+    /// Method that returns plain `BigInt` value.
     pub fn as_plain(&self) -> BigInt {
         self.unscaled.clone() / 10i64.pow(self.scale as u32)
     }
 }
 
 impl Serialize for Decimal {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.scale.serialize(cursor);
-        self.unscaled.to_signed_bytes_be().serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.scale.serialize(cursor, version);
+        self.unscaled
+            .to_signed_bytes_be()
+            .serialize(cursor, version);
     }
 }
 
@@ -78,6 +80,12 @@ impl From<f64> for Decimal {
     }
 }
 
+impl From<Decimal> for BigInt {
+    fn from(value: Decimal) -> Self {
+        value.as_plain()
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -85,21 +93,24 @@ mod test {
     #[test]
     fn serialize_test() {
         assert_eq!(
-            Decimal::new(129.into(), 0).serialize_to_vec(),
+            Decimal::new(129.into(), 0).serialize_to_vec(Version::V4),
             vec![0, 0, 0, 0, 0x00, 0x81]
         );
 
         assert_eq!(
-            Decimal::new(BigInt::from(-129), 0).serialize_to_vec(),
+            Decimal::new(BigInt::from(-129), 0).serialize_to_vec(Version::V4),
             vec![0, 0, 0, 0, 0xFF, 0x7F]
         );
 
         let expected: Vec<u8> = vec![0, 0, 0, 1, 0x00, 0x81];
-        assert_eq!(Decimal::new(129.into(), 1).serialize_to_vec(), expected);
+        assert_eq!(
+            Decimal::new(129.into(), 1).serialize_to_vec(Version::V4),
+            expected
+        );
 
         let expected: Vec<u8> = vec![0, 0, 0, 1, 0xFF, 0x7F];
         assert_eq!(
-            Decimal::new(BigInt::from(-129), 1).serialize_to_vec(),
+            Decimal::new(BigInt::from(-129), 1).serialize_to_vec(Version::V4),
             expected
         );
     }

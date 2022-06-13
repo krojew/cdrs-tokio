@@ -35,7 +35,7 @@ mod node_info;
 mod pager;
 #[cfg(feature = "rust-tls")]
 mod rustls_connection_manager;
-pub mod send_frame;
+pub mod send_envelope;
 pub mod session;
 mod session_context;
 mod tcp_connection_manager;
@@ -57,4 +57,9 @@ pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send
 
     /// Connection pool configuration.
     fn connection_pool_config(&self) -> ConnectionPoolConfig;
+
+    /// Enable beta protocol support.
+    fn beta_protocol(&self) -> bool {
+        false
+    }
 }

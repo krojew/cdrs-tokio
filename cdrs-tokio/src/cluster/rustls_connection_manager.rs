@@ -7,13 +7,14 @@ use tokio::time::sleep;
 
 use crate::cluster::connection_manager::{startup, ConnectionManager};
 use crate::cluster::KeyspaceHolder;
+use crate::frame_encoding::FrameEncodingFactory;
 use crate::future::BoxFuture;
 use crate::retry::ReconnectionPolicy;
 use crate::transport::TransportRustls;
 use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::frame::{Frame, Version};
+use cassandra_protocol::frame::{Envelope, Version};
 
 pub struct RustlsConnectionManager {
     dns_name: rustls::ServerName,
@@ -21,6 +22,7 @@ pub struct RustlsConnectionManager {
     config: Arc<rustls::ClientConfig>,
     keyspace_holder: Arc<KeyspaceHolder>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+    frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
     compression: Compression,
     buffer_size: usize,
     tcp_nodelay: bool,
@@ -30,7 +32,7 @@ pub struct RustlsConnectionManager {
 impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
     fn connection(
         &self,
-        event_handler: Option<Sender<Frame>>,
+        event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<Result<TransportRustls>> {
@@ -41,6 +43,7 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
                 let transport = self
                     .establish_connection(event_handler.clone(), error_handler.clone(), addr)
                     .await;
+
                 match transport {
                     Ok(transport) => return Ok(transport),
                     Err(error) => {
@@ -62,6 +65,7 @@ impl RustlsConnectionManager {
         config: Arc<rustls::ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+        frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
         compression: Compression,
         buffer_size: usize,
         tcp_nodelay: bool,
@@ -73,6 +77,7 @@ impl RustlsConnectionManager {
             config,
             keyspace_holder,
             reconnection_policy,
+            frame_encoder_factory,
             compression,
             buffer_size,
             tcp_nodelay,
@@ -82,7 +87,7 @@ impl RustlsConnectionManager {
 
     async fn establish_connection(
         &self,
-        event_handler: Option<Sender<Frame>>,
+        event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> Result<TransportRustls> {
@@ -94,6 +99,10 @@ impl RustlsConnectionManager {
             event_handler,
             error_handler,
             self.compression,
+            self.frame_encoder_factory
+                .create_encoder(self.version, self.compression),
+            self.frame_encoder_factory
+                .create_decoder(self.version, self.compression),
             self.buffer_size,
             self.tcp_nodelay,
         )

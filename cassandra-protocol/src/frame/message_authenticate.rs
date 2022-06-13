@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use crate::error;
-use crate::frame::FromCursor;
+use crate::frame::{FromCursor, Version};
 use crate::types::{from_cursor_str, serialize_str};
 
 use super::Serialize;
@@ -13,13 +13,16 @@ pub struct BodyResAuthenticate {
 }
 
 impl Serialize for BodyResAuthenticate {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, &self.data);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        serialize_str(cursor, &self.data, version);
     }
 }
 
 impl FromCursor for BodyResAuthenticate {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResAuthenticate> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<BodyResAuthenticate> {
         Ok(BodyResAuthenticate {
             data: from_cursor_str(cursor)?.to_string(),
         })
@@ -30,6 +33,7 @@ impl FromCursor for BodyResAuthenticate {
 mod tests {
     use super::*;
     use crate::frame::traits::FromCursor;
+    use crate::frame::Version;
     use std::io::Cursor;
 
     #[test]
@@ -42,14 +46,14 @@ mod tests {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
-            let auth = BodyResAuthenticate::from_cursor(&mut cursor).unwrap();
+            let auth = BodyResAuthenticate::from_cursor(&mut cursor, Version::V4).unwrap();
             assert_eq!(auth, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }

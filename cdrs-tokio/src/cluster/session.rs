@@ -1,10 +1,10 @@
+use arc_swap::ArcSwapOption;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
 use cassandra_protocol::events::ServerEvent;
-use cassandra_protocol::frame::frame_result::{BodyResResultPrepared, TableSpec};
-use cassandra_protocol::frame::{Frame, Serialize, Version};
-use cassandra_protocol::query::utils::prepare_flags;
+use cassandra_protocol::frame::message_result::{BodyResResultPrepared, TableSpec};
+use cassandra_protocol::frame::{Envelope, Flags, Serialize, Version};
 use cassandra_protocol::query::{PreparedQuery, Query, QueryBatch, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
@@ -17,6 +17,7 @@ use std::io::{Cursor, Write};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
+use thiserror::Error;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -29,7 +30,7 @@ use crate::cluster::connection_pool::{ConnectionPoolConfig, ConnectionPoolFactor
 use crate::cluster::control_connection::ControlConnection;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
-use crate::cluster::send_frame::send_frame;
+use crate::cluster::send_envelope::send_envelope;
 use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::cluster::topology::{Node, NodeDistance, NodeState};
 #[cfg(feature = "rust-tls")]
@@ -37,6 +38,7 @@ use crate::cluster::NodeRustlsConfig;
 use crate::cluster::{ClusterMetadata, ClusterMetadataManager, SessionContext};
 use crate::cluster::{GenericClusterConfig, KeyspaceHolder};
 use crate::cluster::{NodeTcpConfig, SessionPager};
+use crate::frame_encoding::{FrameEncodingFactory, ProtocolFrameEncodingFactory};
 use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::load_balancing::{
@@ -58,6 +60,25 @@ lazy_static! {
     static ref DEFAULT_STATEMET_PARAMETERS: StatementParams = Default::default();
 }
 
+#[inline]
+fn prepare_flags(with_tracing: bool, with_warnings: bool, beta_protocol: bool) -> Flags {
+    let mut flags = Flags::empty();
+
+    if with_tracing {
+        flags.insert(Flags::TRACING);
+    }
+
+    if with_warnings {
+        flags.insert(Flags::WARNING);
+    }
+
+    if beta_protocol {
+        flags.insert(Flags::BETA);
+    }
+
+    flags
+}
+
 fn create_keyspace_holder() -> (Arc<KeyspaceHolder>, watch::Receiver<Option<String>>) {
     let (keyspace_sender, keyspace_receiver) = watch::channel(None);
     (
@@ -66,37 +87,52 @@ fn create_keyspace_holder() -> (Arc<KeyspaceHolder>, watch::Receiver<Option<Stri
     )
 }
 
+fn verify_compression_configuration(
+    version: Version,
+    compression: Compression,
+) -> Result<(), SessionBuildError> {
+    if version < Version::V5 || compression != Compression::Snappy {
+        Ok(())
+    } else {
+        Err(SessionBuildError::CompressionTypeNotSupported)
+    }
+}
+
 // https://github.com/apache/cassandra/blob/3a950b45c321e051a9744721408760c568c05617/src/java/org/apache/cassandra/db/marshal/CompositeType.java#L39
-fn serialize_routing_value(cursor: &mut Cursor<&mut Vec<u8>>, value: &Value) {
+fn serialize_routing_value(cursor: &mut Cursor<&mut Vec<u8>>, value: &Value, version: Version) {
     let temp_size: CIntShort = 0;
-    temp_size.serialize(cursor);
+    temp_size.serialize(cursor, version);
 
     let before_value_pos = cursor.position();
-    value.serialize(cursor);
+    value.serialize(cursor, version);
 
     let after_value_pos = cursor.position();
     cursor.set_position(before_value_pos - SHORT_LEN as u64);
 
     let value_size: CIntShort = (after_value_pos - before_value_pos) as CIntShort;
-    value_size.serialize(cursor);
+    value_size.serialize(cursor, version);
 
     cursor.set_position(after_value_pos);
     let _ = cursor.write(&[0]);
 }
 
-fn serialize_routing_key_with_indexes(values: &[Value], pk_indexes: &[i16]) -> Option<Vec<u8>> {
+fn serialize_routing_key_with_indexes(
+    values: &[Value],
+    pk_indexes: &[i16],
+    version: Version,
+) -> Option<Vec<u8>> {
     match pk_indexes.len() {
         0 => None,
         1 => values
             .get(pk_indexes[0] as usize)
-            .map(|value| value.serialize_to_vec()),
+            .map(|value| value.serialize_to_vec(version)),
         _ => {
             let mut buf = vec![];
             if pk_indexes
                 .iter()
                 .map(|index| values.get(*index as usize))
                 .fold_options(Cursor::new(&mut buf), |mut cursor, value| {
-                    serialize_routing_value(&mut cursor, value);
+                    serialize_routing_value(&mut cursor, value, version);
                     cursor
                 })
                 .is_some()
@@ -109,16 +145,16 @@ fn serialize_routing_key_with_indexes(values: &[Value], pk_indexes: &[i16]) -> O
     }
 }
 
-fn serialize_routing_key(values: &[Value]) -> Vec<u8> {
+fn serialize_routing_key(values: &[Value], version: Version) -> Vec<u8> {
     match values.len() {
         0 => vec![],
-        1 => values[0].serialize_to_vec(),
+        1 => values[0].serialize_to_vec(version),
         _ => {
             let mut buf = vec![];
             let mut cursor = Cursor::new(&mut buf);
 
             for value in values {
-                serialize_routing_value(&mut cursor, value);
+                serialize_routing_value(&mut cursor, value, version);
             }
 
             buf
@@ -172,11 +208,27 @@ impl<
         &self,
         prepared: &PreparedQuery,
         parameters: &StatementParams,
-    ) -> error::Result<Frame> {
+    ) -> error::Result<Envelope> {
         let consistency = parameters.query_params.consistency;
-        let flags = prepare_flags(parameters.tracing, parameters.warnings);
-        let options_frame =
-            Frame::new_req_execute(&prepared.id, &parameters.query_params, flags, self.version);
+        let flags = prepare_flags(
+            parameters.tracing,
+            parameters.warnings,
+            parameters.beta_protocol,
+        );
+
+        let result_metadata_id = prepared
+            .result_metadata_id
+            .load()
+            .as_ref()
+            .map(|metadata| (**metadata).clone());
+
+        let envelope = Envelope::new_req_execute(
+            &prepared.id,
+            result_metadata_id.as_ref(),
+            &parameters.query_params,
+            flags,
+            self.version,
+        );
 
         let keyspace = prepared
             .keyspace
@@ -189,19 +241,20 @@ impl<
             .as_ref()
             .and_then(|values| match values {
                 QueryValues::SimpleValues(values) => {
-                    serialize_routing_key_with_indexes(values, &prepared.pk_indexes).or_else(|| {
-                        parameters
-                            .routing_key
-                            .as_ref()
-                            .map(|values| serialize_routing_key(values))
-                    })
+                    serialize_routing_key_with_indexes(values, &prepared.pk_indexes, self.version)
+                        .or_else(|| {
+                            parameters
+                                .routing_key
+                                .as_ref()
+                                .map(|values| serialize_routing_key(values, self.version))
+                        })
                 }
                 QueryValues::NamedValues(_) => None,
             });
 
         let mut result = self
-            .send_frame(
-                options_frame,
+            .send_envelope(
+                envelope,
                 parameters.is_idempotent,
                 keyspace,
                 parameters.token,
@@ -226,16 +279,23 @@ impl<
                         return Err("Re-preparing an unprepared statement resulted in a different id - probably schema changed on the server.".into());
                     }
 
-                    let flags = prepare_flags(parameters.tracing, parameters.warnings);
-                    let options_frame = Frame::new_req_execute(
+                    let flags = prepare_flags(
+                        parameters.tracing,
+                        parameters.warnings,
+                        parameters.beta_protocol,
+                    );
+
+                    let envelope = Envelope::new_req_execute(
                         &new.id,
+                        new.result_metadata_id.as_ref(),
                         &parameters.query_params,
                         flags,
                         self.version,
                     );
+
                     result = self
-                        .send_frame(
-                            options_frame,
+                        .send_envelope(
+                            envelope,
                             parameters.is_idempotent,
                             keyspace,
                             parameters.token,
@@ -248,6 +308,24 @@ impl<
                 }
             }
         }
+
+        let response = result
+            .as_ref()
+            .map_err(|error| error.clone())
+            .and_then(|result| result.response_body());
+
+        let new_metadata_id = response.as_ref().map(|result| {
+            result
+                .as_rows_metadata()
+                .and_then(|metadata| metadata.new_metadata_id.as_ref())
+        });
+
+        if let Ok(Some(new_metadata_id)) = new_metadata_id {
+            prepared
+                .result_metadata_id
+                .swap(Some(Arc::new(new_metadata_id.clone())));
+        }
+
         result
     }
 
@@ -256,7 +334,7 @@ impl<
         &self,
         prepared: &PreparedQuery,
         values: V,
-    ) -> error::Result<Frame> {
+    ) -> error::Result<Envelope> {
         self.exec_with_params(
             prepared,
             &StatementParamsBuilder::new()
@@ -268,7 +346,7 @@ impl<
 
     /// Executes given prepared query.
     #[inline]
-    pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Frame> {
+    pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Envelope> {
         self.exec_with_params(prepared, &DEFAULT_STATEMET_PARAMETERS)
             .await
     }
@@ -280,19 +358,21 @@ impl<
     pub async fn prepare_raw_tw<Q: ToString>(
         &self,
         query: Q,
+        keyspace: Option<String>,
         with_tracing: bool,
         with_warnings: bool,
+        beta_protocol: bool,
     ) -> error::Result<BodyResResultPrepared> {
-        let flags = prepare_flags(with_tracing, with_warnings);
+        let flags = prepare_flags(with_tracing, with_warnings, beta_protocol);
 
-        let query_frame = Frame::new_req_prepare(query.to_string(), flags, self.version);
+        let envelope = Envelope::new_req_prepare(query.to_string(), keyspace, flags, self.version);
 
-        self.send_frame(query_frame, false, None, None, None, None, None, None)
+        self.send_envelope(envelope, false, None, None, None, None, None, None)
             .await
             .and_then(|response| response.response_body())
             .and_then(|body| {
                 body.into_prepared()
-                    .ok_or_else(|| "CDRS BUG: cannot convert frame into prepared".into())
+                    .ok_or_else(|| "CDRS BUG: cannot convert envelope into prepared".into())
             })
     }
 
@@ -300,7 +380,7 @@ impl<
     /// Returns the raw prepared query result.
     #[inline]
     pub async fn prepare_raw<Q: ToString>(&self, query: Q) -> error::Result<BodyResResultPrepared> {
-        self.prepare_raw_tw(query, false, false).await
+        self.prepare_raw_tw(query, None, false, false, false).await
     }
 
     /// Prepares a query for execution. Along with query itself,
@@ -310,11 +390,13 @@ impl<
     pub async fn prepare_tw<Q: ToString>(
         &self,
         query: Q,
+        keyspace: Option<String>,
         with_tracing: bool,
         with_warnings: bool,
+        beta_protocol: bool,
     ) -> error::Result<PreparedQuery> {
         let s = query.to_string();
-        self.prepare_raw_tw(query, with_tracing, with_warnings)
+        self.prepare_raw_tw(query, keyspace, with_tracing, with_warnings, beta_protocol)
             .await
             .map(|result| PreparedQuery {
                 id: result.id,
@@ -324,6 +406,7 @@ impl<
                     .global_table_spec
                     .map(|TableSpec { ks_name, .. }| ks_name),
                 pk_indexes: result.metadata.pk_indexes,
+                result_metadata_id: ArcSwapOption::new(result.result_metadata_id.map(Arc::new)),
             })
     }
 
@@ -331,12 +414,12 @@ impl<
     /// Returns the prepared query.
     #[inline]
     pub async fn prepare<Q: ToString>(&self, query: Q) -> error::Result<PreparedQuery> {
-        self.prepare_tw(query, false, false).await
+        self.prepare_tw(query, None, false, false, false).await
     }
 
     /// Executes batch query.
     #[inline]
-    pub async fn batch(&self, batch: QueryBatch) -> error::Result<Frame> {
+    pub async fn batch(&self, batch: QueryBatch) -> error::Result<Envelope> {
         self.batch_with_params(batch, &DEFAULT_STATEMET_PARAMETERS)
             .await
     }
@@ -346,14 +429,19 @@ impl<
         &self,
         batch: QueryBatch,
         parameters: &StatementParams,
-    ) -> error::Result<Frame> {
-        let flags = prepare_flags(parameters.tracing, parameters.warnings);
+    ) -> error::Result<Envelope> {
+        let flags = prepare_flags(
+            parameters.tracing,
+            parameters.warnings,
+            parameters.beta_protocol,
+        );
+
         let consistency = batch.consistency;
 
-        let query_frame = Frame::new_req_batch(batch, flags, self.version);
+        let envelope = Envelope::new_req_batch(batch, flags, self.version);
 
-        self.send_frame(
-            query_frame,
+        self.send_envelope(
+            envelope,
             parameters.is_idempotent,
             parameters.keyspace.as_deref(),
             None,
@@ -367,7 +455,7 @@ impl<
 
     /// Executes a query.
     #[inline]
-    pub async fn query<Q: ToString>(&self, query: Q) -> error::Result<Frame> {
+    pub async fn query<Q: ToString>(&self, query: Q) -> error::Result<Envelope> {
         self.query_with_params(query, DEFAULT_STATEMET_PARAMETERS.clone())
             .await
     }
@@ -378,7 +466,7 @@ impl<
         &self,
         query: Q,
         values: V,
-    ) -> error::Result<Frame> {
+    ) -> error::Result<Envelope> {
         self.query_with_params(
             query,
             StatementParamsBuilder::new()
@@ -393,7 +481,7 @@ impl<
         &self,
         query: Q,
         parameters: StatementParams,
-    ) -> error::Result<Frame> {
+    ) -> error::Result<Envelope> {
         let is_idempotent = parameters.is_idempotent;
         let consistency = parameters.query_params.consistency;
         let keyspace = parameters.keyspace;
@@ -401,18 +489,23 @@ impl<
         let routing_key = parameters
             .routing_key
             .as_ref()
-            .map(|values| serialize_routing_key(values));
+            .map(|values| serialize_routing_key(values, self.version));
 
         let query = Query {
             query: query.to_string(),
             params: parameters.query_params,
         };
 
-        let flags = prepare_flags(parameters.tracing, parameters.warnings);
-        let query_frame = Frame::new_query(query, flags, self.version);
+        let flags = prepare_flags(
+            parameters.tracing,
+            parameters.warnings,
+            parameters.beta_protocol,
+        );
 
-        self.send_frame(
-            query_frame,
+        let envelope = Envelope::new_query(query, flags, self.version);
+
+        self.send_envelope(
+            envelope,
             is_idempotent,
             keyspace.as_deref(),
             token,
@@ -457,9 +550,9 @@ impl<
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn send_frame(
+    async fn send_envelope(
         &self,
-        frame: Frame,
+        envelope: Envelope,
         is_idempotent: bool,
         keyspace: Option<&str>,
         token: Option<Murmur3Token>,
@@ -467,7 +560,7 @@ impl<
         consistency: Option<Consistency>,
         speculative_execution_policy: Option<&Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
         retry_policy: Option<&Arc<dyn RetryPolicy + Send + Sync>>,
-    ) -> error::Result<Frame> {
+    ) -> error::Result<Envelope> {
         let current_keyspace = self.current_keyspace();
         let request = Request::new(
             keyspace.or_else(|| current_keyspace.as_ref().map(|keyspace| &***keyspace)),
@@ -526,9 +619,9 @@ impl<
 
                 let mut context = Context::new(1);
                 let mut async_tasks = FuturesUnordered::new();
-                async_tasks.push(send_frame(
+                async_tasks.push(send_envelope(
                     &shared_query_plan,
-                    &frame,
+                    &envelope,
                     is_idempotent,
                     retry_policy.new_session(),
                 ));
@@ -551,9 +644,9 @@ impl<
                                 speculative_execution_policy.execution_interval(&context)
                             {
                                 context.running_executions += 1;
-                                async_tasks.push(send_frame(
+                                async_tasks.push(send_envelope(
                                     &shared_query_plan,
-                                    &frame,
+                                    &envelope,
                                     is_idempotent,
                                     retry_policy.new_session(),
                                 ));
@@ -584,9 +677,9 @@ impl<
                     }
                 }
             }
-            _ => send_frame(
+            _ => send_envelope(
                 query_plan.into_iter(),
-                &frame,
+                &envelope,
                 is_idempotent,
                 retry_policy.new_session(),
             )
@@ -609,6 +702,7 @@ impl<
         event_channel_capacity: usize,
         version: Version,
         connection_pool_config: ConnectionPoolConfig,
+        beta_protocol: bool,
     ) -> Self {
         let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
             connection_pool_config,
@@ -651,6 +745,7 @@ impl<
             session_context.clone(),
             node_distance_evaluator,
             version,
+            beta_protocol,
         ));
 
         cluster_metadata_manager
@@ -739,6 +834,7 @@ where
         config.event_channel_capacity(),
         config.version(),
         config.connection_pool_config(),
+        config.beta_protocol(),
     ))
 }
 
@@ -793,6 +889,7 @@ impl<
         contact_points: Vec<SocketAddr>,
         connection_manager: CM,
         version: Version,
+        beta_protocol: bool,
     ) -> Session<T, CM, LB> {
         if let Some(keyspace) = self.keyspace {
             keyspace_holder.update_current_keyspace_without_notification(keyspace);
@@ -811,8 +908,16 @@ impl<
             self.event_channel_capacity,
             version,
             self.connection_pool_config,
+            beta_protocol,
         )
     }
+}
+
+/// `Session` build error.
+#[derive(Error, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+pub enum SessionBuildError {
+    #[error("Given compression type is not supported for selected protocol!")]
+    CompressionTypeNotSupported,
 }
 
 /// Builder for easy `Session` creation. Requires static `LoadBalancingStrategy`, but otherwise, other
@@ -837,6 +942,13 @@ pub trait SessionBuilder<
     fn with_reconnection_policy(
         self,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+    ) -> Self;
+
+    /// Sets custom frame encoder factory.
+    #[must_use]
+    fn with_frame_encoder_factory(
+        self,
+        frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
     ) -> Self;
 
     /// Sets new node distance evaluator. Computing node distance is fundamental to proper
@@ -881,8 +993,13 @@ pub trait SessionBuilder<
     #[must_use]
     fn with_keyspace(self, keyspace: String) -> Self;
 
+    /// Sets the beta protocol flag. Server will respond with ERROR if protocol version is marked as
+    /// beta on server and client does not provide this flag.
+    #[must_use]
+    fn with_beta_protocol(self, beta_protocol: bool) -> Self;
+
     /// Builds the resulting session.
-    fn build(self) -> Session<T, CM, LB>;
+    fn build(self) -> Result<Session<T, CM, LB>, SessionBuildError>;
 }
 
 /// Builder for non-TLS sessions.
@@ -891,6 +1008,7 @@ pub struct TcpSessionBuilder<
 > {
     config: SessionConfig<TransportTcp, TcpConnectionManager, LB>,
     node_config: NodeTcpConfig,
+    frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
 }
 
 impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync + 'static>
@@ -902,6 +1020,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         TcpSessionBuilder {
             config: SessionConfig::new(load_balancing),
             node_config,
+            frame_encoder_factory: Box::new(ProtocolFrameEncodingFactory::default()),
         }
     }
 }
@@ -924,6 +1043,14 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     ) -> Self {
         self.config.reconnection_policy = reconnection_policy;
+        self
+    }
+
+    fn with_frame_encoder_factory(
+        mut self,
+        frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
+    ) -> Self {
+        self.frame_encoder_factory = frame_encoder_factory;
         self
     }
 
@@ -968,24 +1095,35 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         self
     }
 
-    fn build(self) -> Session<TransportTcp, TcpConnectionManager, LB> {
-        let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
-        let connection_manager = TcpConnectionManager::new(
-            self.node_config.authenticator_provider,
-            keyspace_holder.clone(),
-            self.config.reconnection_policy.clone(),
-            self.config.compression,
-            self.config.transport_buffer_size,
-            self.config.tcp_nodelay,
-            self.node_config.version,
-        );
+    fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.node_config.beta_protocol = beta_protocol;
+        self
+    }
 
-        self.config.into_session(
-            keyspace_holder,
-            keyspace_receiver,
-            self.node_config.contact_points,
-            connection_manager,
-            self.node_config.version,
+    fn build(self) -> Result<Session<TransportTcp, TcpConnectionManager, LB>, SessionBuildError> {
+        verify_compression_configuration(self.node_config.version, self.config.compression).map(
+            |()| {
+                let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
+                let connection_manager = TcpConnectionManager::new(
+                    self.node_config.authenticator_provider,
+                    keyspace_holder.clone(),
+                    self.config.reconnection_policy.clone(),
+                    self.frame_encoder_factory,
+                    self.config.compression,
+                    self.config.transport_buffer_size,
+                    self.config.tcp_nodelay,
+                    self.node_config.version,
+                );
+
+                self.config.into_session(
+                    keyspace_holder,
+                    keyspace_receiver,
+                    self.node_config.contact_points,
+                    connection_manager,
+                    self.node_config.version,
+                    self.node_config.beta_protocol,
+                )
+            },
         )
     }
 }
@@ -997,6 +1135,7 @@ pub struct RustlsSessionBuilder<
 > {
     config: SessionConfig<TransportRustls, RustlsConnectionManager, LB>,
     node_config: NodeRustlsConfig,
+    frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
 }
 
 #[cfg(feature = "rust-tls")]
@@ -1009,6 +1148,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
         RustlsSessionBuilder {
             config: SessionConfig::new(load_balancing),
             node_config,
+            frame_encoder_factory: Box::new(ProtocolFrameEncodingFactory::default()),
         }
     }
 }
@@ -1036,6 +1176,14 @@ impl<
         self
     }
 
+    fn with_frame_encoder_factory(
+        mut self,
+        frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
+    ) -> Self {
+        self.frame_encoder_factory = frame_encoder_factory;
+        self
+    }
+
     fn with_node_distance_evaluator(
         mut self,
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
@@ -1077,26 +1225,57 @@ impl<
         self
     }
 
-    fn build(self) -> Session<TransportRustls, RustlsConnectionManager, LB> {
-        let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
-        let connection_manager = RustlsConnectionManager::new(
-            self.node_config.dns_name,
-            self.node_config.authenticator_provider,
-            self.node_config.config,
-            keyspace_holder.clone(),
-            self.config.reconnection_policy.clone(),
-            self.config.compression,
-            self.config.transport_buffer_size,
-            self.config.tcp_nodelay,
-            self.node_config.version,
-        );
+    fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.node_config.beta_protocol = beta_protocol;
+        self
+    }
 
-        self.config.into_session(
-            keyspace_holder,
-            keyspace_receiver,
-            self.node_config.contact_points,
-            connection_manager,
-            self.node_config.version,
+    fn build(
+        self,
+    ) -> Result<Session<TransportRustls, RustlsConnectionManager, LB>, SessionBuildError> {
+        verify_compression_configuration(self.node_config.version, self.config.compression).map(
+            |()| {
+                let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
+                let connection_manager = RustlsConnectionManager::new(
+                    self.node_config.dns_name,
+                    self.node_config.authenticator_provider,
+                    self.node_config.config,
+                    keyspace_holder.clone(),
+                    self.config.reconnection_policy.clone(),
+                    self.frame_encoder_factory,
+                    self.config.compression,
+                    self.config.transport_buffer_size,
+                    self.config.tcp_nodelay,
+                    self.node_config.version,
+                );
+
+                self.config.into_session(
+                    keyspace_holder,
+                    keyspace_receiver,
+                    self.node_config.contact_points,
+                    connection_manager,
+                    self.node_config.version,
+                    self.node_config.beta_protocol,
+                )
+            },
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cluster::session::prepare_flags;
+    use cassandra_protocol::frame::Flags;
+
+    #[test]
+    fn prepare_flags_test() {
+        assert!(prepare_flags(true, false, false).contains(Flags::TRACING));
+        assert!(prepare_flags(false, true, false).contains(Flags::WARNING));
+        assert!(prepare_flags(false, false, true).contains(Flags::BETA));
+
+        let all = prepare_flags(true, true, true);
+        assert!(all.contains(Flags::TRACING));
+        assert!(all.contains(Flags::WARNING));
+        assert!(all.contains(Flags::BETA));
     }
 }

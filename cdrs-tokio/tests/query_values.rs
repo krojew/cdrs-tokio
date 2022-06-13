@@ -1,20 +1,36 @@
 mod common;
 
 #[cfg(feature = "e2e-tests")]
-use common::*;
-
+use cassandra_protocol::frame::Version;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::IntoRustByName;
+#[cfg(feature = "e2e-tests")]
+use common::*;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn query_values_in() {
+async fn query_values_in_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_query_values_in \
              (id text PRIMARY KEY)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    query_values_in_test(cql, session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn query_values_in_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_query_values_in \
+             (id text PRIMARY KEY)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    query_values_in_test(cql, session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn query_values_in_test(cql: &str, session: CurrentSession) {
     session.query(cql).await.expect("create table error");
 
     let query_insert = "INSERT INTO cdrs_test.test_query_values_in \

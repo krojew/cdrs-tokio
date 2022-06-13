@@ -7,7 +7,7 @@ use thiserror::Error as ThisError;
 use uuid::Error as UuidError;
 
 use crate::compression::CompressionError;
-use crate::frame::frame_error::ErrorBody;
+use crate::frame::message_error::ErrorBody;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -63,5 +63,26 @@ impl From<String> for Error {
 impl From<&str> for Error {
     fn from(err: &str) -> Error {
         Error::General(err.to_string())
+    }
+}
+
+impl Clone for Error {
+    fn clone(&self) -> Self {
+        match self {
+            Error::Io(error) => Error::Io(io::Error::new(
+                error.kind(),
+                error
+                    .get_ref()
+                    .map(|error| error.to_string())
+                    .unwrap_or_default(),
+            )),
+            Error::UuidParse(error) => Error::UuidParse(error.clone()),
+            Error::General(error) => Error::General(error.clone()),
+            Error::FromUtf8(error) => Error::FromUtf8(error.clone()),
+            Error::Utf8(error) => Error::Utf8(*error),
+            Error::Compression(error) => Error::Compression(error.clone()),
+            Error::Server(error) => Error::Server(error.clone()),
+            Error::Timeout(error) => Error::Timeout(error.clone()),
+        }
     }
 }

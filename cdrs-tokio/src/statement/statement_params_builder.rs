@@ -2,7 +2,7 @@ use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::query::{QueryFlags, QueryParams, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
-use cassandra_protocol::types::CBytes;
+use cassandra_protocol::types::{CBytes, CInt, CLong};
 use std::sync::Arc;
 
 use crate::retry::RetryPolicy;
@@ -15,18 +15,20 @@ pub struct StatementParamsBuilder {
     flags: Option<QueryFlags>,
     values: Option<QueryValues>,
     with_names: bool,
-    page_size: Option<i32>,
+    page_size: Option<CInt>,
     paging_state: Option<CBytes>,
     serial_consistency: Option<Consistency>,
-    timestamp: Option<i64>,
+    timestamp: Option<CLong>,
     is_idempotent: bool,
     keyspace: Option<String>,
+    now_in_seconds: Option<CInt>,
     token: Option<Murmur3Token>,
     routing_key: Option<Vec<Value>>,
     tracing: bool,
     warnings: bool,
     speculative_execution_policy: Option<Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
     retry_policy: Option<Arc<dyn RetryPolicy + Send + Sync>>,
+    beta_protocol: bool,
 }
 
 impl StatementParamsBuilder {
@@ -148,6 +150,21 @@ impl StatementParamsBuilder {
         self
     }
 
+    /// Sets beta protocol usage flag
+    #[must_use]
+    pub fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.beta_protocol = beta_protocol;
+        self
+    }
+
+    /// Sets "now" in seconds.
+    #[must_use]
+    pub fn with_now_in_seconds(mut self, now_in_seconds: CInt) -> Self {
+        self.now_in_seconds = Some(now_in_seconds);
+        self
+    }
+
+    #[must_use]
     pub fn build(self) -> StatementParams {
         StatementParams {
             query_params: QueryParams {
@@ -158,6 +175,8 @@ impl StatementParamsBuilder {
                 paging_state: self.paging_state,
                 serial_consistency: self.serial_consistency,
                 timestamp: self.timestamp,
+                keyspace: self.keyspace.clone(),
+                now_in_seconds: self.now_in_seconds,
             },
             is_idempotent: self.is_idempotent,
             keyspace: self.keyspace,
@@ -167,6 +186,7 @@ impl StatementParamsBuilder {
             warnings: self.warnings,
             speculative_execution_policy: self.speculative_execution_policy,
             retry_policy: self.retry_policy,
+            beta_protocol: self.beta_protocol,
         }
     }
 }

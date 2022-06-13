@@ -1,7 +1,8 @@
 use crate::consistency::Consistency;
 use crate::error::{Error as CError, Result as CResult};
-use crate::frame::frame_batch::{BatchQuery, BatchQuerySubj, BatchType, BodyReqBatch};
+use crate::frame::message_batch::{BatchQuery, BatchQuerySubj, BatchType, BodyReqBatch};
 use crate::query::{PreparedQuery, QueryValues};
+use crate::types::{CInt, CLong};
 
 pub type QueryBatch = BodyReqBatch;
 
@@ -11,7 +12,9 @@ pub struct BatchQueryBuilder {
     queries: Vec<BatchQuery>,
     consistency: Consistency,
     serial_consistency: Option<Consistency>,
-    timestamp: Option<i64>,
+    timestamp: Option<CLong>,
+    keyspace: Option<String>,
+    now_in_seconds: Option<CInt>,
 }
 
 impl Default for BatchQueryBuilder {
@@ -22,6 +25,8 @@ impl Default for BatchQueryBuilder {
             consistency: Consistency::One,
             serial_consistency: None,
             timestamp: None,
+            keyspace: None,
+            now_in_seconds: None,
         }
     }
 }
@@ -31,12 +36,14 @@ impl BatchQueryBuilder {
         Default::default()
     }
 
+    #[must_use]
     pub fn with_batch_type(mut self, batch_type: BatchType) -> Self {
         self.batch_type = batch_type;
         self
     }
 
     /// Add a query (non-prepared one)
+    #[must_use]
     pub fn add_query<T: Into<String>>(mut self, query: T, values: QueryValues) -> Self {
         self.queries.push(BatchQuery {
             subject: BatchQuerySubj::QueryString(query.into()),
@@ -46,6 +53,7 @@ impl BatchQueryBuilder {
     }
 
     /// Add a query (prepared one)
+    #[must_use]
     pub fn add_query_prepared(mut self, query: &PreparedQuery, values: QueryValues) -> Self {
         self.queries.push(BatchQuery {
             subject: BatchQuerySubj::PreparedId(query.id.clone()),
@@ -54,23 +62,39 @@ impl BatchQueryBuilder {
         self
     }
 
+    #[must_use]
     pub fn clear_queries(mut self) -> Self {
         self.queries = vec![];
         self
     }
 
+    #[must_use]
     pub fn with_consistency(mut self, consistency: Consistency) -> Self {
         self.consistency = consistency;
         self
     }
 
+    #[must_use]
     pub fn with_serial_consistency(mut self, serial_consistency: Consistency) -> Self {
         self.serial_consistency = Some(serial_consistency);
         self
     }
 
-    pub fn with_timestamp(mut self, timestamp: i64) -> Self {
+    #[must_use]
+    pub fn with_timestamp(mut self, timestamp: CLong) -> Self {
         self.timestamp = Some(timestamp);
+        self
+    }
+
+    #[must_use]
+    pub fn with_keyspace(mut self, keyspace: String) -> Self {
+        self.keyspace = Some(keyspace);
+        self
+    }
+
+    #[must_use]
+    pub fn with_now_in_seconds(mut self, now_in_seconds: CInt) -> Self {
+        self.now_in_seconds = Some(now_in_seconds);
         self
     }
 
@@ -94,6 +118,8 @@ impl BatchQueryBuilder {
             consistency: self.consistency,
             serial_consistency: self.serial_consistency,
             timestamp: self.timestamp,
+            keyspace: self.keyspace,
+            now_in_seconds: self.now_in_seconds,
         })
     }
 }

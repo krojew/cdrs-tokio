@@ -28,6 +28,110 @@ macro_rules! query_values {
 }
 
 macro_rules! list_as_rust {
+    (List) => (
+        impl AsRustType<Vec<List>> for List {
+            fn as_rust_type(&self) -> Result<Option<Vec<List>>> {
+                match self.metadata.value {
+                    Some(ColTypeOptionValue::CList(ref type_option)) |
+                    Some(ColTypeOptionValue::CSet(ref type_option)) => {
+                        let type_option_ref = type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+                        let convert = self
+                            .map(|bytes| {
+                                as_rust_type!(type_option_ref, bytes, protocol_version, List)
+                                    .unwrap()
+                                    // item in a list supposed to be a non-null value.
+                                    // TODO: check if it's true
+                                    .unwrap()
+                            });
+
+                        Ok(Some(convert))
+                    },
+                    _ => Err(Error::General(format!("Invalid conversion. \
+                            Cannot convert {:?} into List (valid types: List, Set).",
+                            self.metadata.value)))
+                }
+            }
+        }
+    );
+    (Map) => (
+        impl AsRustType<Vec<Map>> for List {
+            fn as_rust_type(&self) -> Result<Option<Vec<Map>>> {
+                match self.metadata.value {
+                    Some(ColTypeOptionValue::CList(ref type_option)) |
+                    Some(ColTypeOptionValue::CSet(ref type_option)) => {
+                        let type_option_ref = type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+                        let convert = self
+                            .map(|bytes| {
+                                as_rust_type!(type_option_ref, bytes, protocol_version, Map)
+                                    .unwrap()
+                                    // item in a list supposed to be a non-null value.
+                                    // TODO: check if it's true
+                                    .unwrap()
+                            });
+
+                        Ok(Some(convert))
+                    },
+                    _ => Err(Error::General(format!("Invalid conversion. \
+                            Cannot convert {:?} into List (valid types: List, Set).",
+                            self.metadata.value)))
+                }
+            }
+        }
+    );
+    (Udt) => (
+        impl AsRustType<Vec<Udt>> for List {
+            fn as_rust_type(&self) -> Result<Option<Vec<Udt>>> {
+                match self.metadata.value {
+                    Some(ColTypeOptionValue::CList(ref type_option)) |
+                    Some(ColTypeOptionValue::CSet(ref type_option)) => {
+                        let type_option_ref = type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+                        let convert = self
+                            .map(|bytes| {
+                                as_rust_type!(type_option_ref, bytes, protocol_version, Udt)
+                                    .unwrap()
+                                    // item in a list supposed to be a non-null value.
+                                    // TODO: check if it's true
+                                    .unwrap()
+                            });
+
+                        Ok(Some(convert))
+                    },
+                    _ => Err(Error::General(format!("Invalid conversion. \
+                            Cannot convert {:?} into List (valid types: List, Set).",
+                            self.metadata.value)))
+                }
+            }
+        }
+    );
+    (Tuple) => (
+        impl AsRustType<Vec<Tuple>> for List {
+            fn as_rust_type(&self) -> Result<Option<Vec<Tuple>>> {
+                match self.metadata.value {
+                    Some(ColTypeOptionValue::CList(ref type_option)) |
+                    Some(ColTypeOptionValue::CSet(ref type_option)) => {
+                        let type_option_ref = type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+                        let convert = self
+                            .map(|bytes| {
+                                as_rust_type!(type_option_ref, bytes, protocol_version, Tuple)
+                                    .unwrap()
+                                    // item in a list supposed to be a non-null value.
+                                    // TODO: check if it's true
+                                    .unwrap()
+                            });
+
+                        Ok(Some(convert))
+                    },
+                    _ => Err(Error::General(format!("Invalid conversion. \
+                            Cannot convert {:?} into List (valid types: List, Set).",
+                            self.metadata.value)))
+                }
+            }
+        }
+    );
     ($($into_type:tt)+) => (
         impl AsRustType<Vec<$($into_type)+>> for List {
             fn as_rust_type(&self) -> Result<Option<Vec<$($into_type)+>>> {
@@ -66,12 +170,16 @@ macro_rules! list_as_cassandra_type {
                 use crate::types::cassandra_type::CassandraType;
                 use std::ops::Deref;
 
+                let protocol_version = self.protocol_version;
+
                 match self.metadata.value {
                     Some(ColTypeOptionValue::CList(ref type_option))
                     | Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.deref().clone();
                         let wrapper = wrapper_fn(&type_option_ref.id);
-                        let convert = self.map(|bytes| wrapper(bytes, &type_option_ref).unwrap());
+                        let convert = self.map(|bytes| {
+                            wrapper(bytes, &type_option_ref, protocol_version).unwrap()
+                        });
                         Ok(Some(CassandraType::List(convert)))
                     }
                     _ => Err(Error::General(format!(
@@ -107,13 +215,16 @@ macro_rules! map_as_cassandra_type {
 
                     let value_wrapper = wrapper_fn(&value_col_type_option.id);
 
+                    let protocol_version = self.protocol_version;
+
                     let map = self
                         .data
                         .iter()
                         .map(|(key, value)| {
                             (
-                                key_wrapper(key, &key_col_type_option).unwrap(),
-                                value_wrapper(value, &value_col_type_option).unwrap(),
+                                key_wrapper(key, &key_col_type_option, protocol_version).unwrap(),
+                                value_wrapper(value, &value_col_type_option, protocol_version)
+                                    .unwrap(),
                             )
                         })
                         .collect::<Vec<(CassandraType, CassandraType)>>();
@@ -136,12 +247,13 @@ macro_rules! tuple_as_cassandra_type {
                 use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
 
+                let protocol_version = self.protocol_version;
                 let values = self
                     .data
                     .iter()
                     .map(|(col_type, bytes)| {
                         let wrapper = wrapper_fn(&col_type.id);
-                        wrapper(&bytes, col_type).unwrap()
+                        wrapper(&bytes, col_type, protocol_version).unwrap()
                     })
                     .collect();
 
@@ -161,11 +273,12 @@ macro_rules! udt_as_cassandra_type {
                 use crate::types::cassandra_type::CassandraType;
                 use std::collections::HashMap;
 
-                let mut map = HashMap::new();
+                let mut map = HashMap::with_capacity(self.data.len());
+                let protocol_version = self.protocol_version;
 
                 self.data.iter().for_each(|(key, (col_type, bytes))| {
                     let wrapper = wrapper_fn(&col_type.id);
-                    let value = wrapper(&bytes, col_type).unwrap();
+                    let value = wrapper(&bytes, col_type, protocol_version).unwrap();
                     map.insert(key.clone(), value);
                 });
 
@@ -176,6 +289,231 @@ macro_rules! udt_as_cassandra_type {
 }
 
 macro_rules! map_as_rust {
+    ({ Tuple }, { List }) => (
+        impl AsRustType<HashMap<Tuple, List>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<Tuple, List>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, protocol_version, Tuple)?;
+                            let val = as_rust_type!(val_type_option, val, protocol_version, List)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
+    ({ Tuple }, { Map }) => (
+        impl AsRustType<HashMap<Tuple, Map>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<Tuple, Map>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, protocol_version, Tuple)?;
+                            let val = as_rust_type!(val_type_option, val, protocol_version, Map)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
+    ({ Tuple }, { Udt }) => (
+        impl AsRustType<HashMap<Tuple, Udt>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<Tuple, Udt>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, protocol_version, Tuple)?;
+                            let val = as_rust_type!(val_type_option, val, protocol_version, Udt)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
+    ({ Tuple }, { Tuple }) => (
+        impl AsRustType<HashMap<Tuple, Tuple>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<Tuple, Tuple>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, protocol_version, Tuple)?;
+                            let val = as_rust_type!(val_type_option, val, protocol_version, Tuple)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
+    ({ Tuple }, { $($val_type:tt)+ }) => (
+        impl AsRustType<HashMap<Tuple, $($val_type)+>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<Tuple, $($val_type)+>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, protocol_version, Tuple)?;
+                            let val = as_rust_type!(val_type_option, val, $($val_type)+)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
+    ({ $($key_type:tt)+ }, { List }) => (
+        impl AsRustType<HashMap<$($key_type)+, List>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<$($key_type)+, List>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, $($key_type)+)?;
+                            let val = as_rust_type!(val_type_option, val, protocol_version, List)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
+    ({ $($key_type:tt)+ }, { Map }) => (
+        impl AsRustType<HashMap<$($key_type)+, Map>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<$($key_type)+, Map>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, $($key_type)+)?;
+                            let val = as_rust_type!(val_type_option, val, protocol_version, Map)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
+    ({ $($key_type:tt)+ }, { Udt }) => (
+        impl AsRustType<HashMap<$($key_type)+, Udt>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<$($key_type)+, Udt>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, $($key_type)+)?;
+                            let val = as_rust_type!(val_type_option, val, protocol_version, Udt)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
+    ({ $($key_type:tt)+ }, { Tuple }) => (
+        impl AsRustType<HashMap<$($key_type)+, Tuple>> for Map {
+            /// Converts `Map` into `HashMap` for blob values.
+            fn as_rust_type(&self) -> Result<Option<HashMap<$($key_type)+, Tuple>>> {
+                if let Some(ColTypeOptionValue::CMap(key_type_option, val_type_option)) = &self.metadata.value {
+                    let mut map = HashMap::with_capacity(self.data.len());
+                        let key_type_option = key_type_option.as_ref();
+                        let val_type_option = val_type_option.as_ref();
+                        let protocol_version = self.protocol_version;
+
+                        for (key, val) in self.data.iter() {
+                            let key = as_rust_type!(key_type_option, key, $($key_type)+)?;
+                            let val = as_rust_type!(val_type_option, val, protocol_version, Tuple)?;
+                            if let (Some(key), Some(val)) = (key, val) {
+                                map.insert(key, val);
+                            }
+                        }
+
+                        Ok(Some(map))
+                } else {
+                    Err(format!("Invalid column type for map: {:?}", self.metadata.value).into())
+                }
+            }
+        }
+    );
     ({ $($key_type:tt)+ }, { $($val_type:tt)+ }) => (
         impl AsRustType<HashMap<$($key_type)+, $($val_type)+>> for Map {
             /// Converts `Map` into `HashMap` for blob values.
@@ -203,6 +541,58 @@ macro_rules! map_as_rust {
 }
 
 macro_rules! into_rust_by_name {
+    (Row, List) => (
+        impl IntoRustByName<List> for Row {
+            fn get_by_name(&self, name: &str) -> Result<Option<List>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_name(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, List)
+                    })
+            }
+        }
+    );
+    (Row, Map) => (
+        impl IntoRustByName<Map> for Row {
+            fn get_by_name(&self, name: &str) -> Result<Option<Map>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_name(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Map)
+                    })
+            }
+        }
+    );
+    (Row, Udt) => (
+        impl IntoRustByName<Udt> for Row {
+            fn get_by_name(&self, name: &str) -> Result<Option<Udt>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_name(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Udt)
+                    })
+            }
+        }
+    );
+    (Row, Tuple) => (
+        impl IntoRustByName<Tuple> for Row {
+            fn get_by_name(&self, name: &str) -> Result<Option<Tuple>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_name(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Tuple)
+                    })
+            }
+        }
+    );
     (Row, $($into_type:tt)+) => (
         impl IntoRustByName<$($into_type)+> for Row {
             fn get_by_name(&self, name: &str) -> Result<Option<$($into_type)+>> {
@@ -211,6 +601,62 @@ macro_rules! into_rust_by_name {
                     .and_then(|(col_spec, cbytes)| {
                         let col_type = &col_spec.col_type;
                         as_rust_type!(col_type, cbytes, $($into_type)+)
+                    })
+            }
+        }
+    );
+    (Udt, List) => (
+        impl IntoRustByName<List> for Udt {
+            fn get_by_name(&self, name: &str) -> Result<Option<List>> {
+                let protocol_version = self.protocol_version;
+                self.data.get(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, protocol_version, List);
+                        converted.map_err(|err| err.into())
+                    })
+            }
+        }
+    );
+    (Udt, Map) => (
+        impl IntoRustByName<Map> for Udt {
+            fn get_by_name(&self, name: &str) -> Result<Option<Map>> {
+                let protocol_version = self.protocol_version;
+                self.data.get(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, protocol_version, Map);
+                        converted.map_err(|err| err.into())
+                    })
+            }
+        }
+    );
+    (Udt, Udt) => (
+        impl IntoRustByName<Udt> for Udt {
+            fn get_by_name(&self, name: &str) -> Result<Option<Udt>> {
+                let protocol_version = self.protocol_version;
+                self.data.get(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, protocol_version, Udt);
+                        converted.map_err(|err| err.into())
+                    })
+            }
+        }
+    );
+    (Udt, Tuple) => (
+        impl IntoRustByName<Tuple> for Udt {
+            fn get_by_name(&self, name: &str) -> Result<Option<Tuple>> {
+                let protocol_version = self.protocol_version;
+                self.data.get(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, protocol_version, Tuple);
+                        converted.map_err(|err| err.into())
                     })
             }
         }
@@ -231,6 +677,66 @@ macro_rules! into_rust_by_name {
 }
 
 macro_rules! into_rust_by_index {
+    (Tuple, List) => (
+        impl IntoRustByIndex<List> for Tuple {
+            fn get_by_index(&self, index: usize) -> Result<Option<List>> {
+                let protocol_version = self.protocol_version;
+                self.data
+                    .get(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, protocol_version, List);
+                        converted.map_err(|err| err.into())
+                    })
+            }
+        }
+    );
+    (Tuple, Map) => (
+        impl IntoRustByIndex<Map> for Tuple {
+            fn get_by_index(&self, index: usize) -> Result<Option<Map>> {
+                let protocol_version = self.protocol_version;
+                self.data
+                    .get(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, protocol_version, Map);
+                        converted.map_err(|err| err.into())
+                    })
+            }
+        }
+    );
+    (Tuple, Udt) => (
+        impl IntoRustByIndex<Udt> for Tuple {
+            fn get_by_index(&self, index: usize) -> Result<Option<Udt>> {
+                let protocol_version = self.protocol_version;
+                self.data
+                    .get(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, protocol_version, Udt);
+                        converted.map_err(|err| err.into())
+                    })
+            }
+        }
+    );
+    (Tuple, Tuple) => (
+        impl IntoRustByIndex<Tuple> for Tuple {
+            fn get_by_index(&self, index: usize) -> Result<Option<Tuple>> {
+                let protocol_version = self.protocol_version;
+                self.data
+                    .get(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|v| {
+                        let &(ref col_type, ref bytes) = v;
+                        let converted = as_rust_type!(col_type, bytes, protocol_version, Tuple);
+                        converted.map_err(|err| err.into())
+                    })
+            }
+        }
+    );
     (Tuple, $($into_type:tt)+) => (
         impl IntoRustByIndex<$($into_type)+> for Tuple {
             fn get_by_index(&self, index: usize) -> Result<Option<$($into_type)+>> {
@@ -241,6 +747,58 @@ macro_rules! into_rust_by_index {
                         let &(ref col_type, ref bytes) = v;
                         let converted = as_rust_type!(col_type, bytes, $($into_type)+);
                         converted.map_err(|err| err.into())
+                    })
+            }
+        }
+    );
+    (Row, List) => (
+        impl IntoRustByIndex<List> for Row {
+            fn get_by_index(&self, index: usize) -> Result<Option<List>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_index(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, List)
+                    })
+            }
+        }
+    );
+    (Row, Map) => (
+        impl IntoRustByIndex<Map> for Row {
+            fn get_by_index(&self, index: usize) -> Result<Option<Map>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_index(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Map)
+                    })
+            }
+        }
+    );
+    (Row, Udt) => (
+        impl IntoRustByIndex<Udt> for Row {
+            fn get_by_index(&self, index: usize) -> Result<Option<Udt>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_index(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Udt)
+                    })
+            }
+        }
+    );
+    (Row, Tuple) => (
+        impl IntoRustByIndex<Tuple> for Row {
+            fn get_by_index(&self, index: usize) -> Result<Option<Tuple>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_index(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Tuple)
                     })
             }
         }
@@ -278,7 +836,7 @@ macro_rules! as_rust_type {
             ColType::Blob => as_res_opt!($data_value, decode_blob),
             ColType::Custom => {
                 let unmarshal = || {
-                    if let Some(crate::frame::frame_result::ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                    if let Some(crate::frame::message_result::ColTypeOptionValue::CString(value)) = &$data_type_option.value {
                         if value.as_str() == "org.apache.cassandra.db.marshal.BytesType" {
                             return as_res_opt!($data_value, decode_blob);
                         }
@@ -383,7 +941,7 @@ macro_rules! as_rust_type {
             ColType::Date => as_res_opt!($data_value, decode_date),
             ColType::Custom => {
                 let unmarshal = || {
-                    if let Some(crate::frame::frame_result::ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                    if let Some(crate::frame::message_result::ColTypeOptionValue::CString(value)) = &$data_type_option.value {
                         match value.as_str() {
                             "org.apache.cassandra.db.marshal.Int32Type" => return as_res_opt!($data_value, decode_int),
                             "org.apache.cassandra.db.marshal.SimpleDateType" => return as_res_opt!($data_value, decode_date),
@@ -702,11 +1260,11 @@ macro_rules! as_rust_type {
             ))),
         }
     };
-    ($data_type_option:ident, $data_value:ident, List) => {
+    ($data_type_option:ident, $data_value:ident, $version:ident, List) => {
         match $data_type_option.id {
             ColType::List | ColType::Set => match $data_value.as_slice() {
-                Some(ref bytes) => decode_list(bytes)
-                    .map(|data| Some(List::new($data_type_option.clone(), data)))
+                Some(ref bytes) => decode_list(bytes, $version)
+                    .map(|data| Some(List::new($data_type_option.clone(), data, $version)))
                     .map_err(Into::into),
                 None => Ok(None),
             },
@@ -717,11 +1275,11 @@ macro_rules! as_rust_type {
             ))),
         }
     };
-    ($data_type_option:ident, $data_value:ident, Map) => {
+    ($data_type_option:ident, $data_value:ident, $version:ident, Map) => {
         match $data_type_option.id {
             ColType::Map => match $data_value.as_slice() {
-                Some(ref bytes) => decode_map(bytes)
-                    .map(|data| Some(Map::new(data, $data_type_option.clone())))
+                Some(ref bytes) => decode_map(bytes, $version)
+                    .map(|data| Some(Map::new(data, $data_type_option.clone(), $version)))
                     .map_err(Into::into),
                 None => Ok(None),
             },
@@ -732,14 +1290,14 @@ macro_rules! as_rust_type {
             ))),
         }
     };
-    ($data_type_option:ident, $data_value:ident, Udt) => {
+    ($data_type_option:ident, $data_value:ident, $version:ident, Udt) => {
         match *$data_type_option {
             ColTypeOption {
                 id: ColType::Udt,
                 value: Some(ColTypeOptionValue::UdtType(ref list_type_option)),
             } => match $data_value.as_slice() {
-                Some(ref bytes) => decode_udt(bytes, list_type_option.descriptions.len())
-                    .map(|data| Some(Udt::new(data, list_type_option)))
+                Some(ref bytes) => decode_udt(bytes, list_type_option.descriptions.len(), $version)
+                    .map(|data| Some(Udt::new(data, list_type_option, $version)))
                     .map_err(Into::into),
                 None => Ok(None),
             },
@@ -750,14 +1308,14 @@ macro_rules! as_rust_type {
             ))),
         }
     };
-    ($data_type_option:ident, $data_value:ident, Tuple) => {
+    ($data_type_option:ident, $data_value:ident, $version:ident, Tuple) => {
         match *$data_type_option {
             ColTypeOption {
                 id: ColType::Tuple,
                 value: Some(ColTypeOptionValue::TupleType(ref list_type_option)),
             } => match $data_value.as_slice() {
-                Some(ref bytes) => decode_tuple(bytes, list_type_option.types.len())
-                    .map(|data| Some(Tuple::new(data, list_type_option)))
+                Some(ref bytes) => decode_tuple(bytes, list_type_option.types.len(), $version)
+                    .map(|data| Some(Tuple::new(data, list_type_option, $version)))
                     .map_err(Into::into),
                 None => Ok(None),
             },
@@ -866,6 +1424,35 @@ macro_rules! as_rust_type {
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into BigInt (valid types: Varint, Custom)",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, Duration) => {
+        match $data_type_option.id {
+            ColType::Duration => {
+                as_res_opt!($data_value, decode_duration)
+            }
+            ColType::Custom => {
+                let unmarshal = || {
+                    if let Some(ColTypeOptionValue::CString(value)) = &$data_type_option.value {
+                        if value.as_str() == "org.apache.cassandra.db.marshal.DurationType" {
+                            return as_res_opt!($data_value, decode_duration);
+                        }
+                    }
+
+                    Err(crate::error::Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert marshalled type {:?} into Duration (valid types: org.apache.cassandra.db.marshal.DurationType).",
+                        $data_type_option
+                    )))
+                };
+
+                unmarshal()
+            }
+            _ => Err(crate::error::Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into Duration (valid types: Duration, Custom)",
                 $data_type_option.id
             ))),
         }

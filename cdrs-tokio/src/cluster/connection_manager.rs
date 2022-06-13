@@ -11,8 +11,8 @@ use crate::transport::CdrsTransport;
 use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::frame::frame_response::ResponseBody;
-use cassandra_protocol::frame::{Frame, Opcode, Version};
+use cassandra_protocol::frame::message_response::ResponseBody;
+use cassandra_protocol::frame::{Envelope, Opcode, Version};
 use cassandra_protocol::query::utils::quote;
 
 /// Manages establishing connections to nodes.
@@ -21,7 +21,7 @@ pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {
     /// handlers.
     fn connection(
         &self,
-        event_handler: Option<Sender<Frame>>,
+        event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<Result<T>>;
@@ -35,7 +35,7 @@ mock! {
     impl<T: CdrsTransport> ConnectionManager<T> for ConnectionManager<T> {
         fn connection<'a>(
             &'a self,
-            event_handler: Option<Sender<Frame>>,
+            event_handler: Option<Sender<Envelope>>,
             error_handler: Option<Sender<Error>>,
             addr: SocketAddr,
         ) -> BoxFuture<'a, Result<T>>;
@@ -53,8 +53,9 @@ pub async fn startup<
     compression: Compression,
     version: Version,
 ) -> Result<()> {
-    let startup_frame = Frame::new_req_startup(compression.as_str().map(String::from), version);
-    let start_response = transport.write_frame(&startup_frame).await?;
+    let startup_envelope =
+        Envelope::new_req_startup(compression.as_str().map(String::from), version);
+    let start_response = transport.write_envelope(&startup_envelope, true).await?;
 
     if start_response.opcode == Opcode::Ready {
         return set_keyspace(transport, keyspace_holder, version).await;
@@ -96,31 +97,31 @@ pub async fn startup<
 
         let authenticator = authenticator_provider.create_authenticator();
         let response = authenticator.initial_response();
-        let mut frame = transport
-            .write_frame(&Frame::new_req_auth_response(response, version))
+        let mut envelope = transport
+            .write_envelope(&Envelope::new_req_auth_response(response, version), false)
             .await?;
 
         loop {
-            match frame.response_body()? {
+            match envelope.response_body()? {
                 ResponseBody::AuthChallenge(challenge) => {
                     let response = authenticator.evaluate_challenge(challenge.data)?;
 
-                    frame = transport
-                        .write_frame(&Frame::new_req_auth_response(response, version))
+                    envelope = transport
+                        .write_envelope(&Envelope::new_req_auth_response(response, version), false)
                         .await?;
                 }
                 ResponseBody::AuthSuccess(success) => {
                     authenticator.handle_success(success.data)?;
                     break;
                 }
-                _ => return Err(format!("Unexpected auth response: {:?}", frame.opcode).into()),
+                _ => return Err(format!("Unexpected auth response: {:?}", envelope.opcode).into()),
             }
         }
 
         return set_keyspace(transport, keyspace_holder, version).await;
     }
 
-    unreachable!();
+    Err(format!("Unexpected startup response: {}", start_response.opcode).into())
 }
 
 async fn set_keyspace<T: CdrsTransport>(
@@ -129,7 +130,7 @@ async fn set_keyspace<T: CdrsTransport>(
     version: Version,
 ) -> Result<()> {
     if let Some(current_keyspace) = keyspace_holder.current_keyspace() {
-        let use_frame = Frame::new_req_query(
+        let use_envelope = Envelope::new_req_query(
             format!("USE {}", quote(current_keyspace.as_ref())),
             Default::default(),
             None,
@@ -138,11 +139,16 @@ async fn set_keyspace<T: CdrsTransport>(
             None,
             None,
             None,
+            None,
+            None,
             Default::default(),
             version,
         );
 
-        transport.write_frame(&use_frame).await.map(|_| ())
+        transport
+            .write_envelope(&use_envelope, false)
+            .await
+            .map(|_| ())
     } else {
         Ok(())
     }

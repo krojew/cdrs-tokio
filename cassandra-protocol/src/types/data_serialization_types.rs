@@ -1,4 +1,5 @@
 use arrayref::array_ref;
+use integer_encoding::VarInt;
 use num::BigInt;
 use std::io;
 use std::net;
@@ -6,8 +7,9 @@ use std::string::FromUtf8Error;
 
 use super::blob::Blob;
 use super::decimal::Decimal;
+use super::duration::Duration;
 use crate::error;
-use crate::frame::FromCursor;
+use crate::frame::{FromCursor, Version};
 use crate::types::{
     try_f32_from_bytes, try_f64_from_bytes, try_i16_from_bytes, try_i32_from_bytes,
     try_i64_from_bytes, u16_from_bytes, CBytes, CInt, INT_LEN,
@@ -134,14 +136,15 @@ pub fn decode_timestamp(bytes: &[u8]) -> Result<i64, io::Error> {
     try_i64_from_bytes(bytes)
 }
 
+//noinspection DuplicatedCode
 // Decodes Cassandra `list` data (bytes)
-pub fn decode_list(bytes: &[u8]) -> Result<Vec<CBytes>, io::Error> {
+pub fn decode_list(bytes: &[u8], version: Version) -> Result<Vec<CBytes>, io::Error> {
     let mut cursor = io::Cursor::new(bytes);
-    let l = CInt::from_cursor(&mut cursor)
+    let l = CInt::from_cursor(&mut cursor, version)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let mut list = Vec::with_capacity(l as usize);
     for _ in 0..l {
-        let b = CBytes::from_cursor(&mut cursor)
+        let b = CBytes::from_cursor(&mut cursor, version)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         list.push(b);
     }
@@ -150,20 +153,20 @@ pub fn decode_list(bytes: &[u8]) -> Result<Vec<CBytes>, io::Error> {
 
 // Decodes Cassandra `set` data (bytes)
 #[inline]
-pub fn decode_set(bytes: &[u8]) -> Result<Vec<CBytes>, io::Error> {
-    decode_list(bytes)
+pub fn decode_set(bytes: &[u8], version: Version) -> Result<Vec<CBytes>, io::Error> {
+    decode_list(bytes, version)
 }
 
 // Decodes Cassandra `map` data (bytes)
-pub fn decode_map(bytes: &[u8]) -> Result<Vec<(CBytes, CBytes)>, io::Error> {
+pub fn decode_map(bytes: &[u8], version: Version) -> Result<Vec<(CBytes, CBytes)>, io::Error> {
     let mut cursor = io::Cursor::new(bytes);
-    let l = CInt::from_cursor(&mut cursor)
+    let l = CInt::from_cursor(&mut cursor, version)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
     let mut map = Vec::with_capacity(l as usize);
     for _ in 0..l {
-        let k = CBytes::from_cursor(&mut cursor)
+        let k = CBytes::from_cursor(&mut cursor, version)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-        let v = CBytes::from_cursor(&mut cursor)
+        let v = CBytes::from_cursor(&mut cursor, version)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         map.push((k, v));
     }
@@ -206,12 +209,28 @@ pub fn decode_varint(bytes: &[u8]) -> Result<BigInt, io::Error> {
     Ok(BigInt::from_signed_bytes_be(bytes))
 }
 
+// Decodes Cassandra `duration` data (bytes)
+#[inline]
+pub fn decode_duration(bytes: &[u8]) -> Result<Duration, io::Error> {
+    let (months, month_bytes_read) =
+        i32::decode_var(bytes).ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
+
+    let (days, day_bytes_read) = i32::decode_var(&bytes[month_bytes_read..])
+        .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
+
+    let (nanoseconds, _) = i64::decode_var(&bytes[(month_bytes_read + day_bytes_read)..])
+        .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
+
+    Duration::new(months, days, nanoseconds)
+        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+}
+
 // Decodes Cassandra `Udt` data (bytes)
-pub fn decode_udt(bytes: &[u8], l: usize) -> Result<Vec<CBytes>, io::Error> {
+pub fn decode_udt(bytes: &[u8], l: usize, version: Version) -> Result<Vec<CBytes>, io::Error> {
     let mut cursor = io::Cursor::new(bytes);
     let mut udt = Vec::with_capacity(l);
     for _ in 0..l {
-        let v = CBytes::from_cursor(&mut cursor)
+        let v = CBytes::from_cursor(&mut cursor, version)
             .or_else(|err| match err {
                 error::Error::Io(io_err) => {
                     if io_err.kind() == io::ErrorKind::UnexpectedEof {
@@ -228,21 +247,23 @@ pub fn decode_udt(bytes: &[u8], l: usize) -> Result<Vec<CBytes>, io::Error> {
     Ok(udt)
 }
 
+//noinspection DuplicatedCode
 // Decodes Cassandra `Tuple` data (bytes)
-pub fn decode_tuple(bytes: &[u8], l: usize) -> Result<Vec<CBytes>, io::Error> {
+pub fn decode_tuple(bytes: &[u8], l: usize, version: Version) -> Result<Vec<CBytes>, io::Error> {
     let mut cursor = io::Cursor::new(bytes);
     let mut tuple = Vec::with_capacity(l);
     for _ in 0..l {
-        let v = CBytes::from_cursor(&mut cursor)
+        let v = CBytes::from_cursor(&mut cursor, version)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
         tuple.push(v);
     }
     Ok(tuple)
 }
 
+//noinspection DuplicatedCode
 #[cfg(test)]
 mod tests {
-    use super::super::super::frame::frame_result::*;
+    use super::super::super::frame::message_result::*;
     use super::*;
     use crate::types::{to_float, to_float_big};
     use float_eq::*;
@@ -335,21 +356,31 @@ mod tests {
 
     #[test]
     fn decode_list_test() {
-        let results = decode_list(&[0, 0, 0, 1, 0, 0, 0, 2, 1, 2]).unwrap();
+        let results = decode_list(&[0, 0, 0, 1, 0, 0, 0, 2, 1, 2], Version::V4).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].as_slice().unwrap(), &[1, 2]);
     }
 
     #[test]
+    fn decode_duration_test() {
+        let result = decode_duration(&[200, 1, 144, 3, 216, 4]).unwrap();
+        assert_eq!(result, Duration::new(100, 200, 300).unwrap());
+    }
+
+    #[test]
     fn decode_set_test() {
-        let results = decode_set(&[0, 0, 0, 1, 0, 0, 0, 2, 1, 2]).unwrap();
+        let results = decode_set(&[0, 0, 0, 1, 0, 0, 0, 2, 1, 2], Version::V4).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].as_slice().unwrap(), &[1, 2]);
     }
 
     #[test]
     fn decode_map_test() {
-        let results = decode_map(&[0, 0, 0, 1, 0, 0, 0, 2, 1, 2, 0, 0, 0, 2, 2, 1]).unwrap();
+        let results = decode_map(
+            &[0, 0, 0, 1, 0, 0, 0, 2, 1, 2, 0, 0, 0, 2, 2, 1],
+            Version::V4,
+        )
+        .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0.as_slice().unwrap(), &[1, 2]);
         assert_eq!(results[0].1.as_slice().unwrap(), &[2, 1]);
@@ -427,7 +458,7 @@ mod tests {
 
     #[test]
     fn decode_udt_test() {
-        let udt = decode_udt(&[0, 0, 0, 2, 1, 2], 1).unwrap();
+        let udt = decode_udt(&[0, 0, 0, 2, 1, 2], 1, Version::V4).unwrap();
         assert_eq!(udt.len(), 1);
         assert_eq!(udt[0].as_slice().unwrap(), &[1, 2]);
     }

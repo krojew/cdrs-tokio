@@ -12,7 +12,7 @@ use crate::load_balancing::LoadBalancingStrategy;
 use crate::retry::{ReconnectionPolicy, ReconnectionSchedule};
 use crate::transport::CdrsTransport;
 use cassandra_protocol::events::{ServerEvent, SimpleServerEvent};
-use cassandra_protocol::frame::{Frame, Version};
+use cassandra_protocol::frame::{Envelope, Version};
 
 const DEFAULT_RECONNECT_DELAY: Duration = Duration::from_secs(10);
 const EVENT_CHANNEL_CAPACITY: usize = 32;
@@ -39,10 +39,10 @@ impl<
     > ControlConnection<T, CM, LB>
 {
     pub async fn run(self) {
-        let (event_frame_sender, event_frame_receiver) = channel(EVENT_CHANNEL_CAPACITY);
+        let (event_envelope_sender, event_envelope_receiver) = channel(EVENT_CHANNEL_CAPACITY);
         let (error_sender, mut error_receiver) = channel(1);
 
-        Self::process_events(event_frame_receiver, self.event_sender.clone());
+        Self::process_events(event_envelope_receiver, self.event_sender.clone());
 
         'listen: loop {
             let current_connection = self
@@ -51,7 +51,7 @@ impl<
                 .load()
                 .clone();
             if let Some(current_connection) = current_connection {
-                let register_frame = Frame::new_req_register(
+                let register_envelope = Envelope::new_req_register(
                     vec![
                         SimpleServerEvent::SchemaChange,
                         SimpleServerEvent::StatusChange,
@@ -61,7 +61,9 @@ impl<
                 );
 
                 // in case of error, simply reconnect
-                let result = current_connection.write_frame(&register_frame).await;
+                let result = current_connection
+                    .write_envelope(&register_envelope, false)
+                    .await;
                 match result {
                     Ok(_) => {
                         let error = error_receiver.recv().await;
@@ -107,7 +109,7 @@ impl<
                     for node in nodes {
                         if let Ok(connection) = node
                             .new_connection(
-                                Some(event_frame_sender.clone()),
+                                Some(event_envelope_sender.clone()),
                                 Some(error_sender.clone()),
                             )
                             .await
@@ -143,12 +145,12 @@ impl<
     }
 
     fn process_events(
-        mut event_frame_receiver: Receiver<Frame>,
+        mut event_envelope_receiver: Receiver<Envelope>,
         event_sender: Sender<ServerEvent>,
     ) {
         tokio::spawn(async move {
-            while let Some(frame) = event_frame_receiver.recv().await {
-                if let Ok(body) = frame.response_body() {
+            while let Some(envelope) = event_envelope_receiver.recv().await {
+                if let Ok(body) = envelope.response_body() {
                     if let Some(event) = body.into_server_event() {
                         let _ = event_sender.send(event.event);
                     }

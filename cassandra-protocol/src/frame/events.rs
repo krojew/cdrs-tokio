@@ -5,7 +5,7 @@ use std::io::Cursor;
 
 use crate::error;
 use crate::frame::traits::FromCursor;
-use crate::frame::Serialize;
+use crate::frame::{Serialize, Version};
 use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CInet, CIntShort};
 
 // Event types
@@ -104,19 +104,19 @@ pub enum ServerEvent {
 }
 
 impl Serialize for ServerEvent {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match &self {
             ServerEvent::TopologyChange(t) => {
-                serialize_str(cursor, TOPOLOGY_CHANGE);
-                t.serialize(cursor);
+                serialize_str(cursor, TOPOLOGY_CHANGE, version);
+                t.serialize(cursor, version);
             }
             ServerEvent::StatusChange(s) => {
-                serialize_str(cursor, STATUS_CHANGE);
-                s.serialize(cursor);
+                serialize_str(cursor, STATUS_CHANGE, version);
+                s.serialize(cursor, version);
             }
             ServerEvent::SchemaChange(s) => {
-                serialize_str(cursor, SCHEMA_CHANGE);
-                s.serialize(cursor);
+                serialize_str(cursor, SCHEMA_CHANGE, version);
+                s.serialize(cursor, version);
             }
         }
     }
@@ -129,17 +129,17 @@ impl PartialEq<SimpleServerEvent> for ServerEvent {
 }
 
 impl FromCursor for ServerEvent {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ServerEvent> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<ServerEvent> {
         let event_type = from_cursor_str(cursor)?;
         match event_type {
             TOPOLOGY_CHANGE => Ok(ServerEvent::TopologyChange(TopologyChange::from_cursor(
-                cursor,
+                cursor, version,
             )?)),
             STATUS_CHANGE => Ok(ServerEvent::StatusChange(StatusChange::from_cursor(
-                cursor,
+                cursor, version,
             )?)),
             SCHEMA_CHANGE => Ok(ServerEvent::SchemaChange(SchemaChange::from_cursor(
-                cursor,
+                cursor, version,
             )?)),
             _ => Err(format!("Unexpected server event: {}", event_type).into()),
         }
@@ -154,16 +154,16 @@ pub struct TopologyChange {
 }
 
 impl Serialize for TopologyChange {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.change_type.serialize(cursor);
-        self.addr.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.change_type.serialize(cursor, version);
+        self.addr.serialize(cursor, version);
     }
 }
 
 impl FromCursor for TopologyChange {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<TopologyChange> {
-        let change_type = TopologyChangeType::from_cursor(cursor)?;
-        let addr = CInet::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<TopologyChange> {
+        let change_type = TopologyChangeType::from_cursor(cursor, version)?;
+        let addr = CInet::from_cursor(cursor, version)?;
 
         Ok(TopologyChange { change_type, addr })
     }
@@ -176,16 +176,19 @@ pub enum TopologyChangeType {
 }
 
 impl Serialize for TopologyChangeType {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match &self {
-            TopologyChangeType::NewNode => serialize_str(cursor, NEW_NODE),
-            TopologyChangeType::RemovedNode => serialize_str(cursor, REMOVED_NODE),
+            TopologyChangeType::NewNode => serialize_str(cursor, NEW_NODE, version),
+            TopologyChangeType::RemovedNode => serialize_str(cursor, REMOVED_NODE, version),
         }
     }
 }
 
 impl FromCursor for TopologyChangeType {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<TopologyChangeType> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<TopologyChangeType> {
         from_cursor_str(cursor).and_then(|tc| match tc {
             NEW_NODE => Ok(TopologyChangeType::NewNode),
             REMOVED_NODE => Ok(TopologyChangeType::RemovedNode),
@@ -206,16 +209,16 @@ pub struct StatusChange {
 }
 
 impl Serialize for StatusChange {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.change_type.serialize(cursor);
-        self.addr.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.change_type.serialize(cursor, version);
+        self.addr.serialize(cursor, version);
     }
 }
 
 impl FromCursor for StatusChange {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<StatusChange> {
-        let change_type = StatusChangeType::from_cursor(cursor)?;
-        let addr = CInet::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<StatusChange> {
+        let change_type = StatusChangeType::from_cursor(cursor, version)?;
+        let addr = CInet::from_cursor(cursor, version)?;
 
         Ok(StatusChange { change_type, addr })
     }
@@ -228,16 +231,19 @@ pub enum StatusChangeType {
 }
 
 impl Serialize for StatusChangeType {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
-            StatusChangeType::Up => serialize_str(cursor, UP),
-            StatusChangeType::Down => serialize_str(cursor, DOWN),
+            StatusChangeType::Up => serialize_str(cursor, UP, version),
+            StatusChangeType::Down => serialize_str(cursor, DOWN, version),
         }
     }
 }
 
 impl FromCursor for StatusChangeType {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<StatusChangeType> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<StatusChangeType> {
         from_cursor_str(cursor).and_then(|sct| match sct {
             UP => Ok(StatusChangeType::Up),
             DOWN => Ok(StatusChangeType::Down),
@@ -255,17 +261,17 @@ pub struct SchemaChange {
 }
 
 impl Serialize for SchemaChange {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.change_type.serialize(cursor);
-        self.target.serialize(cursor);
-        self.options.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.change_type.serialize(cursor, version);
+        self.target.serialize(cursor, version);
+        self.options.serialize(cursor, version);
     }
 }
 
 impl FromCursor for SchemaChange {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChange> {
-        let change_type = SchemaChangeType::from_cursor(cursor)?;
-        let target = SchemaChangeTarget::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<SchemaChange> {
+        let change_type = SchemaChangeType::from_cursor(cursor, version)?;
+        let target = SchemaChangeTarget::from_cursor(cursor, version)?;
         let options = SchemaChangeOptions::from_cursor_and_target(cursor, &target)?;
 
         Ok(SchemaChange {
@@ -285,17 +291,20 @@ pub enum SchemaChangeType {
 }
 
 impl Serialize for SchemaChangeType {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
-            SchemaChangeType::Created => serialize_str(cursor, CREATED),
-            SchemaChangeType::Updated => serialize_str(cursor, UPDATED),
-            SchemaChangeType::Dropped => serialize_str(cursor, DROPPED),
+            SchemaChangeType::Created => serialize_str(cursor, CREATED, version),
+            SchemaChangeType::Updated => serialize_str(cursor, UPDATED, version),
+            SchemaChangeType::Dropped => serialize_str(cursor, DROPPED, version),
         }
     }
 }
 
 impl FromCursor for SchemaChangeType {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeType> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<SchemaChangeType> {
         from_cursor_str(cursor).and_then(|ct| match ct {
             CREATED => Ok(SchemaChangeType::Created),
             UPDATED => Ok(SchemaChangeType::Updated),
@@ -316,19 +325,22 @@ pub enum SchemaChangeTarget {
 }
 
 impl Serialize for SchemaChangeTarget {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
-            SchemaChangeTarget::Keyspace => serialize_str(cursor, KEYSPACE),
-            SchemaChangeTarget::Table => serialize_str(cursor, TABLE),
-            SchemaChangeTarget::Type => serialize_str(cursor, TYPE),
-            SchemaChangeTarget::Function => serialize_str(cursor, FUNCTION),
-            SchemaChangeTarget::Aggregate => serialize_str(cursor, AGGREGATE),
+            SchemaChangeTarget::Keyspace => serialize_str(cursor, KEYSPACE, version),
+            SchemaChangeTarget::Table => serialize_str(cursor, TABLE, version),
+            SchemaChangeTarget::Type => serialize_str(cursor, TYPE, version),
+            SchemaChangeTarget::Function => serialize_str(cursor, FUNCTION, version),
+            SchemaChangeTarget::Aggregate => serialize_str(cursor, AGGREGATE, version),
         }
     }
 }
 
 impl FromCursor for SchemaChangeTarget {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<SchemaChangeTarget> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<SchemaChangeTarget> {
         from_cursor_str(cursor).and_then(|t| match t {
             KEYSPACE => Ok(SchemaChangeTarget::Keyspace),
             TABLE => Ok(SchemaChangeTarget::Table),
@@ -355,22 +367,22 @@ pub enum SchemaChangeOptions {
 }
 
 impl Serialize for SchemaChangeOptions {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
             SchemaChangeOptions::Keyspace(ks) => {
-                serialize_str(cursor, ks);
+                serialize_str(cursor, ks, version);
             }
             SchemaChangeOptions::TableType(ks, t) => {
-                serialize_str(cursor, ks);
-                serialize_str(cursor, t);
+                serialize_str(cursor, ks, version);
+                serialize_str(cursor, t, version);
             }
             SchemaChangeOptions::FunctionAggregate(ks, fa_name, list) => {
-                serialize_str(cursor, ks);
-                serialize_str(cursor, fa_name);
+                serialize_str(cursor, ks, version);
+                serialize_str(cursor, fa_name, version);
 
                 let len = list.len() as CIntShort;
-                len.serialize(cursor);
-                list.iter().for_each(|x| serialize_str(cursor, x));
+                len.serialize(cursor, version);
+                list.iter().for_each(|x| serialize_str(cursor, x, version));
             }
         }
     }
@@ -419,12 +431,12 @@ impl SchemaChangeOptions {
 #[cfg(test)]
 fn test_encode_decode(bytes: &[u8], expected: ServerEvent) {
     let mut ks: Cursor<&[u8]> = Cursor::new(bytes);
-    let event = ServerEvent::from_cursor(&mut ks).unwrap();
+    let event = ServerEvent::from_cursor(&mut ks, Version::V4).unwrap();
     assert_eq!(expected, event);
 
     let mut buffer = Vec::new();
     let mut cursor = Cursor::new(&mut buffer);
-    expected.serialize(&mut cursor);
+    expected.serialize(&mut cursor, Version::V4);
     assert_eq!(buffer, bytes);
 }
 
@@ -439,14 +451,14 @@ mod topology_change_type_test {
         let a = &[0, 8, 78, 69, 87, 95, 78, 79, 68, 69];
         let mut new_node: Cursor<&[u8]> = Cursor::new(a);
         assert_eq!(
-            TopologyChangeType::from_cursor(&mut new_node).unwrap(),
+            TopologyChangeType::from_cursor(&mut new_node, Version::V4).unwrap(),
             TopologyChangeType::NewNode
         );
 
         let b = &[0, 12, 82, 69, 77, 79, 86, 69, 68, 95, 78, 79, 68, 69];
         let mut removed_node: Cursor<&[u8]> = Cursor::new(b);
         assert_eq!(
-            TopologyChangeType::from_cursor(&mut removed_node).unwrap(),
+            TopologyChangeType::from_cursor(&mut removed_node, Version::V4).unwrap(),
             TopologyChangeType::RemovedNode
         );
     }
@@ -458,7 +470,7 @@ mod topology_change_type_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let new_node = TopologyChangeType::NewNode;
-            new_node.serialize(&mut cursor);
+            new_node.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, a);
         }
 
@@ -467,7 +479,7 @@ mod topology_change_type_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let removed_node = TopologyChangeType::RemovedNode;
-            removed_node.serialize(&mut cursor);
+            removed_node.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, b);
         }
     }
@@ -477,7 +489,7 @@ mod topology_change_type_test {
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
         let mut wrong: Cursor<&[u8]> = Cursor::new(a);
-        let _ = TopologyChangeType::from_cursor(&mut wrong).unwrap();
+        let _ = TopologyChangeType::from_cursor(&mut wrong, Version::V4).unwrap();
     }
 }
 
@@ -492,14 +504,14 @@ mod status_change_type_test {
         let a = &[0, 2, 85, 80];
         let mut up: Cursor<&[u8]> = Cursor::new(a);
         assert_eq!(
-            StatusChangeType::from_cursor(&mut up).unwrap(),
+            StatusChangeType::from_cursor(&mut up, Version::V4).unwrap(),
             StatusChangeType::Up
         );
 
         let b = &[0, 4, 68, 79, 87, 78];
         let mut down: Cursor<&[u8]> = Cursor::new(b);
         assert_eq!(
-            StatusChangeType::from_cursor(&mut down).unwrap(),
+            StatusChangeType::from_cursor(&mut down, Version::V4).unwrap(),
             StatusChangeType::Down
         );
     }
@@ -511,7 +523,7 @@ mod status_change_type_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let up = StatusChangeType::Up;
-            up.serialize(&mut cursor);
+            up.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, a);
         }
 
@@ -520,7 +532,7 @@ mod status_change_type_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let down = StatusChangeType::Down;
-            down.serialize(&mut cursor);
+            down.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, b);
         }
     }
@@ -529,7 +541,7 @@ mod status_change_type_test {
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
         let mut wrong: Cursor<&[u8]> = Cursor::new(a);
-        let err = StatusChangeType::from_cursor(&mut wrong)
+        let err = StatusChangeType::from_cursor(&mut wrong, Version::V4)
             .unwrap_err()
             .to_string();
 
@@ -548,21 +560,21 @@ mod schema_change_type_test {
         let a = &[0, 7, 67, 82, 69, 65, 84, 69, 68];
         let mut created: Cursor<&[u8]> = Cursor::new(a);
         assert_eq!(
-            SchemaChangeType::from_cursor(&mut created).unwrap(),
+            SchemaChangeType::from_cursor(&mut created, Version::V4).unwrap(),
             SchemaChangeType::Created
         );
 
         let b = &[0, 7, 85, 80, 68, 65, 84, 69, 68];
         let mut updated: Cursor<&[u8]> = Cursor::new(b);
         assert_eq!(
-            SchemaChangeType::from_cursor(&mut updated).unwrap(),
+            SchemaChangeType::from_cursor(&mut updated, Version::V4).unwrap(),
             SchemaChangeType::Updated
         );
 
         let c = &[0, 7, 68, 82, 79, 80, 80, 69, 68];
         let mut dropped: Cursor<&[u8]> = Cursor::new(c);
         assert_eq!(
-            SchemaChangeType::from_cursor(&mut dropped).unwrap(),
+            SchemaChangeType::from_cursor(&mut dropped, Version::V4).unwrap(),
             SchemaChangeType::Dropped
         );
     }
@@ -574,7 +586,7 @@ mod schema_change_type_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let created = SchemaChangeType::Created;
-            created.serialize(&mut cursor);
+            created.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, a);
         }
         {
@@ -582,7 +594,7 @@ mod schema_change_type_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let updated = SchemaChangeType::Updated;
-            updated.serialize(&mut cursor);
+            updated.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, b);
         }
 
@@ -591,7 +603,7 @@ mod schema_change_type_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let dropped = SchemaChangeType::Dropped;
-            dropped.serialize(&mut cursor);
+            dropped.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, c);
         }
     }
@@ -601,7 +613,7 @@ mod schema_change_type_test {
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
         let mut wrong: Cursor<&[u8]> = Cursor::new(a);
-        let _ = SchemaChangeType::from_cursor(&mut wrong).unwrap();
+        let _ = SchemaChangeType::from_cursor(&mut wrong, Version::V4).unwrap();
     }
 }
 
@@ -618,7 +630,7 @@ mod schema_change_target_test {
             let bytes = &[0, 8, 75, 69, 89, 83, 80, 65, 67, 69];
             let mut keyspace: Cursor<&[u8]> = Cursor::new(bytes);
             assert_eq!(
-                SchemaChangeTarget::from_cursor(&mut keyspace).unwrap(),
+                SchemaChangeTarget::from_cursor(&mut keyspace, Version::V4).unwrap(),
                 SchemaChangeTarget::Keyspace
             );
         }
@@ -626,28 +638,28 @@ mod schema_change_target_test {
         let b = &[0, 5, 84, 65, 66, 76, 69];
         let mut table: Cursor<&[u8]> = Cursor::new(b);
         assert_eq!(
-            SchemaChangeTarget::from_cursor(&mut table).unwrap(),
+            SchemaChangeTarget::from_cursor(&mut table, Version::V4).unwrap(),
             SchemaChangeTarget::Table
         );
 
         let c = &[0, 4, 84, 89, 80, 69];
         let mut _type: Cursor<&[u8]> = Cursor::new(c);
         assert_eq!(
-            SchemaChangeTarget::from_cursor(&mut _type).unwrap(),
+            SchemaChangeTarget::from_cursor(&mut _type, Version::V4).unwrap(),
             SchemaChangeTarget::Type
         );
 
         let d = &[0, 8, 70, 85, 78, 67, 84, 73, 79, 78];
         let mut function: Cursor<&[u8]> = Cursor::new(d);
         assert_eq!(
-            SchemaChangeTarget::from_cursor(&mut function).unwrap(),
+            SchemaChangeTarget::from_cursor(&mut function, Version::V4).unwrap(),
             SchemaChangeTarget::Function
         );
 
         let e = &[0, 9, 65, 71, 71, 82, 69, 71, 65, 84, 69];
         let mut aggregate: Cursor<&[u8]> = Cursor::new(e);
         assert_eq!(
-            SchemaChangeTarget::from_cursor(&mut aggregate).unwrap(),
+            SchemaChangeTarget::from_cursor(&mut aggregate, Version::V4).unwrap(),
             SchemaChangeTarget::Aggregate
         );
     }
@@ -659,7 +671,7 @@ mod schema_change_target_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let keyspace = SchemaChangeTarget::Keyspace;
-            keyspace.serialize(&mut cursor);
+            keyspace.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, a);
         }
 
@@ -668,7 +680,7 @@ mod schema_change_target_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let table = SchemaChangeTarget::Table;
-            table.serialize(&mut cursor);
+            table.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, b);
         }
 
@@ -677,7 +689,7 @@ mod schema_change_target_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let target_type = SchemaChangeTarget::Type;
-            target_type.serialize(&mut cursor);
+            target_type.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, c);
         }
 
@@ -686,7 +698,7 @@ mod schema_change_target_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let function = SchemaChangeTarget::Function;
-            function.serialize(&mut cursor);
+            function.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, d);
         }
 
@@ -695,7 +707,7 @@ mod schema_change_target_test {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             let aggregate = SchemaChangeTarget::Aggregate;
-            aggregate.serialize(&mut cursor);
+            aggregate.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, e);
         }
     }
@@ -705,7 +717,7 @@ mod schema_change_target_test {
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
         let mut wrong: Cursor<&[u8]> = Cursor::new(a);
-        let _ = SchemaChangeTarget::from_cursor(&mut wrong).unwrap();
+        let _ = SchemaChangeTarget::from_cursor(&mut wrong, Version::V4).unwrap();
     }
 }
 

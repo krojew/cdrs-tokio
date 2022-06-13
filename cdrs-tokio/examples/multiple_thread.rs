@@ -26,7 +26,8 @@ async fn main() {
         .await
         .unwrap();
     let lb = RoundRobinLoadBalancingStrategy::new();
-    let session: Arc<CurrentSession> = Arc::new(TcpSessionBuilder::new(lb, cluster_config).build());
+    let session: Arc<CurrentSession> =
+        Arc::new(TcpSessionBuilder::new(lb, cluster_config).build().unwrap());
 
     create_keyspace(session.clone()).await;
     create_table(session.clone()).await;

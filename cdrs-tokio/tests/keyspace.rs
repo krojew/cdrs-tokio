@@ -33,7 +33,8 @@ async fn create_keyspace() {
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
-        .build();
+        .build()
+        .unwrap();
 
     let drop_query = "DROP KEYSPACE IF EXISTS create_ks_test";
     let keyspace_dropped = session.query(drop_query).await.is_ok();
@@ -105,7 +106,8 @@ async fn alter_keyspace() {
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
-        .build();
+        .build()
+        .unwrap();
 
     let drop_query = "DROP KEYSPACE IF EXISTS alter_ks_test";
     let keyspace_dropped = session.query(drop_query).await.is_ok();
@@ -168,7 +170,8 @@ async fn use_keyspace() {
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
-        .build();
+        .build()
+        .unwrap();
 
     let create_query = "CREATE KEYSPACE IF NOT EXISTS use_ks_test WITH \
                         replication = {'class': 'SimpleStrategy', 'replication_factor': 1} \
@@ -204,7 +207,8 @@ async fn drop_keyspace() {
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
-        .build();
+        .build()
+        .unwrap();
 
     let create_query = "CREATE KEYSPACE IF NOT EXISTS drop_ks_test WITH \
                         replication = {'class': 'SimpleStrategy', 'replication_factor': 1} \

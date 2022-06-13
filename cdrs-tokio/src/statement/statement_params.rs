@@ -32,4 +32,7 @@ pub struct StatementParams {
     pub speculative_execution_policy: Option<Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
     /// Custom statement retry policy.
     pub retry_policy: Option<Arc<dyn RetryPolicy + Send + Sync>>,
+    /// Enable beta protocol features. Server will respond with ERROR if protocol version is marked
+    /// as beta on server and client does not provide this flag.
+    pub beta_protocol: bool,
 }

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
 use crate::error;
-use crate::frame::FromCursor;
-use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, SHORT_LEN};
+use crate::frame::{FromCursor, Version};
+use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CIntShort, SHORT_LEN};
 
 use super::Serialize;
 
@@ -13,18 +13,23 @@ pub struct BodyResSupported {
 }
 
 impl Serialize for BodyResSupported {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        (self.data.len() as i16).serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        (self.data.len() as CIntShort).serialize(cursor, version);
         self.data.iter().for_each(|(key, value)| {
-            serialize_str(cursor, key.as_str());
-            (value.len() as i16).serialize(cursor);
-            value.iter().for_each(|s| serialize_str(cursor, s.as_str()));
+            serialize_str(cursor, key.as_str(), version);
+            (value.len() as CIntShort).serialize(cursor, version);
+            value
+                .iter()
+                .for_each(|s| serialize_str(cursor, s.as_str(), version));
         })
     }
 }
 
 impl FromCursor for BodyResSupported {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResSupported> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<BodyResSupported> {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
@@ -44,6 +49,7 @@ impl FromCursor for BodyResSupported {
 mod tests {
     use super::*;
     use crate::frame::traits::FromCursor;
+    use crate::frame::Version;
     use std::io::Cursor;
 
     #[test]
@@ -60,14 +66,14 @@ mod tests {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
-            let auth = BodyResSupported::from_cursor(&mut cursor).unwrap();
+            let auth = BodyResSupported::from_cursor(&mut cursor, Version::V4).unwrap();
             assert_eq!(auth, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }

@@ -7,9 +7,10 @@ use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 use crate::error::{column_is_empty_err, Error, Result};
-use crate::frame::frame_result::{
+use crate::frame::message_result::{
     BodyResResultRows, ColSpec, ColType, ColTypeOption, ColTypeOptionValue, RowsMetadata,
 };
+use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
@@ -24,16 +25,19 @@ use num::BigInt;
 pub struct Row {
     metadata: Arc<RowsMetadata>,
     row_content: Vec<CBytes>,
+    protocol_version: Version,
 }
 
 impl Row {
-    pub fn from_frame_body(body: BodyResResultRows) -> Vec<Row> {
+    pub fn from_body(body: BodyResResultRows) -> Vec<Row> {
         let metadata = Arc::new(body.metadata);
+        let protocol_version = body.protocol_version;
         body.rows_content
             .into_iter()
             .map(|row| Row {
                 metadata: metadata.clone(),
                 row_content: row,
+                protocol_version,
             })
             .collect()
     }

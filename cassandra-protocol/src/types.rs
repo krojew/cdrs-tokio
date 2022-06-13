@@ -6,7 +6,7 @@ use std::net::{IpAddr, SocketAddr};
 
 use crate::error::{column_is_empty_err, Error as CdrsError, Result as CDRSResult};
 use crate::frame::traits::FromCursor;
-use crate::frame::Serialize;
+use crate::frame::{Serialize, Version};
 use crate::types::data_serialization_types::*;
 
 use self::cassandra_type::CassandraType;
@@ -24,6 +24,7 @@ pub mod blob;
 pub mod cassandra_type;
 pub mod data_serialization_types;
 pub mod decimal;
+pub mod duration;
 pub mod from_cdrs;
 pub mod list;
 pub mod map;
@@ -37,6 +38,7 @@ pub mod prelude {
     pub use crate::frame::{TryFromRow, TryFromUdt};
     pub use crate::types::blob::Blob;
     pub use crate::types::decimal::Decimal;
+    pub use crate::types::duration::Duration;
     pub use crate::types::list::List;
     pub use crate::types::map::Map;
     pub use crate::types::rows::Row;
@@ -140,32 +142,32 @@ fn convert_to_array<const S: usize>(bytes: &[u8]) -> Result<[u8; S], io::Error> 
 
 #[inline]
 pub fn try_u64_from_bytes(bytes: &[u8]) -> Result<u64, io::Error> {
-    Ok(u64::from_be_bytes(convert_to_array(bytes)?))
+    convert_to_array(bytes).map(u64::from_be_bytes)
 }
 
 #[inline]
 pub fn try_i64_from_bytes(bytes: &[u8]) -> Result<i64, io::Error> {
-    Ok(i64::from_be_bytes(convert_to_array(bytes)?))
+    convert_to_array(bytes).map(i64::from_be_bytes)
 }
 
 #[inline]
 pub fn try_i32_from_bytes(bytes: &[u8]) -> Result<i32, io::Error> {
-    Ok(i32::from_be_bytes(convert_to_array(bytes)?))
+    convert_to_array(bytes).map(i32::from_be_bytes)
 }
 
 #[inline]
 pub fn try_i16_from_bytes(bytes: &[u8]) -> Result<i16, io::Error> {
-    Ok(i16::from_be_bytes(convert_to_array(bytes)?))
+    convert_to_array(bytes).map(i16::from_be_bytes)
 }
 
 #[inline]
 pub fn try_f32_from_bytes(bytes: &[u8]) -> Result<f32, io::Error> {
-    Ok(f32::from_be_bytes(convert_to_array(bytes)?))
+    convert_to_array(bytes).map(f32::from_be_bytes)
 }
 
 #[inline]
 pub fn try_f64_from_bytes(bytes: &[u8]) -> Result<f64, io::Error> {
-    Ok(f64::from_be_bytes(convert_to_array(bytes)?))
+    convert_to_array(bytes).map(f64::from_be_bytes)
 }
 
 #[inline]
@@ -213,15 +215,15 @@ pub fn to_float_big(f: f64) -> Vec<u8> {
     f.to_be_bytes().into()
 }
 
-pub fn serialize_str(cursor: &mut Cursor<&mut Vec<u8>>, value: &str) {
+pub fn serialize_str(cursor: &mut Cursor<&mut Vec<u8>>, value: &str, version: Version) {
     let len = value.len() as CIntShort;
-    len.serialize(cursor);
+    len.serialize(cursor, version);
     let _ = cursor.write(value.as_bytes());
 }
 
-pub(crate) fn serialize_str_long(cursor: &mut Cursor<&mut Vec<u8>>, value: &str) {
+pub(crate) fn serialize_str_long(cursor: &mut Cursor<&mut Vec<u8>>, value: &str, version: Version) {
     let len = value.len() as CInt;
-    len.serialize(cursor);
+    len.serialize(cursor, version);
     let _ = cursor.write(value.as_bytes());
 }
 
@@ -248,12 +250,13 @@ pub(crate) fn from_cursor_str_long<'a>(cursor: &mut Cursor<&'a [u8]>) -> CDRSRes
 pub(crate) fn serialize_str_list<'a>(
     cursor: &mut Cursor<&mut Vec<u8>>,
     list: impl ExactSizeIterator<Item = &'a str>,
+    version: Version,
 ) {
     let len = list.len() as CIntShort;
-    len.serialize(cursor);
+    len.serialize(cursor, version);
 
     for string in list {
-        serialize_str(cursor, string);
+        serialize_str(cursor, string, version);
     }
 }
 
@@ -315,10 +318,8 @@ impl CBytes {
 }
 
 impl FromCursor for CBytes {
-    /// from_cursor gets Cursor who's position is set such that it should be a start of bytes.
-    /// It reads required number of bytes and returns a CBytes
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CBytes> {
-        let len = CInt::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> CDRSResult<CBytes> {
+        let len = CInt::from_cursor(cursor, version)?;
         // null or not set value
         if len < 0 {
             return Ok(CBytes { bytes: None });
@@ -329,14 +330,14 @@ impl FromCursor for CBytes {
 }
 
 impl Serialize for CBytes {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match &self.bytes {
             Some(bytes) => {
                 let len = bytes.len() as CInt;
-                len.serialize(cursor);
-                bytes.serialize(cursor);
+                len.serialize(cursor, version);
+                bytes.serialize(cursor, version);
             }
-            None => NULL_INT_LEN.serialize(cursor),
+            None => NULL_INT_LEN.serialize(cursor, version),
         }
     }
 }
@@ -379,8 +380,8 @@ impl CBytesShort {
 impl FromCursor for CBytesShort {
     /// from_cursor gets Cursor who's position is set such that it should be a start of bytes.
     /// It reads required number of bytes and returns a CBytes
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CBytesShort> {
-        let len = CIntShort::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> CDRSResult<CBytesShort> {
+        let len = CIntShort::from_cursor(cursor, version)?;
 
         if len < 0 {
             return Ok(CBytesShort { bytes: None });
@@ -393,14 +394,14 @@ impl FromCursor for CBytesShort {
 }
 
 impl Serialize for CBytesShort {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match &self.bytes {
             Some(bytes) => {
                 let len = bytes.len() as CIntShort;
-                len.serialize(cursor);
-                bytes.serialize(cursor);
+                len.serialize(cursor, version);
+                bytes.serialize(cursor, version);
             }
-            None => NULL_SHORT_LEN.serialize(cursor),
+            None => NULL_SHORT_LEN.serialize(cursor, version),
         }
     }
 }
@@ -409,7 +410,7 @@ impl Serialize for CBytesShort {
 pub type CInt = i32;
 
 impl FromCursor for CInt {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CInt> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> CDRSResult<CInt> {
         let mut buff = [0; INT_LEN];
         cursor.read_exact(&mut buff)?;
 
@@ -421,7 +422,7 @@ impl FromCursor for CInt {
 pub type CIntShort = i16;
 
 impl FromCursor for CIntShort {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CIntShort> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> CDRSResult<CIntShort> {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
@@ -433,7 +434,7 @@ impl FromCursor for CIntShort {
 pub type CLong = i64;
 
 impl FromCursor for CLong {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<Self> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> CDRSResult<Self> {
         let mut buff = [0; LONG_LEN];
         cursor.read_exact(&mut buff)?;
 
@@ -449,31 +450,31 @@ pub struct CInet {
 }
 
 impl Serialize for CInet {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self.addr.ip() {
             IpAddr::V4(v4) => {
-                [4].serialize(cursor);
-                v4.octets().serialize(cursor);
+                [4].serialize(cursor, version);
+                v4.octets().serialize(cursor, version);
             }
             IpAddr::V6(v6) => {
-                [16].serialize(cursor);
-                v6.octets().serialize(cursor);
+                [16].serialize(cursor, version);
+                v6.octets().serialize(cursor, version);
             }
         }
 
-        to_int(self.addr.port().into()).serialize(cursor);
+        to_int(self.addr.port().into()).serialize(cursor, version);
     }
 }
 
 impl FromCursor for CInet {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> CDRSResult<CInet> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> CDRSResult<CInet> {
         let mut buff = [0];
         cursor.read_exact(&mut buff)?;
 
         let n = buff[0];
 
         let ip = decode_inet(cursor_next_value(cursor, n as usize)?.as_slice())?;
-        let port = CInt::from_cursor(cursor)?;
+        let port = CInt::from_cursor(cursor, version)?;
         let socket_addr = SocketAddr::new(ip, port as u16);
 
         Ok(CInet { addr: socket_addr })
@@ -543,7 +544,7 @@ mod tests {
         let input = "foo";
 
         let mut buf = vec![];
-        serialize_str(&mut Cursor::new(&mut buf), input);
+        serialize_str(&mut Cursor::new(&mut buf), input, Version::V4);
 
         assert_eq!(buf, &[0, 3, 102, 111, 111]);
     }
@@ -553,7 +554,7 @@ mod tests {
         let input = "foo";
 
         let mut buf = vec![];
-        serialize_str_long(&mut Cursor::new(&mut buf), input);
+        serialize_str_long(&mut Cursor::new(&mut buf), input, Version::V4);
 
         assert_eq!(buf, &[0, 0, 0, 3, 102, 111, 111]);
     }
@@ -584,7 +585,7 @@ mod tests {
     fn test_cbytes_from_cursor() {
         let a = &[0, 0, 0, 3, 1, 2, 3];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
-        let cbytes = CBytes::from_cursor(&mut cursor).unwrap();
+        let cbytes = CBytes::from_cursor(&mut cursor, Version::V4).unwrap();
         assert_eq!(cbytes.into_bytes().unwrap(), vec![1, 2, 3]);
     }
 
@@ -592,7 +593,10 @@ mod tests {
     fn test_cbytes_serialize() {
         let bytes_vec = vec![1, 2, 3];
         let cbytes = CBytes::new(bytes_vec);
-        assert_eq!(cbytes.serialize_to_vec(), vec![0, 0, 0, 3, 1, 2, 3]);
+        assert_eq!(
+            cbytes.serialize_to_vec(Version::V4),
+            vec![0, 0, 0, 3, 1, 2, 3]
+        );
     }
 
     // CBytesShort
@@ -612,7 +616,7 @@ mod tests {
     fn test_cbytesshort_from_cursor() {
         let a = &[0, 3, 1, 2, 3];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
-        let cbytes = CBytesShort::from_cursor(&mut cursor).unwrap();
+        let cbytes = CBytesShort::from_cursor(&mut cursor, Version::V4).unwrap();
         assert_eq!(cbytes.into_bytes().unwrap(), vec![1, 2, 3]);
     }
 
@@ -620,28 +624,25 @@ mod tests {
     fn test_cbytesshort_serialize() {
         let bytes_vec: Vec<u8> = vec![1, 2, 3];
         let cbytes = CBytesShort::new(bytes_vec);
-        assert_eq!(cbytes.serialize_to_vec(), vec![0, 3, 1, 2, 3]);
+        assert_eq!(cbytes.serialize_to_vec(Version::V4), vec![0, 3, 1, 2, 3]);
     }
 
-    // CInt
     #[test]
     fn test_cint_from_cursor() {
         let a = &[0, 0, 0, 5];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
-        let i = CInt::from_cursor(&mut cursor).unwrap();
+        let i = CInt::from_cursor(&mut cursor, Version::V4).unwrap();
         assert_eq!(i, 5);
     }
 
-    // CIntShort
     #[test]
     fn test_cintshort_from_cursor() {
         let a = &[0, 5];
         let mut cursor: Cursor<&[u8]> = Cursor::new(a);
-        let i = CIntShort::from_cursor(&mut cursor).unwrap();
+        let i = CIntShort::from_cursor(&mut cursor, Version::V4).unwrap();
         assert_eq!(i, 5);
     }
 
-    // cursor_next_value
     #[test]
     fn test_cursor_next_value() {
         let a = &[0, 1, 2, 3, 4];

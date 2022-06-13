@@ -18,7 +18,7 @@ safety and performance of Rust.
 - Pluggable authentication strategies;
 - [ScyllaDB](https://www.scylladb.com/) support;
 - Server events listening;
-- Multiple CQL version support (3, 4), full spec implementation;
+- Multiple CQL version support (3, 4, 5), full spec implementation;
 - Query tracing information;
 - Prepared statements;
 - Query paging;
@@ -26,6 +26,7 @@ safety and performance of Rust.
 - Configurable retry and reconnection policy;
 - Support for interleaved queries;
 - Support for Yugabyte YCQL JSONB;
+- Support for beta protocol usage.
 
 ## Performance
 
@@ -71,7 +72,9 @@ async fn main() {
         .build()
         .await
         .unwrap();
-    let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config).build();
+    let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
+        .build()
+        .unwrap();
 
     let create_ks = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
                      'class' : 'SimpleStrategy', 'replication_factor' : 1 };";

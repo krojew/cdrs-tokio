@@ -1,7 +1,7 @@
 use derive_more::Display;
 
 use cassandra_protocol::error::Error;
-use cassandra_protocol::frame::frame_error::{
+use cassandra_protocol::frame::message_error::{
     AdditionalErrorInfo, ErrorBody, ReadTimeoutError, WriteTimeoutError, WriteType,
 };
 

@@ -2,6 +2,8 @@
 use std::sync::Arc;
 
 #[cfg(feature = "e2e-tests")]
+use cassandra_protocol::frame::Version;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::Session;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::{SessionBuilder, TcpSessionBuilder};
@@ -24,7 +26,7 @@ use regex::Regex;
 pub const ADDR: &str = "127.0.0.1:9042";
 
 #[cfg(feature = "e2e-tests")]
-type CurrentSession = Session<
+pub type CurrentSession = Session<
     TransportTcp,
     TcpConnectionManager,
     RoundRobinLoadBalancingStrategy<TransportTcp, TcpConnectionManager>,
@@ -32,20 +34,25 @@ type CurrentSession = Session<
 
 #[cfg(feature = "e2e-tests")]
 #[allow(dead_code)]
-pub async fn setup(create_table_cql: &'static str) -> Result<CurrentSession> {
-    setup_multiple(&[create_table_cql]).await
+pub async fn setup(create_table_cql: &'static str, version: Version) -> Result<CurrentSession> {
+    setup_multiple(&[create_table_cql], version).await
 }
 
 #[cfg(feature = "e2e-tests")]
-pub async fn setup_multiple(create_cqls: &[&'static str]) -> Result<CurrentSession> {
+pub async fn setup_multiple(
+    create_cqls: &[&'static str],
+    version: Version,
+) -> Result<CurrentSession> {
     let cluster_config = NodeTcpConfigBuilder::new()
         .with_contact_point(ADDR.into())
+        .with_version(version)
         .build()
         .await
         .unwrap();
     let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
-        .build();
+        .build()
+        .unwrap();
     let re_table_name = Regex::new(r"CREATE TABLE IF NOT EXISTS (\w+\.\w+)").unwrap();
 
     let create_keyspace_query = "CREATE KEYSPACE IF NOT EXISTS cdrs_test WITH \

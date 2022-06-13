@@ -1,8 +1,7 @@
 mod common;
 
 #[cfg(feature = "e2e-tests")]
-use common::*;
-
+use cassandra_protocol::frame::Version;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
@@ -16,8 +15,7 @@ use cdrs_tokio::types::value::Bytes;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
-use uuid::Uuid;
-
+use common::*;
 #[cfg(feature = "e2e-tests")]
 use float_eq::*;
 #[cfg(feature = "e2e-tests")]
@@ -28,14 +26,31 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::str::FromStr;
 #[cfg(feature = "e2e-tests")]
 use time::PrimitiveDateTime;
+#[cfg(feature = "e2e-tests")]
+use uuid::Uuid;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn string() {
+async fn string_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_string \
                (my_ascii ascii PRIMARY KEY, my_text text, my_varchar varchar)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    string_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn string_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_string \
+               (my_ascii ascii PRIMARY KEY, my_text text, my_varchar varchar)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    string_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn string_test(session: CurrentSession) {
     let my_ascii = "my_ascii";
     let my_text = "my_text";
     let my_varchar = "my_varchar";
@@ -71,11 +86,26 @@ async fn string() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn counter() {
+async fn counter_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_counter \
                (my_bigint bigint PRIMARY KEY, my_counter counter)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    counter_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn counter_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_counter \
+               (my_bigint bigint PRIMARY KEY, my_counter counter)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    counter_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn counter_test(session: CurrentSession) {
     let my_bigint: i64 = 10_000_000_000_000_000;
     let my_counter: i64 = 100_000_000;
     let values = query_values!(my_counter, my_bigint);
@@ -109,11 +139,27 @@ async fn counter() {
 // TODO varint
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn integer() {
+async fn integer_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_integer \
                (my_bigint bigint PRIMARY KEY, my_int int, my_boolean boolean)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    integer_test(session).await;
+}
+
+// TODO varint
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn integer_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_integer \
+               (my_bigint bigint PRIMARY KEY, my_int int, my_boolean boolean)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    integer_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn integer_test(session: CurrentSession) {
     let my_bigint: i64 = 10_000_000_000_000_000;
     let my_int: i32 = 100_000_000;
     let my_boolean: bool = true;
@@ -150,12 +196,29 @@ async fn integer() {
 // TODO counter, varint
 #[tokio::test]
 #[cfg(all(feature = "e2e-tests"))]
-async fn integer_v4() {
+async fn integer_advanced_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_integer_v4 \
                (my_bigint bigint PRIMARY KEY, my_int int, my_smallint smallint, \
                my_tinyint tinyint, my_boolean boolean)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    integer_advanced_test(session).await;
+}
+
+// TODO counter, varint
+#[tokio::test]
+#[cfg(all(feature = "e2e-tests"))]
+async fn integer_advanced_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_integer_v4 \
+               (my_bigint bigint PRIMARY KEY, my_int int, my_smallint smallint, \
+               my_tinyint tinyint, my_boolean boolean)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    integer_advanced_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn integer_advanced_test(session: CurrentSession) {
     let my_bigint: i64 = 10_000_000_000_000_000;
     let my_int: i32 = 100_000_000;
     let my_smallint: i16 = 10_000;
@@ -197,11 +260,26 @@ async fn integer_v4() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn float() {
+async fn float_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_float \
      (my_float float PRIMARY KEY, my_double double, my_decimal_a decimal, my_decimal_b decimal)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    float_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn float_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_float \
+     (my_float float PRIMARY KEY, my_double double, my_decimal_a decimal, my_decimal_b decimal)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    float_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn float_test(session: CurrentSession) {
     let my_float: f32 = 123.456;
     let my_double: f64 = 987.654;
     let my_decimal_b = i64::MAX;
@@ -244,11 +322,26 @@ async fn float() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn blob() {
+async fn blob_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_blob \
                (my_blob blob PRIMARY KEY, my_mapblob map<text, blob>)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    blob_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn blob_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_blob \
+               (my_blob blob PRIMARY KEY, my_mapblob map<text, blob>)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    blob_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn blob_test(session: CurrentSession) {
     let my_blob: Blob = vec![0, 1, 2, 4, 8, 16, 32, 64, 128, 255].into();
     let my_map: HashMap<String, Blob> = [
         ("a".to_owned(), b"aaaaa".to_vec().into()),
@@ -300,11 +393,27 @@ async fn blob() {
 // TODO timeuuid
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn uuid() {
+async fn uuid_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_uuid \
                (my_uuid uuid PRIMARY KEY)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    uuid_test(session).await;
+}
+
+// TODO timeuuid
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn uuid_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_uuid \
+               (my_uuid uuid PRIMARY KEY)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    uuid_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn uuid_test(session: CurrentSession) {
     let my_uuid = Uuid::from_str("bb16106a-10bc-4a07-baa3-126ffe208c43").unwrap();
     let values = query_values!(my_uuid);
 
@@ -334,11 +443,27 @@ async fn uuid() {
 // TODO date, time, duration
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn time() {
+async fn time_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_time \
                (my_timestamp timestamp PRIMARY KEY)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    time_test(session).await;
+}
+
+// TODO date, time, duration
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn time_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_time \
+               (my_timestamp timestamp PRIMARY KEY)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    time_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn time_test(session: CurrentSession) {
     let my_timestamp: PrimitiveDateTime = time::macros::datetime!(2019-01-01 0:00);
     let values = query_values!(my_timestamp);
 
@@ -372,11 +497,26 @@ async fn time() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn inet() {
+async fn inet_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_inet \
                (my_inet_v4 inet PRIMARY KEY, my_inet_v6 inet)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    inet_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn inet_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_inet \
+               (my_inet_v4 inet PRIMARY KEY, my_inet_v6 inet)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    inet_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn inet_test(session: CurrentSession) {
     let my_inet_v4 = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
     let my_inet_v6 = IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
     let values = query_values!(my_inet_v4, my_inet_v6);

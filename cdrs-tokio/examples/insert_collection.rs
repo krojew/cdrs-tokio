@@ -33,7 +33,9 @@ async fn main() {
         .await
         .unwrap();
     let mut session: CurrentSession =
-        TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config).build();
+        TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
+            .build()
+            .unwrap();
 
     create_keyspace(&mut session).await;
     create_udt(&mut session).await;

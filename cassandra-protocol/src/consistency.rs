@@ -7,7 +7,7 @@ use std::io;
 use std::str::FromStr;
 
 use crate::error;
-use crate::frame::{FromBytes, FromCursor, Serialize};
+use crate::frame::{FromBytes, FromCursor, Serialize, Version};
 use crate::types::*;
 
 /// `Consistency` is an enum which represents Cassandra's consistency levels.
@@ -108,9 +108,9 @@ impl FromStr for Consistency {
 }
 
 impl Serialize for Consistency {
-    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut io::Cursor<&mut Vec<u8>>, version: Version) {
         let value: i16 = (*self).into();
-        value.serialize(cursor)
+        value.serialize(cursor, version)
     }
 }
 
@@ -162,8 +162,8 @@ impl FromBytes for Consistency {
 }
 
 impl FromCursor for Consistency {
-    fn from_cursor(cursor: &mut io::Cursor<&[u8]>) -> error::Result<Consistency> {
-        CIntShort::from_cursor(cursor).and_then(TryInto::try_into)
+    fn from_cursor(cursor: &mut io::Cursor<&[u8]>, version: Version) -> error::Result<Consistency> {
+        CIntShort::from_cursor(cursor, version).and_then(TryInto::try_into)
     }
 }
 
@@ -186,17 +186,29 @@ mod tests {
 
     #[test]
     fn test_consistency_serialize() {
-        assert_eq!(Consistency::Any.serialize_to_vec(), &[0, 0]);
-        assert_eq!(Consistency::One.serialize_to_vec(), &[0, 1]);
-        assert_eq!(Consistency::Two.serialize_to_vec(), &[0, 2]);
-        assert_eq!(Consistency::Three.serialize_to_vec(), &[0, 3]);
-        assert_eq!(Consistency::Quorum.serialize_to_vec(), &[0, 4]);
-        assert_eq!(Consistency::All.serialize_to_vec(), &[0, 5]);
-        assert_eq!(Consistency::LocalQuorum.serialize_to_vec(), &[0, 6]);
-        assert_eq!(Consistency::EachQuorum.serialize_to_vec(), &[0, 7]);
-        assert_eq!(Consistency::Serial.serialize_to_vec(), &[0, 8]);
-        assert_eq!(Consistency::LocalSerial.serialize_to_vec(), &[0, 9]);
-        assert_eq!(Consistency::LocalOne.serialize_to_vec(), &[0, 10]);
+        assert_eq!(Consistency::Any.serialize_to_vec(Version::V4), &[0, 0]);
+        assert_eq!(Consistency::One.serialize_to_vec(Version::V4), &[0, 1]);
+        assert_eq!(Consistency::Two.serialize_to_vec(Version::V4), &[0, 2]);
+        assert_eq!(Consistency::Three.serialize_to_vec(Version::V4), &[0, 3]);
+        assert_eq!(Consistency::Quorum.serialize_to_vec(Version::V4), &[0, 4]);
+        assert_eq!(Consistency::All.serialize_to_vec(Version::V4), &[0, 5]);
+        assert_eq!(
+            Consistency::LocalQuorum.serialize_to_vec(Version::V4),
+            &[0, 6]
+        );
+        assert_eq!(
+            Consistency::EachQuorum.serialize_to_vec(Version::V4),
+            &[0, 7]
+        );
+        assert_eq!(Consistency::Serial.serialize_to_vec(Version::V4), &[0, 8]);
+        assert_eq!(
+            Consistency::LocalSerial.serialize_to_vec(Version::V4),
+            &[0, 9]
+        );
+        assert_eq!(
+            Consistency::LocalOne.serialize_to_vec(Version::V4),
+            &[0, 10]
+        );
     }
 
     #[test]
@@ -254,47 +266,47 @@ mod tests {
     #[test]
     fn test_consistency_from_cursor() {
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 0])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 0]), Version::V4).unwrap(),
             Consistency::Any
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 1])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 1]), Version::V4).unwrap(),
             Consistency::One
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 2])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 2]), Version::V4).unwrap(),
             Consistency::Two
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 3])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 3]), Version::V4).unwrap(),
             Consistency::Three
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 4])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 4]), Version::V4).unwrap(),
             Consistency::Quorum
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 5])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 5]), Version::V4).unwrap(),
             Consistency::All
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 6])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 6]), Version::V4).unwrap(),
             Consistency::LocalQuorum
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 7])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 7]), Version::V4).unwrap(),
             Consistency::EachQuorum
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 8])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 8]), Version::V4).unwrap(),
             Consistency::Serial
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 9])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 9]), Version::V4).unwrap(),
             Consistency::LocalSerial
         );
         assert_eq!(
-            Consistency::from_cursor(&mut Cursor::new(&[0, 10])).unwrap(),
+            Consistency::from_cursor(&mut Cursor::new(&[0, 10]), Version::V4).unwrap(),
             Consistency::LocalOne
         );
     }

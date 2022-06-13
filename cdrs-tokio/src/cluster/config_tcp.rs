@@ -12,6 +12,7 @@ pub struct NodeTcpConfig {
     pub contact_points: Vec<SocketAddr>,
     pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub version: Version,
+    pub beta_protocol: bool,
 }
 
 /// Builder structure that helps to configure TCP connection for node.
@@ -19,6 +20,7 @@ pub struct NodeTcpConfigBuilder {
     addrs: Vec<NodeAddress>,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     version: Version,
+    beta_protocol: bool,
 }
 
 impl Default for NodeTcpConfigBuilder {
@@ -27,6 +29,7 @@ impl Default for NodeTcpConfigBuilder {
             addrs: vec![],
             authenticator_provider: Arc::new(NoneAuthenticatorProvider),
             version: Version::V4,
+            beta_protocol: false,
         }
     }
 }
@@ -34,16 +37,6 @@ impl Default for NodeTcpConfigBuilder {
 impl NodeTcpConfigBuilder {
     pub fn new() -> NodeTcpConfigBuilder {
         Default::default()
-    }
-
-    /// Sets new authenticator.
-    #[deprecated(note = "Use with_authenticator_provider().")]
-    #[must_use]
-    pub fn authenticator(
-        self,
-        authenticator: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
-    ) -> Self {
-        self.with_authenticator_provider(authenticator)
     }
 
     /// Sets new authenticator.
@@ -78,6 +71,13 @@ impl NodeTcpConfigBuilder {
         self
     }
 
+    /// Sets beta protocol usage flag
+    #[must_use]
+    pub fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.beta_protocol = beta_protocol;
+        self
+    }
+
     /// Finalizes building process
     pub async fn build(self) -> Result<NodeTcpConfig> {
         // replace with map() when async lambdas become available
@@ -90,6 +90,7 @@ impl NodeTcpConfigBuilder {
             contact_points,
             authenticator_provider: self.authenticator_provider,
             version: self.version,
+            beta_protocol: self.beta_protocol,
         })
     }
 }

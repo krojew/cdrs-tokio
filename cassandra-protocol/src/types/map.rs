@@ -4,7 +4,8 @@ use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
-use crate::frame::frame_result::{ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::message_result::{ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
@@ -18,14 +19,16 @@ use num::BigInt;
 pub struct Map {
     metadata: ColTypeOption,
     data: Vec<(CBytes, CBytes)>,
+    protocol_version: Version,
 }
 
 impl Map {
     /// Creates new `Map` using the provided data and key and value types.
-    pub fn new(data: Vec<(CBytes, CBytes)>, meta: ColTypeOption) -> Map {
+    pub fn new(data: Vec<(CBytes, CBytes)>, meta: ColTypeOption, protocol_version: Version) -> Map {
         Map {
             metadata: meta,
             data,
+            protocol_version,
         }
     }
 }

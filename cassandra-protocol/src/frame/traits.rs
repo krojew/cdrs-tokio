@@ -2,19 +2,20 @@ use num::BigInt;
 use std::io::{Cursor, Write};
 
 use crate::error;
+use crate::frame::Version;
 use crate::query;
 
 /// Trait that should be implemented by all types that wish to be serialized to a buffer.
 pub trait Serialize {
     /// Serializes given value using the cursor.
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version);
 
     /// Wrapper for easily starting hierarchical serialization.
-    fn serialize_to_vec(&self) -> Vec<u8> {
+    fn serialize_to_vec(&self, version: Version) -> Vec<u8> {
         let mut buf = vec![];
 
         // ignore error, since it can only happen when going over 2^64 bytes size
-        let _ = self.serialize(&mut Cursor::new(&mut buf));
+        let _ = self.serialize(&mut Cursor::new(&mut buf), version);
         buf
     }
 }
@@ -30,8 +31,8 @@ pub trait FromBytes {
 /// `FromCursor` should be used to get parsed structure from an `io:Cursor`
 /// which bound to an array of bytes.
 pub trait FromCursor {
-    /// It should return an implementor from an `io::Cursor` over an array of bytes.
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self>
+    /// Tries to parse Self from a cursor of bytes.
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<Self>
     where
         Self: Sized;
 }
@@ -50,28 +51,28 @@ pub trait TryFromUdt: Sized {
 }
 
 impl<const S: usize> Serialize for [u8; S] {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, _version: Version) {
         let _ = cursor.write(self);
     }
 }
 
 impl Serialize for &[u8] {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, _version: Version) {
         let _ = cursor.write(self);
     }
 }
 
 impl Serialize for Vec<u8> {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, _version: Version) {
         let _ = cursor.write(self);
     }
 }
 
 impl Serialize for BigInt {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, _version: Version) {
         let _ = cursor.write(&self.to_signed_bytes_be());
     }
 }
@@ -80,7 +81,7 @@ macro_rules! impl_serialized {
     ($t:ty) => {
         impl Serialize for $t {
             #[inline]
-            fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+            fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, _version: Version) {
                 let _ = cursor.write(&self.to_be_bytes());
             }
         }

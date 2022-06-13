@@ -11,19 +11,23 @@
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
 //!with `rust-tls` feature.
 use cassandra_protocol::compression::Compression;
-use cassandra_protocol::frame::frame_result::ResultKind;
-use cassandra_protocol::frame::{Frame, StreamId};
+use cassandra_protocol::frame::frame_decoder::FrameDecoder;
+use cassandra_protocol::frame::frame_encoder::FrameEncoder;
+use cassandra_protocol::frame::message_result::ResultKind;
+use cassandra_protocol::frame::{Envelope, StreamId, MAX_FRAME_SIZE};
 use cassandra_protocol::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
 use cassandra_protocol::types::INT_LEN;
 use derive_more::Constructor;
 use futures::FutureExt;
 use fxhash::FxHashMap;
+use itertools::Itertools;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::io::{
-    split, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader, BufWriter, ReadHalf, WriteHalf,
+    split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, BufWriter, ReadHalf,
+    WriteHalf,
 };
 use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
@@ -36,7 +40,7 @@ use tracing::*;
 use mockall::*;
 
 use crate::cluster::KeyspaceHolder;
-use crate::frame_parser::parse_frame;
+use crate::envelope_parser::parse_envelope;
 use crate::future::BoxFuture;
 use crate::Error;
 use crate::Result;
@@ -45,13 +49,18 @@ const INITIAL_STREAM_ID: i16 = 1;
 
 /// General CDRS transport trait.
 pub trait CdrsTransport: Send + Sync {
-    /// Schedules data frame for writing and waits for a response
-    fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>>;
+    /// Schedules data envelope for writing and waits for a response. Handshake envelopes need to
+    /// be marked as such, since their wire representation is different.
+    fn write_envelope<'a>(
+        &'a self,
+        envelope: &'a Envelope,
+        handshake: bool,
+    ) -> BoxFuture<'a, Result<Envelope>>;
 
-    /// Checks if the connection is broken (e.g. after read or write errors)
+    /// Checks if the connection is broken (e.g. after read or write errors).
     fn is_broken(&self) -> bool;
 
-    /// Returns associated node address
+    /// Returns associated node address.
     fn address(&self) -> SocketAddr;
 }
 
@@ -61,7 +70,11 @@ mock! {
     }
 
     impl CdrsTransport for CdrsTransport {
-        fn write_frame(&self, frame: &Frame) -> BoxFuture<'static, Result<Frame>>;
+        fn write_envelope(
+            &self,
+            envelope: &Envelope,
+            handshake: bool,
+        ) -> BoxFuture<'static, Result<Envelope>>;
 
         fn is_broken(&self) -> bool;
 
@@ -75,12 +88,15 @@ pub struct TransportTcp {
 }
 
 impl TransportTcp {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         addr: SocketAddr,
         keyspace_holder: Arc<KeyspaceHolder>,
-        event_handler: Option<mpsc::Sender<Frame>>,
+        event_handler: Option<mpsc::Sender<Envelope>>,
         error_handler: Option<mpsc::Sender<Error>>,
         compression: Compression,
+        frame_encoder: Box<dyn FrameEncoder + Send + Sync>,
+        frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
         buffer_size: usize,
         tcp_nodelay: bool,
     ) -> io::Result<TransportTcp> {
@@ -92,6 +108,8 @@ impl TransportTcp {
                 inner: AsyncTransport::new(
                     addr,
                     compression,
+                    frame_encoder,
+                    frame_decoder,
                     buffer_size,
                     read_half,
                     write_half,
@@ -107,8 +125,12 @@ impl TransportTcp {
 impl CdrsTransport for TransportTcp {
     //noinspection DuplicatedCode
     #[inline]
-    fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>> {
-        self.inner.write_frame(frame).boxed()
+    fn write_envelope<'a>(
+        &'a self,
+        envelope: &'a Envelope,
+        handshake: bool,
+    ) -> BoxFuture<'a, Result<Envelope>> {
+        self.inner.write_envelope(envelope, handshake).boxed()
     }
 
     #[inline]
@@ -135,9 +157,11 @@ impl TransportRustls {
         dns_name: rustls::ServerName,
         config: Arc<rustls::ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
-        event_handler: Option<mpsc::Sender<Frame>>,
+        event_handler: Option<mpsc::Sender<Envelope>>,
         error_handler: Option<mpsc::Sender<Error>>,
         compression: Compression,
+        frame_encoder: Box<dyn FrameEncoder + Send + Sync>,
+        frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
         buffer_size: usize,
         tcp_nodelay: bool,
     ) -> io::Result<Self> {
@@ -152,6 +176,8 @@ impl TransportRustls {
             inner: AsyncTransport::new(
                 addr,
                 compression,
+                frame_encoder,
+                frame_decoder,
                 buffer_size,
                 read_half,
                 write_half,
@@ -167,8 +193,12 @@ impl TransportRustls {
 impl CdrsTransport for TransportRustls {
     //noinspection DuplicatedCode
     #[inline]
-    fn write_frame<'a>(&'a self, frame: &'a Frame) -> BoxFuture<'a, Result<Frame>> {
-        self.inner.write_frame(frame).boxed()
+    fn write_envelope<'a>(
+        &'a self,
+        envelope: &'a Envelope,
+        handshake: bool,
+    ) -> BoxFuture<'a, Result<Envelope>> {
+        self.inner.write_envelope(envelope, handshake).boxed()
     }
 
     #[inline]
@@ -201,10 +231,12 @@ impl AsyncTransport {
     fn new<T: AsyncRead + AsyncWrite + Send + 'static>(
         addr: SocketAddr,
         compression: Compression,
+        frame_encoder: Box<dyn FrameEncoder + Send + Sync>,
+        frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
         buffer_size: usize,
         read_half: ReadHalf<T>,
         write_half: WriteHalf<T>,
-        event_handler: Option<mpsc::Sender<Frame>>,
+        event_handler: Option<mpsc::Sender<Envelope>>,
         error_handler: Option<mpsc::Sender<Error>>,
         keyspace_holder: Arc<KeyspaceHolder>,
     ) -> Self {
@@ -220,6 +252,8 @@ impl AsyncTransport {
             keyspace_holder,
             is_broken.clone(),
             compression,
+            frame_encoder,
+            frame_decoder,
         ));
 
         AsyncTransport {
@@ -241,20 +275,20 @@ impl AsyncTransport {
         self.addr
     }
 
-    async fn write_frame(&self, frame: &Frame) -> Result<Frame> {
+    async fn write_envelope(&self, envelope: &Envelope, handshake: bool) -> Result<Envelope> {
         let (sender, receiver) = oneshot::channel();
 
         // leave stream id empty for now and generate it later
 
-        // startup message is never compressed
-        let data = if frame.opcode != Opcode::Startup {
-            frame.encode_with(self.compression)?
+        // handshake messages are never compressed
+        let data = if handshake {
+            envelope.encode_with(Compression::None)?
         } else {
-            frame.encode_with(Compression::None)?
+            envelope.encode_with(self.compression)?
         };
 
         self.write_sender
-            .send(Request::new(data, sender))
+            .send(Request::new(data, sender, handshake))
             .await
             .map_err(|_| Error::General("Connection closed when writing data!".into()))?;
 
@@ -266,13 +300,15 @@ impl AsyncTransport {
     #[allow(clippy::too_many_arguments)]
     async fn start_processing<T: AsyncRead + AsyncWrite>(
         write_receiver: mpsc::Receiver<Request>,
-        event_handler: Option<mpsc::Sender<Frame>>,
+        event_handler: Option<mpsc::Sender<Envelope>>,
         error_handler: Option<mpsc::Sender<Error>>,
         read_half: ReadHalf<T>,
         write_half: WriteHalf<T>,
         keyspace_holder: Arc<KeyspaceHolder>,
         is_broken: Arc<AtomicBool>,
         compression: Compression,
+        frame_encoder: Box<dyn FrameEncoder + Send + Sync>,
+        frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
     ) {
         let response_handler_map = ResponseHandlerMap::new();
 
@@ -280,14 +316,16 @@ impl AsyncTransport {
             write_receiver,
             BufWriter::new(write_half),
             &response_handler_map,
+            frame_encoder,
         );
 
-        let reader = Self::start_reading(
-            BufReader::new(read_half),
+        let reader = Self::start_reading_handshake_frames(
+            BufReader::with_capacity(MAX_FRAME_SIZE, read_half),
             event_handler,
             compression,
             keyspace_holder,
             &response_handler_map,
+            frame_decoder,
         );
 
         let result = tokio::try_join!(writer, reader);
@@ -303,41 +341,39 @@ impl AsyncTransport {
         }
     }
 
-    async fn start_reading(
+    async fn start_reading_handshake_frames(
         mut read_half: impl AsyncRead + Unpin,
-        event_handler: Option<mpsc::Sender<Frame>>,
+        event_handler: Option<mpsc::Sender<Envelope>>,
         compression: Compression,
         keyspace_holder: Arc<KeyspaceHolder>,
         response_handler_map: &ResponseHandlerMap,
+        frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
     ) -> Result<()> {
+        // before Authenticate or Ready, envelopes are unframed
         loop {
-            let result = parse_frame(&mut read_half, compression).await;
+            let result = parse_envelope(&mut read_half, compression).await;
             match result {
-                Ok(frame) => {
-                    if frame.stream_id >= 0 {
-                        // in case we get a SetKeyspace result, we need to store current keyspace
-                        // checks are done manually for speed
-                        if frame.opcode == Opcode::Result {
-                            let result_kind = ResultKind::from_bytes(&frame.body[..INT_LEN])?;
-                            if result_kind == ResultKind::SetKeyspace {
-                                let response_body = frame.response_body()?;
-                                let set_keyspace =
-                                    response_body.into_set_keyspace().ok_or_else(|| {
-                                        Error::General(
-                                            "SetKeyspace not found with SetKeyspace opcode!".into(),
-                                        )
-                                    })?;
+                Ok(envelope) => {
+                    if envelope.stream_id >= 0 {
+                        let opcode = envelope.opcode;
+                        response_handler_map.send_response(envelope.stream_id, Ok(envelope))?;
 
-                                keyspace_holder.update_current_keyspace(set_keyspace.body);
-                            }
+                        if opcode == Opcode::Authenticate || opcode == Opcode::Ready {
+                            // all frames should now be encoded
+                            return Self::start_reading_normal_frames(
+                                read_half,
+                                event_handler,
+                                compression,
+                                keyspace_holder,
+                                response_handler_map,
+                                frame_decoder,
+                            )
+                            .await;
                         }
-
-                        // normal response to query
-                        response_handler_map.send_response(frame.stream_id, Ok(frame))?;
-                    } else if frame.stream_id == EVENT_STREAM_ID {
+                    } else if envelope.stream_id == EVENT_STREAM_ID {
                         // server event
                         if let Some(event_handler) = &event_handler {
-                            let _ = event_handler.send(frame).await;
+                            let _ = event_handler.send(envelope).await;
                         }
                     }
                 }
@@ -346,28 +382,136 @@ impl AsyncTransport {
         }
     }
 
+    async fn start_reading_normal_frames(
+        mut read_half: impl AsyncRead + Unpin,
+        event_handler: Option<mpsc::Sender<Envelope>>,
+        compression: Compression,
+        keyspace_holder: Arc<KeyspaceHolder>,
+        response_handler_map: &ResponseHandlerMap,
+        mut frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
+    ) -> Result<()> {
+        let mut buffer = Vec::with_capacity(MAX_FRAME_SIZE);
+        loop {
+            read_half.read_buf(&mut buffer).await?;
+
+            let envelopes = frame_decoder.consume(&mut buffer, compression)?;
+            for envelope in envelopes {
+                if envelope.stream_id >= 0 {
+                    // in case we get a SetKeyspace result, we need to store current keyspace
+                    // checks are done manually for speed
+                    if envelope.opcode == Opcode::Result {
+                        let result_kind = ResultKind::from_bytes(&envelope.body[..INT_LEN])?;
+                        if result_kind == ResultKind::SetKeyspace {
+                            let response_body = envelope.response_body()?;
+                            let set_keyspace =
+                                response_body.into_set_keyspace().ok_or_else(|| {
+                                    Error::General(
+                                        "SetKeyspace not found with SetKeyspace opcode!".into(),
+                                    )
+                                })?;
+
+                            keyspace_holder.update_current_keyspace(set_keyspace.body);
+                        }
+                    }
+
+                    // normal response to query
+                    response_handler_map.send_response(envelope.stream_id, Ok(envelope))?;
+                } else if envelope.stream_id == EVENT_STREAM_ID {
+                    // server event
+                    if let Some(event_handler) = &event_handler {
+                        let _ = event_handler.send(envelope).await;
+                    }
+                }
+            }
+        }
+    }
+
     async fn start_writing(
         mut write_receiver: mpsc::Receiver<Request>,
         mut write_half: impl AsyncWrite + Unpin,
         response_handler_map: &ResponseHandlerMap,
+        mut frame_encoder: Box<dyn FrameEncoder + Send + Sync>,
     ) -> Result<()> {
+        let mut frame_stream_ids = Vec::with_capacity(1);
+
         while let Some(mut request) = write_receiver.recv().await {
+            frame_stream_ids.clear();
+
             loop {
                 let stream_id = response_handler_map.next_stream_id();
+                frame_stream_ids.push(stream_id);
 
                 request.set_stream_id(stream_id);
                 response_handler_map.add_handler(stream_id, request.handler);
 
-                if let Err(error) = write_half.write_all(&request.data).await {
-                    response_handler_map.send_response(stream_id, Err(error.into()))?;
-                    return Err(Error::General("Write channel failure!".into()));
+                if request.handshake {
+                    // handshake messages are not framed, so let's just write them directly
+                    if let Err(error) = write_half.write_all(&request.data).await {
+                        response_handler_map.send_response(stream_id, Err(error.into()))?;
+                        return Err(Error::General("Write channel failure!".into()));
+                    }
+                } else {
+                    // post-handshake messages can be aggregated in frames by the encoder
+                    loop {
+                        if frame_encoder.can_fit(request.data.len()) {
+                            frame_encoder.add_envelope(request.data);
+                            break;
+                        }
+
+                        // flush previous frame or create a non-self-contained one
+                        if frame_encoder.has_envelopes() {
+                            // we have some envelopes => flush current frame
+                            Self::write_self_contained_frame(
+                                &mut write_half,
+                                response_handler_map,
+                                &mut frame_stream_ids,
+                                frame_encoder.as_mut(),
+                            )
+                            .await?;
+                        } else {
+                            // non-self-contained
+                            let data_len = request.data.len();
+                            let mut data_start = 0;
+
+                            while data_start < data_len {
+                                let (data_start_offset, frame) = frame_encoder
+                                    .finalize_non_self_contained(&request.data[data_start..]);
+
+                                data_start += data_start_offset;
+
+                                Self::write_frame(
+                                    &mut write_half,
+                                    response_handler_map,
+                                    &mut frame_stream_ids,
+                                    frame,
+                                )
+                                .await?;
+
+                                frame_encoder.reset();
+                            }
+
+                            break;
+                        }
+                    }
                 }
 
                 request = match write_receiver.try_recv() {
                     Ok(request) => request,
                     Err(_) => {
+                        Self::write_self_contained_frame(
+                            &mut write_half,
+                            response_handler_map,
+                            &mut frame_stream_ids,
+                            frame_encoder.as_mut(),
+                        )
+                        .await?;
+
                         if let Err(error) = write_half.flush().await {
-                            response_handler_map.send_response(stream_id, Err(error.into()))?;
+                            Self::notify_error_handlers(
+                                response_handler_map,
+                                &mut frame_stream_ids,
+                                error.into(),
+                            )?;
                             return Err(Error::General("Write channel failure!".into()));
                         }
 
@@ -379,9 +523,52 @@ impl AsyncTransport {
 
         Ok(())
     }
+
+    async fn write_self_contained_frame(
+        write_half: &mut (impl AsyncWrite + Unpin),
+        response_handler_map: &ResponseHandlerMap,
+        frame_stream_ids: &mut Vec<StreamId>,
+        frame_encoder: &mut (dyn FrameEncoder + Send + Sync),
+    ) -> Result<()> {
+        Self::write_frame(
+            write_half,
+            response_handler_map,
+            frame_stream_ids,
+            frame_encoder.finalize_self_contained(),
+        )
+        .await?;
+
+        frame_encoder.reset();
+        Ok(())
+    }
+
+    async fn write_frame(
+        write_half: &mut (impl AsyncWrite + Unpin),
+        response_handler_map: &ResponseHandlerMap,
+        frame_stream_ids: &mut Vec<StreamId>,
+        frame: &[u8],
+    ) -> Result<()> {
+        if let Err(error) = write_half.write_all(frame).await {
+            Self::notify_error_handlers(response_handler_map, frame_stream_ids, error.into())?;
+        }
+
+        Ok(())
+    }
+
+    fn notify_error_handlers(
+        response_handler_map: &ResponseHandlerMap,
+        frame_stream_ids: &mut Vec<StreamId>,
+        error: Error,
+    ) -> Result<()> {
+        frame_stream_ids
+            .drain(..)
+            .into_iter()
+            .map(|stream_id| response_handler_map.send_response(stream_id, Err(error.clone())))
+            .try_collect()
+    }
 }
 
-type ResponseHandler = oneshot::Sender<Result<Frame>>;
+type ResponseHandler = oneshot::Sender<Result<Envelope>>;
 
 struct ResponseHandlerMap {
     stream_handlers: Mutex<FxHashMap<StreamId, ResponseHandler>>,
@@ -405,7 +592,7 @@ impl ResponseHandlerMap {
             .insert(stream_id, handler);
     }
 
-    pub fn send_response(&self, stream_id: StreamId, response: Result<Frame>) -> Result<()> {
+    pub fn send_response(&self, stream_id: StreamId, response: Result<Envelope>) -> Result<()> {
         match self.stream_handlers.lock().unwrap().remove(&stream_id) {
             Some(handler) => {
                 let _ = handler.send(response);
@@ -449,6 +636,7 @@ impl ResponseHandlerMap {
 struct Request {
     data: Vec<u8>,
     handler: ResponseHandler,
+    handshake: bool,
 }
 
 impl Request {

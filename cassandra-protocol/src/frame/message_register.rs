@@ -1,26 +1,28 @@
 use derive_more::Constructor;
 use itertools::Itertools;
+use std::convert::TryFrom;
 use std::io::Cursor;
 
+use crate::error;
 use crate::frame::events::SimpleServerEvent;
-use crate::frame::*;
-use crate::types::serialize_str_list;
+use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
+use crate::types::{from_cursor_string_list, serialize_str_list};
 
-/// The structure which represents a body of a frame of type `register`.
+/// The structure which represents a body of a envelope of type `register`.
 #[derive(Debug, Constructor, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Clone)]
 pub struct BodyReqRegister {
     pub events: Vec<SimpleServerEvent>,
 }
 
 impl Serialize for BodyReqRegister {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         let events = self.events.iter().map(|event| event.as_str());
-        serialize_str_list(cursor, events);
+        serialize_str_list(cursor, events, version);
     }
 }
 
 impl FromCursor for BodyReqRegister {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> error::Result<Self> {
         let events = from_cursor_string_list(cursor)?;
         events
             .iter()
@@ -30,20 +32,20 @@ impl FromCursor for BodyReqRegister {
     }
 }
 
-impl Frame {
-    /// Creates new frame of type `REGISTER`.
-    pub fn new_req_register(events: Vec<SimpleServerEvent>, version: Version) -> Frame {
+impl Envelope {
+    /// Creates new envelope of type `REGISTER`.
+    pub fn new_req_register(events: Vec<SimpleServerEvent>, version: Version) -> Envelope {
         let direction = Direction::Request;
         let opcode = Opcode::Register;
         let register_body = BodyReqRegister::new(events);
 
-        Frame::new(
+        Envelope::new(
             version,
             direction,
             Flags::empty(),
             opcode,
             0,
-            register_body.serialize_to_vec(),
+            register_body.serialize_to_vec(version),
             None,
             vec![],
         )
@@ -55,8 +57,8 @@ mod tests {
     use std::io::Cursor;
 
     use crate::events::SimpleServerEvent;
-    use crate::frame::frame_register::BodyReqRegister;
-    use crate::frame::FromCursor;
+    use crate::frame::message_register::BodyReqRegister;
+    use crate::frame::{FromCursor, Version};
 
     #[test]
     fn should_deserialize_body() {
@@ -66,7 +68,7 @@ mod tests {
         ];
         let mut cursor = Cursor::new(data.as_slice());
 
-        let body = BodyReqRegister::from_cursor(&mut cursor).unwrap();
+        let body = BodyReqRegister::from_cursor(&mut cursor, Version::V4).unwrap();
         assert_eq!(body.events, vec![SimpleServerEvent::TopologyChange]);
     }
 }

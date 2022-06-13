@@ -1,6 +1,6 @@
 use atomic::Atomic;
 use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::frame::Frame;
+use cassandra_protocol::frame::Envelope;
 use cassandra_protocol::token::Murmur3Token;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
@@ -210,7 +210,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Creates a new connection to the node with optional event and error handlers.
     pub async fn new_connection(
         &self,
-        event_handler: Option<Sender<Frame>>,
+        event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
     ) -> Result<T> {
         debug!("Establishing new connection to node...");

@@ -1,8 +1,7 @@
 mod common;
 
 #[cfg(feature = "e2e-tests")]
-use common::*;
-
+use cassandra_protocol::frame::Version;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
@@ -16,23 +15,40 @@ use cdrs_tokio::types::AsRust;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::ByName;
 #[cfg(feature = "e2e-tests")]
-use maplit::hashmap;
+use common::*;
 #[cfg(feature = "e2e-tests")]
-use uuid::Uuid;
-
+use maplit::hashmap;
 #[cfg(feature = "e2e-tests")]
 use std::collections::HashMap;
 #[cfg(feature = "e2e-tests")]
 use std::str::FromStr;
+#[cfg(feature = "e2e-tests")]
+use uuid::Uuid;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn list() {
+async fn list_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_lists \
                (my_text_list frozen<list<text>> PRIMARY KEY, \
                my_nested_list list<frozen<list<int>>>)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    list_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn list_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_lists \
+               (my_text_list frozen<list<text>> PRIMARY KEY, \
+               my_nested_list list<frozen<list<int>>>)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    list_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn list_test(session: CurrentSession) {
     let my_text_list = vec!["text1", "text2", "text3"];
     let my_nested_list: Vec<Vec<i32>> =
         vec![vec![1, 2, 3], vec![999, 888, 777, 666, 555], vec![-1, -2]];
@@ -81,12 +97,28 @@ async fn list() {
 
 #[tokio::test]
 #[cfg(all(feature = "e2e-tests"))]
-async fn list_v4() {
+async fn list_advanced_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_lists_v4 \
                (my_text_list frozen<list<text>> PRIMARY KEY, \
                my_nested_list list<frozen<list<smallint>>>)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    list_advanced_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(all(feature = "e2e-tests"))]
+async fn list_advanced_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_lists_v4 \
+               (my_text_list frozen<list<text>> PRIMARY KEY, \
+               my_nested_list list<frozen<list<smallint>>>)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    list_advanced_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn list_advanced_test(session: CurrentSession) {
     let my_text_list = vec![
         "text1".to_string(),
         "text2".to_string(),
@@ -139,12 +171,28 @@ async fn list_v4() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn set() {
+async fn set_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_sets \
                (my_text_set frozen<set<text>> PRIMARY KEY, \
                my_nested_set set<frozen<set<int>>>)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    set_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn set_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_sets \
+               (my_text_set frozen<set<text>> PRIMARY KEY, \
+               my_nested_set set<frozen<set<int>>>)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    set_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn set_test(session: CurrentSession) {
     let my_text_set = vec![
         "text1".to_string(),
         "text2".to_string(),
@@ -197,12 +245,28 @@ async fn set() {
 
 #[tokio::test]
 #[cfg(all(feature = "e2e-tests"))]
-async fn set_v4() {
+async fn set_advanced_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_sets_v4 \
                (my_text_set frozen<set<text>> PRIMARY KEY, \
                my_nested_set set<frozen<set<smallint>>>)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    set_advanced_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(all(feature = "e2e-tests"))]
+async fn set_advanced_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_sets_v4 \
+               (my_text_set frozen<set<text>> PRIMARY KEY, \
+               my_nested_set set<frozen<set<smallint>>>)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    set_advanced_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn set_advanced_test(session: CurrentSession) {
     let my_text_set = vec![
         "text1".to_string(),
         "text2".to_string(),
@@ -255,13 +319,30 @@ async fn set_v4() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn map_without_blob() {
+async fn map_without_blob_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps_without_blob \
                (my_key int PRIMARY KEY, \
                my_text_map map<text, text>, \
                my_nested_map map<uuid, frozen<map<bigint, int>>>)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    map_without_blob_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn map_without_blob_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps_without_blob \
+               (my_key int PRIMARY KEY, \
+               my_text_map map<text, text>, \
+               my_nested_map map<uuid, frozen<map<bigint, int>>>)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    map_without_blob_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn map_without_blob_test(session: CurrentSession) {
     let my_text_map = hashmap! {
         "key1".to_string() => "value1".to_string(),
         "key2".to_string() => "value2".to_string(),
@@ -326,12 +407,28 @@ async fn map_without_blob() {
 
 #[tokio::test]
 #[cfg(all(feature = "e2e-tests"))]
-async fn map_without_blob_v4() {
+async fn map_without_blob_advanced_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps_without_blob_v4 \
                (my_text_map frozen<map<text, text>> PRIMARY KEY, \
                my_nested_map map<uuid, frozen<map<bigint, tinyint>>>)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    map_without_blob_advanced_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(all(feature = "e2e-tests"))]
+async fn map_without_blob_advanced_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps_without_blob_v4 \
+               (my_text_map frozen<map<text, text>> PRIMARY KEY, \
+               my_nested_map map<uuid, frozen<map<bigint, tinyint>>>)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    map_without_blob_advanced_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn map_without_blob_advanced_test(session: CurrentSession) {
     let my_text_map = hashmap! {
         "key1".to_string() => "value1".to_string(),
         "key2".to_string() => "value2".to_string(),
@@ -396,12 +493,28 @@ async fn map_without_blob_v4() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn map() {
+async fn map_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps \
                (my_text_map frozen<map<text, text>> PRIMARY KEY, \
                my_nested_map map<uuid, frozen<map<bigint, blob>>>)";
-    let session = setup(cql).await.expect("setup");
+    let session = setup(cql, Version::V4).await.expect("setup");
 
+    map_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn map_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps \
+               (my_text_map frozen<map<text, text>> PRIMARY KEY, \
+               my_nested_map map<uuid, frozen<map<bigint, blob>>>)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    map_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn map_test(session: CurrentSession) {
     let my_text_map = hashmap! {
         "key1".to_string() => "value1".to_string(),
         "key2".to_string() => "value2".to_string(),

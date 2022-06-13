@@ -1,3 +1,34 @@
+## 7.0.0
+
+### Fixed
+
+* `ExponentialReconnectionSchedule` duration overflow.
+
+### New
+
+* Protocol V5 support. Please look at official changelog for more information: https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v5.spec#L1419.
+* Support for beta protocols - possibility to connect to beta clusters.
+* `From<Decimal>` for `BigInt`.
+* `check_envelope_size` for `Evelope`.
+* `Error` is now `Clone`.
+* `FrameEncoder`, `FrameDecoder` and `FrameEncodingFactory` responsible for encoding/decoding frames on the wire.
+* `with_frame_encoder_factory` Session build option. 
+* `Error` impl for `CheckEnvelopeSizeError` and `ParseEnvelopeError`.
+
+### Changed
+
+* Due to naming changes in V5, frames have been renamed to messages, `Frame` to `Envelope` and a frame now
+  corresponds to wrapped envelopes, as defined by the protocol.
+* `Serialize` and `FromCursor` traits now pass protocol version to implementations.
+* `Row::from_frame_body` renamed to `from_body`.
+* `QueryFlags` got extended for V5 and now supports `Serialize` and `FromCursor`.
+* Session builders now validate given configuration and return a `Result`.
+* Transport startup now fails gracefully on unexpected server response.
+* `CdrsTransport` now requires explicit information if messages are a part of initial handshake.
+* `ResResultBody::as_rows_metadata` and `ResponseBody::as_rows_metadata` now return a reference to the data.
+* `Hash`, `PartialEq` and `PartialOrd` for `PreparedQuery` only take `id` and `result_metadata_id` into account,
+  since those define equivalence.
+
 ## 6.2.0
 
 ### New

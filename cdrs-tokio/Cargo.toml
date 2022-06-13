@@ -1,6 +1,6 @@
 [package]
 name = "cdrs-tokio"
-version = "6.2.0"
+version = "7.0.0"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 description = "Async Cassandra DB driver written in Rust"
@@ -17,35 +17,36 @@ e2e-tests = []
 derive = ["cdrs-tokio-helpers-derive"]
 
 [dependencies]
-arc-swap ="1.4"
-atomic = "0.5"
-bytes = "1.1"
-cassandra-protocol = { path = "../cassandra-protocol", version = "1" }
+arc-swap ="1.4.0"
+atomic = "0.5.1"
+bytes = "1.1.0"
+cassandra-protocol = { path = "../cassandra-protocol", version = "2" }
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "4", optional = true }
-derive_more = "0.99"
+derive_more = "0.99.17"
 derivative = "2.1.1"
-futures = { version = "0.3", default_features = false, features = ["alloc"] }
-fxhash = "0.2"
-itertools = "0.10"
-lazy_static = "1.4"
-rand = "0.8"
-serde_json = "1.0"
-tokio = { version = "1", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
-tokio-rustls = { version = "0.23", optional = true }
-tracing = "0.1"
-uuid = "1.0"
-webpki = { version = "0.22", optional = true }
+futures = { version = "0.3.21", default_features = false, features = ["alloc"] }
+fxhash = "0.2.1"
+itertools = "0.10.3"
+lazy_static = "1.4.0"
+rand = "0.8.5"
+serde_json = "1.0.81"
+thiserror = "1.0.31"
+tokio = { version = "1.19.2", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
+tokio-rustls = { version = "0.23.4", optional = true }
+tracing = "0.1.35"
+uuid = "1.0.0"
+webpki = { version = "0.22.0", optional = true }
 
 [dependencies.rustls]
-version = "0.20"
+version = "0.20.6"
 optional = true
 default-features = false
 
 [dev-dependencies]
-float_eq = "0.7"
+float_eq = "0.7.0"
 maplit = "1.0.0"
-mockall = "0.11"
-lazy_static = "1.4"
-regex = "1.5"
-uuid = { version = "1.0", features = ["v4"] }
-time = { version = "0.3", features = ["std", "macros"] }
+mockall = "0.11.1"
+lazy_static = "1.4.0"
+regex = "1.5.6"
+uuid = { version = "1.0.0", features = ["v4"] }
+time = { version = "0.3.9", features = ["std", "macros"] }

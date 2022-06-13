@@ -37,7 +37,8 @@ async fn single_node_speculative_execution() {
             5,
             Duration::from_secs(1),
         )))
-        .build();
+        .build()
+        .unwrap();
 
     let create_keyspace_query = "CREATE KEYSPACE IF NOT EXISTS cdrs_test WITH \
          replication = {'class': 'SimpleStrategy', 'replication_factor': 1} \

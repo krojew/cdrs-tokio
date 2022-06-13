@@ -1,6 +1,6 @@
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
-use cassandra_protocol::frame::frame_result::{RowsMetadata, RowsMetadataFlags};
+use cassandra_protocol::frame::message_result::RowsMetadataFlags;
 use cassandra_protocol::query::{PreparedQuery, QueryParams, QueryParamsBuilder, QueryValues};
 use cassandra_protocol::types::rows::Row;
 use cassandra_protocol::types::CBytes;
@@ -142,16 +142,16 @@ impl<
             .session
             .query_with_params(query, params.build())
             .await
-            .and_then(|frame| frame.response_body())?;
+            .and_then(|envelope| envelope.response_body())?;
 
-        let metadata_res: error::Result<RowsMetadata> = body
+        let metadata = body
             .as_rows_metadata()
-            .ok_or_else(|| "Pager query should yield a vector of rows".into());
-        let metadata = metadata_res?;
+            .ok_or("Pager query should yield a vector of rows")?;
 
         self.pager_state.has_more_pages =
             Some(metadata.flags.contains(RowsMetadataFlags::HAS_MORE_PAGES));
-        self.pager_state.cursor = metadata.paging_state;
+        self.pager_state.cursor = metadata.paging_state.clone();
+
         body.into_rows()
             .ok_or_else(|| "Pager query should yield a vector of rows".into())
     }
@@ -195,16 +195,15 @@ impl<
             .session
             .exec_with_params(self.query, &params.build())
             .await
-            .and_then(|frame| frame.response_body())?;
+            .and_then(|envelope| envelope.response_body())?;
 
-        let metadata_res: error::Result<RowsMetadata> = body
+        let metadata = body
             .as_rows_metadata()
-            .ok_or_else(|| "Pager query should yield a vector of rows".into());
-        let metadata = metadata_res?;
+            .ok_or("Pager query should yield a vector of rows")?;
 
         self.pager_state.has_more_pages =
             Some(metadata.flags.contains(RowsMetadataFlags::HAS_MORE_PAGES));
-        self.pager_state.cursor = metadata.paging_state;
+        self.pager_state.cursor = metadata.paging_state.clone();
 
         body.into_rows()
             .ok_or_else(|| "Pager query should yield a vector of rows".into())

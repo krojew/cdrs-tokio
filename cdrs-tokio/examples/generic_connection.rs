@@ -26,7 +26,8 @@ use cdrs_tokio::cluster::session::{
 };
 use cdrs_tokio::cluster::{ConnectionManager, KeyspaceHolder};
 use cdrs_tokio::compression::Compression;
-use cdrs_tokio::frame::{Frame, Version};
+use cdrs_tokio::frame::{Envelope, Version};
+use cdrs_tokio::frame_encoding::ProtocolFrameEncodingFactory;
 use cdrs_tokio::future::BoxFuture;
 use cdrs_tokio::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
@@ -91,7 +92,7 @@ struct VirtualConnectionManager {
 impl ConnectionManager<TransportTcp> for VirtualConnectionManager {
     fn connection(
         &self,
-        event_handler: Option<Sender<Frame>>,
+        event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<Result<TransportTcp>> {
@@ -113,6 +114,7 @@ impl VirtualConnectionManager {
                 config.authenticator.clone(),
                 keyspace_holder,
                 config.reconnection_policy.clone(),
+                Box::new(ProtocolFrameEncodingFactory::default()),
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
                 true,
@@ -162,7 +164,7 @@ async fn main() {
         mask,
         actual,
         reconnection_policy: reconnection_policy.clone(),
-        version: Version::V4,
+        version: Version::V5,
     };
     let nodes = [
         SocketAddr::new(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)), 9042),

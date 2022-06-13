@@ -23,7 +23,8 @@ async fn paged_query() {
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
-        .build();
+        .build()
+        .unwrap();
 
     session
         .query(

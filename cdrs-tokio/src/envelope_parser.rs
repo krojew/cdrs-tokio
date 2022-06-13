@@ -4,17 +4,19 @@ use tokio::io::AsyncReadExt;
 
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error;
-use cassandra_protocol::frame::frame_response::ResponseBody;
-use cassandra_protocol::frame::{Direction, Flags, Frame, Opcode, Version, LENGTH_LEN, STREAM_LEN};
+use cassandra_protocol::frame::message_response::ResponseBody;
+use cassandra_protocol::frame::{
+    Direction, Envelope, Flags, Opcode, Version, LENGTH_LEN, STREAM_LEN,
+};
 use cassandra_protocol::types::data_serialization_types::decode_timeuuid;
 use cassandra_protocol::types::{
     from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN,
 };
 
-async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
+async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
     compressor: Compression,
-) -> error::Result<Frame> {
+) -> error::Result<Envelope> {
     let mut version_bytes = [0; Version::BYTE_LENGTH];
     let mut flag_bytes = [0; Flags::BYTE_LENGTH];
     let mut opcode_bytes = [0; Opcode::BYTE_LENGTH];
@@ -69,7 +71,7 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
 
     std::io::Read::read_to_end(&mut body_cursor, &mut body)?;
 
-    let frame = Frame {
+    let envelope = Envelope {
         version,
         direction,
         flags,
@@ -80,23 +82,23 @@ async fn parse_raw_frame<T: AsyncReadExt + Unpin>(
         warnings,
     };
 
-    Ok(frame)
+    Ok(envelope)
 }
 
-pub async fn parse_frame<T: AsyncReadExt + Unpin>(
+pub async fn parse_envelope<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
     compressor: Compression,
-) -> error::Result<Frame> {
-    let frame = parse_raw_frame(cursor, compressor).await?;
-    convert_frame_into_result(frame)
+) -> error::Result<Envelope> {
+    let envelope = parse_raw_envelope(cursor, compressor).await?;
+    convert_envelope_into_result(envelope)
 }
 
-fn convert_frame_into_result(frame: Frame) -> error::Result<Frame> {
-    match frame.opcode {
-        Opcode::Error => frame.response_body().and_then(|err| match err {
+fn convert_envelope_into_result(envelope: Envelope) -> error::Result<Envelope> {
+    match envelope.opcode {
+        Opcode::Error => envelope.response_body().and_then(|err| match err {
             ResponseBody::Error(err) => Err(error::Error::Server(err)),
             _ => unreachable!(),
         }),
-        _ => Ok(frame),
+        _ => Ok(envelope),
     }
 }

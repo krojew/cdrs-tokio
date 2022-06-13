@@ -1,11 +1,13 @@
-use std::net::IpAddr;
-
 use chrono::prelude::*;
+use num::BigInt;
+use std::hash::{Hash, Hasher};
+use std::net::IpAddr;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 use crate::error::{column_is_empty_err, Error, Result};
-use crate::frame::frame_result::{CTuple, ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::message_result::{CTuple, ColType, ColTypeOption, ColTypeOptionValue};
+use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
@@ -14,12 +16,10 @@ use crate::types::map::Map;
 use crate::types::udt::Udt;
 use crate::types::{ByIndex, CBytes, IntoRustByIndex};
 
-use num::BigInt;
-use std::hash::{Hash, Hasher};
-
 #[derive(Debug)]
 pub struct Tuple {
     data: Vec<(ColTypeOption, CBytes)>,
+    protocol_version: Version,
 }
 
 impl PartialEq for Tuple {
@@ -47,7 +47,7 @@ impl Hash for Tuple {
 }
 
 impl Tuple {
-    pub fn new(elements: Vec<CBytes>, metadata: &CTuple) -> Tuple {
+    pub fn new(elements: Vec<CBytes>, metadata: &CTuple, protocol_version: Version) -> Tuple {
         Tuple {
             data: metadata
                 .types
@@ -55,6 +55,7 @@ impl Tuple {
                 .zip(elements.into_iter())
                 .map(|(val_type, val_b)| (val_type.clone(), val_b))
                 .collect(),
+            protocol_version,
         }
     }
 }

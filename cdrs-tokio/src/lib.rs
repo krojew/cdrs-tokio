@@ -17,7 +17,9 @@
 //!         .build()
 //!         .await
 //!         .unwrap();
-//!     let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config).build();
+//!     let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
+//!         .build()
+//!         .unwrap();
 //!
 //!     let create_ks = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \
 //!                      'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
@@ -41,9 +43,10 @@
 mod macros;
 
 pub mod cluster;
-pub mod frame_parser;
+pub mod envelope_parser;
 pub mod load_balancing;
 
+pub mod frame_encoding;
 pub mod future;
 pub mod retry;
 pub mod speculative_execution;

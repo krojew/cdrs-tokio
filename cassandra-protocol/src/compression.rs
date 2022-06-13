@@ -4,7 +4,7 @@
 ///
 /// Before being used, client and server must agree on a compression algorithm to
 /// use, which is done in the STARTUP message. As a consequence, a STARTUP message
-/// must never be compressed.  However, once the STARTUP frame has been received
+/// must never be compressed.  However, once the STARTUP envelope has been received
 /// by the server, messages can be compressed (including the response to the STARTUP
 /// request).
 use derive_more::Display;
@@ -44,6 +44,21 @@ impl Error for CompressionError {
         match *self {
             CompressionError::Snappy(ref err) => Some(err),
             CompressionError::Lz4(ref err) => Some(err),
+        }
+    }
+}
+
+impl Clone for CompressionError {
+    fn clone(&self) -> Self {
+        match self {
+            CompressionError::Snappy(error) => CompressionError::Snappy(error.clone()),
+            CompressionError::Lz4(error) => CompressionError::Lz4(io::Error::new(
+                error.kind(),
+                error
+                    .get_ref()
+                    .map(|error| error.to_string())
+                    .unwrap_or_default(),
+            )),
         }
     }
 }

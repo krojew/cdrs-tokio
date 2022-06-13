@@ -5,9 +5,8 @@ use cassandra_protocol::frame::events::{
     SchemaChangeOptions, SchemaChangeType, StatusChange, StatusChangeType, TopologyChange,
     TopologyChangeType,
 };
-use cassandra_protocol::frame::frame_error::{AdditionalErrorInfo, ErrorBody};
-use cassandra_protocol::frame::{Frame, Version};
-use cassandra_protocol::query::utils::prepare_flags;
+use cassandra_protocol::frame::message_error::{AdditionalErrorInfo, ErrorBody};
+use cassandra_protocol::frame::{Envelope, Flags, Version};
 use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::list::List;
@@ -55,9 +54,10 @@ async fn send_query<T: CdrsTransport>(
     query: &str,
     transport: &T,
     version: Version,
+    beta_protocol: bool,
 ) -> Result<Option<Vec<Row>>> {
     let query_params = QueryParamsBuilder::new().build();
-    send_query_with_params(query, query_params, transport, version).await
+    send_query_with_params(query, query_params, transport, version, beta_protocol).await
 }
 
 async fn send_query_with_values<T: CdrsTransport, V: Into<QueryValues>>(
@@ -65,9 +65,10 @@ async fn send_query_with_values<T: CdrsTransport, V: Into<QueryValues>>(
     values: V,
     transport: &T,
     version: Version,
+    beta_protocol: bool,
 ) -> Result<Option<Vec<Row>>> {
     let query_params = QueryParamsBuilder::new().with_values(values.into()).build();
-    send_query_with_params(query, query_params, transport, version).await
+    send_query_with_params(query, query_params, transport, version, beta_protocol).await
 }
 
 async fn send_query_with_params<T: CdrsTransport>(
@@ -75,19 +76,25 @@ async fn send_query_with_params<T: CdrsTransport>(
     query_params: QueryParams,
     transport: &T,
     version: Version,
+    beta_protocol: bool,
 ) -> Result<Option<Vec<Row>>> {
     let query = Query {
         query: query.to_string(),
         params: query_params,
     };
 
-    let flags = prepare_flags(false, false);
-    let frame = Frame::new_query(query, flags, version);
+    let flags = if beta_protocol {
+        Flags::BETA
+    } else {
+        Flags::empty()
+    };
+
+    let envelope = Envelope::new_query(query, flags, version);
 
     transport
-        .write_frame(&frame)
+        .write_envelope(&envelope, false)
         .await
-        .and_then(|frame| frame.response_body())
+        .and_then(|envelope| envelope.response_body())
         .map(|body| body.into_rows())
 }
 
@@ -217,11 +224,17 @@ async fn fetch_control_connection_info<T: CdrsTransport>(
     control_transport: &T,
     control_addr: &SocketAddr,
     version: Version,
+    beta_protocol: bool,
 ) -> Result<Row> {
-    send_query("SELECT * FROM system.local", control_transport, version)
-        .await?
-        .and_then(|mut rows| rows.pop())
-        .ok_or_else(|| format!("Node {} failed to return info about itself!", control_addr).into())
+    send_query(
+        "SELECT * FROM system.local",
+        control_transport,
+        version,
+        beta_protocol,
+    )
+    .await?
+    .and_then(|mut rows| rows.pop())
+    .ok_or_else(|| format!("Node {} failed to return info about itself!", control_addr).into())
 }
 
 fn build_keyspace(row: &Row) -> Result<(String, KeyspaceMetadata)> {
@@ -306,6 +319,7 @@ pub struct ClusterMetadataManager<T: CdrsTransport + 'static, CM: ConnectionMana
     session_context: Arc<SessionContext<T>>,
     node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
     version: Version,
+    beta_protocol: bool,
 }
 
 impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMetadataManager<T, CM> {
@@ -315,6 +329,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         session_context: Arc<SessionContext<T>>,
         node_distance_evaluator: Box<dyn NodeDistanceEvaluator + Send + Sync>,
         version: Version,
+        beta_protocol: bool,
     ) -> Self {
         ClusterMetadataManager {
             metadata: ArcSwap::from_pointee(ClusterMetadata::default()),
@@ -325,6 +340,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             session_context,
             node_distance_evaluator,
             version,
+            beta_protocol,
         }
     }
 
@@ -456,7 +472,8 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             "SELECT keyspace_name, toJson(replication) AS replication FROM system_schema.keyspaces WHERE keyspace_name = ?",
             QueryValues::SimpleValues(vec![keyspace.into()]),
             control_transport.as_ref(),
-            self.version
+            self.version,
+            self.beta_protocol,
         )
         .await
         .map(|rows| { rows.and_then(|mut rows| rows.pop()) })
@@ -521,6 +538,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 control_transport.as_ref(),
                 &control_addr,
                 self.version,
+                self.beta_protocol,
             )
             .await?;
 
@@ -531,6 +549,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             &format!("SELECT * FROM {}", self.peer_table_name()),
             control_transport.as_ref(),
             self.version,
+            self.beta_protocol,
         )
         .await
         .map(|peers| {
@@ -601,6 +620,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             "SELECT keyspace_name, toJson(replication) AS replication FROM system_schema.keyspaces",
             control_transport.as_ref(),
             self.version,
+            self.beta_protocol,
         )
         .await
         .and_then(|rows| {
@@ -614,9 +634,13 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         let control_transport = self.control_transport()?;
         let control_addr = control_transport.address();
 
-        let local =
-            fetch_control_connection_info(control_transport.as_ref(), &control_addr, self.version)
-                .await?;
+        let local = fetch_control_connection_info(
+            control_transport.as_ref(),
+            &control_addr,
+            self.version,
+            self.beta_protocol,
+        )
+        .await?;
 
         if !is_peer_row_valid(&local) {
             return Err("Invalid local row info!".into());
@@ -651,8 +675,13 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     async fn query_peers(&self, transport: &T) -> Result<Option<Vec<Row>>> {
-        let peers_v2_result =
-            send_query("SELECT * FROM system.peers_v2", transport, self.version).await;
+        let peers_v2_result = send_query(
+            "SELECT * FROM system.peers_v2",
+            transport,
+            self.version,
+            self.beta_protocol,
+        )
+        .await;
         match peers_v2_result {
             Ok(result) => Ok(result),
             // peers_v2 does not exist
@@ -661,7 +690,13 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 ..
             })) => {
                 self.is_schema_v2.store(false, Ordering::Relaxed);
-                send_query("SELECT * FROM system.peers", transport, self.version).await
+                send_query(
+                    "SELECT * FROM system.peers",
+                    transport,
+                    self.version,
+                    self.beta_protocol,
+                )
+                .await
             }
             Err(error) => Err(error),
         }

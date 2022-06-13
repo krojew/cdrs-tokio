@@ -1,8 +1,7 @@
 mod common;
 
 #[cfg(feature = "e2e-tests")]
-use common::*;
-
+use cassandra_protocol::frame::Version;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::consistency::Consistency;
 #[cfg(feature = "e2e-tests")]
@@ -20,6 +19,8 @@ use cdrs_tokio::IntoCdrsValue;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::{TryFromRow, TryFromUdt};
 #[cfg(feature = "e2e-tests")]
+use common::*;
+#[cfg(feature = "e2e-tests")]
 use maplit::hashmap;
 #[cfg(feature = "e2e-tests")]
 use std::collections::HashMap;
@@ -32,14 +33,32 @@ use uuid::Uuid;
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn simple_udt() {
+async fn simple_udt_v4() {
     let create_type_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.derive_udt (my_text text)";
     let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_derived_udt \
          (my_key int PRIMARY KEY, my_udt derive_udt, my_uuid uuid, my_blob blob)";
-    let session = setup_multiple(&[create_type_cql, create_table_cql])
+    let session = setup_multiple(&[create_type_cql, create_table_cql], Version::V4)
         .await
         .expect("setup");
 
+    simple_udt_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn simple_udt_v5() {
+    let create_type_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.derive_udt (my_text text)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_derived_udt \
+         (my_key int PRIMARY KEY, my_udt derive_udt, my_uuid uuid, my_blob blob)";
+    let session = setup_multiple(&[create_type_cql, create_table_cql], Version::V5)
+        .await
+        .expect("setup");
+
+    simple_udt_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn simple_udt_test(session: CurrentSession) {
     #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStruct {
         my_key: i32,
@@ -94,16 +113,42 @@ async fn simple_udt() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn nested_udt() {
+async fn nested_udt_v4() {
     let create_type1_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.nested_inner_udt (my_text text)";
     let create_type2_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.nested_outer_udt \
                             (my_inner_udt frozen<nested_inner_udt>)";
     let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_nested_udt \
                             (my_key int PRIMARY KEY, my_outer_udt nested_outer_udt)";
-    let session = setup_multiple(&[create_type1_cql, create_type2_cql, create_table_cql])
-        .await
-        .expect("setup");
+    let session = setup_multiple(
+        &[create_type1_cql, create_type2_cql, create_table_cql],
+        Version::V4,
+    )
+    .await
+    .expect("setup");
 
+    nested_udt_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn nested_udt_v5() {
+    let create_type1_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.nested_inner_udt (my_text text)";
+    let create_type2_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.nested_outer_udt \
+                            (my_inner_udt frozen<nested_inner_udt>)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_nested_udt \
+                            (my_key int PRIMARY KEY, my_outer_udt nested_outer_udt)";
+    let session = setup_multiple(
+        &[create_type1_cql, create_type2_cql, create_table_cql],
+        Version::V5,
+    )
+    .await
+    .expect("setup");
+
+    nested_udt_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn nested_udt_test(session: CurrentSession) {
     #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStruct {
         my_key: i32,
@@ -161,21 +206,52 @@ async fn nested_udt() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn alter_udt_add() {
+async fn alter_udt_add_v4() {
     let drop_table_cql = "DROP TABLE IF EXISTS cdrs_test.test_alter_udt_add";
     let drop_type_cql = "DROP TYPE IF EXISTS cdrs_test.alter_udt_add_udt";
     let create_type_cql = "CREATE TYPE cdrs_test.alter_udt_add_udt (my_text text)";
     let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_alter_udt_add \
                             (my_key int PRIMARY KEY, my_map frozen<map<text, alter_udt_add_udt>>)";
-    let session = setup_multiple(&[
-        drop_table_cql,
-        drop_type_cql,
-        create_type_cql,
-        create_table_cql,
-    ])
+    let session = setup_multiple(
+        &[
+            drop_table_cql,
+            drop_type_cql,
+            create_type_cql,
+            create_table_cql,
+        ],
+        Version::V4,
+    )
     .await
     .expect("setup");
 
+    alter_udt_add_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn alter_udt_add_v5() {
+    let drop_table_cql = "DROP TABLE IF EXISTS cdrs_test.test_alter_udt_add";
+    let drop_type_cql = "DROP TYPE IF EXISTS cdrs_test.alter_udt_add_udt";
+    let create_type_cql = "CREATE TYPE cdrs_test.alter_udt_add_udt (my_text text)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_alter_udt_add \
+                            (my_key int PRIMARY KEY, my_map frozen<map<text, alter_udt_add_udt>>)";
+    let session = setup_multiple(
+        &[
+            drop_table_cql,
+            drop_type_cql,
+            create_type_cql,
+            create_table_cql,
+        ],
+        Version::V5,
+    )
+    .await
+    .expect("setup");
+
+    alter_udt_add_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn alter_udt_add_test(session: CurrentSession) {
     #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStruct {
         my_key: i32,
@@ -247,22 +323,54 @@ async fn alter_udt_add() {
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
-async fn update_list_with_udt() {
+async fn update_list_with_udt_v4() {
     let drop_table_cql = "DROP TABLE IF EXISTS cdrs_test.update_list_with_udt";
     let drop_type_cql = "DROP TYPE IF EXISTS cdrs_test.update_list_with_udt";
     let create_type_cql = "CREATE TYPE cdrs_test.update_list_with_udt (id uuid,
     text text)";
     let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.update_list_with_udt \
          (id uuid PRIMARY KEY, udts_set set<frozen<cdrs_test.update_list_with_udt>>)";
-    let session = setup_multiple(&[
-        drop_table_cql,
-        drop_type_cql,
-        create_type_cql,
-        create_table_cql,
-    ])
+    let session = setup_multiple(
+        &[
+            drop_table_cql,
+            drop_type_cql,
+            create_type_cql,
+            create_table_cql,
+        ],
+        Version::V4,
+    )
     .await
     .expect("setup");
 
+    update_list_with_udt_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn update_list_with_udt_v5() {
+    let drop_table_cql = "DROP TABLE IF EXISTS cdrs_test.update_list_with_udt";
+    let drop_type_cql = "DROP TYPE IF EXISTS cdrs_test.update_list_with_udt";
+    let create_type_cql = "CREATE TYPE cdrs_test.update_list_with_udt (id uuid,
+    text text)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.update_list_with_udt \
+         (id uuid PRIMARY KEY, udts_set set<frozen<cdrs_test.update_list_with_udt>>)";
+    let session = setup_multiple(
+        &[
+            drop_table_cql,
+            drop_type_cql,
+            create_type_cql,
+            create_table_cql,
+        ],
+        Version::V5,
+    )
+    .await
+    .expect("setup");
+
+    update_list_with_udt_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn update_list_with_udt_test(session: CurrentSession) {
     #[derive(Clone, Debug, IntoCdrsValue, TryFromRow, PartialEq)]
     struct RowStruct {
         id: Uuid,

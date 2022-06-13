@@ -1,5 +1,5 @@
 use arc_swap::{ArcSwap, AsRaw};
-use cassandra_protocol::frame::{Frame, Version};
+use cassandra_protocol::frame::{Envelope, Version};
 use cassandra_protocol::query::utils::quote;
 use futures::future::{join_all, try_join_all};
 use std::marker::PhantomData;
@@ -126,11 +126,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ConnectionPoolFactory<T, CM> {
             while let Ok(()) = keyspace_receiver.changed().await {
                 let keyspace = keyspace_receiver.borrow().clone();
                 if let Some(keyspace) = keyspace {
-                    let use_frame = Arc::new(Frame::new_req_query(
+                    let use_envelope = Arc::new(Envelope::new_req_query(
                         format!("USE {}", quote(&keyspace)),
                         Default::default(),
                         None,
                         false,
+                        None,
+                        None,
                         None,
                         None,
                         None,
@@ -143,9 +145,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ConnectionPoolFactory<T, CM> {
                         .map(|connection| connection.load().clone())
                         .filter(|connection| !connection.is_broken())
                         .map(|connection| {
-                            let use_frame = use_frame.clone();
+                            let use_envelope = use_envelope.clone();
                             async move {
-                                if let Err(error) = connection.write_frame(use_frame.as_ref()).await {
+                                if let Err(error) = connection.write_envelope(use_envelope.as_ref(), false).await {
                                     error!(%error, %broadcast_rpc_address, "Error settings keyspace for connection!");
                                 }
                             }

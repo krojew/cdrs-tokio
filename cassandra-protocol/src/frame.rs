@@ -1,64 +1,90 @@
-//! `frame` module contains general Frame functionality.
 use bitflags::bitflags;
 use derivative::Derivative;
 use derive_more::{Constructor, Display};
 use std::convert::TryFrom;
 use std::io::Cursor;
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::compression::{Compression, CompressionError};
-use crate::frame::frame_request::RequestBody;
-use crate::frame::frame_response::ResponseBody;
+use crate::frame::message_request::RequestBody;
+use crate::frame::message_response::ResponseBody;
 use crate::types::data_serialization_types::decode_timeuuid;
 use crate::types::{from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN};
 
 pub use crate::frame::traits::*;
 
 /// Number of bytes in the header
-const HEADER_LEN: usize = 9;
+const ENVELOPE_HEADER_LEN: usize = 9;
 /// Number of stream bytes in accordance to protocol.
 pub const STREAM_LEN: usize = 2;
 /// Number of body length bytes in accordance to protocol.
 pub const LENGTH_LEN: usize = 4;
 
 pub mod events;
-pub mod frame_auth_challenge;
-pub mod frame_auth_response;
-pub mod frame_auth_success;
-pub mod frame_authenticate;
-pub mod frame_batch;
-pub mod frame_error;
-pub mod frame_event;
-pub mod frame_execute;
-pub mod frame_options;
-pub mod frame_prepare;
-pub mod frame_query;
-pub mod frame_ready;
-pub mod frame_register;
-pub mod frame_request;
-pub mod frame_response;
-pub mod frame_result;
-pub mod frame_startup;
-pub mod frame_supported;
+pub mod frame_decoder;
+pub mod frame_encoder;
+pub mod message_auth_challenge;
+pub mod message_auth_response;
+pub mod message_auth_success;
+pub mod message_authenticate;
+pub mod message_batch;
+pub mod message_error;
+pub mod message_event;
+pub mod message_execute;
+pub mod message_options;
+pub mod message_prepare;
+pub mod message_query;
+pub mod message_ready;
+pub mod message_register;
+pub mod message_request;
+pub mod message_response;
+pub mod message_result;
+pub mod message_startup;
+pub mod message_supported;
 pub mod traits;
 
 use crate::error;
 
 pub const EVENT_STREAM_ID: i16 = -1;
 
+const fn const_max(a: usize, b: usize) -> usize {
+    if a < b {
+        a
+    } else {
+        b
+    }
+}
+
+/// Maximum size of frame payloads - aggregated envelopes or a part of a single envelope.
+pub const PAYLOAD_SIZE_LIMIT: usize = 1 << 17;
+
+pub(self) const UNCOMPRESSED_FRAME_HEADER_LENGTH: usize = 6;
+pub(self) const COMPRESSED_FRAME_HEADER_LENGTH: usize = 8;
+pub(self) const FRAME_TRAILER_LENGTH: usize = 4;
+
+/// Maximum size of an entire frame.
+pub const MAX_FRAME_SIZE: usize = PAYLOAD_SIZE_LIMIT
+    + const_max(
+        UNCOMPRESSED_FRAME_HEADER_LENGTH,
+        COMPRESSED_FRAME_HEADER_LENGTH,
+    )
+    + FRAME_TRAILER_LENGTH;
+
+/// Cassandra stream identifier.
 pub type StreamId = i16;
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Constructor)]
-pub struct ParsedFrame {
+pub struct ParsedEnvelope {
     /// How many bytes from the buffer have been read.
-    pub frame_len: usize,
-    /// The parsed frame.
-    pub frame: Frame,
+    pub envelope_len: usize,
+    /// The parsed envelope.
+    pub envelope: Envelope,
 }
 
 #[derive(Derivative, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
 #[derivative(Debug)]
-pub struct Frame {
+pub struct Envelope {
     pub version: Version,
     pub direction: Direction,
     pub flags: Flags,
@@ -70,7 +96,7 @@ pub struct Frame {
     pub warnings: Vec<String>,
 }
 
-impl Frame {
+impl Envelope {
     #[inline]
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -83,7 +109,7 @@ impl Frame {
         tracing_id: Option<Uuid>,
         warnings: Vec<String>,
     ) -> Self {
-        Frame {
+        Envelope {
             version,
             direction,
             flags,
@@ -97,7 +123,7 @@ impl Frame {
 
     #[inline]
     pub fn request_body(&self) -> error::Result<RequestBody> {
-        RequestBody::try_from(self.body.as_slice(), self.opcode)
+        RequestBody::try_from(self.body.as_slice(), self.opcode, self.version)
     }
 
     #[inline]
@@ -115,42 +141,42 @@ impl Frame {
         &self.warnings
     }
 
-    /// Parses the raw bytes of a cassandra frame returning a [`Frame`] struct.
-    /// The typical use case is reading from a buffer that may contain 0 or more frames and where the last frame may be incomplete.
-    /// The possible return values are:
-    /// * `Ok(ParsedFrame)` - The first frame in the buffer has been successfully parsed.
-    /// * `Err(ParseFrameError::NotEnoughBytes)` - There are not enough bytes to parse a single frame, [`Frame::from_buffer`] should be recalled when it is possible that there are more bytes.
-    /// * `Err(_)` - The frame is malformed and you should close the connection as this method does not provide a way to tell how many bytes to advance the buffer in this case.
+    /// Parses the raw bytes of a cassandra envelope returning a [`ParsedEnvelope`] struct.
+    /// The typical use case is reading from a buffer that may contain 0 or more envelopes and where
+    /// the last envelope may be incomplete. The possible return values are:
+    /// * `Ok(ParsedEnvelope)` - The first envelope in the buffer has been successfully parsed.
+    /// * `Err(ParseEnvelopeError::NotEnoughBytes)` - There are not enough bytes to parse a single envelope, [`Envelope::from_buffer`] should be recalled when it is possible that there are more bytes.
+    /// * `Err(_)` - The envelope is malformed and you should close the connection as this method does not provide a way to tell how many bytes to advance the buffer in this case.
     pub fn from_buffer(
         data: &[u8],
-        compressor: Compression,
-    ) -> Result<ParsedFrame, ParseFrameError> {
-        if data.len() < HEADER_LEN {
-            return Err(ParseFrameError::NotEnoughBytes);
+        compression: Compression,
+    ) -> Result<ParsedEnvelope, ParseEnvelopeError> {
+        if data.len() < ENVELOPE_HEADER_LEN {
+            return Err(ParseEnvelopeError::NotEnoughBytes);
         }
 
         let body_len = try_i32_from_bytes(&data[5..9]).unwrap() as usize;
-        let frame_len = HEADER_LEN + body_len;
-        if data.len() < frame_len {
-            return Err(ParseFrameError::NotEnoughBytes);
+        let envelope_len = ENVELOPE_HEADER_LEN + body_len;
+        if data.len() < envelope_len {
+            return Err(ParseEnvelopeError::NotEnoughBytes);
         }
 
         let version = Version::try_from(data[0])
-            .map_err(|_| ParseFrameError::UnsupportedVersion(data[0] & 0x7f))?;
+            .map_err(|_| ParseEnvelopeError::UnsupportedVersion(data[0] & 0x7f))?;
         let direction = Direction::from(data[0]);
         let flags = Flags::from_bits_truncate(data[1]);
         let stream_id = try_i16_from_bytes(&data[2..4]).unwrap();
-        let opcode =
-            Opcode::try_from(data[4]).map_err(|_| ParseFrameError::UnsupportedOpcode(data[4]))?;
+        let opcode = Opcode::try_from(data[4])
+            .map_err(|_| ParseEnvelopeError::UnsupportedOpcode(data[4]))?;
 
-        let body_bytes = &data[HEADER_LEN..frame_len];
+        let body_bytes = &data[ENVELOPE_HEADER_LEN..envelope_len];
 
         let full_body = if flags.contains(Flags::COMPRESSION) {
-            compressor.decode(body_bytes.to_vec())
+            compression.decode(body_bytes.to_vec())
         } else {
             Compression::None.decode(body_bytes.to_vec())
         }
-        .map_err(ParseFrameError::DecompressionError)?;
+        .map_err(ParseEnvelopeError::DecompressionError)?;
 
         let body_len = full_body.len();
 
@@ -161,13 +187,14 @@ impl Frame {
             let mut tracing_bytes = [0; UUID_LEN];
             std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes).unwrap();
 
-            Some(decode_timeuuid(&tracing_bytes).map_err(ParseFrameError::InvalidUuid)?)
+            Some(decode_timeuuid(&tracing_bytes).map_err(ParseEnvelopeError::InvalidUuid)?)
         } else {
             None
         };
 
         let warnings = if flags.contains(Flags::WARNING) {
-            from_cursor_string_list(&mut body_cursor).map_err(ParseFrameError::InvalidWarnings)?
+            from_cursor_string_list(&mut body_cursor)
+                .map_err(ParseEnvelopeError::InvalidWarnings)?
         } else {
             vec![]
         };
@@ -177,9 +204,9 @@ impl Frame {
         std::io::Read::read_to_end(&mut body_cursor, &mut body)
             .expect("Read cannot fail because cursor is backed by slice");
 
-        Ok(ParsedFrame::new(
-            frame_len,
-            Frame {
+        Ok(ParsedEnvelope::new(
+            envelope_len,
+            Envelope {
                 version,
                 direction,
                 flags,
@@ -192,20 +219,20 @@ impl Frame {
         ))
     }
 
-    pub fn check_frame_size(data: &[u8]) -> Result<usize, CheckFrameSizeError> {
-        if data.len() < HEADER_LEN {
-            return Err(CheckFrameSizeError::NotEnoughBytes);
+    pub fn check_envelope_size(data: &[u8]) -> Result<usize, CheckEnvelopeSizeError> {
+        if data.len() < ENVELOPE_HEADER_LEN {
+            return Err(CheckEnvelopeSizeError::NotEnoughBytes);
         }
 
         let body_len = try_i32_from_bytes(&data[5..9]).unwrap() as usize;
-        let frame_len = HEADER_LEN + body_len;
-        if data.len() < frame_len {
-            return Err(CheckFrameSizeError::NotEnoughBytes);
+        let envelope_len = ENVELOPE_HEADER_LEN + body_len;
+        if data.len() < envelope_len {
+            return Err(CheckEnvelopeSizeError::NotEnoughBytes);
         }
         let _ = Version::try_from(data[0])
-            .map_err(|_| CheckFrameSizeError::UnsupportedVersion(data[0] & 0x7f))?;
+            .map_err(|_| CheckEnvelopeSizeError::UnsupportedVersion(data[0] & 0x7f))?;
 
-        Ok(frame_len)
+        Ok(envelope_len)
     }
 
     pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
@@ -220,7 +247,8 @@ impl Frame {
         v.extend_from_slice(&self.stream_id.to_be_bytes());
         v.push(opcode_byte);
 
-        if compressor.is_compressed() {
+        // compression is ignored since v5
+        if self.version < Version::V5 && compressor.is_compressed() {
             let mut encoded_body = compressor.encode(&self.body)?;
 
             let body_len = encoded_body.len() as i32;
@@ -236,31 +264,40 @@ impl Frame {
     }
 }
 
-#[derive(Debug)]
-pub enum CheckFrameSizeError {
+#[derive(Debug, Error)]
+pub enum CheckEnvelopeSizeError {
+    #[error("Not enough bytes!")]
     NotEnoughBytes,
+    #[error("Unsupported version: {0}")]
     UnsupportedVersion(u8),
+    #[error("Unsupported opcode: {0}")]
     UnsupportedOpcode(u8),
 }
 
-#[derive(Debug)]
-pub enum ParseFrameError {
-    /// There are not enough bytes to parse a single frame, [`Frame::from_buffer`] should be recalled when it is possible that there are more bytes.
+#[derive(Debug, Error)]
+pub enum ParseEnvelopeError {
+    /// There are not enough bytes to parse a single envelope, [`Envelope::from_buffer`] should be recalled when it is possible that there are more bytes.
+    #[error("Not enough bytes!")]
     NotEnoughBytes,
     /// The version is not supported by cassandra-protocol, a server implementation should handle this by returning a server error with the message "Invalid or unsupported protocol version".
+    #[error("Unsupported version: {0}")]
     UnsupportedVersion(u8),
+    #[error("Unsupported opcode: {0}")]
     UnsupportedOpcode(u8),
+    #[error("Decompression error: {0}")]
     DecompressionError(CompressionError),
+    #[error("Invalid uuid: {0}")]
     InvalidUuid(uuid::Error),
+    #[error("Invalid warnings: {0}")]
     InvalidWarnings(error::Error),
 }
 
+/// Protocol version.
 #[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash, Display)]
 pub enum Version {
     V3,
     V4,
-    // enable v5 feature when it's actually implemented
-    //V5,
+    V5,
 }
 
 impl From<Version> for u8 {
@@ -268,7 +305,7 @@ impl From<Version> for u8 {
         match value {
             Version::V3 => 3,
             Version::V4 => 4,
-            //Version::V5 => 5,
+            Version::V5 => 5,
         }
     }
 }
@@ -280,7 +317,7 @@ impl TryFrom<u8> for Version {
         match version & 0x7F {
             3 => Ok(Version::V3),
             4 => Ok(Version::V4),
-            //5 => Ok(Version::V5),
+            5 => Ok(Version::V5),
             v => Err(error::Error::General(format!(
                 "Unknown cassandra version: {}",
                 v
@@ -319,12 +356,13 @@ impl From<u8> for Direction {
 }
 
 bitflags! {
-    /// Frame's flags
+    /// Envelope flags
     pub struct Flags: u8 {
         const COMPRESSION = 0x01;
         const TRACING = 0x02;
         const CUSTOM_PAYLOAD = 0x04;
         const WARNING = 0x08;
+        const BETA = 0x10;
     }
 }
 
@@ -419,7 +457,13 @@ impl TryFrom<u8> for Opcode {
 mod tests {
     use super::*;
     use crate::consistency::Consistency;
-    use crate::frame::frame_query::BodyReqQuery;
+    use crate::frame::frame_decoder::{
+        FrameDecoder, LegacyFrameDecoder, Lz4FrameDecoder, UncompressedFrameDecoder,
+    };
+    use crate::frame::frame_encoder::{
+        FrameEncoder, LegacyFrameEncoder, Lz4FrameEncoder, UncompressedFrameEncoder,
+    };
+    use crate::frame::message_query::BodyReqQuery;
     use crate::query::query_params::QueryParams;
     use crate::query::query_values::QueryValues;
     use crate::types::value::Value;
@@ -429,7 +473,7 @@ mod tests {
     fn test_frame_version_as_byte() {
         assert_eq!(u8::from(Version::V3), 0x03);
         assert_eq!(u8::from(Version::V4), 0x04);
-        //assert_eq!(u8::from(Version::V5), 0x05);
+        assert_eq!(u8::from(Version::V5), 0x05);
 
         assert_eq!(u8::from(Direction::Request), 0x00);
         assert_eq!(u8::from(Direction::Response), 0x80);
@@ -441,8 +485,8 @@ mod tests {
         assert_eq!(Version::try_from(0x83).unwrap(), Version::V3);
         assert_eq!(Version::try_from(0x04).unwrap(), Version::V4);
         assert_eq!(Version::try_from(0x84).unwrap(), Version::V4);
-        //assert_eq!(Version::try_from(0x05).unwrap(), Version::V5);
-        //assert_eq!(Version::try_from(0x85).unwrap(), Version::V5);
+        assert_eq!(Version::try_from(0x05).unwrap(), Version::V5);
+        assert_eq!(Version::try_from(0x85).unwrap(), Version::V5);
 
         assert_eq!(Direction::from(0x03), Direction::Request);
         assert_eq!(Direction::from(0x04), Direction::Request);
@@ -492,42 +536,53 @@ mod tests {
         assert_eq!(Opcode::try_from(0x10).unwrap(), Opcode::AuthSuccess);
     }
 
-    fn test_encode_decode_roundtrip_response(raw_frame: &[u8], frame: Frame, body: ResponseBody) {
+    fn test_encode_decode_roundtrip_response(
+        raw_envelope: &[u8],
+        envelope: Envelope,
+        body: ResponseBody,
+    ) {
         // test encode
-        let encoded_body = body.serialize_to_vec();
+        let encoded_body = body.serialize_to_vec(Version::V4);
         assert_eq!(
-            &frame.body, &encoded_body,
-            "encoded body did not match frames body"
+            &envelope.body, &encoded_body,
+            "encoded body did not match envelope's body"
         );
 
-        let encoded_frame = frame.encode_with(Compression::None).unwrap();
+        let encoded_envelope = envelope.encode_with(Compression::None).unwrap();
         assert_eq!(
-            raw_frame, &encoded_frame,
-            "encoded frame did not match expected raw frame"
+            raw_envelope, &encoded_envelope,
+            "encoded envelope did not match expected raw envelope"
         );
 
         // test decode
 
-        // TODO: implement once we have a sync parse_frame impl
+        // TODO: implement once we have a sync parse_envelope impl
         //let decoded_frame = parse_frame(raw_frame).unwrap();
         //assert_eq!(frame, decoded_frame);
 
-        let decoded_body = frame.response_body().unwrap();
-        assert_eq!(body, decoded_body, "decoded frame.body did not match body")
+        let decoded_body = envelope.response_body().unwrap();
+        assert_eq!(
+            body, decoded_body,
+            "decoded envelope.body did not match body"
+        )
     }
 
-    fn test_encode_decode_roundtrip_request(raw_frame: &[u8], frame: Frame, body: RequestBody) {
+    fn test_encode_decode_roundtrip_request(
+        raw_envelope: &[u8],
+        envelope: Envelope,
+        body: RequestBody,
+    ) {
         // test encode
-        let encoded_body = body.serialize_to_vec();
+        let encoded_body = body.serialize_to_vec(Version::V4);
         assert_eq!(
-            &frame.body, &encoded_body,
-            "encoded body did not match frames body"
+            &envelope.body, &encoded_body,
+            "encoded body did not match envelope's body"
         );
 
-        let encoded_frame = frame.encode_with(Compression::None).unwrap();
+        let encoded_envelope = envelope.encode_with(Compression::None).unwrap();
         assert_eq!(
-            raw_frame, &encoded_frame,
-            "encoded frame did not match expected raw frame"
+            raw_envelope, &encoded_envelope,
+            "encoded envelope did not match expected raw envelope"
         );
 
         // test decode
@@ -536,24 +591,33 @@ mod tests {
         //let decoded_frame = parse_frame(raw_frame).unwrap();
         //assert_eq!(frame, decoded_frame);
 
-        let decoded_body = frame.request_body().unwrap();
-        assert_eq!(body, decoded_body, "decoded frame.body did not match body")
+        let decoded_body = envelope.request_body().unwrap();
+        assert_eq!(
+            body, decoded_body,
+            "decoded envelope.body did not match body"
+        )
     }
 
     /// Use this when the body binary representation is nondeterministic but the body typed representation is deterministic
-    fn test_encode_decode_roundtrip_nondeterministic_request(mut frame: Frame, body: RequestBody) {
+    fn test_encode_decode_roundtrip_nondeterministic_request(
+        mut envelope: Envelope,
+        body: RequestBody,
+    ) {
         // test encode
-        frame.body = body.serialize_to_vec();
+        envelope.body = body.serialize_to_vec(Version::V4);
 
         // test decode
-        let decoded_body = frame.request_body().unwrap();
-        assert_eq!(body, decoded_body, "decoded frame.body did not match body")
+        let decoded_body = envelope.request_body().unwrap();
+        assert_eq!(
+            body, decoded_body,
+            "decoded envelope.body did not match body"
+        )
     }
 
     #[test]
     fn test_ready() {
-        let raw_frame = vec![4, 0, 0, 0, 2, 0, 0, 0, 0];
-        let frame = Frame {
+        let raw_envelope = vec![4, 0, 0, 0, 2, 0, 0, 0, 0];
+        let envelope = Envelope {
             version: Version::V4,
             direction: Direction::Request,
             flags: Flags::empty(),
@@ -564,15 +628,15 @@ mod tests {
             warnings: vec![],
         };
         let body = ResponseBody::Ready;
-        test_encode_decode_roundtrip_response(&raw_frame, frame, body);
+        test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
     }
 
     #[test]
     fn test_query_minimal() {
-        let raw_frame = [
+        let raw_envelope = [
             4, 0, 0, 0, 7, 0, 0, 0, 11, 0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64,
         ];
-        let frame = Frame {
+        let envelope = Envelope {
             version: Version::V4,
             direction: Direction::Request,
             flags: Flags::empty(),
@@ -592,18 +656,20 @@ mod tests {
                 paging_state: None,
                 serial_consistency: None,
                 timestamp: None,
+                keyspace: None,
+                now_in_seconds: None,
             },
         });
-        test_encode_decode_roundtrip_request(&raw_frame, frame, body);
+        test_encode_decode_roundtrip_request(&raw_envelope, envelope, body);
     }
 
     #[test]
     fn test_query_simple_values() {
-        let raw_frame = [
+        let raw_envelope = [
             4, 0, 0, 0, 7, 0, 0, 0, 30, 0, 0, 0, 10, 115, 111, 109, 101, 32, 113, 117, 101, 114,
             121, 0, 8, 1, 0, 2, 0, 0, 0, 3, 1, 2, 3, 255, 255, 255, 255,
         ];
-        let frame = Frame {
+        let envelope = Envelope {
             version: Version::V4,
             direction: Direction::Request,
             flags: Flags::empty(),
@@ -629,14 +695,16 @@ mod tests {
                 paging_state: None,
                 serial_consistency: None,
                 timestamp: None,
+                keyspace: None,
+                now_in_seconds: None,
             },
         });
-        test_encode_decode_roundtrip_request(&raw_frame, frame, body);
+        test_encode_decode_roundtrip_request(&raw_envelope, envelope, body);
     }
 
     #[test]
     fn test_query_named_values() {
-        let frame = Frame {
+        let envelope = Envelope {
             version: Version::V4,
             direction: Direction::Request,
             flags: Flags::empty(),
@@ -664,19 +732,22 @@ mod tests {
                 paging_state: Some(CBytes::new(vec![0, 1, 2, 3])),
                 serial_consistency: Some(Consistency::One),
                 timestamp: Some(2000),
+                keyspace: None,
+                now_in_seconds: None,
             },
         });
-        test_encode_decode_roundtrip_nondeterministic_request(frame, body);
+        test_encode_decode_roundtrip_nondeterministic_request(envelope, body);
     }
 
     #[test]
     fn test_result_prepared_statement() {
-        use crate::frame::frame_result::{
+        use crate::frame::message_result::{
             BodyResResultPrepared, ColSpec, ColType, ColTypeOption, PreparedMetadata,
             ResResultBody, RowsMetadata, RowsMetadataFlags, TableSpec,
         };
         use crate::types::CBytesShort;
-        let raw_frame = [
+
+        let raw_envelope = [
             132, 0, 0, 0, 8, 0, 0, 0, 97, // cassandra header
             0, 0, 0, 4, // prepared statement result
             0, 16, 195, 165, 42, 38, 120, 170, 232, 144, 214, 187, 158, 200, 160, 226, 27,
@@ -698,7 +769,7 @@ mod tests {
             0, 0, 0, 4, // row metadata flags
             0, 0, 0, 0, // columns count
         ];
-        let frame = Frame {
+        let envelope = Envelope {
             version: Version::V4,
             direction: Direction::Response,
             flags: Flags::empty(),
@@ -732,6 +803,7 @@ mod tests {
             id: CBytesShort::new(vec![
                 195, 165, 42, 38, 120, 170, 232, 144, 214, 187, 158, 200, 160, 226, 27, 73,
             ]),
+            result_metadata_id: None,
             metadata: PreparedMetadata {
                 pk_indexes: vec![0],
                 global_table_spec: Some(TableSpec {
@@ -769,11 +841,208 @@ mod tests {
                 flags: RowsMetadataFlags::NO_METADATA,
                 columns_count: 0,
                 paging_state: None,
+                new_metadata_id: None,
                 global_table_spec: None,
                 col_specs: vec![],
             },
         }));
 
-        test_encode_decode_roundtrip_response(&raw_frame, frame, body);
+        test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
+    }
+
+    fn create_small_envelope_data() -> (Envelope, Vec<u8>) {
+        let raw_envelope = vec![
+            4, 0, 0, 0, 7, 0, 0, 0, 30, 0, 0, 0, 10, 115, 111, 109, 101, 32, 113, 117, 101, 114,
+            121, 0, 8, 1, 0, 2, 0, 0, 0, 3, 1, 2, 3, 255, 255, 255, 255,
+        ];
+        let envelope = Envelope {
+            version: Version::V4,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Query,
+            stream_id: 0,
+            body: vec![
+                0, 0, 0, 10, 115, 111, 109, 101, 32, 113, 117, 101, 114, 121, 0, 8, 1, 0, 2, 0, 0,
+                0, 3, 1, 2, 3, 255, 255, 255, 255,
+            ],
+            tracing_id: None,
+            warnings: vec![],
+        };
+
+        (envelope, raw_envelope)
+    }
+
+    fn create_large_envelope_data() -> (Envelope, Vec<u8>) {
+        let body: Vec<u8> = (0..262144)
+            .into_iter()
+            .map(|value| (value % 256) as u8)
+            .collect();
+
+        let mut raw_envelope = vec![4, 0, 0, 0, 7, 0, 4, 0, 0];
+        raw_envelope.append(&mut body.clone());
+
+        let envelope = Envelope {
+            version: Version::V4,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Query,
+            stream_id: 0,
+            body,
+            tracing_id: None,
+            warnings: vec![],
+        };
+
+        (envelope, raw_envelope)
+    }
+
+    #[test]
+    fn should_encode_and_decode_legacy_frames() {
+        let (envelope, raw_envelope) = create_small_envelope_data();
+
+        let mut encoder = LegacyFrameEncoder::default();
+        assert!(encoder.can_fit(raw_envelope.len()));
+
+        encoder.add_envelope(raw_envelope.clone());
+        assert!(!encoder.can_fit(1));
+
+        let mut frame = encoder.finalize_self_contained().to_vec();
+        assert_eq!(frame, raw_envelope);
+
+        let mut decoder = LegacyFrameDecoder::default();
+
+        let envelopes = decoder.consume(&mut frame, Compression::None).unwrap();
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0], envelope);
+
+        encoder.reset();
+        assert!(encoder.can_fit(raw_envelope.len()));
+    }
+
+    #[test]
+    fn should_encode_and_decode_uncompressed_self_contained_frames() {
+        let (envelope, raw_envelope) = create_small_envelope_data();
+
+        let mut encoder = UncompressedFrameEncoder::default();
+        assert!(encoder.can_fit(raw_envelope.len()));
+
+        encoder.add_envelope(raw_envelope.clone());
+        assert!(encoder.can_fit(raw_envelope.len()));
+
+        encoder.add_envelope(raw_envelope);
+
+        let mut buffer1 = encoder.finalize_self_contained().to_vec();
+        let mut buffer2 = buffer1.split_off(5);
+
+        let mut decoder = UncompressedFrameDecoder::default();
+
+        let envelopes = decoder.consume(&mut buffer1, Compression::None).unwrap();
+        assert!(buffer1.is_empty());
+        assert!(envelopes.is_empty());
+
+        let envelopes = decoder.consume(&mut buffer2, Compression::None).unwrap();
+        assert!(buffer2.is_empty());
+        assert_eq!(envelopes.len(), 2);
+        assert_eq!(envelopes[0], envelope);
+        assert_eq!(envelopes[1], envelope);
+    }
+
+    #[test]
+    fn should_encode_and_decode_uncompressed_non_self_contained_frames() {
+        let (envelope, raw_envelope) = create_large_envelope_data();
+
+        let mut encoder = UncompressedFrameEncoder::default();
+        assert!(!encoder.can_fit(raw_envelope.len()));
+
+        let data_len = raw_envelope.len();
+        let mut data_start = 0;
+        let mut buffer1 = vec![];
+
+        while data_start < data_len {
+            let (data_start_offset, frame) =
+                encoder.finalize_non_self_contained(&raw_envelope[data_start..]);
+
+            data_start += data_start_offset;
+
+            buffer1.extend_from_slice(frame);
+
+            encoder.reset();
+        }
+
+        let mut buffer2 = buffer1.split_off(PAYLOAD_SIZE_LIMIT);
+
+        let mut decoder = UncompressedFrameDecoder::default();
+
+        let envelopes = decoder.consume(&mut buffer1, Compression::None).unwrap();
+        assert!(buffer1.is_empty());
+        assert!(envelopes.is_empty());
+
+        let envelopes = decoder.consume(&mut buffer2, Compression::None).unwrap();
+        assert!(buffer2.is_empty());
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0], envelope);
+    }
+
+    #[test]
+    fn should_encode_and_decode_compressed_self_contained_frames() {
+        let (envelope, raw_envelope) = create_small_envelope_data();
+
+        let mut encoder = Lz4FrameEncoder::default();
+        assert!(encoder.can_fit(raw_envelope.len()));
+
+        encoder.add_envelope(raw_envelope.clone());
+        assert!(encoder.can_fit(raw_envelope.len()));
+
+        encoder.add_envelope(raw_envelope);
+
+        let mut buffer1 = encoder.finalize_self_contained().to_vec();
+        let mut buffer2 = buffer1.split_off(5);
+
+        let mut decoder = Lz4FrameDecoder::default();
+
+        let envelopes = decoder.consume(&mut buffer1, Compression::None).unwrap();
+        assert!(buffer1.is_empty());
+        assert!(envelopes.is_empty());
+
+        let envelopes = decoder.consume(&mut buffer2, Compression::None).unwrap();
+        assert!(buffer2.is_empty());
+        assert_eq!(envelopes.len(), 2);
+        assert_eq!(envelopes[0], envelope);
+        assert_eq!(envelopes[1], envelope);
+    }
+
+    #[test]
+    fn should_encode_and_decode_compressed_non_self_contained_frames() {
+        let (envelope, raw_envelope) = create_large_envelope_data();
+
+        let mut encoder = Lz4FrameEncoder::default();
+        assert!(!encoder.can_fit(raw_envelope.len()));
+
+        let data_len = raw_envelope.len();
+        let mut data_start = 0;
+        let mut buffer1 = vec![];
+
+        while data_start < data_len {
+            let (data_start_offset, frame) =
+                encoder.finalize_non_self_contained(&raw_envelope[data_start..]);
+
+            data_start += data_start_offset;
+
+            buffer1.extend_from_slice(frame);
+
+            encoder.reset();
+        }
+
+        let mut buffer2 = buffer1.split_off(1000);
+
+        let mut decoder = Lz4FrameDecoder::default();
+
+        let envelopes = decoder.consume(&mut buffer1, Compression::None).unwrap();
+        assert!(buffer1.is_empty());
+        assert!(envelopes.is_empty());
+
+        let envelopes = decoder.consume(&mut buffer2, Compression::None).unwrap();
+        assert!(buffer2.is_empty());
+        assert_eq!(envelopes.len(), 1);
+        assert_eq!(envelopes[0], envelope);
     }
 }

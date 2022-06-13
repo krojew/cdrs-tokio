@@ -13,6 +13,7 @@ use uuid::Uuid;
 
 use super::blob::Blob;
 use super::decimal::Decimal;
+use super::duration::Duration;
 use super::*;
 use crate::Error;
 
@@ -28,7 +29,6 @@ pub enum Value {
 }
 
 impl Value {
-    /// The factory method which creates a normal type value basing on provided bytes.
     pub fn new<B>(v: B) -> Value
     where
         B: Into<Bytes>,
@@ -38,21 +38,21 @@ impl Value {
 }
 
 impl Serialize for Value {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
-            Value::Null => NULL_INT_VALUE.serialize(cursor),
-            Value::NotSet => NOT_SET_INT_VALUE.serialize(cursor),
+            Value::Null => NULL_INT_VALUE.serialize(cursor, version),
+            Value::NotSet => NOT_SET_INT_VALUE.serialize(cursor, version),
             Value::Some(value) => {
                 let len = value.len() as CInt;
-                len.serialize(cursor);
-                value.serialize(cursor);
+                len.serialize(cursor, version);
+                value.serialize(cursor, version);
             }
         }
     }
 }
 
 impl FromCursor for Value {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> Result<Value, Error> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> Result<Value, Error> {
         let value_size = {
             let mut buff = [0; INT_LEN];
             cursor.read_exact(&mut buff)?;
@@ -70,6 +70,9 @@ impl FromCursor for Value {
         }
     }
 }
+
+// We are assuming here primitive value serialization will not change across protocol versions,
+// which gives us simpler user API.
 
 impl<T: Into<Bytes>> From<T> for Value {
     fn from(b: T) -> Value {
@@ -255,7 +258,7 @@ impl From<Blob> for Bytes {
 impl From<Decimal> for Bytes {
     #[inline]
     fn from(value: Decimal) -> Self {
-        Bytes(value.serialize_to_vec())
+        Bytes(value.serialize_to_vec(Version::V4))
     }
 }
 
@@ -273,6 +276,13 @@ impl From<DateTime<Utc>> for Bytes {
     }
 }
 
+impl From<Duration> for Bytes {
+    #[inline]
+    fn from(value: Duration) -> Self {
+        Bytes(value.serialize_to_vec(Version::V5))
+    }
+}
+
 impl<T: Into<Bytes>> From<Vec<T>> for Bytes {
     fn from(vec: Vec<T>) -> Bytes {
         let mut bytes = Vec::with_capacity(INT_LEN);
@@ -285,7 +295,7 @@ impl<T: Into<Bytes>> From<Vec<T>> for Bytes {
 
         for v in vec {
             let b: Bytes = v.into();
-            Value::new(b).serialize(&mut cursor);
+            Value::new(b).serialize(&mut cursor, Version::V4);
         }
 
         Bytes(bytes)
@@ -294,7 +304,7 @@ impl<T: Into<Bytes>> From<Vec<T>> for Bytes {
 
 impl From<BigInt> for Bytes {
     fn from(value: BigInt) -> Self {
-        Self(value.serialize_to_vec())
+        Self(value.serialize_to_vec(Version::V4))
     }
 }
 
@@ -316,8 +326,8 @@ where
             let key_bytes: Bytes = k.into();
             let val_bytes: Bytes = v.into();
 
-            Value::new(key_bytes).serialize(&mut cursor);
-            Value::new(val_bytes).serialize(&mut cursor);
+            Value::new(key_bytes).serialize(&mut cursor, Version::V4);
+            Value::new(val_bytes).serialize(&mut cursor, Version::V4);
         }
 
         Bytes(bytes)
@@ -342,8 +352,8 @@ where
             let key_bytes: Bytes = k.into();
             let val_bytes: Bytes = v.into();
 
-            Value::new(key_bytes).serialize(&mut cursor);
-            Value::new(val_bytes).serialize(&mut cursor);
+            Value::new(key_bytes).serialize(&mut cursor, Version::V4);
+            Value::new(val_bytes).serialize(&mut cursor, Version::V4);
         }
 
         Bytes(bytes)
@@ -356,15 +366,24 @@ mod tests {
 
     #[test]
     fn test_value_serialization() {
-        assert_eq!(Value::Some(vec![1]).serialize_to_vec(), vec![0, 0, 0, 1, 1]);
+        assert_eq!(
+            Value::Some(vec![1]).serialize_to_vec(Version::V4),
+            vec![0, 0, 0, 1, 1]
+        );
 
         assert_eq!(
-            Value::Some(vec![1, 2, 3]).serialize_to_vec(),
+            Value::Some(vec![1, 2, 3]).serialize_to_vec(Version::V4),
             vec![0, 0, 0, 3, 1, 2, 3]
         );
 
-        assert_eq!(Value::Null.serialize_to_vec(), vec![255, 255, 255, 255]);
-        assert_eq!(Value::NotSet.serialize_to_vec(), vec![255, 255, 255, 254])
+        assert_eq!(
+            Value::Null.serialize_to_vec(Version::V4),
+            vec![255, 255, 255, 255]
+        );
+        assert_eq!(
+            Value::NotSet.serialize_to_vec(Version::V4),
+            vec![255, 255, 255, 254]
+        )
     }
 
     #[test]
@@ -386,5 +405,9 @@ mod tests {
         assert_eq!(Value::new(1_i32), Value::Some(vec!(0, 0, 0, 1)));
         assert_eq!(Value::new(1_i64), Value::Some(vec!(0, 0, 0, 0, 0, 0, 0, 1)));
         assert_eq!(Value::new(true), Value::Some(vec!(1)));
+        assert_eq!(
+            Value::new(Duration::new(100, 200, 300).unwrap()),
+            Value::Some(vec!(200, 1, 144, 3, 216, 4))
+        );
     }
 }

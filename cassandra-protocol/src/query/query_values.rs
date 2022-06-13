@@ -2,7 +2,7 @@ use itertools::Itertools;
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use crate::frame::Serialize;
+use crate::frame::{Serialize, Version};
 use crate::types::serialize_str;
 use crate::types::value::Value;
 
@@ -65,17 +65,17 @@ impl<S: ToString, V: Into<Value>> From<HashMap<S, V>> for QueryValues {
 }
 
 impl Serialize for QueryValues {
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
             QueryValues::SimpleValues(v) => {
                 for value in v {
-                    value.serialize(cursor);
+                    value.serialize(cursor, version);
                 }
             }
             QueryValues::NamedValues(v) => {
                 for (key, value) in v {
-                    serialize_str(cursor, key);
-                    value.serialize(cursor);
+                    serialize_str(cursor, key, version);
+                    value.serialize(cursor, version);
                 }
             }
         }

@@ -8,7 +8,10 @@ use crate::error::Error;
 use crate::frame::events::SchemaChange;
 use crate::frame::{FromBytes, FromCursor, Serialize, Version};
 use crate::types::rows::Row;
-use crate::types::*;
+use crate::types::{
+    from_cursor_str, serialize_str, try_i16_from_bytes, try_i32_from_bytes, try_u64_from_bytes,
+    CBytes, CBytesShort, CInt, INT_LEN, SHORT_LEN,
+};
 
 /// `ResultKind` is enum which represents types of result.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Display)]
@@ -27,8 +30,8 @@ pub enum ResultKind {
 
 impl Serialize for ResultKind {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        i32::from(*self).serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        i32::from(*self).serialize(cursor, version);
     }
 }
 
@@ -68,7 +71,7 @@ impl TryFrom<i32> for ResultKind {
 }
 
 impl FromCursor for ResultKind {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ResultKind> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> error::Result<ResultKind> {
         let mut buff = [0; INT_LEN];
         cursor.read_exact(&mut buff)?;
 
@@ -96,26 +99,26 @@ pub enum ResResultBody {
 
 impl Serialize for ResResultBody {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match &self {
             ResResultBody::Void => {
-                ResultKind::Void.serialize(cursor);
+                ResultKind::Void.serialize(cursor, version);
             }
             ResResultBody::Rows(rows) => {
-                ResultKind::Rows.serialize(cursor);
-                rows.serialize(cursor);
+                ResultKind::Rows.serialize(cursor, version);
+                rows.serialize(cursor, version);
             }
             ResResultBody::SetKeyspace(set_keyspace) => {
-                ResultKind::SetKeyspace.serialize(cursor);
-                set_keyspace.serialize(cursor);
+                ResultKind::SetKeyspace.serialize(cursor, version);
+                set_keyspace.serialize(cursor, version);
             }
             ResResultBody::Prepared(prepared) => {
-                ResultKind::Prepared.serialize(cursor);
-                prepared.serialize(cursor);
+                ResultKind::Prepared.serialize(cursor, version);
+                prepared.serialize(cursor, version);
             }
             ResResultBody::SchemaChange(schema_change) => {
-                ResultKind::SchemaChange.serialize(cursor);
-                schema_change.serialize(cursor);
+                ResultKind::SchemaChange.serialize(cursor, version);
+                schema_change.serialize(cursor, version);
             }
         }
     }
@@ -129,31 +132,33 @@ impl ResResultBody {
     ) -> error::Result<ResResultBody> {
         Ok(match result_kind {
             ResultKind::Void => ResResultBody::Void,
-            ResultKind::Rows => ResResultBody::Rows(BodyResResultRows::from_cursor(cursor)?),
+            ResultKind::Rows => {
+                ResResultBody::Rows(BodyResResultRows::from_cursor(cursor, version)?)
+            }
             ResultKind::SetKeyspace => {
-                ResResultBody::SetKeyspace(BodyResResultSetKeyspace::from_cursor(cursor)?)
+                ResResultBody::SetKeyspace(BodyResResultSetKeyspace::from_cursor(cursor, version)?)
             }
             ResultKind::Prepared => {
                 ResResultBody::Prepared(BodyResResultPrepared::from_cursor(cursor, version)?)
             }
             ResultKind::SchemaChange => {
-                ResResultBody::SchemaChange(SchemaChange::from_cursor(cursor)?)
+                ResResultBody::SchemaChange(SchemaChange::from_cursor(cursor, version)?)
             }
         })
     }
 
-    /// It converts body into `Vec<Row>` if body's type is `Row` and returns `None` otherwise.
+    /// Converts body into `Vec<Row>` if body's type is `Row` and returns `None` otherwise.
     pub fn into_rows(self) -> Option<Vec<Row>> {
         match self {
-            ResResultBody::Rows(rows_body) => Some(Row::from_frame_body(rows_body)),
+            ResResultBody::Rows(rows_body) => Some(Row::from_body(rows_body)),
             _ => None,
         }
     }
 
-    /// It returns `Some` rows metadata if frame result is of type rows and `None` otherwise
-    pub fn as_rows_metadata(&self) -> Option<RowsMetadata> {
-        match *self {
-            ResResultBody::Rows(ref rows_body) => Some(rows_body.metadata.clone()),
+    /// Returns `Some` rows metadata if envelope result is of type rows and `None` otherwise
+    pub fn as_rows_metadata(&self) -> Option<&RowsMetadata> {
+        match self {
+            ResResultBody::Rows(rows_body) => Some(&rows_body.metadata),
             _ => None,
         }
     }
@@ -182,7 +187,7 @@ impl ResResultBody {
         cursor: &mut Cursor<&[u8]>,
         version: Version,
     ) -> error::Result<ResResultBody> {
-        let result_kind = ResultKind::from_cursor(cursor)?;
+        let result_kind = ResultKind::from_cursor(cursor, version)?;
         ResResultBody::parse_body_from_cursor(cursor, result_kind, version)
     }
 }
@@ -196,13 +201,16 @@ pub struct BodyResResultSetKeyspace {
 
 impl Serialize for BodyResResultSetKeyspace {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, &self.body);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        serialize_str(cursor, &self.body, version);
     }
 }
 
 impl FromCursor for BodyResResultSetKeyspace {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResResultSetKeyspace> {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        _version: Version,
+    ) -> error::Result<BodyResResultSetKeyspace> {
         from_cursor_str(cursor).map(|x| BodyResResultSetKeyspace::new(x.to_string()))
     }
 }
@@ -217,17 +225,19 @@ pub struct BodyResResultRows {
     pub rows_count: CInt,
     /// From spec: it is composed of `rows_count` of rows.
     pub rows_content: Vec<Vec<CBytes>>,
+    /// Protocol version.
+    pub protocol_version: Version,
 }
 
 impl Serialize for BodyResResultRows {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.metadata.serialize(cursor);
-        self.rows_count.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.metadata.serialize(cursor, version);
+        self.rows_count.serialize(cursor, version);
         self.rows_content
             .iter()
             .flatten()
-            .for_each(|x| x.serialize(cursor));
+            .for_each(|x| x.serialize(cursor, version));
     }
 }
 
@@ -236,11 +246,12 @@ impl BodyResResultRows {
         cursor: &mut Cursor<&[u8]>,
         rows_count: i32,
         columns_count: i32,
+        version: Version,
     ) -> error::Result<Vec<Vec<CBytes>>> {
         (0..rows_count)
             .map(|_| {
                 (0..columns_count)
-                    .map(|_| CBytes::from_cursor(cursor))
+                    .map(|_| CBytes::from_cursor(cursor, version))
                     .collect::<Result<_, _>>()
             })
             .collect::<Result<_, _>>()
@@ -248,16 +259,20 @@ impl BodyResResultRows {
 }
 
 impl FromCursor for BodyResResultRows {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<BodyResResultRows> {
-        let metadata = RowsMetadata::from_cursor(cursor)?;
-        let rows_count = CInt::from_cursor(cursor)?;
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<BodyResResultRows> {
+        let metadata = RowsMetadata::from_cursor(cursor, version)?;
+        let rows_count = CInt::from_cursor(cursor, version)?;
         let rows_content =
-            BodyResResultRows::rows_content(cursor, rows_count, metadata.columns_count)?;
+            BodyResResultRows::rows_content(cursor, rows_count, metadata.columns_count, version)?;
 
         Ok(BodyResResultRows {
             metadata,
             rows_count,
             rows_content,
+            protocol_version: version,
         })
     }
 }
@@ -271,6 +286,9 @@ pub struct RowsMetadata {
     pub columns_count: i32,
     /// Paging state.
     pub paging_state: Option<CBytes>,
+    /// New, changed result set metadata. The new metadata ID must also be used in subsequent
+    /// executions of the corresponding prepared statement, if any.
+    pub new_metadata_id: Option<CBytesShort>,
     // In fact by specification Vec should have only two elements representing the
     // (unique) keyspace name and table name the columns belong to
     /// `Option` that may contain global table space.
@@ -281,7 +299,7 @@ pub struct RowsMetadata {
 
 impl Serialize for RowsMetadata {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         // First we need assert that the flags match up with the data we were provided.
         // If they dont match up then it is impossible to encode.
         assert_eq!(
@@ -306,29 +324,35 @@ impl Serialize for RowsMetadata {
             }
         }
 
-        self.flags.serialize(cursor);
+        self.flags.serialize(cursor, version);
 
-        self.columns_count.serialize(cursor);
+        self.columns_count.serialize(cursor, version);
 
         if let Some(paging_state) = &self.paging_state {
-            paging_state.serialize(cursor);
+            paging_state.serialize(cursor, version);
+        }
+
+        if let Some(new_metadata_id) = &self.new_metadata_id {
+            new_metadata_id.serialize(cursor, version);
         }
 
         if let Some(global_table_spec) = &self.global_table_spec {
-            global_table_spec.serialize(cursor);
+            global_table_spec.serialize(cursor, version);
         }
 
-        self.col_specs.iter().for_each(|x| x.serialize(cursor));
+        self.col_specs
+            .iter()
+            .for_each(|x| x.serialize(cursor, version));
     }
 }
 
 impl FromCursor for RowsMetadata {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<RowsMetadata> {
-        let flags = RowsMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor)?);
-        let columns_count = CInt::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<RowsMetadata> {
+        let flags = RowsMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor, version)?);
+        let columns_count = CInt::from_cursor(cursor, version)?;
 
         let paging_state = if flags.contains(RowsMetadataFlags::HAS_MORE_PAGES) {
-            Some(CBytes::from_cursor(cursor)?)
+            Some(CBytes::from_cursor(cursor, version)?)
         } else {
             None
         };
@@ -338,20 +362,30 @@ impl FromCursor for RowsMetadata {
                 flags,
                 columns_count,
                 paging_state,
+                new_metadata_id: None,
                 global_table_spec: None,
                 col_specs: vec![],
             });
         }
 
-        let has_global_table_space = flags.contains(RowsMetadataFlags::GLOBAL_TABLE_SPACE);
-        let global_table_spec = extract_global_table_space(cursor, has_global_table_space)?;
+        let new_metadata_id = if flags.contains(RowsMetadataFlags::METADATA_CHANGED) {
+            Some(CBytesShort::from_cursor(cursor, version)?)
+        } else {
+            None
+        };
 
-        let col_specs = ColSpec::parse_colspecs(cursor, columns_count, has_global_table_space)?;
+        let has_global_table_space = flags.contains(RowsMetadataFlags::GLOBAL_TABLE_SPACE);
+        let global_table_spec =
+            extract_global_table_space(cursor, has_global_table_space, version)?;
+
+        let col_specs =
+            ColSpec::parse_colspecs(cursor, columns_count, has_global_table_space, version)?;
 
         Ok(RowsMetadata {
             flags,
             columns_count,
             paging_state,
+            new_metadata_id,
             global_table_spec,
             col_specs,
         })
@@ -363,13 +397,14 @@ bitflags! {
         const GLOBAL_TABLE_SPACE = 0x0001;
         const HAS_MORE_PAGES = 0x0002;
         const NO_METADATA = 0x0004;
+        const METADATA_CHANGED = 0x0008;
     }
 }
 
 impl Serialize for RowsMetadataFlags {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.bits().serialize(cursor)
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.bits().serialize(cursor, version)
     }
 }
 
@@ -397,14 +432,14 @@ pub struct TableSpec {
 
 impl Serialize for TableSpec {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, &self.ks_name);
-        serialize_str(cursor, &self.table_name);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        serialize_str(cursor, &self.ks_name, version);
+        serialize_str(cursor, &self.table_name, version);
     }
 }
 
 impl FromCursor for TableSpec {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<Self> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> error::Result<Self> {
         let ks_name = from_cursor_str(cursor)?.to_string();
         let table_name = from_cursor_str(cursor)?.to_string();
         Ok(TableSpec {
@@ -428,13 +463,13 @@ pub struct ColSpec {
 
 impl Serialize for ColSpec {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         if let Some(table_spec) = &self.table_spec {
-            table_spec.serialize(cursor);
+            table_spec.serialize(cursor, version);
         }
 
-        serialize_str(cursor, &self.name);
-        self.col_type.serialize(cursor);
+        serialize_str(cursor, &self.name, version);
+        self.col_type.serialize(cursor, version);
     }
 }
 
@@ -443,17 +478,18 @@ impl ColSpec {
         cursor: &mut Cursor<&[u8]>,
         column_count: i32,
         has_global_table_space: bool,
+        version: Version,
     ) -> error::Result<Vec<ColSpec>> {
         (0..column_count)
             .map(|_| {
                 let table_spec = if !has_global_table_space {
-                    Some(TableSpec::from_cursor(cursor)?)
+                    Some(TableSpec::from_cursor(cursor, version)?)
                 } else {
                     None
                 };
 
                 let name = from_cursor_str(cursor)?.to_string();
-                let col_type = ColTypeOption::from_cursor(cursor)?;
+                let col_type = ColTypeOption::from_cursor(cursor, version)?;
 
                 Ok(ColSpec {
                     table_spec,
@@ -488,6 +524,7 @@ pub enum ColType {
     Time,
     Smallint,
     Tinyint,
+    Duration,
     List,
     Map,
     Set,
@@ -521,6 +558,7 @@ impl TryFrom<i16> for ColType {
             0x0012 => Ok(ColType::Time),
             0x0013 => Ok(ColType::Smallint),
             0x0014 => Ok(ColType::Tinyint),
+            0x0015 => Ok(ColType::Duration),
             0x0020 => Ok(ColType::List),
             0x0021 => Ok(ColType::Map),
             0x0022 => Ok(ColType::Set),
@@ -542,7 +580,7 @@ impl FromBytes for ColType {
 
 impl Serialize for ColType {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         (match self {
             ColType::Custom => 0x0000,
             ColType::Ascii => 0x0001,
@@ -564,6 +602,7 @@ impl Serialize for ColType {
             ColType::Time => 0x0012,
             ColType::Smallint => 0x0013,
             ColType::Tinyint => 0x0014,
+            ColType::Duration => 0x0015,
             ColType::List => 0x0020,
             ColType::Map => 0x0021,
             ColType::Set => 0x0022,
@@ -571,12 +610,12 @@ impl Serialize for ColType {
             ColType::Tuple => 0x0031,
             _ => 0x6666,
         } as i16)
-            .serialize(cursor);
+            .serialize(cursor, version);
     }
 }
 
 impl FromCursor for ColType {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ColType> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> error::Result<ColType> {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
@@ -596,34 +635,38 @@ pub struct ColTypeOption {
 
 impl Serialize for ColTypeOption {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.id.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.id.serialize(cursor, version);
         if let Some(value) = &self.value {
-            value.serialize(cursor);
+            value.serialize(cursor, version);
         }
     }
 }
 
 impl FromCursor for ColTypeOption {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<ColTypeOption> {
-        let id = ColType::from_cursor(cursor)?;
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<ColTypeOption> {
+        let id = ColType::from_cursor(cursor, version)?;
         let value = match id {
             ColType::Custom => Some(ColTypeOptionValue::CString(
                 from_cursor_str(cursor)?.to_string(),
             )),
             ColType::Set => {
-                let col_type = ColTypeOption::from_cursor(cursor)?;
+                let col_type = ColTypeOption::from_cursor(cursor, version)?;
                 Some(ColTypeOptionValue::CSet(Box::new(col_type)))
             }
             ColType::List => {
-                let col_type = ColTypeOption::from_cursor(cursor)?;
+                let col_type = ColTypeOption::from_cursor(cursor, version)?;
                 Some(ColTypeOptionValue::CList(Box::new(col_type)))
             }
-            ColType::Udt => Some(ColTypeOptionValue::UdtType(CUdt::from_cursor(cursor)?)),
-            ColType::Tuple => Some(ColTypeOptionValue::TupleType(CTuple::from_cursor(cursor)?)),
+            ColType::Udt => Some(ColTypeOptionValue::UdtType(CUdt::from_cursor(
+                cursor, version,
+            )?)),
+            ColType::Tuple => Some(ColTypeOptionValue::TupleType(CTuple::from_cursor(
+                cursor, version,
+            )?)),
             ColType::Map => {
-                let name_type = ColTypeOption::from_cursor(cursor)?;
-                let value_type = ColTypeOption::from_cursor(cursor)?;
+                let name_type = ColTypeOption::from_cursor(cursor, version)?;
+                let value_type = ColTypeOption::from_cursor(cursor, version)?;
                 Some(ColTypeOptionValue::CMap(
                     Box::new(name_type),
                     Box::new(value_type),
@@ -650,17 +693,17 @@ pub enum ColTypeOptionValue {
 
 impl Serialize for ColTypeOptionValue {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
-            Self::CString(c) => serialize_str(cursor, c),
-            Self::ColType(c) => c.serialize(cursor),
-            Self::CSet(c) => c.serialize(cursor),
-            Self::CList(c) => c.serialize(cursor),
-            Self::UdtType(c) => c.serialize(cursor),
-            Self::TupleType(c) => c.serialize(cursor),
+            Self::CString(c) => serialize_str(cursor, c, version),
+            Self::ColType(c) => c.serialize(cursor, version),
+            Self::CSet(c) => c.serialize(cursor, version),
+            Self::CList(c) => c.serialize(cursor, version),
+            Self::UdtType(c) => c.serialize(cursor, version),
+            Self::TupleType(c) => c.serialize(cursor, version),
             Self::CMap(v1, v2) => {
-                v1.serialize(cursor);
-                v2.serialize(cursor);
+                v1.serialize(cursor, version);
+                v2.serialize(cursor, version);
             }
         }
     }
@@ -679,19 +722,19 @@ pub struct CUdt {
 
 impl Serialize for CUdt {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        serialize_str(cursor, &self.ks);
-        serialize_str(cursor, &self.udt_name);
-        (self.descriptions.len() as i16).serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        serialize_str(cursor, &self.ks, version);
+        serialize_str(cursor, &self.udt_name, version);
+        (self.descriptions.len() as i16).serialize(cursor, version);
         self.descriptions.iter().for_each(|(name, col_type)| {
-            serialize_str(cursor, name);
-            col_type.serialize(cursor);
+            serialize_str(cursor, name, version);
+            col_type.serialize(cursor, version);
         });
     }
 }
 
 impl FromCursor for CUdt {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<CUdt> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<CUdt> {
         let ks = from_cursor_str(cursor)?.to_string();
         let udt_name = from_cursor_str(cursor)?.to_string();
 
@@ -702,7 +745,7 @@ impl FromCursor for CUdt {
         let mut descriptions = Vec::with_capacity(n as usize);
         for _ in 0..n {
             let name = from_cursor_str(cursor)?.to_string();
-            let col_type = ColTypeOption::from_cursor(cursor)?;
+            let col_type = ColTypeOption::from_cursor(cursor, version)?;
             descriptions.push((name, col_type));
         }
 
@@ -724,21 +767,21 @@ pub struct CTuple {
 
 impl Serialize for CTuple {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        (self.types.len() as i16).serialize(cursor);
-        self.types.iter().for_each(|f| f.serialize(cursor));
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        (self.types.len() as i16).serialize(cursor, version);
+        self.types.iter().for_each(|f| f.serialize(cursor, version));
     }
 }
 
 impl FromCursor for CTuple {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>) -> error::Result<CTuple> {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<CTuple> {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
         let n = i16::from_be_bytes(buff);
         let mut types = Vec::with_capacity(n as usize);
         for _ in 0..n {
-            let col_type = ColTypeOption::from_cursor(cursor)?;
+            let col_type = ColTypeOption::from_cursor(cursor, version)?;
             types.push(col_type);
         }
 
@@ -746,11 +789,13 @@ impl FromCursor for CTuple {
     }
 }
 
-/// The structure represents a body of a response frame of type `prepared`
+/// The structure represents a body of a response envelope of type `prepared`
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
 pub struct BodyResResultPrepared {
     /// id of prepared request
     pub id: CBytesShort,
+    /// result metadata id (only available since V5)
+    pub result_metadata_id: Option<CBytesShort>,
     /// metadata
     pub metadata: PreparedMetadata,
     /// It is defined exactly the same as <metadata> in the Rows
@@ -760,10 +805,15 @@ pub struct BodyResResultPrepared {
 
 impl Serialize for BodyResResultPrepared {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.id.serialize(cursor);
-        self.metadata.serialize(cursor);
-        self.result_metadata.serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.id.serialize(cursor, version);
+
+        if let Some(result_metadata_id) = &self.result_metadata_id {
+            result_metadata_id.serialize(cursor, version);
+        }
+
+        self.metadata.serialize(cursor, version);
+        self.result_metadata.serialize(cursor, version);
     }
 }
 
@@ -772,12 +822,20 @@ impl BodyResResultPrepared {
         cursor: &mut Cursor<&[u8]>,
         version: Version,
     ) -> error::Result<BodyResResultPrepared> {
-        let id = CBytesShort::from_cursor(cursor)?;
+        let id = CBytesShort::from_cursor(cursor, version)?;
+
+        let result_metadata_id = if version == Version::V5 {
+            Some(CBytesShort::from_cursor(cursor, version)?)
+        } else {
+            None
+        };
+
         let metadata = PreparedMetadata::from_cursor(cursor, version)?;
-        let result_metadata = RowsMetadata::from_cursor(cursor)?;
+        let result_metadata = RowsMetadata::from_cursor(cursor, version)?;
 
         Ok(BodyResResultPrepared {
             id,
+            result_metadata_id,
             metadata,
             result_metadata,
         })
@@ -792,8 +850,8 @@ bitflags! {
 
 impl Serialize for PreparedMetadataFlags {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
-        self.bits().serialize(cursor);
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.bits().serialize(cursor, version);
     }
 }
 
@@ -807,27 +865,31 @@ pub struct PreparedMetadata {
 
 impl Serialize for PreparedMetadata {
     #[inline]
-    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>) {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         if self.global_table_spec.is_some() {
             PreparedMetadataFlags::GLOBAL_TABLE_SPACE
         } else {
             PreparedMetadataFlags::empty()
         }
-        .serialize(cursor);
+        .serialize(cursor, version);
 
         let columns_count = self.col_specs.len() as i32;
-        columns_count.serialize(cursor);
+        columns_count.serialize(cursor, version);
 
         let pk_count = self.pk_indexes.len() as i32;
-        pk_count.serialize(cursor);
+        pk_count.serialize(cursor, version);
 
-        self.pk_indexes.iter().for_each(|f| f.serialize(cursor));
+        self.pk_indexes
+            .iter()
+            .for_each(|f| f.serialize(cursor, version));
 
         if let Some(global_table_spec) = &self.global_table_spec {
-            global_table_spec.serialize(cursor);
+            global_table_spec.serialize(cursor, version);
         }
 
-        self.col_specs.iter().for_each(|x| x.serialize(cursor));
+        self.col_specs
+            .iter()
+            .for_each(|x| x.serialize(cursor, version));
     }
 }
 
@@ -836,14 +898,14 @@ impl PreparedMetadata {
         cursor: &mut Cursor<&[u8]>,
         version: Version,
     ) -> error::Result<PreparedMetadata> {
-        let flags = PreparedMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor)?);
-        let columns_count = CInt::from_cursor(cursor)?;
+        let flags = PreparedMetadataFlags::from_bits_truncate(CInt::from_cursor(cursor, version)?);
+        let columns_count = CInt::from_cursor(cursor, version)?;
 
         let pk_count = if let Version::V3 = version {
             0
         } else {
             // v4 or v5
-            CInt::from_cursor(cursor)?
+            CInt::from_cursor(cursor, version)?
         };
 
         let pk_indexes = (0..pk_count)
@@ -856,8 +918,10 @@ impl PreparedMetadata {
             .collect::<Result<Vec<i16>, IoError>>()?;
 
         let has_global_table_space = flags.contains(PreparedMetadataFlags::GLOBAL_TABLE_SPACE);
-        let global_table_spec = extract_global_table_space(cursor, has_global_table_space)?;
-        let col_specs = ColSpec::parse_colspecs(cursor, columns_count, has_global_table_space)?;
+        let global_table_spec =
+            extract_global_table_space(cursor, has_global_table_space, version)?;
+        let col_specs =
+            ColSpec::parse_colspecs(cursor, columns_count, has_global_table_space, version)?;
 
         Ok(PreparedMetadata {
             pk_indexes,
@@ -870,14 +934,16 @@ impl PreparedMetadata {
 fn extract_global_table_space(
     cursor: &mut Cursor<&[u8]>,
     has_global_table_space: bool,
+    version: Version,
 ) -> error::Result<Option<TableSpec>> {
     Ok(if has_global_table_space {
-        Some(TableSpec::from_cursor(cursor)?)
+        Some(TableSpec::from_cursor(cursor, version)?)
     } else {
         None
     })
 }
 
+//noinspection DuplicatedCode
 #[cfg(test)]
 fn test_encode_decode(bytes: &[u8], expected: ResResultBody) {
     {
@@ -889,7 +955,7 @@ fn test_encode_decode(bytes: &[u8], expected: ResResultBody) {
     {
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        expected.serialize(&mut cursor);
+        expected.serialize(&mut cursor, Version::V4);
         assert_eq!(buffer, bytes);
     }
 }
@@ -898,6 +964,7 @@ fn test_encode_decode(bytes: &[u8], expected: ResResultBody) {
 mod cudt {
     use super::*;
 
+    //noinspection DuplicatedCode
     #[test]
     fn cudt() {
         let bytes = &[
@@ -935,20 +1002,21 @@ mod cudt {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let udt = CUdt::from_cursor(&mut cursor).unwrap();
+            let udt = CUdt::from_cursor(&mut cursor, Version::V4).unwrap();
             assert_eq!(udt, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
 }
 
 #[cfg(test)]
+//noinspection DuplicatedCode
 mod ctuple {
     use super::*;
 
@@ -967,20 +1035,21 @@ mod ctuple {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let tuple = CTuple::from_cursor(&mut cursor).unwrap();
+            let tuple = CTuple::from_cursor(&mut cursor, Version::V4).unwrap();
             assert_eq!(tuple, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
 }
 
 #[cfg(test)]
+//noinspection DuplicatedCode
 mod col_spec {
     use super::*;
 
@@ -1010,14 +1079,14 @@ mod col_spec {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let col_spec = ColSpec::parse_colspecs(&mut cursor, 1, false).unwrap();
+            let col_spec = ColSpec::parse_colspecs(&mut cursor, 1, false, Version::V4).unwrap();
             assert_eq!(col_spec, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected[0].serialize(&mut cursor);
+            expected[0].serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
@@ -1040,20 +1109,21 @@ mod col_spec {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let col_spec = ColSpec::parse_colspecs(&mut cursor, 1, true).unwrap();
+            let col_spec = ColSpec::parse_colspecs(&mut cursor, 1, true, Version::V4).unwrap();
             assert_eq!(col_spec, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected[0].serialize(&mut cursor);
+            expected[0].serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
 }
 
 #[cfg(test)]
+//noinspection DuplicatedCode
 mod col_type_option {
     use super::*;
 
@@ -1067,14 +1137,14 @@ mod col_type_option {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let col_type_option = ColTypeOption::from_cursor(&mut cursor).unwrap();
+            let col_type_option = ColTypeOption::from_cursor(&mut cursor, Version::V4).unwrap();
             assert_eq!(col_type_option, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
@@ -1098,20 +1168,21 @@ mod col_type_option {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let col_type_option = ColTypeOption::from_cursor(&mut cursor).unwrap();
+            let col_type_option = ColTypeOption::from_cursor(&mut cursor, Version::V4).unwrap();
             assert_eq!(col_type_option, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
 }
 
 #[cfg(test)]
+//noinspection DuplicatedCode
 mod table_spec {
     use super::*;
 
@@ -1128,14 +1199,14 @@ mod table_spec {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let table_spec = TableSpec::from_cursor(&mut cursor).unwrap();
+            let table_spec = TableSpec::from_cursor(&mut cursor, Version::V4).unwrap();
             assert_eq!(table_spec, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
@@ -1154,14 +1225,16 @@ mod void {
 }
 
 #[cfg(test)]
+//noinspection DuplicatedCode
 mod rows_metadata {
     use super::*;
 
     #[test]
     fn rows_metadata() {
         let bytes = &[
-            0, 0, 0, 0, // rows metadata flag
+            0, 0, 0, 8, // rows metadata flag
             0, 0, 0, 2, // columns count
+            0, 1, 1, // new metadata id
             //
             // Col Spec 1
             0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
@@ -1177,10 +1250,11 @@ mod rows_metadata {
         ];
 
         let expected = RowsMetadata {
-            flags: RowsMetadataFlags::empty(),
+            flags: RowsMetadataFlags::METADATA_CHANGED,
 
             columns_count: 2,
             paging_state: None,
+            new_metadata_id: Some(CBytesShort::new(vec![1])),
             global_table_spec: None,
             col_specs: vec![
                 ColSpec {
@@ -1210,20 +1284,21 @@ mod rows_metadata {
 
         {
             let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-            let metadata = RowsMetadata::from_cursor(&mut cursor).unwrap();
+            let metadata = RowsMetadata::from_cursor(&mut cursor, Version::V4).unwrap();
             assert_eq!(metadata, expected);
         }
 
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
 }
 
 #[cfg(test)]
+//noinspection DuplicatedCode
 mod rows {
     use super::*;
 
@@ -1253,6 +1328,7 @@ mod rows {
                 flags: RowsMetadataFlags::empty(),
                 columns_count: 2,
                 paging_state: None,
+                new_metadata_id: None,
                 global_table_spec: None,
                 col_specs: vec![
                     ColSpec {
@@ -1281,6 +1357,7 @@ mod rows {
             },
             rows_count: 0,
             rows_content: vec![],
+            protocol_version: Version::V4,
         });
 
         test_encode_decode(bytes, expected);
@@ -1290,7 +1367,7 @@ mod rows {
     fn test_rows_no_metadata() {
         let bytes = &[
             0, 0, 0, 2, // rows flag
-            0, 0, 0, 4, // rows metadataflag
+            0, 0, 0, 4, // rows metadata flag
             0, 0, 0, 3, // columns count
             0, 0, 0, 0, // rows count
         ];
@@ -1300,11 +1377,13 @@ mod rows {
                 flags: RowsMetadataFlags::NO_METADATA,
                 columns_count: 3,
                 paging_state: None,
+                new_metadata_id: None,
                 global_table_spec: None,
                 col_specs: vec![],
             },
             rows_count: 0,
             rows_content: vec![],
+            protocol_version: Version::V4,
         });
 
         test_encode_decode(bytes, expected);
@@ -1331,8 +1410,10 @@ mod keyspace {
 }
 
 #[cfg(test)]
+//noinspection DuplicatedCode
 mod prepared_metadata {
     use super::*;
+
     #[test]
     fn prepared_metadata() {
         let bytes = &[
@@ -1393,15 +1474,17 @@ mod prepared_metadata {
         {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
-            expected.serialize(&mut cursor);
+            expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
     }
 }
 
 #[cfg(test)]
+//noinspection DuplicatedCode
 mod prepared {
     use super::*;
+    use crate::types::{to_short, CBytesShort};
 
     #[test]
     fn test_prepared() {
@@ -1443,6 +1526,7 @@ mod prepared {
 
         let expected = ResResultBody::Prepared(BodyResResultPrepared {
             id: CBytesShort::new(to_short(1)),
+            result_metadata_id: None,
             metadata: PreparedMetadata {
                 pk_indexes: vec![0],
                 global_table_spec: None,
@@ -1475,6 +1559,7 @@ mod prepared {
                 flags: RowsMetadataFlags::empty(),
                 columns_count: 2,
                 paging_state: None,
+                new_metadata_id: None,
                 global_table_spec: None,
                 col_specs: vec![
                     ColSpec {
