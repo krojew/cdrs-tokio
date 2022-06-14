@@ -16,3 +16,4 @@ session.exec(&preparedQuery).await.unwrap();
 
 // to execute prepared query with bound values, use exec_with_values()
 // to execute prepared query with advanced parameters, use exec_with_params()
+```

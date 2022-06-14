@@ -26,13 +26,13 @@ safety and performance of Rust.
 - Configurable retry and reconnection policy;
 - Support for interleaved queries;
 - Support for Yugabyte YCQL JSONB;
-- Support for beta protocol usage.
+- Support for beta protocol usage;
 
 ## Performance
 
 Due to high configurability of **CDRS**, the performance will vary depending on use case. The following benchmarks
-have been made against the latest (master as of 03-12-2012) versions of respective libraries (except 
-cassandra-cpp: 2.16.0).
+have been made against the latest (master as of 03-12-2021) versions of respective libraries (except 
+cassandra-cpp: 2.16.0) and protocol version 4.
 
 - `cdrs-tokio-large-pool` - **CDRS** with node connection pool equal to double of physical CPU cores
 - `cdrs-tokio-small-pool` - **CDRS** with a single connection per node
