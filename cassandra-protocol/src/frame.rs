@@ -236,8 +236,17 @@ impl Envelope {
     }
 
     pub fn encode_with(&self, compressor: Compression) -> error::Result<Vec<u8>> {
+        // compression is ignored since v5
+        let is_compressed = self.version < Version::V5 && compressor.is_compressed();
+
         let combined_version_byte = u8::from(self.version) | u8::from(self.direction);
-        let flag_byte = self.flags.bits();
+        let flag_byte = (if is_compressed {
+            self.flags | Flags::COMPRESSION
+        } else {
+            self.flags.intersection(Flags::COMPRESSION)
+        })
+        .bits();
+
         let opcode_byte = u8::from(self.opcode);
 
         let mut v = Vec::with_capacity(9);
@@ -247,8 +256,7 @@ impl Envelope {
         v.extend_from_slice(&self.stream_id.to_be_bytes());
         v.push(opcode_byte);
 
-        // compression is ignored since v5
-        if self.version < Version::V5 && compressor.is_compressed() {
+        if is_compressed {
             let mut encoded_body = compressor.encode(&self.body)?;
 
             let body_len = encoded_body.len() as i32;
