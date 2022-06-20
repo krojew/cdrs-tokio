@@ -43,7 +43,7 @@ optional = true
 default-features = false
 
 [dev-dependencies]
-float_eq = "0.7.0"
+float_eq = "1.0.0"
 maplit = "1.0.0"
 mockall = "0.11.1"
 lazy_static = "1.4.0"
