@@ -367,7 +367,7 @@ impl<
 
         let envelope = Envelope::new_req_prepare(query.to_string(), keyspace, flags, self.version);
 
-        self.send_envelope(envelope, false, None, None, None, None, None, None)
+        self.send_envelope(envelope, true, None, None, None, None, None, None)
             .await
             .and_then(|response| response.response_body())
             .and_then(|body| {
