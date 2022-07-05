@@ -81,7 +81,7 @@ impl TryFrom<&str> for SimpleServerEvent {
             TOPOLOGY_CHANGE => Ok(SimpleServerEvent::TopologyChange),
             STATUS_CHANGE => Ok(SimpleServerEvent::StatusChange),
             SCHEMA_CHANGE => Ok(SimpleServerEvent::SchemaChange),
-            value => Err(Self::Error::UnknownServerEvent(value.into())),
+            value => Err(Error::UnknownServerEvent(value.into())),
         }
     }
 }
@@ -154,6 +154,7 @@ pub struct TopologyChange {
 }
 
 impl Serialize for TopologyChange {
+    //noinspection DuplicatedCode
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         self.change_type.serialize(cursor, version);
         self.addr.serialize(cursor, version);
@@ -205,6 +206,7 @@ pub struct StatusChange {
 }
 
 impl Serialize for StatusChange {
+    //noinspection DuplicatedCode
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         self.change_type.serialize(cursor, version);
         self.addr.serialize(cursor, version);
@@ -537,11 +539,9 @@ mod status_change_type_test {
     fn from_cursor_wrong() {
         let a = &[0, 1, 78];
         let mut wrong: Cursor<&[u8]> = Cursor::new(a);
-        let err = StatusChangeType::from_cursor(&mut wrong, Version::V4)
-            .unwrap_err()
-            .to_string();
+        let err = StatusChangeType::from_cursor(&mut wrong, Version::V4).unwrap_err();
 
-        assert_eq!("General error: Unexpected status change type: N", err);
+        assert!(matches!(err, Error::UnexpectedStatusChangeType(_)));
     }
 }
 
