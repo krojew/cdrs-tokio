@@ -35,8 +35,7 @@ impl<'a> Serialize for BodyReqExecute<'a> {
                     .unwrap_or(0),
         );
 
-        // ignore error, since it can only happen when going over 2^64 bytes size
-        let _ = self.serialize(&mut Cursor::new(&mut buf), version);
+        self.serialize(&mut Cursor::new(&mut buf), version);
         buf
     }
 }

@@ -14,8 +14,7 @@ pub trait Serialize {
     fn serialize_to_vec(&self, version: Version) -> Vec<u8> {
         let mut buf = vec![];
 
-        // ignore error, since it can only happen when going over 2^64 bytes size
-        let _ = self.serialize(&mut Cursor::new(&mut buf), version);
+        self.serialize(&mut Cursor::new(&mut buf), version);
         buf
     }
 }
