@@ -14,10 +14,11 @@
 * `FrameEncoder`, `FrameDecoder` and `FrameEncodingFactory` responsible for encoding/decoding frames on the wire.
 * `with_frame_encoder_factory` Session build option. 
 * `Error` impl for `CheckEnvelopeSizeError` and `ParseEnvelopeError`.
+* New `Error` variants for more granular error handling.
 
 ### Changed
 
-* Due to naming changes in V5, frames have been renamed to messages, `Frame` to `Envelope` and a frame now
+* Due to naming changes in V5, frame have been renamed to message, `Frame` to `Envelope` and a frame now
   corresponds to wrapped envelopes, as defined by the protocol.
 * `Serialize` and `FromCursor` traits now pass protocol version to implementations.
 * `Row::from_frame_body` renamed to `from_body`.

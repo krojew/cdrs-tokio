@@ -1,6 +1,5 @@
 use std::io::Cursor;
 
-use crate::error;
 use crate::frame::message_auth_challenge::BodyResAuthChallenge;
 use crate::frame::message_auth_success::BodyReqAuthSuccess;
 use crate::frame::message_authenticate::BodyResAuthenticate;
@@ -12,6 +11,7 @@ use crate::frame::message_result::{
 use crate::frame::message_supported::BodyResSupported;
 use crate::frame::{FromCursor, Opcode, Version};
 use crate::types::rows::Row;
+use crate::{error, Error};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ResponseBody {
@@ -84,7 +84,7 @@ impl ResponseBody {
             Opcode::AuthSuccess => {
                 BodyReqAuthSuccess::from_cursor(&mut cursor, version).map(ResponseBody::AuthSuccess)
             }
-            _ => Err(format!("opcode {} is not a response", response_type).into()),
+            _ => Err(Error::NonResponseOpcode(response_type)),
         }
     }
 

@@ -8,6 +8,8 @@ use uuid::Error as UuidError;
 
 use crate::compression::CompressionError;
 use crate::frame::message_error::ErrorBody;
+use crate::frame::Opcode;
+use crate::types::{CInt, CIntShort};
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -33,7 +35,7 @@ pub enum Error {
     /// Internal error that may be raised during `str::from_utf8`
     #[error("Utf8 error: {0}")]
     Utf8(#[from] Utf8Error),
-    /// Internal Compression/Decompression error
+    /// Internal Compression/Decompression error.
     #[error("Compressor error: {0}")]
     Compression(#[from] CompressionError),
     /// Server error.
@@ -42,6 +44,51 @@ pub enum Error {
     /// Timed out waiting for an operation to complete.
     #[error("Timeout: {0}")]
     Timeout(String),
+    /// Unknown consistency.
+    #[error("Unknown consistency: {0}")]
+    UnknownConsistency(CIntShort),
+    /// Unknown server event.
+    #[error("Unknown server event: {0}")]
+    UnknownServerEvent(String),
+    /// Unexpected topology change event type.
+    #[error("Unexpected topology change type: {0}")]
+    UnexpectedTopologyChangeType(String),
+    /// Unexpected status change event type.
+    #[error("Unexpected status change type: {0}")]
+    UnexpectedStatusChangeType(String),
+    /// Unexpected schema change event type.
+    #[error("Unexpected schema change type: {0}")]
+    UnexpectedSchemaChangeType(String),
+    /// Unexpected schema change event target.
+    #[error("Unexpected schema change target: {0}")]
+    UnexpectedSchemaChangeTarget(String),
+    /// Unexpected additional error info.
+    #[error("Unexpected additional error info: {0}")]
+    UnexpectedAdditionalErrorInfo(CInt),
+    /// Unexpected write type.
+    #[error("Unexpected write type: {0}")]
+    UnexpectedWriteType(String),
+    /// Expected a request opcode, got something else.
+    #[error("Opcode is not a request: {0}")]
+    NonRequestOpcode(Opcode),
+    /// Expected a response opcode, got something else.
+    #[error("Opcode is not a response: {0}")]
+    NonResponseOpcode(Opcode),
+    /// Unexpected result kind.
+    #[error("Unexpected result kind: {0}")]
+    UnexpectedResultKind(CInt),
+    /// Unexpected column type.
+    #[error("Unexpected column type: {0}")]
+    UnexpectedColumnType(CIntShort),
+    /// Invalid format found for given keyspace replication strategy.
+    #[error("Invalid replication format for: {keyspace}")]
+    InvalidReplicationFormat { keyspace: String },
+    /// Unexpected response to auth message.
+    #[error("Unexpected auth response: {0}")]
+    UnexpectedAuthResponse(Opcode),
+    /// Unexpected startup response.
+    #[error("Unexpected startup response: {0}")]
+    UnexpectedStartupResponse(Opcode),
 }
 
 pub fn column_is_empty_err<T: Display>(column_name: T) -> Error {
@@ -83,6 +130,33 @@ impl Clone for Error {
             Error::Compression(error) => Error::Compression(error.clone()),
             Error::Server(error) => Error::Server(error.clone()),
             Error::Timeout(error) => Error::Timeout(error.clone()),
+            Error::UnknownConsistency(value) => Error::UnknownConsistency(*value),
+            Error::UnknownServerEvent(value) => Error::UnknownServerEvent(value.clone()),
+            Error::UnexpectedTopologyChangeType(value) => {
+                Error::UnexpectedTopologyChangeType(value.clone())
+            }
+            Error::UnexpectedStatusChangeType(value) => {
+                Error::UnexpectedStatusChangeType(value.clone())
+            }
+            Error::UnexpectedSchemaChangeType(value) => {
+                Error::UnexpectedSchemaChangeType(value.clone())
+            }
+            Error::UnexpectedSchemaChangeTarget(value) => {
+                Error::UnexpectedSchemaChangeTarget(value.clone())
+            }
+            Error::UnexpectedAdditionalErrorInfo(value) => {
+                Error::UnexpectedAdditionalErrorInfo(*value)
+            }
+            Error::UnexpectedWriteType(value) => Error::UnexpectedWriteType(value.clone()),
+            Error::NonRequestOpcode(value) => Error::NonRequestOpcode(*value),
+            Error::NonResponseOpcode(value) => Error::NonResponseOpcode(*value),
+            Error::UnexpectedResultKind(value) => Error::UnexpectedResultKind(*value),
+            Error::UnexpectedColumnType(value) => Error::UnexpectedColumnType(*value),
+            Error::InvalidReplicationFormat { keyspace } => Error::InvalidReplicationFormat {
+                keyspace: keyspace.clone(),
+            },
+            Error::UnexpectedAuthResponse(value) => Error::UnexpectedAuthResponse(*value),
+            Error::UnexpectedStartupResponse(value) => Error::UnexpectedStartupResponse(*value),
         }
     }
 }

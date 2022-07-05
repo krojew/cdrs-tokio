@@ -250,7 +250,11 @@ fn build_keyspace(row: &Row) -> Result<(String, KeyspaceMetadata)> {
 
     let replication_strategy = match replication {
         JsonValue::Object(properties) => build_replication_strategy(properties)?,
-        _ => return Err(format!("Invalid replication format for: {}", keyspace_name).into()),
+        _ => {
+            return Err(Error::InvalidReplicationFormat {
+                keyspace: keyspace_name,
+            })
+        }
     };
 
     Ok((keyspace_name, KeyspaceMetadata::new(replication_strategy)))

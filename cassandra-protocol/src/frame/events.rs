@@ -3,10 +3,10 @@ use std::cmp::PartialEq;
 use std::convert::TryFrom;
 use std::io::Cursor;
 
-use crate::error;
 use crate::frame::traits::FromCursor;
 use crate::frame::{Serialize, Version};
 use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CInet, CIntShort};
+use crate::{error, Error};
 
 // Event types
 const TOPOLOGY_CHANGE: &str = "TOPOLOGY_CHANGE";
@@ -81,7 +81,7 @@ impl TryFrom<&str> for SimpleServerEvent {
             TOPOLOGY_CHANGE => Ok(SimpleServerEvent::TopologyChange),
             STATUS_CHANGE => Ok(SimpleServerEvent::StatusChange),
             SCHEMA_CHANGE => Ok(SimpleServerEvent::SchemaChange),
-            value => Err(format!("Unknown server event: {}", value).into()),
+            value => Err(Self::Error::UnknownServerEvent(value.into())),
         }
     }
 }
@@ -141,7 +141,7 @@ impl FromCursor for ServerEvent {
             SCHEMA_CHANGE => Ok(ServerEvent::SchemaChange(SchemaChange::from_cursor(
                 cursor, version,
             )?)),
-            _ => Err(format!("Unexpected server event: {}", event_type).into()),
+            _ => Err(Error::UnknownServerEvent(event_type.into())),
         }
     }
 }
@@ -192,11 +192,7 @@ impl FromCursor for TopologyChangeType {
         from_cursor_str(cursor).and_then(|tc| match tc {
             NEW_NODE => Ok(TopologyChangeType::NewNode),
             REMOVED_NODE => Ok(TopologyChangeType::RemovedNode),
-            _ => Err(format!(
-                "Unexpected topology change type received from Cluster: {}",
-                tc
-            )
-            .into()),
+            _ => Err(Error::UnexpectedTopologyChangeType(tc.into())),
         })
     }
 }
@@ -247,7 +243,7 @@ impl FromCursor for StatusChangeType {
         from_cursor_str(cursor).and_then(|sct| match sct {
             UP => Ok(StatusChangeType::Up),
             DOWN => Ok(StatusChangeType::Down),
-            _ => Err(format!("Unexpected status change type: {}", sct).into()),
+            _ => Err(Error::UnexpectedStatusChangeType(sct.into())),
         })
     }
 }
@@ -309,7 +305,7 @@ impl FromCursor for SchemaChangeType {
             CREATED => Ok(SchemaChangeType::Created),
             UPDATED => Ok(SchemaChangeType::Updated),
             DROPPED => Ok(SchemaChangeType::Dropped),
-            _ => Err(format!("Unexpected schema change type: {}", ct).into()),
+            _ => Err(Error::UnexpectedSchemaChangeType(ct.into())),
         })
     }
 }
@@ -347,7 +343,7 @@ impl FromCursor for SchemaChangeTarget {
             TYPE => Ok(SchemaChangeTarget::Type),
             FUNCTION => Ok(SchemaChangeTarget::Function),
             AGGREGATE => Ok(SchemaChangeTarget::Aggregate),
-            _ => Err(format!("Unexpected schema change target: {}", t).into()),
+            _ => Err(Error::UnexpectedSchemaChangeTarget(t.into())),
         })
     }
 }

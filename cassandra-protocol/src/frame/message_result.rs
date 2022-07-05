@@ -10,7 +10,7 @@ use crate::frame::{FromBytes, FromCursor, Serialize, Version};
 use crate::types::rows::Row;
 use crate::types::{
     from_cursor_str, serialize_str, try_i16_from_bytes, try_i32_from_bytes, try_u64_from_bytes,
-    CBytes, CBytesShort, CInt, INT_LEN, SHORT_LEN,
+    CBytes, CBytesShort, CInt, CIntShort, INT_LEN, SHORT_LEN,
 };
 
 /// `ResultKind` is enum which represents types of result.
@@ -31,7 +31,7 @@ pub enum ResultKind {
 impl Serialize for ResultKind {
     #[inline]
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
-        i32::from(*self).serialize(cursor, version);
+        CInt::from(*self).serialize(cursor, version);
     }
 }
 
@@ -43,7 +43,7 @@ impl FromBytes for ResultKind {
     }
 }
 
-impl From<ResultKind> for i32 {
+impl From<ResultKind> for CInt {
     fn from(value: ResultKind) -> Self {
         match value {
             ResultKind::Void => 0x0001,
@@ -55,17 +55,17 @@ impl From<ResultKind> for i32 {
     }
 }
 
-impl TryFrom<i32> for ResultKind {
+impl TryFrom<CInt> for ResultKind {
     type Error = Error;
 
-    fn try_from(value: i32) -> Result<Self, Self::Error> {
+    fn try_from(value: CInt) -> Result<Self, Self::Error> {
         match value {
             0x0001 => Ok(ResultKind::Void),
             0x0002 => Ok(ResultKind::Rows),
             0x0003 => Ok(ResultKind::SetKeyspace),
             0x0004 => Ok(ResultKind::Prepared),
             0x0005 => Ok(ResultKind::SchemaChange),
-            _ => Err(format!("Unexpected result kind: {}", value).into()),
+            _ => Err(Error::UnexpectedResultKind(value)),
         }
     }
 }
@@ -75,7 +75,7 @@ impl FromCursor for ResultKind {
         let mut buff = [0; INT_LEN];
         cursor.read_exact(&mut buff)?;
 
-        let rk = i32::from_be_bytes(buff);
+        let rk = CInt::from_be_bytes(buff);
         rk.try_into()
     }
 }
@@ -533,10 +533,10 @@ pub enum ColType {
     Null,
 }
 
-impl TryFrom<i16> for ColType {
+impl TryFrom<CIntShort> for ColType {
     type Error = Error;
 
-    fn try_from(value: i16) -> Result<Self, Self::Error> {
+    fn try_from(value: CIntShort) -> Result<Self, Self::Error> {
         match value {
             0x0000 => Ok(ColType::Custom),
             0x0001 => Ok(ColType::Ascii),
@@ -565,7 +565,7 @@ impl TryFrom<i16> for ColType {
             0x0030 => Ok(ColType::Udt),
             0x0031 => Ok(ColType::Tuple),
             0x0080 => Ok(ColType::Varchar),
-            _ => Err(format!("Unexpected column type {:?}", value).into()),
+            _ => Err(Error::UnexpectedColumnType(value)),
         }
     }
 }
@@ -609,7 +609,7 @@ impl Serialize for ColType {
             ColType::Udt => 0x0030,
             ColType::Tuple => 0x0031,
             _ => 0x6666,
-        } as i16)
+        } as CIntShort)
             .serialize(cursor, version);
     }
 }
@@ -619,7 +619,7 @@ impl FromCursor for ColType {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
-        let t = i16::from_be_bytes(buff);
+        let t = CIntShort::from_be_bytes(buff);
         t.try_into()
     }
 }

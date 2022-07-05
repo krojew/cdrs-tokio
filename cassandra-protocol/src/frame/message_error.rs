@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
 use crate::consistency::Consistency;
-use crate::error;
 use crate::frame::traits::FromCursor;
 use crate::frame::Version;
 use crate::types::*;
+use crate::{error, Error};
 
 use super::Serialize;
 
@@ -185,7 +185,7 @@ impl AdditionalErrorInfo {
             0x2500 => {
                 UnpreparedError::from_cursor(cursor, version).map(AdditionalErrorInfo::Unprepared)
             }
-            _ => Err(format!("Unexpected additional error info: {}", error_code).into()),
+            _ => Err(Error::UnexpectedAdditionalErrorInfo(error_code)),
         }
     }
 }
@@ -499,7 +499,7 @@ impl FromCursor for WriteType {
             "UNLOGGED_BATCH" => Ok(WriteType::UnloggedBatch),
             "COUNTER" => Ok(WriteType::Counter),
             "BATCH_LOG" => Ok(WriteType::BatchLog),
-            wt => Err(format!("Unexpected write type: {}", wt).into()),
+            wt => Err(Error::UnexpectedWriteType(wt.into())),
         }
     }
 }

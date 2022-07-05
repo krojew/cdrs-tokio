@@ -1,6 +1,5 @@
 use std::io::Cursor;
 
-use crate::error;
 use crate::frame::message_auth_response::BodyReqAuthResponse;
 use crate::frame::message_batch::BodyReqBatch;
 use crate::frame::message_execute::BodyReqExecuteOwned;
@@ -10,6 +9,7 @@ use crate::frame::message_query::BodyReqQuery;
 use crate::frame::message_register::BodyReqRegister;
 use crate::frame::message_startup::BodyReqStartup;
 use crate::frame::{FromCursor, Opcode, Serialize, Version};
+use crate::{error, Error};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(clippy::large_enum_variant)]
@@ -70,7 +70,7 @@ impl RequestBody {
             }
             Opcode::AuthResponse => BodyReqAuthResponse::from_cursor(&mut cursor, version)
                 .map(RequestBody::AuthResponse),
-            _ => Err(format!("opcode {} is not a request", response_type).into()),
+            _ => Err(Error::NonRequestOpcode(response_type)),
         }
     }
 }

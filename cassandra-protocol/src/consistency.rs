@@ -130,7 +130,7 @@ impl TryFrom<CIntShort> for Consistency {
             0x0008 => Ok(Consistency::Serial),
             0x0009 => Ok(Consistency::LocalSerial),
             0x000A => Ok(Consistency::LocalOne),
-            _ => Err(format!("Unknown consistency: {}", value).into()),
+            _ => Err(Self::Error::UnknownConsistency(value)),
         }
     }
 }

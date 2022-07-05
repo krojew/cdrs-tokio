@@ -1,8 +1,21 @@
 use integer_encoding::VarInt;
 use std::io::{Cursor, Write};
+use thiserror::Error;
 
-use crate::error::Result;
 use crate::frame::{Serialize, Version};
+
+/// Possible `Duration` creation error.
+#[derive(Debug, Error, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum DurationCreationError {
+    #[error(
+        "All values must be either negative or positive, got {months} months, {days} days, {nanoseconds} nanoseconds"
+    )]
+    MixedPositiveAndNegative {
+        months: i32,
+        days: i32,
+        nanoseconds: i64,
+    },
+}
 
 /// Cassandra Duration type. A duration stores separately months, days, and seconds due to the fact
 /// that the number of days in a month varies, and a day can have 23 or 25 hours if a daylight
@@ -15,11 +28,15 @@ pub struct Duration {
 }
 
 impl Duration {
-    pub fn new(months: i32, days: i32, nanoseconds: i64) -> Result<Self> {
+    pub fn new(months: i32, days: i32, nanoseconds: i64) -> Result<Self, DurationCreationError> {
         if (months < 0 || days < 0 || nanoseconds < 0)
             && (months > 0 || days > 0 || nanoseconds > 0)
         {
-            Err(format!("All values must be either negative or positive, got {} months, {} days, {} nanoseconds", months, days, nanoseconds).into())
+            Err(DurationCreationError::MixedPositiveAndNegative {
+                months,
+                days,
+                nanoseconds,
+            })
         } else {
             Ok(Self {
                 months,

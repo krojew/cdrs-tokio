@@ -114,14 +114,14 @@ pub async fn startup<
                     authenticator.handle_success(success.data)?;
                     break;
                 }
-                _ => return Err(format!("Unexpected auth response: {:?}", envelope.opcode).into()),
+                _ => return Err(Error::UnexpectedAuthResponse(envelope.opcode)),
             }
         }
 
         return set_keyspace(transport, keyspace_holder, version).await;
     }
 
-    Err(format!("Unexpected startup response: {}", start_response.opcode).into())
+    Err(Error::UnexpectedStartupResponse(start_response.opcode))
 }
 
 async fn set_keyspace<T: CdrsTransport>(
