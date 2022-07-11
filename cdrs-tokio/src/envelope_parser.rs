@@ -93,7 +93,7 @@ pub async fn parse_envelope<T: AsyncReadExt + Unpin>(
     convert_envelope_into_result(envelope)
 }
 
-fn convert_envelope_into_result(envelope: Envelope) -> error::Result<Envelope> {
+pub(crate) fn convert_envelope_into_result(envelope: Envelope) -> error::Result<Envelope> {
     match envelope.opcode {
         Opcode::Error => envelope.response_body().and_then(|err| match err {
             ResponseBody::Error(err) => Err(error::Error::Server(err)),

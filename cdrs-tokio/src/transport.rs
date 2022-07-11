@@ -40,7 +40,7 @@ use tracing::*;
 use mockall::*;
 
 use crate::cluster::KeyspaceHolder;
-use crate::envelope_parser::parse_envelope;
+use crate::envelope_parser::{convert_envelope_into_result, parse_envelope};
 use crate::future::BoxFuture;
 use crate::Error;
 use crate::Result;
@@ -333,7 +333,7 @@ impl AsyncTransport {
             error!(%error, "Transport error!");
 
             is_broken.store(true, Ordering::Relaxed);
-            response_handler_map.signal_general_error(&error.to_string());
+            response_handler_map.signal_general_error(&error);
 
             if let Some(error_handler) = error_handler {
                 let _ = error_handler.send(error).await;
@@ -396,6 +396,7 @@ impl AsyncTransport {
 
             let envelopes = frame_decoder.consume(&mut buffer, compression)?;
             for envelope in envelopes {
+                let envelope = convert_envelope_into_result(envelope)?;
                 if envelope.stream_id >= 0 {
                     // in case we get a SetKeyspace result, we need to store current keyspace
                     // checks are done manually for speed
@@ -606,9 +607,9 @@ impl ResponseHandlerMap {
         }
     }
 
-    pub fn signal_general_error(&self, error: &str) {
+    pub fn signal_general_error(&self, error: &Error) {
         for (_, handler) in self.stream_handlers.lock().unwrap().drain() {
-            let _ = handler.send(Err(Error::General(error.to_string())));
+            let _ = handler.send(Err(error.clone()));
         }
     }
 
