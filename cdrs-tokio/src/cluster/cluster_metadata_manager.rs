@@ -588,7 +588,10 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     #[inline]
-    pub fn find_node(&self, broadcast_rpc_address: SocketAddr) -> Option<Arc<Node<T, CM>>> {
+    pub fn find_node_by_rpc_address(
+        &self,
+        broadcast_rpc_address: SocketAddr,
+    ) -> Option<Arc<Node<T, CM>>> {
         self.metadata
             .load()
             .find_node_by_rpc_address(broadcast_rpc_address)
