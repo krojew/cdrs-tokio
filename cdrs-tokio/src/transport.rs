@@ -505,13 +505,15 @@ impl AsyncTransport {
                 request = match write_receiver.try_recv() {
                     Ok(request) => request,
                     Err(_) => {
-                        Self::write_self_contained_frame(
-                            &mut write_half,
-                            response_handler_map,
-                            &mut frame_stream_ids,
-                            frame_encoder.as_mut(),
-                        )
-                        .await?;
+                        if frame_encoder.has_envelopes() {
+                            Self::write_self_contained_frame(
+                                &mut write_half,
+                                response_handler_map,
+                                &mut frame_stream_ids,
+                                frame_encoder.as_mut(),
+                            )
+                            .await?;
+                        }
 
                         if let Err(error) = write_half.flush().await {
                             Self::notify_error_handlers(
