@@ -3,6 +3,7 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
 use cassandra_protocol::events::ServerEvent;
+use cassandra_protocol::frame::message_response::ResponseBody;
 use cassandra_protocol::frame::message_result::{BodyResResultPrepared, TableSpec};
 use cassandra_protocol::frame::{Envelope, Flags, Serialize, Version};
 use cassandra_protocol::query::{PreparedQuery, Query, QueryBatch, QueryValues};
@@ -58,6 +59,12 @@ const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
 
 lazy_static! {
     static ref DEFAULT_STATEMET_PARAMETERS: StatementParams = Default::default();
+}
+
+#[inline]
+fn convert_to_prepared(body: ResponseBody) -> error::Result<BodyResResultPrepared> {
+    body.into_prepared()
+        .ok_or_else(|| "Cannot convert envelope into prepare response!".into())
 }
 
 #[inline]
@@ -265,11 +272,42 @@ impl<
             )
             .await;
 
-        if let Err(error::Error::Server(error)) = &result {
+        if let Err(error::Error::Server { body: error, addr }) = &result {
             // if query is unprepared
             if error.error_code == 0x2500 {
                 debug!("Re-preparing statement.");
-                if let Ok(new) = self.prepare_raw(&prepared.query).await {
+
+                // We need to send the prepare statement to the failing node.
+                let node = self
+                    .cluster_metadata_manager
+                    .find_node(*addr)
+                    .ok_or_else(|| {
+                        error::Error::from(format!(
+                            "Cannot find node {} for statement re-preparation!",
+                            addr
+                        ))
+                    })?;
+
+                let prepare_envelope = Envelope::new_req_prepare(
+                    prepared.query.clone(),
+                    keyspace.map(|keyspace| keyspace.to_string()),
+                    flags,
+                    self.version,
+                );
+
+                let retry_policy = self.effective_retry_policy(parameters.retry_policy.as_ref());
+                let prepare_result = send_envelope(
+                    [node].iter().cloned(),
+                    &prepare_envelope,
+                    true,
+                    retry_policy.new_session(),
+                )
+                .await
+                .unwrap_or_else(|| Err("No response for re-prepare statement!".into()))
+                .and_then(|response| response.response_body())
+                .and_then(convert_to_prepared);
+
+                if let Ok(new) = prepare_result {
                     // re-prepare the statement and check the resulting id - it should remain the
                     // same as the old one, except when schema changed in the meantime, in which
                     // case, the client should have the knowledge how to handle it
@@ -370,10 +408,7 @@ impl<
         self.send_envelope(envelope, true, None, None, None, None, None, None)
             .await
             .and_then(|response| response.response_body())
-            .and_then(|body| {
-                body.into_prepared()
-                    .ok_or_else(|| "CDRS BUG: cannot convert envelope into prepared".into())
-            })
+            .and_then(convert_to_prepared)
     }
 
     /// Prepares query without additional tracing information and warnings.
@@ -609,9 +644,7 @@ impl<
             .map(|speculative_execution_policy| speculative_execution_policy.as_ref())
             .or(self.speculative_execution_policy.as_deref());
 
-        let retry_policy = retry_policy
-            .map(|retry_policy| retry_policy.as_ref())
-            .unwrap_or_else(|| self.retry_policy.as_ref());
+        let retry_policy = self.effective_retry_policy(retry_policy);
 
         match speculative_execution_policy {
             Some(speculative_execution_policy) if is_idempotent => {
@@ -686,6 +719,16 @@ impl<
             .await
             .unwrap_or_else(|| Err("No nodes available in query plan!".into())),
         }
+    }
+
+    #[inline]
+    fn effective_retry_policy<'a, 'b: 'a>(
+        &'a self,
+        retry_policy: Option<&'b Arc<dyn RetryPolicy + Send + Sync>>,
+    ) -> &'a (dyn RetryPolicy + Send + Sync) {
+        retry_policy
+            .map(|retry_policy| retry_policy.as_ref())
+            .unwrap_or_else(|| self.retry_policy.as_ref())
     }
 
     #[allow(clippy::too_many_arguments)]

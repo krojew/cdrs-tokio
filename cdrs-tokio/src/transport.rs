@@ -252,6 +252,7 @@ impl AsyncTransport {
             keyspace_holder,
             is_broken.clone(),
             compression,
+            addr,
             frame_encoder,
             frame_decoder,
         ));
@@ -307,6 +308,7 @@ impl AsyncTransport {
         keyspace_holder: Arc<KeyspaceHolder>,
         is_broken: Arc<AtomicBool>,
         compression: Compression,
+        addr: SocketAddr,
         frame_encoder: Box<dyn FrameEncoder + Send + Sync>,
         frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
     ) {
@@ -323,6 +325,7 @@ impl AsyncTransport {
             BufReader::with_capacity(MAX_FRAME_SIZE, read_half),
             event_handler,
             compression,
+            addr,
             keyspace_holder,
             &response_handler_map,
             frame_decoder,
@@ -345,13 +348,14 @@ impl AsyncTransport {
         mut read_half: impl AsyncRead + Unpin,
         event_handler: Option<mpsc::Sender<Envelope>>,
         compression: Compression,
+        addr: SocketAddr,
         keyspace_holder: Arc<KeyspaceHolder>,
         response_handler_map: &ResponseHandlerMap,
         frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
     ) -> Result<()> {
         // before Authenticate or Ready, envelopes are unframed
         loop {
-            let result = parse_envelope(&mut read_half, compression).await;
+            let result = parse_envelope(&mut read_half, compression, addr).await;
             match result {
                 Ok(envelope) => {
                     if envelope.stream_id >= 0 {
@@ -364,6 +368,7 @@ impl AsyncTransport {
                                 read_half,
                                 event_handler,
                                 compression,
+                                addr,
                                 keyspace_holder,
                                 response_handler_map,
                                 frame_decoder,
@@ -386,6 +391,7 @@ impl AsyncTransport {
         mut read_half: impl AsyncRead + Unpin,
         event_handler: Option<mpsc::Sender<Envelope>>,
         compression: Compression,
+        addr: SocketAddr,
         keyspace_holder: Arc<KeyspaceHolder>,
         response_handler_map: &ResponseHandlerMap,
         mut frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
@@ -396,7 +402,7 @@ impl AsyncTransport {
 
             let envelopes = frame_decoder.consume(&mut buffer, compression)?;
             for envelope in envelopes {
-                let envelope = convert_envelope_into_result(envelope)?;
+                let envelope = convert_envelope_into_result(envelope, addr)?;
                 if envelope.stream_id >= 0 {
                     // in case we get a SetKeyspace result, we need to store current keyspace
                     // checks are done manually for speed

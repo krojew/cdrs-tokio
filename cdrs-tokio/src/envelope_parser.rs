@@ -1,5 +1,6 @@
 use std::convert::TryFrom;
 use std::io::Cursor;
+use std::net::SocketAddr;
 use tokio::io::AsyncReadExt;
 
 use cassandra_protocol::compression::Compression;
@@ -88,15 +89,19 @@ async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
 pub async fn parse_envelope<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
     compressor: Compression,
+    addr: SocketAddr,
 ) -> error::Result<Envelope> {
     let envelope = parse_raw_envelope(cursor, compressor).await?;
-    convert_envelope_into_result(envelope)
+    convert_envelope_into_result(envelope, addr)
 }
 
-pub(crate) fn convert_envelope_into_result(envelope: Envelope) -> error::Result<Envelope> {
+pub(crate) fn convert_envelope_into_result(
+    envelope: Envelope,
+    addr: SocketAddr,
+) -> error::Result<Envelope> {
     match envelope.opcode {
         Opcode::Error => envelope.response_body().and_then(|err| match err {
-            ResponseBody::Error(err) => Err(error::Error::Server(err)),
+            ResponseBody::Error(err) => Err(error::Error::Server { body: err, addr }),
             _ => unreachable!(),
         }),
         _ => Ok(envelope),

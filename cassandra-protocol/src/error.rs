@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Display};
 use std::io;
+use std::net::SocketAddr;
 use std::result;
 use std::str::Utf8Error;
 use std::string::FromUtf8Error;
@@ -39,8 +40,8 @@ pub enum Error {
     #[error("Compressor error: {0}")]
     Compression(#[from] CompressionError),
     /// Server error.
-    #[error("Server error: {0:?}")]
-    Server(ErrorBody),
+    #[error("Server {addr} error: {body:?}")]
+    Server { body: ErrorBody, addr: SocketAddr },
     /// Timed out waiting for an operation to complete.
     #[error("Timeout: {0}")]
     Timeout(String),
@@ -95,12 +96,6 @@ pub fn column_is_empty_err<T: Display>(column_name: T) -> Error {
     Error::General(format!("Column or Udt property '{}' is empty", column_name))
 }
 
-impl From<ErrorBody> for Error {
-    fn from(err: ErrorBody) -> Error {
-        Error::Server(err)
-    }
-}
-
 impl From<String> for Error {
     fn from(err: String) -> Error {
         Error::General(err)
@@ -128,7 +123,10 @@ impl Clone for Error {
             Error::FromUtf8(error) => Error::FromUtf8(error.clone()),
             Error::Utf8(error) => Error::Utf8(*error),
             Error::Compression(error) => Error::Compression(error.clone()),
-            Error::Server(error) => Error::Server(error.clone()),
+            Error::Server { body, addr } => Error::Server {
+                body: body.clone(),
+                addr: *addr,
+            },
             Error::Timeout(error) => Error::Timeout(error.clone()),
             Error::UnknownConsistency(value) => Error::UnknownConsistency(*value),
             Error::UnknownServerEvent(value) => Error::UnknownServerEvent(value.clone()),

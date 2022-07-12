@@ -72,28 +72,44 @@ impl RetrySession for DefaultRetrySession {
         match query_info.error {
             Error::Io(_)
             | Error::General(_)
-            | Error::Server(ErrorBody {
-                additional_info: AdditionalErrorInfo::Overloaded,
+            | Error::Server {
+                body:
+                    ErrorBody {
+                        additional_info: AdditionalErrorInfo::Overloaded,
+                        ..
+                    },
                 ..
-            })
-            | Error::Server(ErrorBody {
-                additional_info: AdditionalErrorInfo::Server,
+            }
+            | Error::Server {
+                body:
+                    ErrorBody {
+                        additional_info: AdditionalErrorInfo::Server,
+                        ..
+                    },
                 ..
-            })
-            | Error::Server(ErrorBody {
-                additional_info: AdditionalErrorInfo::Truncate,
+            }
+            | Error::Server {
+                body:
+                    ErrorBody {
+                        additional_info: AdditionalErrorInfo::Truncate,
+                        ..
+                    },
                 ..
-            }) => {
+            } => {
                 if query_info.is_idempotent {
                     RetryDecision::RetryNextNode
                 } else {
                     RetryDecision::DontRetry
                 }
             }
-            Error::Server(ErrorBody {
-                additional_info: AdditionalErrorInfo::Unavailable(_),
+            Error::Server {
+                body:
+                    ErrorBody {
+                        additional_info: AdditionalErrorInfo::Unavailable(_),
+                        ..
+                    },
                 ..
-            }) => {
+            } => {
                 if !self.was_unavailable_retry {
                     self.was_unavailable_retry = true;
                     RetryDecision::RetryNextNode
@@ -101,10 +117,15 @@ impl RetrySession for DefaultRetrySession {
                     RetryDecision::DontRetry
                 }
             }
-            Error::Server(ErrorBody {
-                additional_info: AdditionalErrorInfo::ReadTimeout(error @ ReadTimeoutError { .. }),
+            Error::Server {
+                body:
+                    ErrorBody {
+                        additional_info:
+                            AdditionalErrorInfo::ReadTimeout(error @ ReadTimeoutError { .. }),
+                        ..
+                    },
                 ..
-            }) => {
+            } => {
                 if !self.was_read_timeout_retry
                     && error.received >= error.block_for
                     && error.replica_has_responded()
@@ -115,10 +136,15 @@ impl RetrySession for DefaultRetrySession {
                     RetryDecision::DontRetry
                 }
             }
-            Error::Server(ErrorBody {
-                additional_info: AdditionalErrorInfo::WriteTimeout(error @ WriteTimeoutError { .. }),
+            Error::Server {
+                body:
+                    ErrorBody {
+                        additional_info:
+                            AdditionalErrorInfo::WriteTimeout(error @ WriteTimeoutError { .. }),
+                        ..
+                    },
                 ..
-            }) => {
+            } => {
                 if !self.was_write_timeout_retry
                     && query_info.is_idempotent
                     && error.write_type == WriteType::BatchLog
@@ -129,10 +155,14 @@ impl RetrySession for DefaultRetrySession {
                     RetryDecision::DontRetry
                 }
             }
-            Error::Server(ErrorBody {
-                additional_info: AdditionalErrorInfo::IsBootstrapping,
+            Error::Server {
+                body:
+                    ErrorBody {
+                        additional_info: AdditionalErrorInfo::IsBootstrapping,
+                        ..
+                    },
                 ..
-            }) => RetryDecision::RetryNextNode,
+            } => RetryDecision::RetryNextNode,
             _ => RetryDecision::DontRetry,
         }
     }

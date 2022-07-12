@@ -587,6 +587,13 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         self.metadata.load().clone()
     }
 
+    #[inline]
+    pub fn find_node(&self, broadcast_rpc_address: SocketAddr) -> Option<Arc<Node<T, CM>>> {
+        self.metadata
+            .load()
+            .find_node_by_rpc_address(broadcast_rpc_address)
+    }
+
     // Refreshes stored metadata. Note: it is expected to be called by the control connection.
     pub async fn refresh_metadata(&self) -> Result<()> {
         let (node_infos, keyspaces) =
@@ -689,10 +696,14 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         match peers_v2_result {
             Ok(result) => Ok(result),
             // peers_v2 does not exist
-            Err(Error::Server(ErrorBody {
-                additional_info: AdditionalErrorInfo::Invalid,
+            Err(Error::Server {
+                body:
+                    ErrorBody {
+                        additional_info: AdditionalErrorInfo::Invalid,
+                        ..
+                    },
                 ..
-            })) => {
+            }) => {
                 self.is_schema_v2.store(false, Ordering::Relaxed);
                 send_query(
                     "SELECT * FROM system.peers",

@@ -3,6 +3,8 @@
 ### Fixed
 
 * `ExponentialReconnectionSchedule` duration overflow.
+* Forgetting real error type in certain transport error situations.
+* Not sending re-preparation statements to correct nodes.
 
 ### New
 
@@ -15,6 +17,7 @@
 * `with_frame_encoder_factory` Session build option. 
 * `Error` impl for `CheckEnvelopeSizeError` and `ParseEnvelopeError`.
 * New `Error` variants for more granular error handling.
+* Node address in `Error::Server` variant.
 
 ### Changed
 
