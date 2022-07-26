@@ -5,6 +5,7 @@
 * `ExponentialReconnectionSchedule` duration overflow.
 * Forgetting real error type in certain transport error situations.
 * Not sending re-preparation statements to correct nodes.
+* Infinite set keyspace notification loop.
 
 ### New
 

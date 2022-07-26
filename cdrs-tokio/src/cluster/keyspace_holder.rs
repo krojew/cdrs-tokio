@@ -25,12 +25,25 @@ impl KeyspaceHolder {
 
     #[inline]
     pub fn update_current_keyspace(&self, keyspace: String) {
-        self.update_current_keyspace_without_notification(keyspace.clone());
-        let _ = self.keyspace_sender.send(Some(keyspace));
+        let old_keyspace = self.current_keyspace.swap(Some(Arc::new(keyspace.clone())));
+        match &old_keyspace {
+            None => {
+                self.send_notification(keyspace);
+            }
+            Some(old_keyspace) if **old_keyspace != keyspace => {
+                self.send_notification(keyspace);
+            }
+            _ => {}
+        }
     }
 
     #[inline]
     pub fn update_current_keyspace_without_notification(&self, keyspace: String) {
         self.current_keyspace.store(Some(Arc::new(keyspace)));
+    }
+
+    #[inline]
+    fn send_notification(&self, keyspace: String) {
+        let _ = self.keyspace_sender.send(Some(keyspace));
     }
 }
