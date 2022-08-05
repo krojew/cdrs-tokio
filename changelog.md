@@ -26,6 +26,7 @@
   corresponds to wrapped envelopes, as defined by the protocol.
 * `Serialize` and `FromCursor` traits now pass protocol version to implementations.
 * `Row::from_frame_body` renamed to `from_body`.
+* `ClusterMetadataManager::find_node` renamed to `find_node_by_rpc_address` for consistency.
 * `QueryFlags` got extended for V5 and now supports `Serialize` and `FromCursor`.
 * Session builders now validate given configuration and return a `Result`.
 * Transport startup now fails gracefully on unexpected server response.
