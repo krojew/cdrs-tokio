@@ -33,6 +33,7 @@
 * `ResResultBody::as_rows_metadata` and `ResponseBody::as_rows_metadata` now return a reference to the data.
 * `Hash`, `PartialEq` and `PartialOrd` for `PreparedQuery` only take `id` and `result_metadata_id` into account,
   since those define equivalence.
+* Updated `chrono` dependency to work around found CVE.
 
 ## 6.2.0
 
