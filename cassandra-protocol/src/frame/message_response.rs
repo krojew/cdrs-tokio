@@ -141,4 +141,11 @@ impl ResponseBody {
             _ => None,
         }
     }
+
+    pub fn into_error(self) -> Option<ErrorBody> {
+        match self {
+            ResponseBody::Error(err) => Some(err),
+            _ => None,
+        }
+    }
 }
