@@ -689,6 +689,11 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     async fn query_peers(&self, transport: &T) -> Result<Option<Vec<Row>>> {
+        if !self.is_schema_v2.load(Ordering::Relaxed) {
+            // we've already checked for v2 before, so proceed with legacy peers
+            return self.query_legacy_peers(transport).await;
+        }
+
         let peers_v2_result = send_query(
             "SELECT * FROM system.peers_v2",
             transport,
@@ -696,6 +701,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             self.beta_protocol,
         )
         .await;
+
         match peers_v2_result {
             Ok(result) => Ok(result),
             // peers_v2 does not exist
@@ -708,15 +714,20 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 ..
             }) => {
                 self.is_schema_v2.store(false, Ordering::Relaxed);
-                send_query(
-                    "SELECT * FROM system.peers",
-                    transport,
-                    self.version,
-                    self.beta_protocol,
-                )
-                .await
+                self.query_legacy_peers(transport).await
             }
             Err(error) => Err(error),
         }
+    }
+
+    #[inline]
+    async fn query_legacy_peers(&self, transport: &T) -> Result<Option<Vec<Row>>> {
+        send_query(
+            "SELECT * FROM system.peers",
+            transport,
+            self.version,
+            self.beta_protocol,
+        )
+        .await
     }
 }
