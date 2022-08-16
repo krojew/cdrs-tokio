@@ -39,7 +39,6 @@ pub mod send_envelope;
 pub mod session;
 mod session_context;
 mod tcp_connection_manager;
-pub(crate) mod token_factory;
 mod token_map;
 pub mod topology;
 

@@ -1,3 +1,7 @@
+use crate::cluster::topology::{KeyspaceMetadata, Node, NodeDistance, ReplicationStrategy};
+use crate::cluster::{ClusterMetadata, ConnectionManager};
+use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
+use crate::transport::CdrsTransport;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::token::Murmur3Token;
 use fxhash::{FxHashMap, FxHashSet};
@@ -7,12 +11,6 @@ use std::cmp::Ordering as CmpOrdering;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-
-use crate::cluster::token_factory::generate_murmur3_token;
-use crate::cluster::topology::{KeyspaceMetadata, Node, NodeDistance, ReplicationStrategy};
-use crate::cluster::{ClusterMetadata, ConnectionManager};
-use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
-use crate::transport::CdrsTransport;
 
 /// Topology-aware load balancing strategy. Depends on up-to-date topology information, which is
 /// constantly monitored in the background by a control connection. For best results, a
@@ -76,7 +74,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
     ) -> QueryPlan<T, CM> {
         let token = request
             .token
-            .or_else(|| request.routing_key.map(generate_murmur3_token));
+            .or_else(|| request.routing_key.map(Murmur3Token::generate));
 
         if let Some(token) = token {
             self.replicas_for_token(token, request.keyspace, request.consistency, cluster)
