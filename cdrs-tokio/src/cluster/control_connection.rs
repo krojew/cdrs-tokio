@@ -70,7 +70,7 @@ impl<
                         match error {
                             Some(error) => {
                                 // show info and try to reconnect
-                                error!(%error, "Error in control connection! Trying to reconnect.");
+                                warn!(%error, "Error in control connection! Trying to reconnect.");
                             }
                             None => {
                                 // shouldn't happen, since the connection is shared, but bail out
