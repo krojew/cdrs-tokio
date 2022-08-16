@@ -1,4 +1,14 @@
-## 7.0.0
+## 7.0.0-beta.2
+
+### Fixed
+
+* Constant control connection re-establishing with legacy clusters.
+
+### New
+
+* `ResponseBody::into_error` function.
+
+## 7.0.0-beta.1
 
 ### Fixed
 
