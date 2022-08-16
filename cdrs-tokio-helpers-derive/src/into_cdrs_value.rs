@@ -9,7 +9,7 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
     if let Data::Struct(DataStruct { ref fields, .. }) = ast.data {
         let convert_into_bytes = fields.iter().map(|field| {
             let field_ident = field.ident.clone().unwrap();
-            return if get_ident_string(&field.ty).as_str() == "Option" {
+            if get_ident_string(&field.ty).as_str() == "Option" {
                 // We are assuming here primitive value serialization will not change across protocol
                 // versions, which gives us simpler user API.
                 quote! {
@@ -28,7 +28,7 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
                   let field_bytes: Self = value.#field_ident.into();
                   cdrs_tokio::types::value::Value::new(field_bytes).serialize(&mut cursor, cdrs_tokio::frame::Version::V4);
                 }
-            };
+            }
         });
         // As Value has following implementation impl<T: Into<Bytes>> From<T> for Value
         // for a struct it's enough to implement Into<Bytes> in order to be convertible into Value

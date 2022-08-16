@@ -39,11 +39,9 @@ async fn multithread() {
     for _ in 0..100 {
         let c = Arc::clone(&arc);
 
-        handles.push(tokio::spawn(async move {
-            let result = c.query("select * from user").await;
-
-            result
-        }));
+        handles.push(tokio::spawn(
+            async move { c.query("select * from user").await },
+        ));
     }
 
     for task in handles {
