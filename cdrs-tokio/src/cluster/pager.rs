@@ -222,7 +222,7 @@ impl<
     }
 }
 
-#[derive(Clone, PartialEq, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct PagerState {
     cursor: Option<CBytes>,
     has_more_pages: Option<bool>,
