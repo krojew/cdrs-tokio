@@ -246,14 +246,25 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
 
     #[inline]
     pub(crate) fn clone_with_node_info(&self, node_info: NodeInfo) -> Self {
+        let address_changed = self
+            .broadcast_address
+            .map(|address| address != node_info.broadcast_rpc_address)
+            // if we don't know the previous address, we'll trust whoever inserted the node to
+            // know its state
+            .unwrap_or(false);
+
         Node {
             connection_pool_factory: self.connection_pool_factory.clone(),
             connection_pool: Default::default(),
             broadcast_rpc_address: node_info.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
             // since address could change, we can't be sure of distance or state
-            distance: None,
-            state: Atomic::new(NodeState::Unknown),
+            distance: if address_changed { None } else { self.distance },
+            state: if address_changed {
+                Atomic::new(NodeState::Unknown)
+            } else {
+                Atomic::new(self.state.load(Ordering::Relaxed))
+            },
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,
             rack: node_info.rack,
