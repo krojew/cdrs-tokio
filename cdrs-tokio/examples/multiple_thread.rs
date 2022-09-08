@@ -32,12 +32,14 @@ async fn main() {
     create_keyspace(session.clone()).await;
     create_table(session.clone()).await;
 
-    let futures : Vec<tokio::task::JoinHandle<()>> = (0..20).into_iter().map(|i| {
-        let thread_session = session.clone();
-        tokio::spawn(insert_struct(thread_session, i))
+    let futures: Vec<tokio::task::JoinHandle<()>> = (0..20)
+        .into_iter()
+        .map(|i| {
+            let thread_session = session.clone();
+            tokio::spawn(insert_struct(thread_session, i))
+        })
+        .collect();
 
-    }).collect();
-    
     let _responses = futures::future::join_all(futures);
 
     select_struct(session).await;
