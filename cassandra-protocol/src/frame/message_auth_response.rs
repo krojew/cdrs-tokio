@@ -7,7 +7,7 @@ use crate::types::CBytes;
 
 #[derive(Debug, Constructor, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BodyReqAuthResponse {
-    data: CBytes,
+    pub data: CBytes,
 }
 
 impl Serialize for BodyReqAuthResponse {

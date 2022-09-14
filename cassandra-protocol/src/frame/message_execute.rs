@@ -9,9 +9,9 @@ use crate::types::CBytesShort;
 /// The structure that represents a body of a envelope of type `execute`.
 #[derive(Debug, Constructor, Eq, PartialEq)]
 pub struct BodyReqExecute<'a> {
-    id: &'a CBytesShort,
-    result_metadata_id: Option<&'a CBytesShort>,
-    query_parameters: &'a QueryParams,
+    pub id: &'a CBytesShort,
+    pub result_metadata_id: Option<&'a CBytesShort>,
+    pub query_parameters: &'a QueryParams,
 }
 
 impl<'a> Serialize for BodyReqExecute<'a> {
@@ -43,9 +43,9 @@ impl<'a> Serialize for BodyReqExecute<'a> {
 /// The structure that represents an owned body of a envelope of type `execute`.
 #[derive(Debug, Constructor, Clone, Eq, PartialEq, Default)]
 pub struct BodyReqExecuteOwned {
-    id: CBytesShort,
-    result_metadata_id: Option<CBytesShort>,
-    query_parameters: QueryParams,
+    pub id: CBytesShort,
+    pub result_metadata_id: Option<CBytesShort>,
+    pub query_parameters: QueryParams,
 }
 
 impl FromCursor for BodyReqExecuteOwned {
