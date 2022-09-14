@@ -1,12 +1,11 @@
-use derive_more::Constructor;
-use itertools::Itertools;
-use std::convert::TryFrom;
-use std::io::Cursor;
-
 use crate::error;
 use crate::frame::events::SimpleServerEvent;
 use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
 use crate::types::{from_cursor_string_list, serialize_str_list};
+use derive_more::Constructor;
+use itertools::Itertools;
+use std::convert::TryFrom;
+use std::io::Cursor;
 
 /// The structure which represents a body of a envelope of type `register`.
 #[derive(Debug, Constructor, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Clone)]
@@ -54,11 +53,10 @@ impl Envelope {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
     use crate::events::SimpleServerEvent;
     use crate::frame::message_register::BodyReqRegister;
     use crate::frame::{FromCursor, Version};
+    use std::io::Cursor;
 
     #[test]
     fn should_deserialize_body() {

@@ -1,9 +1,8 @@
-use std::collections::HashMap;
-use std::io::Cursor;
-
 use crate::error;
 use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
 use crate::types::{from_cursor_str, serialize_str, CIntShort};
+use std::collections::HashMap;
+use std::io::Cursor;
 
 const CQL_VERSION: &str = "CQL_VERSION";
 const CQL_VERSION_VAL: &str = "3.0.0";

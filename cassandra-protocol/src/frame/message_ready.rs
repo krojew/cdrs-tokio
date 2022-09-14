@@ -1,7 +1,6 @@
-use std::io::Cursor;
-
 use crate::error;
 use crate::frame::{FromCursor, Serialize, Version};
+use std::io::Cursor;
 
 #[derive(Debug, PartialEq, Default, Ord, PartialOrd, Eq, Hash)]
 pub struct BodyResReady;

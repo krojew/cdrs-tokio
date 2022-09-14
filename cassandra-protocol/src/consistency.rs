@@ -1,14 +1,13 @@
 #![warn(missing_docs)]
 //! The module contains Rust representation of Cassandra consistency levels.
+use crate::error;
+use crate::frame::{FromBytes, FromCursor, Serialize, Version};
+use crate::types::*;
 use derive_more::Display;
 use std::convert::{From, TryFrom, TryInto};
 use std::default::Default;
 use std::io;
 use std::str::FromStr;
-
-use crate::error;
-use crate::frame::{FromBytes, FromCursor, Serialize, Version};
-use crate::types::*;
 
 /// `Consistency` is an enum which represents Cassandra's consistency levels.
 /// To find more details about each consistency level please refer to the following documentation:

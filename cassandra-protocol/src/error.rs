@@ -1,3 +1,7 @@
+use crate::compression::CompressionError;
+use crate::frame::message_error::ErrorBody;
+use crate::frame::Opcode;
+use crate::types::{CInt, CIntShort};
 use std::fmt::{Debug, Display};
 use std::io;
 use std::net::SocketAddr;
@@ -6,11 +10,6 @@ use std::str::Utf8Error;
 use std::string::FromUtf8Error;
 use thiserror::Error as ThisError;
 use uuid::Error as UuidError;
-
-use crate::compression::CompressionError;
-use crate::frame::message_error::ErrorBody;
-use crate::frame::Opcode;
-use crate::types::{CInt, CIntShort};
 
 pub type Result<T> = result::Result<T, Error>;
 

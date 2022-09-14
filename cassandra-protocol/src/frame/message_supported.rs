@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-use std::io::{Cursor, Read};
-
+use super::Serialize;
 use crate::error;
 use crate::frame::{FromCursor, Version};
 use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CIntShort, SHORT_LEN};
-
-use super::Serialize;
+use std::collections::HashMap;
+use std::io::{Cursor, Read};
 
 #[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct BodyResSupported {

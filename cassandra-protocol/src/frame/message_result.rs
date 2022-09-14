@@ -1,8 +1,3 @@
-use bitflags::bitflags;
-use derive_more::{Constructor, Display};
-use std::convert::{TryFrom, TryInto};
-use std::io::{Cursor, Error as IoError, Read};
-
 use crate::error;
 use crate::error::Error;
 use crate::frame::events::SchemaChange;
@@ -12,6 +7,10 @@ use crate::types::{
     from_cursor_str, serialize_str, try_i16_from_bytes, try_i32_from_bytes, try_u64_from_bytes,
     CBytes, CBytesShort, CInt, CIntShort, INT_LEN, SHORT_LEN,
 };
+use bitflags::bitflags;
+use derive_more::{Constructor, Display};
+use std::convert::{TryFrom, TryInto};
+use std::io::{Cursor, Error as IoError, Read};
 
 /// `ResultKind` is enum which represents types of result.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Display)]
@@ -1594,9 +1593,8 @@ mod prepared {
 
 #[cfg(test)]
 mod schema_change {
-    use crate::frame::events::{SchemaChangeOptions, SchemaChangeTarget, SchemaChangeType};
-
     use super::*;
+    use crate::frame::events::{SchemaChangeOptions, SchemaChangeTarget, SchemaChangeType};
 
     #[test]
     fn test_schema_change() {

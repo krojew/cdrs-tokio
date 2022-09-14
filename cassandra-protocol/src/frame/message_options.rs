@@ -1,7 +1,6 @@
-use std::io::Cursor;
-
 use crate::error;
 use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
+use std::io::Cursor;
 
 /// The structure which represents a body of a envelope of type `options`.
 #[derive(Debug, Default, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]

@@ -1,3 +1,4 @@
+#![cfg(feature = "derive")]
 mod common;
 
 #[cfg(feature = "e2e-tests")]

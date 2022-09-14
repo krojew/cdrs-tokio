@@ -1,11 +1,10 @@
-use std::io::Cursor;
-
 use crate::consistency::Consistency;
 use crate::error;
 use crate::frame::traits::FromCursor;
 use crate::frame::{Direction, Envelope, Flags, Opcode, Serialize, Version};
 use crate::query::{Query, QueryParams, QueryValues};
 use crate::types::{from_cursor_str_long, serialize_str_long, CBytes, CInt, CLong, INT_LEN};
+use std::io::Cursor;
 
 /// Structure which represents body of Query request
 #[derive(Debug, PartialEq, Eq, Clone, Default)]

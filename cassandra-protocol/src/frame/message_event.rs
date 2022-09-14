@@ -1,9 +1,8 @@
-use std::io::Cursor;
-
 use crate::error;
 use crate::frame::events::ServerEvent;
 use crate::frame::Serialize;
 use crate::frame::{FromCursor, Version};
+use std::io::Cursor;
 
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct BodyResEvent {
