@@ -1,24 +1,3 @@
-use std::{
-    collections::HashMap,
-    net::IpAddr,
-    net::{Ipv4Addr, SocketAddr},
-    sync::Arc,
-};
-
-use cdrs_tokio::{
-    authenticators::{SaslAuthenticatorProvider, StaticPasswordAuthenticatorProvider},
-    cluster::session::Session,
-    cluster::{GenericClusterConfig, TcpConnectionManager},
-    error::Result,
-    load_balancing::RoundRobinLoadBalancingStrategy,
-    query::*,
-    query_values,
-    retry::DefaultRetryPolicy,
-    transport::TransportTcp,
-    types::prelude::*,
-    TryFromRow, TryFromUdt,
-};
-
 use cdrs_tokio::cluster::connection_pool::ConnectionPoolConfig;
 use cdrs_tokio::cluster::session::{
     NodeDistanceEvaluatorWrapper, ReconnectionPolicyWrapper, RetryPolicyWrapper,
@@ -32,8 +11,27 @@ use cdrs_tokio::future::BoxFuture;
 use cdrs_tokio::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
 use cdrs_tokio::IntoCdrsValue;
+use cdrs_tokio::{
+    authenticators::{SaslAuthenticatorProvider, StaticPasswordAuthenticatorProvider},
+    cluster::session::Session,
+    cluster::{GenericClusterConfig, TcpConnectionManager},
+    error::Result,
+    load_balancing::RoundRobinLoadBalancingStrategy,
+    query::*,
+    query_values,
+    retry::DefaultRetryPolicy,
+    transport::TransportTcp,
+    types::prelude::*,
+    TryFromRow, TryFromUdt,
+};
 use futures::FutureExt;
 use maplit::hashmap;
+use std::{
+    collections::HashMap,
+    net::IpAddr,
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 use tokio::sync::mpsc::Sender;
 
 type CurrentSession = Session<

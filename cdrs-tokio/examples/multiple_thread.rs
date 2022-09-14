@@ -1,15 +1,13 @@
-use std::sync::Arc;
-
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::session::{Session, SessionBuilder, TcpSessionBuilder};
 use cdrs_tokio::cluster::{NodeTcpConfigBuilder, TcpConnectionManager};
-use cdrs_tokio::query::*;
-use cdrs_tokio::query_values;
-
 use cdrs_tokio::frame::TryFromRow;
 use cdrs_tokio::load_balancing::RoundRobinLoadBalancingStrategy;
+use cdrs_tokio::query::*;
+use cdrs_tokio::query_values;
 use cdrs_tokio::transport::TransportTcp;
 use cdrs_tokio::{IntoCdrsValue, TryFromRow, TryFromUdt};
+use std::sync::Arc;
 
 type CurrentSession = Session<
     TransportTcp,
