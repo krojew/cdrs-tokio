@@ -184,6 +184,7 @@ impl<'a> From<&'a str> for Compression {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     #[test]
     fn test_compression_from_str() {
         let lz4 = "lz4";

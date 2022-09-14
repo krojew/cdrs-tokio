@@ -1,12 +1,11 @@
-use derive_more::Display;
-use std::cmp::PartialEq;
-use std::convert::TryFrom;
-use std::io::Cursor;
-
 use crate::frame::traits::FromCursor;
 use crate::frame::{Serialize, Version};
 use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CInet, CIntShort};
 use crate::{error, Error};
+use derive_more::Display;
+use std::cmp::PartialEq;
+use std::convert::TryFrom;
+use std::io::Cursor;
 
 // Event types
 const TOPOLOGY_CHANGE: &str = "TOPOLOGY_CHANGE";

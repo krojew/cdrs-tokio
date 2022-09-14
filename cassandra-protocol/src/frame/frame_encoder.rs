@@ -1,11 +1,10 @@
-use lz4_flex::block::get_maximum_output_size;
-use lz4_flex::{compress, compress_into};
-
 use crate::crc::{crc24, crc32};
 use crate::frame::{
     COMPRESSED_FRAME_HEADER_LENGTH, FRAME_TRAILER_LENGTH, PAYLOAD_SIZE_LIMIT,
     UNCOMPRESSED_FRAME_HEADER_LENGTH,
 };
+use lz4_flex::block::get_maximum_output_size;
+use lz4_flex::{compress, compress_into};
 
 #[inline]
 fn put3b(buffer: &mut [u8], value: i32) {

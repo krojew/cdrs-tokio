@@ -1,9 +1,8 @@
-use num::BigInt;
-use std::io::{Cursor, Write};
-
 use crate::error;
 use crate::frame::Version;
 use crate::query;
+use num::BigInt;
+use std::io::{Cursor, Write};
 
 /// Trait that should be implemented by all types that wish to be serialized to a buffer.
 pub trait Serialize {

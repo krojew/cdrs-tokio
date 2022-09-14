@@ -1,7 +1,3 @@
-use lz4_flex::decompress;
-use std::convert::TryInto;
-use std::io;
-
 use crate::compression::{Compression, CompressionError};
 use crate::crc::{crc24, crc32};
 use crate::error::{Error, Result};
@@ -9,6 +5,9 @@ use crate::frame::{
     Envelope, ParseEnvelopeError, COMPRESSED_FRAME_HEADER_LENGTH, ENVELOPE_HEADER_LEN,
     FRAME_TRAILER_LENGTH, MAX_FRAME_SIZE, PAYLOAD_SIZE_LIMIT, UNCOMPRESSED_FRAME_HEADER_LENGTH,
 };
+use lz4_flex::decompress;
+use std::convert::TryInto;
+use std::io;
 
 #[inline]
 fn create_unexpected_self_contained_error() -> Error {

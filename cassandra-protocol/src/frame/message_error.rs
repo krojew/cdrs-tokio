@@ -1,16 +1,14 @@
-/// This modules contains [Cassandra's errors](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
-/// which server could respond to client.
-use derive_more::Display;
-use std::collections::HashMap;
-use std::io::{Cursor, Read};
-
+use super::Serialize;
 use crate::consistency::Consistency;
 use crate::frame::traits::FromCursor;
 use crate::frame::Version;
 use crate::types::*;
 use crate::{error, Error};
-
-use super::Serialize;
+/// This modules contains [Cassandra's errors](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
+/// which server could respond to client.
+use derive_more::Display;
+use std::collections::HashMap;
+use std::io::{Cursor, Read};
 
 /// CDRS error which could be returned by Cassandra server as a response. As in the specification,
 /// it contains an error code and an error message. Apart of those depending of type of error,

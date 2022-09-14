@@ -1,7 +1,3 @@
-use derive_more::{Constructor, Display};
-use std::convert::{TryFrom, TryInto};
-use std::io::{Cursor, Read};
-
 use crate::consistency::Consistency;
 use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
 use crate::query::QueryFlags;
@@ -12,6 +8,9 @@ use crate::types::{
     CIntShort, CLong,
 };
 use crate::{error, Error};
+use derive_more::{Constructor, Display};
+use std::convert::{TryFrom, TryInto};
+use std::io::{Cursor, Read};
 
 #[derive(Debug, Clone, Constructor, PartialEq, Eq)]
 pub struct BodyReqBatch {
@@ -251,14 +250,13 @@ impl Envelope {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
     use crate::consistency::Consistency;
     use crate::frame::message_batch::{BatchQuery, BatchQuerySubj, BatchType, BodyReqBatch};
     use crate::frame::traits::Serialize;
     use crate::frame::{FromCursor, Version};
     use crate::query::QueryValues;
     use crate::types::prelude::Value;
+    use std::io::Cursor;
 
     #[test]
     fn should_deserialize_query() {

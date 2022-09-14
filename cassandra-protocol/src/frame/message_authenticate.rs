@@ -1,10 +1,8 @@
-use std::io::Cursor;
-
+use super::Serialize;
 use crate::error;
 use crate::frame::{FromCursor, Version};
 use crate::types::{from_cursor_str, serialize_str};
-
-use super::Serialize;
+use std::io::Cursor;
 
 /// A server authentication challenge.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
