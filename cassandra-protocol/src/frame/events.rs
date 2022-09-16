@@ -1,6 +1,6 @@
 use crate::frame::traits::FromCursor;
 use crate::frame::{Serialize, Version};
-use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CInet, CIntShort};
+use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CIntShort};
 use crate::{error, Error};
 use derive_more::Display;
 use std::cmp::PartialEq;
@@ -157,14 +157,14 @@ impl Serialize for TopologyChange {
     //noinspection DuplicatedCode
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         self.change_type.serialize(cursor, version);
-        CInet { addr: self.addr }.serialize(cursor, version);
+        self.addr.serialize(cursor, version);
     }
 }
 
 impl FromCursor for TopologyChange {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<TopologyChange> {
         let change_type = TopologyChangeType::from_cursor(cursor, version)?;
-        let addr = CInet::from_cursor(cursor, version)?.addr;
+        let addr = SocketAddr::from_cursor(cursor, version)?;
 
         Ok(TopologyChange { change_type, addr })
     }
@@ -209,14 +209,14 @@ impl Serialize for StatusChange {
     //noinspection DuplicatedCode
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         self.change_type.serialize(cursor, version);
-        CInet { addr: self.addr }.serialize(cursor, version);
+        self.addr.serialize(cursor, version);
     }
 }
 
 impl FromCursor for StatusChange {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<StatusChange> {
         let change_type = StatusChangeType::from_cursor(cursor, version)?;
-        let addr = CInet::from_cursor(cursor, version)?.addr;
+        let addr = SocketAddr::from_cursor(cursor, version)?;
 
         Ok(StatusChange { change_type, addr })
     }
