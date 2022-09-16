@@ -27,7 +27,6 @@ mod tests {
     use super::*;
     use crate::frame::events::*;
     use crate::frame::traits::FromCursor;
-    use crate::types::CInet;
     use std::io::Cursor;
 
     #[test]
@@ -40,7 +39,7 @@ mod tests {
         ];
         let expected = ServerEvent::TopologyChange(TopologyChange {
             change_type: TopologyChangeType::NewNode,
-            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+            addr: "127.0.0.1:1".parse().unwrap(),
         });
 
         {

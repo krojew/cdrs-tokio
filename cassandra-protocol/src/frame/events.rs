@@ -6,6 +6,7 @@ use derive_more::Display;
 use std::cmp::PartialEq;
 use std::convert::TryFrom;
 use std::io::Cursor;
+use std::net::SocketAddr;
 
 // Event types
 const TOPOLOGY_CHANGE: &str = "TOPOLOGY_CHANGE";
@@ -149,21 +150,21 @@ impl FromCursor for ServerEvent {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TopologyChange {
     pub change_type: TopologyChangeType,
-    pub addr: CInet,
+    pub addr: SocketAddr,
 }
 
 impl Serialize for TopologyChange {
     //noinspection DuplicatedCode
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         self.change_type.serialize(cursor, version);
-        self.addr.serialize(cursor, version);
+        CInet { addr: self.addr }.serialize(cursor, version);
     }
 }
 
 impl FromCursor for TopologyChange {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<TopologyChange> {
         let change_type = TopologyChangeType::from_cursor(cursor, version)?;
-        let addr = CInet::from_cursor(cursor, version)?;
+        let addr = CInet::from_cursor(cursor, version)?.addr;
 
         Ok(TopologyChange { change_type, addr })
     }
@@ -201,21 +202,21 @@ impl FromCursor for TopologyChangeType {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct StatusChange {
     pub change_type: StatusChangeType,
-    pub addr: CInet,
+    pub addr: SocketAddr,
 }
 
 impl Serialize for StatusChange {
     //noinspection DuplicatedCode
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         self.change_type.serialize(cursor, version);
-        self.addr.serialize(cursor, version);
+        CInet { addr: self.addr }.serialize(cursor, version);
     }
 }
 
 impl FromCursor for StatusChange {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<StatusChange> {
         let change_type = StatusChangeType::from_cursor(cursor, version)?;
-        let addr = CInet::from_cursor(cursor, version)?;
+        let addr = CInet::from_cursor(cursor, version)?.addr;
 
         Ok(StatusChange { change_type, addr })
     }
@@ -731,7 +732,7 @@ mod server_event {
 
         let expected = ServerEvent::TopologyChange(TopologyChange {
             change_type: TopologyChangeType::NewNode,
-            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+            addr: "127.0.0.1:1".parse().unwrap(),
         });
 
         test_encode_decode(bytes, expected);
@@ -749,7 +750,7 @@ mod server_event {
 
         let expected = ServerEvent::TopologyChange(TopologyChange {
             change_type: TopologyChangeType::RemovedNode,
-            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+            addr: "127.0.0.1:1".parse().unwrap(),
         });
 
         test_encode_decode(bytes, expected);
@@ -766,7 +767,7 @@ mod server_event {
 
         let expected = ServerEvent::StatusChange(StatusChange {
             change_type: StatusChangeType::Up,
-            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+            addr: "127.0.0.1:1".parse().unwrap(),
         });
 
         test_encode_decode(bytes, expected);
@@ -783,7 +784,7 @@ mod server_event {
 
         let expected = ServerEvent::StatusChange(StatusChange {
             change_type: StatusChangeType::Down,
-            addr: CInet::new("127.0.0.1:1".parse().unwrap()),
+            addr: "127.0.0.1:1".parse().unwrap(),
         });
 
         test_encode_decode(bytes, expected);
