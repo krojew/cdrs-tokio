@@ -9,6 +9,7 @@ use crate::{error, Error};
 use derive_more::Display;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
+use std::net::SocketAddr;
 
 /// CDRS error which could be returned by Cassandra server as a response. As in the specification,
 /// it contains an error code and an error message. Apart of those depending of type of error,
@@ -53,7 +54,7 @@ pub enum FailureInfo {
     /// Represents the number of nodes that experience a failure while executing the request.
     NumFailures(CInt),
     /// Error code map for affected nodes.
-    ReasonMap(HashMap<CInet, CIntShort>),
+    ReasonMap(HashMap<SocketAddr, CIntShort>),
 }
 
 impl Serialize for FailureInfo {
@@ -82,7 +83,7 @@ impl FromCursor for FailureInfo {
                 let mut map = HashMap::with_capacity(num_failures as usize);
 
                 for _ in 0..num_failures {
-                    let endpoint = CInet::from_cursor(cursor, version)?;
+                    let endpoint = SocketAddr::from_cursor(cursor, version)?;
                     let error_code = CIntShort::from_cursor(cursor, version)?;
                     map.insert(endpoint, error_code);
                 }

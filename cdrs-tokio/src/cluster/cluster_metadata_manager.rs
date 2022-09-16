@@ -390,25 +390,25 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         let metadata = self.metadata.load().clone();
         match event.change_type {
             TopologyChangeType::NewNode => {
-                if metadata.has_node_by_rpc_address(event.addr.addr) {
+                if metadata.has_node_by_rpc_address(event.addr) {
                     debug!(
-                        broadcast_rpc_address = %event.addr.addr,
+                        broadcast_rpc_address = %event.addr,
                         "Trying to add already existing node - ignoring."
                     );
                 } else {
-                    self.add_new_node(event.addr.addr, NodeState::Unknown, metadata)
+                    self.add_new_node(event.addr, NodeState::Unknown, metadata)
                         .await;
                 }
             }
             TopologyChangeType::RemovedNode => {
-                if metadata.has_node_by_rpc_address(event.addr.addr) {
-                    debug!(broadcast_rpc_address = %event.addr.addr, "Removing node from cluster.");
+                if metadata.has_node_by_rpc_address(event.addr) {
+                    debug!(broadcast_rpc_address = %event.addr, "Removing node from cluster.");
 
                     self.metadata
-                        .store(Arc::new(metadata.clone_without_node(event.addr.addr)));
+                        .store(Arc::new(metadata.clone_without_node(event.addr)));
                 } else {
                     debug!(
-                        broadcast_rpc_address = %event.addr.addr,
+                        broadcast_rpc_address = %event.addr,
                         "Trying to remove a node outside the cluster."
                     );
                 }
@@ -418,7 +418,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
 
     async fn process_status_event(&self, event: StatusChange) {
         let metadata = self.metadata.load().clone();
-        let node = metadata.find_node_by_rpc_address(event.addr.addr);
+        let node = metadata.find_node_by_rpc_address(event.addr);
         match event.change_type {
             StatusChangeType::Up => {
                 if let Some(node) = node {
@@ -433,8 +433,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                         debug!(?node, "Ignoring up node event for already up node.");
                     }
                 } else {
-                    self.add_new_node(event.addr.addr, NodeState::Up, metadata)
-                        .await;
+                    self.add_new_node(event.addr, NodeState::Up, metadata).await;
                 }
             }
             StatusChangeType::Down => {
@@ -450,7 +449,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                         debug!(?node, "Ignoring down node event for already downed node.");
                     }
                 } else {
-                    debug!(broadcast_rpc_address = %event.addr.addr, "Unknown node down.");
+                    debug!(broadcast_rpc_address = %event.addr, "Unknown node down.");
                 }
             }
         }

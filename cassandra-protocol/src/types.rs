@@ -440,16 +440,9 @@ impl FromCursor for CLong {
     }
 }
 
-/// The structure which represents Cassandra inet
-/// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Constructor)]
-pub struct CInet {
-    pub addr: SocketAddr,
-}
-
-impl Serialize for CInet {
+impl Serialize for SocketAddr {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
-        match self.addr.ip() {
+        match self.ip() {
             IpAddr::V4(v4) => {
                 [4].serialize(cursor, version);
                 v4.octets().serialize(cursor, version);
@@ -460,12 +453,12 @@ impl Serialize for CInet {
             }
         }
 
-        to_int(self.addr.port().into()).serialize(cursor, version);
+        to_int(self.port().into()).serialize(cursor, version);
     }
 }
 
-impl FromCursor for CInet {
-    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> CDRSResult<CInet> {
+impl FromCursor for SocketAddr {
+    fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> CDRSResult<Self> {
         let mut buff = [0];
         cursor.read_exact(&mut buff)?;
 
@@ -473,9 +466,7 @@ impl FromCursor for CInet {
 
         let ip = decode_inet(cursor_next_value(cursor, n as usize)?.as_slice())?;
         let port = CInt::from_cursor(cursor, version)?;
-        let socket_addr = SocketAddr::new(ip, port as u16);
-
-        Ok(CInet { addr: socket_addr })
+        Ok(SocketAddr::new(ip, port as u16))
     }
 }
 
