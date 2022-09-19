@@ -2,7 +2,7 @@ use crate::error;
 use crate::frame::{FromCursor, Serialize, Version};
 use std::io::Cursor;
 
-#[derive(Clone, Debug, PartialEq, Default, Ord, PartialOrd, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Default, Ord, PartialOrd, Eq, Hash, Copy)]
 pub struct BodyResReady;
 
 impl Serialize for BodyResReady {

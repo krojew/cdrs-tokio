@@ -6,7 +6,7 @@ use derive_more::Constructor;
 use std::io::Cursor;
 
 /// The structure that represents a body of a envelope of type `execute`.
-#[derive(Debug, Constructor, Eq, PartialEq)]
+#[derive(Debug, Constructor, Eq, PartialEq, Clone)]
 pub struct BodyReqExecute<'a> {
     pub id: &'a CBytesShort,
     pub result_metadata_id: Option<&'a CBytesShort>,
