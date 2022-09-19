@@ -1,6 +1,6 @@
 [package]
 name = "cdrs-tokio-helpers-derive"
-version = "5.0.0-beta.1"
+version = "5.0.0"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 description = "Derive CDRS helper traits"
 license = "MIT/Apache-2.0"

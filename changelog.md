@@ -1,3 +1,15 @@
+## 7.0.0
+
+### New
+
+* `Clone` implemented for `BodyResReady` and `BodyReqExecute`.
+
+### Changed
+
+* Control connection errors are now logged as warnings, since they're recoverable.
+* Exposed fields of `BodyReqAuthResponse` and `BodyReqExecute`.
+* Replaced `CInet` type with `SocketAddr`, since it was nothing more than a wrapper.
+
 ## 7.0.0-beta.2
 
 ### Fixed
