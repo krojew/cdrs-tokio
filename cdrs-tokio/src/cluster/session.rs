@@ -3,6 +3,7 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
 use cassandra_protocol::events::ServerEvent;
+use cassandra_protocol::frame::message_error::ErrorType;
 use cassandra_protocol::frame::message_response::ResponseBody;
 use cassandra_protocol::frame::message_result::{BodyResResultPrepared, TableSpec};
 use cassandra_protocol::frame::{Envelope, Flags, Serialize, Version};
@@ -274,7 +275,7 @@ impl<
 
         if let Err(error::Error::Server { body: error, addr }) = &result {
             // if query is unprepared
-            if error.error_code == 0x2500 {
+            if let ErrorType::Unprepared(_) = error.ty {
                 debug!("Re-preparing statement.");
 
                 // We need to send the prepare statement to the failing node.

@@ -2,7 +2,7 @@ use derive_more::Display;
 
 use cassandra_protocol::error::Error;
 use cassandra_protocol::frame::message_error::{
-    AdditionalErrorInfo, ErrorBody, ReadTimeoutError, WriteTimeoutError, WriteType,
+    ErrorBody, ErrorType, ReadTimeoutError, WriteTimeoutError, WriteType,
 };
 
 #[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy, Clone, Display)]
@@ -75,7 +75,7 @@ impl RetrySession for DefaultRetrySession {
             | Error::Server {
                 body:
                     ErrorBody {
-                        additional_info: AdditionalErrorInfo::Overloaded,
+                        ty: ErrorType::Overloaded,
                         ..
                     },
                 ..
@@ -83,7 +83,7 @@ impl RetrySession for DefaultRetrySession {
             | Error::Server {
                 body:
                     ErrorBody {
-                        additional_info: AdditionalErrorInfo::Server,
+                        ty: ErrorType::Server,
                         ..
                     },
                 ..
@@ -91,7 +91,7 @@ impl RetrySession for DefaultRetrySession {
             | Error::Server {
                 body:
                     ErrorBody {
-                        additional_info: AdditionalErrorInfo::Truncate,
+                        ty: ErrorType::Truncate,
                         ..
                     },
                 ..
@@ -105,7 +105,7 @@ impl RetrySession for DefaultRetrySession {
             Error::Server {
                 body:
                     ErrorBody {
-                        additional_info: AdditionalErrorInfo::Unavailable(_),
+                        ty: ErrorType::Unavailable(_),
                         ..
                     },
                 ..
@@ -120,8 +120,7 @@ impl RetrySession for DefaultRetrySession {
             Error::Server {
                 body:
                     ErrorBody {
-                        additional_info:
-                            AdditionalErrorInfo::ReadTimeout(error @ ReadTimeoutError { .. }),
+                        ty: ErrorType::ReadTimeout(error @ ReadTimeoutError { .. }),
                         ..
                     },
                 ..
@@ -139,8 +138,7 @@ impl RetrySession for DefaultRetrySession {
             Error::Server {
                 body:
                     ErrorBody {
-                        additional_info:
-                            AdditionalErrorInfo::WriteTimeout(error @ WriteTimeoutError { .. }),
+                        ty: ErrorType::WriteTimeout(error @ WriteTimeoutError { .. }),
                         ..
                     },
                 ..
@@ -158,7 +156,7 @@ impl RetrySession for DefaultRetrySession {
             Error::Server {
                 body:
                     ErrorBody {
-                        additional_info: AdditionalErrorInfo::IsBootstrapping,
+                        ty: ErrorType::IsBootstrapping,
                         ..
                     },
                 ..
