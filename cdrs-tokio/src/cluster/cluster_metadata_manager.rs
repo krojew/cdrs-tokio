@@ -5,7 +5,7 @@ use cassandra_protocol::frame::events::{
     SchemaChangeOptions, SchemaChangeType, StatusChange, StatusChangeType, TopologyChange,
     TopologyChangeType,
 };
-use cassandra_protocol::frame::message_error::{AdditionalErrorInfo, ErrorBody};
+use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType};
 use cassandra_protocol::frame::{Envelope, Flags, Version};
 use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
@@ -707,7 +707,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             Err(Error::Server {
                 body:
                     ErrorBody {
-                        additional_info: AdditionalErrorInfo::Invalid,
+                        ty: ErrorType::Invalid,
                         ..
                     },
                 ..
