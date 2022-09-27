@@ -228,7 +228,7 @@ impl FromCursor for UnavailableError {
 }
 
 /// Timeout exception during a write request.
-#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Ord, PartialOrd, Eq, Hash)]
 pub struct WriteTimeoutError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -236,8 +236,11 @@ pub struct WriteTimeoutError {
     pub received: CInt,
     /// `i32` representing the number of replicas whose acknowledgement is required to achieve `cl`.
     pub block_for: CInt,
-    /// Describes the type of the write that timed out
+    /// Describes the type of the write that timed out.
     pub write_type: WriteType,
+    /// The number of contentions occurred during the CAS operation. The field only presents when
+    /// the `write_type` is `Cas`.
+    pub contentions: Option<CIntShort>,
 }
 
 impl Serialize for WriteTimeoutError {
@@ -246,6 +249,10 @@ impl Serialize for WriteTimeoutError {
         self.received.serialize(cursor, version);
         self.block_for.serialize(cursor, version);
         self.write_type.serialize(cursor, version);
+
+        if let Some(contentions) = self.contentions {
+            contentions.serialize(cursor, version);
+        }
     }
 }
 
@@ -258,12 +265,18 @@ impl FromCursor for WriteTimeoutError {
         let received = CInt::from_cursor(cursor, version)?;
         let block_for = CInt::from_cursor(cursor, version)?;
         let write_type = WriteType::from_cursor(cursor, version)?;
+        let contentions = if write_type == WriteType::Cas {
+            Some(CIntShort::from_cursor(cursor, version)?)
+        } else {
+            None
+        };
 
         Ok(WriteTimeoutError {
             cl,
             received,
             block_for,
             write_type,
+            contentions,
         })
     }
 }
@@ -461,21 +474,31 @@ impl FromCursor for WriteFailureError {
 
 /// Describes the type of the write that failed.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1118)
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Display)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Display)]
+#[non_exhaustive]
 pub enum WriteType {
-    /// The write was a non-batched non-counter write
+    /// The write was a non-batched non-counter write.
     Simple,
-    /// The write was a (logged) batch write.
-    /// If this type is received, it means the batch log
-    /// has been successfully written
+    /// The write was a (logged) batch write. If this type is received, it means the batch log
+    /// has been successfully written.
     Batch,
     /// The write was an unlogged batch. No batch log write has been attempted.
     UnloggedBatch,
-    /// The write was a counter write (batched or not)
+    /// The write was a counter write (batched or not).
     Counter,
     /// The failure occurred during the write to the batch log when a (logged) batch
     /// write was requested.
     BatchLog,
+    /// The timeout occurred during the Compare And Set write/update.
+    Cas,
+    /// The timeout occurred when a write involves VIEW update and failure to acquire local view(MV)
+    /// lock for key within timeout.
+    View,
+    /// The timeout occurred when cdc_total_space is exceeded when doing a write to data tracked by
+    /// cdc.
+    Cdc,
+    /// Unknown write type.
+    Unknown(String),
 }
 
 impl Serialize for WriteType {
@@ -486,6 +509,10 @@ impl Serialize for WriteType {
             WriteType::UnloggedBatch => serialize_str(cursor, "UNLOGGED_BATCH", version),
             WriteType::Counter => serialize_str(cursor, "COUNTER", version),
             WriteType::BatchLog => serialize_str(cursor, "BATCH_LOG", version),
+            WriteType::Cas => serialize_str(cursor, "CAS", version),
+            WriteType::View => serialize_str(cursor, "VIEW", version),
+            WriteType::Cdc => serialize_str(cursor, "CDC", version),
+            WriteType::Unknown(write_type) => serialize_str(cursor, write_type, version),
         }
     }
 }
@@ -498,7 +525,10 @@ impl FromCursor for WriteType {
             "UNLOGGED_BATCH" => Ok(WriteType::UnloggedBatch),
             "COUNTER" => Ok(WriteType::Counter),
             "BATCH_LOG" => Ok(WriteType::BatchLog),
-            wt => Err(Error::UnexpectedWriteType(wt.into())),
+            "CAS" => Ok(WriteType::Cas),
+            "VIEW" => Ok(WriteType::View),
+            "CDC" => Ok(WriteType::Cdc),
+            wt => Ok(WriteType::Unknown(wt.into())),
         }
     }
 }
@@ -556,6 +586,7 @@ impl FromCursor for UnpreparedError {
     }
 }
 
+//noinspection DuplicatedCode
 #[cfg(test)]
 fn test_encode_decode(bytes: &[u8], expected: ErrorBody) {
     {
@@ -703,6 +734,7 @@ mod error_tests {
                 received: 1,
                 block_for: 1,
                 write_type: WriteType::Simple,
+                contentions: None,
             }),
         };
         test_encode_decode(bytes, expected);
