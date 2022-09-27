@@ -32,6 +32,7 @@ mock! {
     pub ConnectionManager<T: CdrsTransport> {
     }
 
+    #[allow(dead_code)]
     impl<T: CdrsTransport> ConnectionManager<T> for ConnectionManager<T> {
         fn connection<'a>(
             &'a self,
@@ -73,10 +74,10 @@ pub async fn startup<
         //      the server and client are same if not send error back
         // 3. if it falls through it means the preliminary conditions are true
 
-        let auth_check = authenticator_provider
+        authenticator_provider
             .name()
             .ok_or_else(|| Error::General("No authenticator was provided".to_string()))
-            .map(|auth| {
+            .and_then(|auth| {
                 if authenticator != auth {
                     let io_err = io::Error::new(
                         io::ErrorKind::NotFound,
@@ -89,11 +90,7 @@ pub async fn startup<
                     return Err(Error::Io(io_err));
                 }
                 Ok(())
-            });
-
-        if let Err(err) = auth_check {
-            return Err(err);
-        }
+            })?;
 
         let authenticator = authenticator_provider.create_authenticator();
         let response = authenticator.initial_response();
