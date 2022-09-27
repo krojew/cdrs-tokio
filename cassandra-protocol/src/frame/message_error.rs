@@ -91,6 +91,7 @@ impl FromCursor for FailureInfo {
 /// [Cassandra protocol v4]
 /// (<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[non_exhaustive]
 pub enum ErrorType {
     Server,
     Protocol,
