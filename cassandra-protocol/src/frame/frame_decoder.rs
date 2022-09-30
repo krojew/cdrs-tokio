@@ -212,8 +212,11 @@ impl UncompressedFrameDecoder {
             i64::from_le_bytes(buffer[..8].try_into().unwrap()) & 0xffffffffffff
         } else {
             let mut header = 0;
-            for i in &buffer[..UNCOMPRESSED_FRAME_HEADER_LENGTH] {
-                header |= (*i as i64) << (8 * *i);
+            for (i, byte) in buffer[..UNCOMPRESSED_FRAME_HEADER_LENGTH]
+                .iter()
+                .enumerate()
+            {
+                header |= (*byte as i64) << (8 * i as i64);
             }
 
             header
