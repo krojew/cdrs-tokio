@@ -221,7 +221,9 @@ impl FrameEncoder for Lz4FrameEncoder {
     }
 
     fn finalize_non_self_contained(&mut self, envelope: &[u8]) -> (usize, &[u8]) {
-        let uncompressed_size = envelope.len().min(PAYLOAD_SIZE_LIMIT - 1);
+        let mut uncompressed_size = envelope.len().min(PAYLOAD_SIZE_LIMIT - 1);
+        let offset = uncompressed_size;
+
         self.buffer.resize(
             get_maximum_output_size(uncompressed_size)
                 + COMPRESSED_FRAME_HEADER_LENGTH
@@ -229,11 +231,22 @@ impl FrameEncoder for Lz4FrameEncoder {
             0,
         );
 
-        let compressed_size = compress_into(
+        let mut compressed_size = compress_into(
             &envelope[..uncompressed_size],
             &mut self.buffer[COMPRESSED_FRAME_HEADER_LENGTH..],
         )
         .unwrap(); // we can safely unwrap, since we have at least the amount of space needed
+
+        if compressed_size >= PAYLOAD_SIZE_LIMIT {
+            // compressed size can exceed source size, therefore can exceed max payload size
+            // Java driver simply ignores compression at this point, so ¯\_(ツ)_/¯
+            self.buffer[COMPRESSED_FRAME_HEADER_LENGTH
+                ..(COMPRESSED_FRAME_HEADER_LENGTH + uncompressed_size)]
+                .copy_from_slice(&envelope[..uncompressed_size]);
+
+            compressed_size = uncompressed_size;
+            uncompressed_size = 0; // compressed size of 0 means no compression
+        }
 
         self.buffer
             .truncate(COMPRESSED_FRAME_HEADER_LENGTH + compressed_size);
@@ -241,7 +254,7 @@ impl FrameEncoder for Lz4FrameEncoder {
         self.write_header(uncompressed_size, false);
         add_trailer(&mut self.buffer, COMPRESSED_FRAME_HEADER_LENGTH);
 
-        (uncompressed_size, &self.buffer)
+        (offset, &self.buffer)
     }
 
     #[inline]
