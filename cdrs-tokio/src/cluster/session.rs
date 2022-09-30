@@ -4,10 +4,11 @@ use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
 use cassandra_protocol::events::ServerEvent;
 use cassandra_protocol::frame::message_error::ErrorType;
+use cassandra_protocol::frame::message_query::BodyReqQuery;
 use cassandra_protocol::frame::message_response::ResponseBody;
 use cassandra_protocol::frame::message_result::{BodyResResultPrepared, TableSpec};
 use cassandra_protocol::frame::{Envelope, Flags, Serialize, Version};
-use cassandra_protocol::query::{PreparedQuery, Query, QueryBatch, QueryValues};
+use cassandra_protocol::query::{PreparedQuery, QueryBatch, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
 use cassandra_protocol::types::{CIntShort, SHORT_LEN};
@@ -527,9 +528,9 @@ impl<
             .as_ref()
             .map(|values| serialize_routing_key(values, self.version));
 
-        let query = Query {
+        let query = BodyReqQuery {
             query: query.to_string(),
-            params: parameters.query_params,
+            query_params: parameters.query_params,
         };
 
         let flags = prepare_flags(

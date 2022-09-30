@@ -6,8 +6,9 @@ use cassandra_protocol::frame::events::{
     TopologyChangeType,
 };
 use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType};
+use cassandra_protocol::frame::message_query::BodyReqQuery;
 use cassandra_protocol::frame::{Envelope, Flags, Version};
-use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
+use cassandra_protocol::query::{QueryParams, QueryParamsBuilder, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::list::List;
 use cassandra_protocol::types::rows::Row;
@@ -78,9 +79,9 @@ async fn send_query_with_params<T: CdrsTransport>(
     version: Version,
     beta_protocol: bool,
 ) -> Result<Option<Vec<Row>>> {
-    let query = Query {
+    let query = BodyReqQuery {
         query: query.to_string(),
-        params: query_params,
+        query_params,
     };
 
     let flags = if beta_protocol {
