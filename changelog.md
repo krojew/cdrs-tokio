@@ -1,3 +1,10 @@
+## 7.0.1
+
+### Fixed
+
+* Overflow when compressed envelope payload exceeds max payload size.
+* Integer overflow when not received at least 8 header bytes.
+
 ## 7.0.0
 
 ### New
