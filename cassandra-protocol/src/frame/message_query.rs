@@ -2,7 +2,7 @@ use crate::consistency::Consistency;
 use crate::error;
 use crate::frame::traits::FromCursor;
 use crate::frame::{Direction, Envelope, Flags, Opcode, Serialize, Version};
-use crate::query::{Query, QueryParams, QueryValues};
+use crate::query::{QueryParams, QueryValues};
 use crate::types::{from_cursor_str_long, serialize_str_long, CBytes, CInt, CLong, INT_LEN};
 use std::io::Cursor;
 
@@ -118,18 +118,18 @@ impl Envelope {
     }
 
     #[inline]
-    pub fn new_query(query: Query, flags: Flags, version: Version) -> Envelope {
+    pub fn new_query(query: BodyReqQuery, flags: Flags, version: Version) -> Envelope {
         Envelope::new_req_query(
             query.query,
-            query.params.consistency,
-            query.params.values,
-            query.params.with_names,
-            query.params.page_size,
-            query.params.paging_state,
-            query.params.serial_consistency,
-            query.params.timestamp,
-            query.params.keyspace,
-            query.params.now_in_seconds,
+            query.query_params.consistency,
+            query.query_params.values,
+            query.query_params.with_names,
+            query.query_params.page_size,
+            query.query_params.paging_state,
+            query.query_params.serial_consistency,
+            query.query_params.timestamp,
+            query.query_params.keyspace,
+            query.query_params.now_in_seconds,
             flags,
             version,
         )

@@ -14,11 +14,3 @@ pub use crate::query::query_flags::QueryFlags;
 pub use crate::query::query_params::QueryParams;
 pub use crate::query::query_params_builder::QueryParamsBuilder;
 pub use crate::query::query_values::QueryValues;
-
-/// Structure that represents CQL query and parameters which will be applied during
-/// its execution
-#[derive(Debug, Default)]
-pub struct Query {
-    pub query: String,
-    pub params: QueryParams,
-}
