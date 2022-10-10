@@ -182,7 +182,7 @@ impl Envelope {
         // Use cursor to get tracing id, warnings and actual body
         let mut body_cursor = Cursor::new(full_body.as_slice());
 
-        let tracing_id = if flags.contains(Flags::TRACING) {
+        let tracing_id = if flags.contains(Flags::TRACING) && direction == Direction::Response {
             let mut tracing_bytes = [0; UUID_LEN];
             std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes).unwrap();
 
@@ -242,7 +242,7 @@ impl Envelope {
         let flag_byte = (if is_compressed {
             self.flags | Flags::COMPRESSION
         } else {
-            self.flags.intersection(Flags::COMPRESSION)
+            self.flags.difference(Flags::COMPRESSION)
         })
         .bits();
 
@@ -255,17 +255,53 @@ impl Envelope {
         v.extend_from_slice(&self.stream_id.to_be_bytes());
         v.push(opcode_byte);
 
+        let mut body_buffer = vec![];
+
+        if self.flags.contains(Flags::TRACING) && self.direction == Direction::Response {
+            let mut tracing_id = self
+                .tracing_id
+                .expect("Tracing flag was set but Envelope has no tracing_id")
+                .into_bytes()
+                .to_vec();
+
+            if is_compressed {
+                let mut encoded_tracing_id = compressor.encode(&tracing_id)?;
+                body_buffer.append(&mut encoded_tracing_id);
+            } else {
+                body_buffer.append(&mut tracing_id)
+            }
+        };
+
+        if self.flags.contains(Flags::WARNING) && self.direction == Direction::Response {
+            let mut warnings_buffer = vec![];
+
+            for warning in &self.warnings {
+                let warning_len = warning.len() as i16;
+                warnings_buffer.extend_from_slice(&warning_len.to_be_bytes());
+                warnings_buffer.append(&mut warning.as_bytes().to_vec());
+            }
+
+            if is_compressed {
+                let mut encoded_warnings = compressor.encode(&warnings_buffer)?;
+                body_buffer.extend_from_slice(&encoded_warnings.len().to_be_bytes());
+                body_buffer.append(&mut encoded_warnings);
+            } else {
+                let warnings_len = self.warnings.len() as i16;
+                body_buffer.extend_from_slice(&warnings_len.to_be_bytes());
+                body_buffer.append(&mut warnings_buffer);
+            };
+        }
+
         if is_compressed {
             let mut encoded_body = compressor.encode(&self.body)?;
-
-            let body_len = encoded_body.len() as i32;
-            v.extend_from_slice(&body_len.to_be_bytes());
-            v.append(&mut encoded_body);
+            body_buffer.append(&mut encoded_body);
         } else {
-            let body_len = self.body.len() as i32;
-            v.extend_from_slice(&body_len.to_be_bytes());
-            v.extend_from_slice(&self.body);
+            body_buffer.extend_from_slice(&self.body);
         }
+
+        let body_len = body_buffer.len() as i32;
+        v.extend_from_slice(&body_len.to_be_bytes());
+        v.append(&mut body_buffer);
 
         Ok(v)
     }
@@ -459,6 +495,89 @@ impl TryFrom<u8> for Opcode {
     }
 }
 
+#[cfg(test)]
+mod helpers {
+    use super::*;
+
+    pub fn test_encode_decode_roundtrip_response(
+        raw_envelope: &[u8],
+        envelope: Envelope,
+        body: ResponseBody,
+    ) {
+        // test encode
+        let encoded_body = body.serialize_to_vec(Version::V4);
+        assert_eq!(
+            &envelope.body, &encoded_body,
+            "encoded body did not match envelope's body"
+        );
+
+        let encoded_envelope = envelope.encode_with(Compression::None).unwrap();
+        assert_eq!(
+            raw_envelope, &encoded_envelope,
+            "encoded envelope did not match expected raw envelope"
+        );
+
+        // test decode
+        let decoded_envelope = Envelope::from_buffer(raw_envelope, Compression::None)
+            .unwrap()
+            .envelope;
+        assert_eq!(decoded_envelope, envelope);
+
+        let decoded_body = envelope.response_body().unwrap();
+        assert_eq!(
+            body, decoded_body,
+            "decoded envelope.body did not match body"
+        )
+    }
+
+    pub fn test_encode_decode_roundtrip_request(
+        raw_envelope: &[u8],
+        envelope: Envelope,
+        body: RequestBody,
+    ) {
+        // test encode
+        let encoded_body = body.serialize_to_vec(Version::V4);
+        assert_eq!(
+            &envelope.body, &encoded_body,
+            "encoded body did not match envelope's body"
+        );
+
+        let encoded_envelope = envelope.encode_with(Compression::None).unwrap();
+        assert_eq!(
+            raw_envelope, &encoded_envelope,
+            "encoded envelope did not match expected raw envelope"
+        );
+
+        // test decode
+        let decoded_envelope = Envelope::from_buffer(raw_envelope, Compression::None)
+            .unwrap()
+            .envelope;
+        assert_eq!(envelope, decoded_envelope);
+
+        let decoded_body = envelope.request_body().unwrap();
+        assert_eq!(
+            body, decoded_body,
+            "decoded envelope.body did not match body"
+        )
+    }
+
+    /// Use this when the body binary representation is nondeterministic but the body typed representation is deterministic
+    pub fn test_encode_decode_roundtrip_nondeterministic_request(
+        mut envelope: Envelope,
+        body: RequestBody,
+    ) {
+        // test encode
+        envelope.body = body.serialize_to_vec(Version::V4);
+
+        // test decode
+        let decoded_body = envelope.request_body().unwrap();
+        assert_eq!(
+            body, decoded_body,
+            "decoded envelope.body did not match body"
+        )
+    }
+}
+
 //noinspection DuplicatedCode
 #[cfg(test)]
 mod tests {
@@ -543,84 +662,6 @@ mod tests {
         assert_eq!(Opcode::try_from(0x10).unwrap(), Opcode::AuthSuccess);
     }
 
-    fn test_encode_decode_roundtrip_response(
-        raw_envelope: &[u8],
-        envelope: Envelope,
-        body: ResponseBody,
-    ) {
-        // test encode
-        let encoded_body = body.serialize_to_vec(Version::V4);
-        assert_eq!(
-            &envelope.body, &encoded_body,
-            "encoded body did not match envelope's body"
-        );
-
-        let encoded_envelope = envelope.encode_with(Compression::None).unwrap();
-        assert_eq!(
-            raw_envelope, &encoded_envelope,
-            "encoded envelope did not match expected raw envelope"
-        );
-
-        // test decode
-
-        // TODO: implement once we have a sync parse_envelope impl
-        //let decoded_frame = parse_frame(raw_frame).unwrap();
-        //assert_eq!(frame, decoded_frame);
-
-        let decoded_body = envelope.response_body().unwrap();
-        assert_eq!(
-            body, decoded_body,
-            "decoded envelope.body did not match body"
-        )
-    }
-
-    fn test_encode_decode_roundtrip_request(
-        raw_envelope: &[u8],
-        envelope: Envelope,
-        body: RequestBody,
-    ) {
-        // test encode
-        let encoded_body = body.serialize_to_vec(Version::V4);
-        assert_eq!(
-            &envelope.body, &encoded_body,
-            "encoded body did not match envelope's body"
-        );
-
-        let encoded_envelope = envelope.encode_with(Compression::None).unwrap();
-        assert_eq!(
-            raw_envelope, &encoded_envelope,
-            "encoded envelope did not match expected raw envelope"
-        );
-
-        // test decode
-
-        // TODO: implement once we have a sync parse_frame impl
-        //let decoded_frame = parse_frame(raw_frame).unwrap();
-        //assert_eq!(frame, decoded_frame);
-
-        let decoded_body = envelope.request_body().unwrap();
-        assert_eq!(
-            body, decoded_body,
-            "decoded envelope.body did not match body"
-        )
-    }
-
-    /// Use this when the body binary representation is nondeterministic but the body typed representation is deterministic
-    fn test_encode_decode_roundtrip_nondeterministic_request(
-        mut envelope: Envelope,
-        body: RequestBody,
-    ) {
-        // test encode
-        envelope.body = body.serialize_to_vec(Version::V4);
-
-        // test decode
-        let decoded_body = envelope.request_body().unwrap();
-        assert_eq!(
-            body, decoded_body,
-            "decoded envelope.body did not match body"
-        )
-    }
-
     #[test]
     fn test_ready() {
         let raw_envelope = vec![4, 0, 0, 0, 2, 0, 0, 0, 0];
@@ -635,7 +676,7 @@ mod tests {
             warnings: vec![],
         };
         let body = ResponseBody::Ready;
-        test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
+        helpers::test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
     }
 
     #[test]
@@ -667,7 +708,7 @@ mod tests {
                 now_in_seconds: None,
             },
         });
-        test_encode_decode_roundtrip_request(&raw_envelope, envelope, body);
+        helpers::test_encode_decode_roundtrip_request(&raw_envelope, envelope, body);
     }
 
     #[test]
@@ -706,7 +747,7 @@ mod tests {
                 now_in_seconds: None,
             },
         });
-        test_encode_decode_roundtrip_request(&raw_envelope, envelope, body);
+        helpers::test_encode_decode_roundtrip_request(&raw_envelope, envelope, body);
     }
 
     #[test]
@@ -743,7 +784,7 @@ mod tests {
                 now_in_seconds: None,
             },
         });
-        test_encode_decode_roundtrip_nondeterministic_request(envelope, body);
+        helpers::test_encode_decode_roundtrip_nondeterministic_request(envelope, body);
     }
 
     #[test]
@@ -854,7 +895,7 @@ mod tests {
             },
         }));
 
-        test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
+        helpers::test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
     }
 
     fn create_small_envelope_data() -> (Envelope, Vec<u8>) {
@@ -1051,5 +1092,110 @@ mod tests {
         assert!(buffer2.is_empty());
         assert_eq!(envelopes.len(), 1);
         assert_eq!(envelopes[0], envelope);
+    }
+}
+
+#[cfg(test)]
+mod flags {
+    use super::*;
+    use crate::consistency::Consistency;
+    use crate::frame::message_query::BodyReqQuery;
+    use crate::frame::message_result::ResResultBody;
+    use crate::query::query_params::QueryParams;
+
+    #[test]
+    fn test_tracing_id_request() {
+        let raw_envelope = [
+            4, // version
+            2, // flags
+            0, 12, // stream id
+            7,  // opcode
+            0, 0, 0, 11, //length
+            0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64, // body
+        ];
+        let envelope = Envelope {
+            version: Version::V4,
+            direction: Direction::Request,
+            flags: Flags::TRACING,
+            opcode: Opcode::Query,
+            stream_id: 12,
+            body: vec![0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64],
+            tracing_id: None,
+            warnings: vec![],
+        };
+
+        let body = RequestBody::Query(BodyReqQuery {
+            query: "blah".into(),
+            query_params: QueryParams {
+                consistency: Consistency::Any,
+                with_names: true,
+                values: None,
+                page_size: None,
+                paging_state: None,
+                serial_consistency: None,
+                timestamp: None,
+                keyspace: None,
+                now_in_seconds: None,
+            },
+        });
+        helpers::test_encode_decode_roundtrip_request(&raw_envelope, envelope, body);
+    }
+
+    #[test]
+    fn test_tracing_id_response() {
+        let raw_envelope = [
+            132, //version
+            2,   // flags
+            0, 12, // stream id
+            8,  //opcode
+            0, 0, 0, 20, // length
+            4, 54, 67, 12, 43, 2, 98, 76, 32, 50, 87, 5, 1, 33, 43, 87, // tracing_id
+            0, 0, 0, 1, // body
+        ];
+        let envelope = Envelope {
+            version: Version::V4,
+            direction: Direction::Response,
+            flags: Flags::TRACING,
+            opcode: Opcode::Result,
+            stream_id: 12,
+            body: vec![0, 0, 0, 1],
+            tracing_id: Some(uuid::Uuid::from_bytes([
+                4, 54, 67, 12, 43, 2, 98, 76, 32, 50, 87, 5, 1, 33, 43, 87,
+            ])),
+            warnings: vec![],
+        };
+
+        let body = ResponseBody::Result(ResResultBody::Void);
+
+        helpers::test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
+    }
+
+    #[test]
+    fn test_warnings_response() {
+        let raw_envelope = [
+            132, // version
+            8,   // flags
+            5, 64, // stream id
+            8,  // opcode
+            0, 0, 0, 19, // length
+            // warnings
+            0, 1, 0, 11, 72, 101, 108, 108, 111, 32, 87, 111, 114, 108, 100, // warnings
+            0, 0, 0, 1, // body
+        ];
+
+        let body = ResponseBody::Result(ResResultBody::Void);
+
+        let envelope = Envelope {
+            version: Version::V4,
+            opcode: Opcode::Result,
+            flags: Flags::WARNING,
+            direction: Direction::Response,
+            stream_id: 1344,
+            tracing_id: None,
+            body: vec![0, 0, 0, 1],
+            warnings: vec!["Hello World".into()],
+        };
+
+        helpers::test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
     }
 }
