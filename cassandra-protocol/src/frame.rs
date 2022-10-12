@@ -269,12 +269,7 @@ impl Envelope {
                 .into_bytes()
                 .to_vec();
 
-            if is_compressed {
-                let mut encoded_tracing_id = compressor.encode(&tracing_id)?;
-                body_buffer.append(&mut encoded_tracing_id);
-            } else {
-                body_buffer.append(&mut tracing_id)
-            }
+            body_buffer.append(&mut tracing_id);
         };
 
         if self.flags.contains(Flags::WARNING) && self.direction == Direction::Response {
@@ -286,27 +281,23 @@ impl Envelope {
                 warnings_buffer.append(&mut warning.as_bytes().to_vec());
             }
 
-            if is_compressed {
-                let mut encoded_warnings = compressor.encode(&warnings_buffer)?;
-                body_buffer.extend_from_slice(&encoded_warnings.len().to_be_bytes());
-                body_buffer.append(&mut encoded_warnings);
-            } else {
-                let warnings_len = self.warnings.len() as i16;
-                body_buffer.extend_from_slice(&warnings_len.to_be_bytes());
-                body_buffer.append(&mut warnings_buffer);
-            };
+            let warnings_len = self.warnings.len() as i16;
+            body_buffer.extend_from_slice(&warnings_len.to_be_bytes());
+            body_buffer.append(&mut warnings_buffer);
         }
+
+        body_buffer.extend_from_slice(&self.body);
 
         if is_compressed {
-            let mut encoded_body = compressor.encode(&self.body)?;
-            body_buffer.append(&mut encoded_body);
+            let encoded_body = compressor.encode(&body_buffer)?;
+            let body_len = encoded_body.len() as i32;
+            v.extend_from_slice(&body_len.to_be_bytes());
+            v.extend_from_slice(&encoded_body);
         } else {
-            body_buffer.extend_from_slice(&self.body);
+            let body_len = body_buffer.len() as i32;
+            v.extend_from_slice(&body_len.to_be_bytes());
+            v.append(&mut body_buffer);
         }
-
-        let body_len = body_buffer.len() as i32;
-        v.extend_from_slice(&body_len.to_be_bytes());
-        v.append(&mut body_buffer);
 
         Ok(v)
     }
