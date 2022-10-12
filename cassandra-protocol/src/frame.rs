@@ -260,7 +260,12 @@ impl Envelope {
         if self.flags.contains(Flags::TRACING) && self.direction == Direction::Response {
             let mut tracing_id = self
                 .tracing_id
-                .expect("Tracing flag was set but Envelope has no tracing_id")
+                .ok_or_else(|| {
+                    error::Error::Io(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Tracing flag was set but Envelope has no tracing_id",
+                    ))
+                })?
                 .into_bytes()
                 .to_vec();
 
