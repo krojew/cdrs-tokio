@@ -273,32 +273,30 @@ impl Envelope {
         };
 
         if self.flags.contains(Flags::WARNING) && self.direction == Direction::Response {
-            let mut warnings_buffer = vec![];
+            let warnings_len = self.warnings.len() as i16;
+            flags_buffer.extend_from_slice(&warnings_len.to_be_bytes());
 
             for warning in &self.warnings {
                 let warning_len = warning.len() as i16;
-                warnings_buffer.extend_from_slice(&warning_len.to_be_bytes());
-                warnings_buffer.append(&mut warning.as_bytes().to_vec());
+                flags_buffer.extend_from_slice(&warning_len.to_be_bytes());
+                flags_buffer.append(&mut warning.as_bytes().to_vec());
             }
-
-            let warnings_len = self.warnings.len() as i16;
-            flags_buffer.extend_from_slice(&warnings_len.to_be_bytes());
-            flags_buffer.append(&mut warnings_buffer);
         }
 
         if is_compressed {
-            // avoid concating the slices if there is nothing in flags_buffer
+            // avoid having to copy the body if there is nothing in flags_buffer
             let encoded_body = if flags_buffer.is_empty() {
                 compressor.encode(&self.body)?
             } else {
-                compressor.encode(&[flags_buffer.as_slice(), &self.body].concat())?
+                flags_buffer.extend_from_slice(&self.body);
+                compressor.encode(&flags_buffer)?
             };
 
             let body_len = encoded_body.len() as i32;
             v.extend_from_slice(&body_len.to_be_bytes());
             v.extend_from_slice(&encoded_body);
         } else {
-            // avoid concating the slices if there is nothing in flags_buffer
+            // avoid having to copy the body if there is nothing in flags_buffer
             if flags_buffer.is_empty() {
                 let body_len = self.body.len() as i32;
                 v.extend_from_slice(&body_len.to_be_bytes());
@@ -306,7 +304,8 @@ impl Envelope {
             } else {
                 let body_len = self.body.len() as i32 + flags_buffer.len() as i32;
                 v.extend_from_slice(&body_len.to_be_bytes());
-                v.extend_from_slice(&[flags_buffer.as_slice(), &self.body].concat());
+                flags_buffer.extend_from_slice(&self.body);
+                v.append(&mut flags_buffer);
             }
         }
 
