@@ -134,7 +134,10 @@ fn serialize_routing_key_with_indexes(
         0 => None,
         1 => values
             .get(pk_indexes[0] as usize)
-            .map(|value| value.serialize_to_vec(version)),
+            .and_then(|value| match value {
+                Value::Some(value) => Some(value.serialize_to_vec(version)),
+                _ => None,
+            }),
         _ => {
             let mut buf = vec![];
             if pk_indexes
