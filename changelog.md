@@ -1,3 +1,10 @@
+## 7.0.2
+
+### Fixed
+
+* Serializing single PK routing keys by index.
+* Encoding envelopes with tracing/warning flags.
+
 ## 7.0.1
 
 ### Fixed
