@@ -152,7 +152,7 @@ async fn paged_with_value(session: &CurrentSession) {
 
     let q = "SELECT * FROM test_ks.another_test_table where a = ? and b = 1 and c = ?";
     let mut pager = session.paged(3);
-    let mut query_pager = pager.query_with_param(
+    let mut query_pager = pager.query_with_params(
         q,
         QueryParamsBuilder::new()
             .with_values(query_values!(1, 2))
@@ -177,7 +177,7 @@ async fn paged_with_value(session: &CurrentSession) {
 async fn paged_with_values_list(session: &CurrentSession) {
     let q = "SELECT * FROM test_ks.my_test_table where key in ?";
     let mut pager = session.paged(2);
-    let mut query_pager = pager.query_with_param(
+    let mut query_pager = pager.query_with_params(
         q,
         QueryParamsBuilder::new()
             .with_values(query_values!(vec![100, 101, 102, 103, 104]))
