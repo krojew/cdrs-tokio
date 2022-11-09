@@ -65,7 +65,7 @@ impl<
     where
         Q: ToString,
     {
-        self.query_with_param(
+        self.query_with_params(
             query,
             QueryParamsBuilder::new()
                 .with_consistency(Consistency::One)
@@ -73,7 +73,7 @@ impl<
         )
     }
 
-    pub fn query_with_param<Q>(
+    pub fn query_with_params<Q>(
         &'a mut self,
         query: Q,
         qp: QueryParams,
@@ -82,6 +82,18 @@ impl<
         Q: ToString,
     {
         self.query_with_pager_state_params(query, PagerState::new(), qp)
+    }
+
+    #[deprecated(note = "Please use query_with_params() instead.")]
+    pub fn query_with_param<Q>(
+        &'a mut self,
+        query: Q,
+        qp: QueryParams,
+    ) -> QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
+    where
+        Q: ToString,
+    {
+        self.query_with_params(query, qp)
     }
 
     pub fn exec_with_pager_state(
