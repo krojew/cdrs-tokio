@@ -529,7 +529,6 @@ pub enum ColType {
     Set,
     Udt,
     Tuple,
-    Null,
 }
 
 impl TryFrom<CIntShort> for ColType {
@@ -607,7 +606,6 @@ impl Serialize for ColType {
             ColType::Set => 0x0022,
             ColType::Udt => 0x0030,
             ColType::Tuple => 0x0031,
-            _ => 0x6666,
         } as CIntShort)
             .serialize(cursor, version);
     }
