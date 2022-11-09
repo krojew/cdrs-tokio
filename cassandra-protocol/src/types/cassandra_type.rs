@@ -69,7 +69,6 @@ pub fn wrapper_fn(
         ColType::Set => &wrappers::set,
         ColType::Udt => &wrappers::udt,
         ColType::Tuple => &wrappers::tuple,
-        ColType::Null => &wrappers::null,
     }
 }
 
