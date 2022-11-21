@@ -234,7 +234,7 @@ pub fn decode_udt(bytes: &[u8], l: usize, version: Version) -> Result<Vec<CBytes
             .or_else(|err| match err {
                 error::Error::Io(io_err) => {
                     if io_err.kind() == io::ErrorKind::UnexpectedEof {
-                        Ok(CBytes::new_empty())
+                        Ok(CBytes::new_null())
                     } else {
                         Err(io_err.into())
                     }

@@ -54,7 +54,7 @@ impl Row {
     pub fn is_empty(&self, index: usize) -> bool {
         self.row_content
             .get(index)
-            .map(|data| data.is_empty())
+            .map(|data| data.is_null_or_empty())
             .unwrap_or(false)
     }
 
