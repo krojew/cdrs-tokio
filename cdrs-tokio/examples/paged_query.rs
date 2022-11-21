@@ -196,11 +196,19 @@ async fn paged_with_values_list(session: &CurrentSession) {
     println!("Testing values 100 and 101");
     assert_amount_query_pager!(2);
     assert!(query_pager.has_more());
-    assert!(!query_pager.pager_state().cursor().unwrap().is_empty());
+    assert!(!query_pager
+        .pager_state()
+        .cursor()
+        .unwrap()
+        .is_null_or_empty());
     println!("Testing values 102 and 103");
     assert_amount_query_pager!(2);
     assert!(query_pager.has_more());
-    assert!(!query_pager.pager_state().cursor().unwrap().is_empty());
+    assert!(!query_pager
+        .pager_state()
+        .cursor()
+        .unwrap()
+        .is_null_or_empty());
     println!("Testing value 104");
     assert_amount_query_pager!(1);
     // Now no more rows should be queried

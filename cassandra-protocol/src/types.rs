@@ -283,9 +283,9 @@ impl CBytes {
         CBytes { bytes: Some(bytes) }
     }
 
-    /// Creates Cassandra bytes that represent empty or null value
+    /// Creates Cassandra bytes that represent null value
     #[inline]
-    pub fn new_empty() -> CBytes {
+    pub fn new_null() -> CBytes {
         CBytes { bytes: None }
     }
 
@@ -301,7 +301,7 @@ impl CBytes {
     }
 
     #[inline]
-    pub fn is_empty(&self) -> bool {
+    pub fn is_null_or_empty(&self) -> bool {
         match &self.bytes {
             None => true,
             Some(bytes) => bytes.is_empty(),
