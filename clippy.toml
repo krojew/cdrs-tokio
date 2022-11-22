@@ -1,0 +1,2 @@
+# the main Error enum is a bit above the default limit, but contains very useful data for pattern matching
+large-error-threshold = 256
