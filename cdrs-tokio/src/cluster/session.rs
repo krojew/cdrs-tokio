@@ -106,7 +106,7 @@ fn verify_compression_configuration(
 }
 
 // https://github.com/apache/cassandra/blob/3a950b45c321e051a9744721408760c568c05617/src/java/org/apache/cassandra/db/marshal/CompositeType.java#L39
-fn serialize_routing_value(cursor: &mut Cursor<&mut Vec<u8>>, value: &Value, version: Version) {
+fn serialize_routing_value(cursor: &mut Cursor<&mut Vec<u8>>, value: &Vec<u8>, version: Version) {
     let temp_size: CIntShort = 0;
     temp_size.serialize(cursor, version);
 
@@ -142,7 +142,9 @@ fn serialize_routing_key_with_indexes(
                 .iter()
                 .map(|index| values.get(*index as usize))
                 .fold_options(Cursor::new(&mut buf), |mut cursor, value| {
-                    serialize_routing_value(&mut cursor, value, version);
+                    if let Value::Some(value) = value {
+                        serialize_routing_value(&mut cursor, value, version)
+                    }
                     cursor
                 })
                 .is_some()
@@ -158,13 +160,18 @@ fn serialize_routing_key_with_indexes(
 fn serialize_routing_key(values: &[Value], version: Version) -> Vec<u8> {
     match values.len() {
         0 => vec![],
-        1 => values[0].serialize_to_vec(version),
+        1 => match &values[0] {
+            Value::Some(value) => value.serialize_to_vec(version),
+            _ => vec![],
+        },
         _ => {
             let mut buf = vec![];
             let mut cursor = Cursor::new(&mut buf);
 
             for value in values {
-                serialize_routing_value(&mut cursor, value, version);
+                if let Value::Some(value) = value {
+                    serialize_routing_value(&mut cursor, value, version);
+                }
             }
 
             buf
