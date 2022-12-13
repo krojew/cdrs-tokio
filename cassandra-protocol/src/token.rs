@@ -1,8 +1,8 @@
 use crate::error::Error;
+use bytes::Buf;
 use derive_more::Constructor;
 use std::cmp::min;
 use std::convert::TryFrom;
-use std::convert::TryInto;
 use std::num::Wrapping;
 
 const C1: Wrapping<i64> = Wrapping(0x87c3_7b91_1142_53d5_u64 as i64);
@@ -16,21 +16,15 @@ pub struct Murmur3Token {
 
 impl Murmur3Token {
     // based on buggy Cassandra implementation
-    pub fn generate(routing_key: &[u8]) -> Self {
+    pub fn generate(mut routing_key: &[u8]) -> Self {
         let length = routing_key.len();
 
         let mut h1: Wrapping<i64> = Wrapping(0);
         let mut h2: Wrapping<i64> = Wrapping(0);
 
-        let mut pos = 0;
         while routing_key.len() >= 16 {
-            let mut k1 = Wrapping(i64::from_le_bytes(
-                routing_key[pos..pos + 8].try_into().unwrap(),
-            ));
-            pos += 8;
-            let mut k2 = Wrapping(i64::from_le_bytes(
-                routing_key[pos..pos + 8].try_into().unwrap(),
-            ));
+            let mut k1 = Wrapping(routing_key.get_i64_le());
+            let mut k2 = Wrapping(routing_key.get_i64_le());
 
             k1 *= C1;
             k1 = rotl64(k1, 31);

@@ -1,3 +1,13 @@
+## 7.0.3
+
+### Fixed
+
+* Fixed serialization of routing key with known indexes.
+
+### Changed
+
+* Deprecated `query_with_param()` in `Pager`, in favor of `query_with_params()`.
+
 ## 7.0.2
 
 ### Fixed
