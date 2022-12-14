@@ -38,11 +38,12 @@ impl<
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > ControlConnection<T, CM, LB>
 {
-    pub async fn run(self) {
+    pub async fn run(self, init_complete_sender: tokio::sync::oneshot::Sender<()>) {
         let (event_envelope_sender, event_envelope_receiver) = channel(EVENT_CHANNEL_CAPACITY);
         let (error_sender, mut error_receiver) = channel(1);
 
         Self::process_events(event_envelope_receiver, self.event_sender.clone());
+        let mut init_complete_sender = Some(init_complete_sender);
 
         'listen: loop {
             let current_connection = self
@@ -64,6 +65,9 @@ impl<
                 let result = current_connection
                     .write_envelope(&register_envelope, false)
                     .await;
+                if let Some(sender) = init_complete_sender.take() {
+                    sender.send(()).ok();
+                }
                 match result {
                     Ok(_) => {
                         let error = error_receiver.recv().await;

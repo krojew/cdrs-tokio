@@ -38,6 +38,7 @@ async fn encode_decode_test(version: Version) {
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .with_compression(Compression::Lz4)
         .build()
+        .await
         .unwrap();
 
     session

@@ -34,6 +34,7 @@ async fn create_keyspace() {
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build()
+        .await
         .unwrap();
 
     let drop_query = "DROP KEYSPACE IF EXISTS create_ks_test";
@@ -107,6 +108,7 @@ async fn alter_keyspace() {
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build()
+        .await
         .unwrap();
 
     let drop_query = "DROP KEYSPACE IF EXISTS alter_ks_test";
@@ -171,6 +173,7 @@ async fn use_keyspace() {
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build()
+        .await
         .unwrap();
 
     let create_query = "CREATE KEYSPACE IF NOT EXISTS use_ks_test WITH \
@@ -208,6 +211,7 @@ async fn drop_keyspace() {
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build()
+        .await
         .unwrap();
 
     let create_query = "CREATE KEYSPACE IF NOT EXISTS drop_ks_test WITH \

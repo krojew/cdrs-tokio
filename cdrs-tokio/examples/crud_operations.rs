@@ -32,6 +32,7 @@ async fn main() {
     let mut session: CurrentSession =
         TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), config)
             .build()
+            .await
             .unwrap();
 
     create_keyspace(&mut session).await;

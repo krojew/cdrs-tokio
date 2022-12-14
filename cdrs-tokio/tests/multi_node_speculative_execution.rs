@@ -40,6 +40,7 @@ async fn multi_node_speculative_execution() {
             Duration::from_secs(0),
         )))
         .build()
+        .await
         .unwrap();
 
     let create_keyspace_query = "CREATE KEYSPACE IF NOT EXISTS cdrs_test WITH \

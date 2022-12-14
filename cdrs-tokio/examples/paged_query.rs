@@ -50,7 +50,10 @@ async fn main() {
         .await
         .unwrap();
     let lb = RoundRobinLoadBalancingStrategy::new();
-    let session = TcpSessionBuilder::new(lb, cluster_config).build().unwrap();
+    let session = TcpSessionBuilder::new(lb, cluster_config)
+        .build()
+        .await
+        .unwrap();
 
     create_keyspace(&session).await;
     create_udt(&session).await;
