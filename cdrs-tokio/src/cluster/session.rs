@@ -1,4 +1,5 @@
 use arc_swap::ArcSwapOption;
+use async_trait::async_trait;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
@@ -744,7 +745,7 @@ impl<
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn new(
+    async fn new(
         load_balancing: LB,
         keyspace_holder: Arc<KeyspaceHolder>,
         keyspace_receiver: watch::Receiver<Option<String>>,
@@ -817,7 +818,11 @@ impl<
             version,
         );
 
-        let control_connection_handle = tokio::spawn(control_connection.run());
+        let (init_complete_sender, init_complete_receiver) = tokio::sync::oneshot::channel();
+        let control_connection_handle = tokio::spawn(control_connection.run(init_complete_sender));
+        if init_complete_receiver.await.is_err() {
+            tracing::error!("session control connection died without registering init complete")
+        }
 
         Session {
             load_balancing,
@@ -890,7 +895,8 @@ where
         config.version(),
         config.connection_pool_config(),
         config.beta_protocol(),
-    ))
+    )
+    .await)
 }
 
 struct SessionConfig<
@@ -914,8 +920,8 @@ struct SessionConfig<
 }
 
 impl<
-        T: CdrsTransport,
-        CM: ConnectionManager<T>,
+        T: CdrsTransport + 'static,
+        CM: ConnectionManager<T> + 'static,
         LB: LoadBalancingStrategy<T, CM> + Send + Sync + 'static,
     > SessionConfig<T, CM, LB>
 {
@@ -937,7 +943,7 @@ impl<
         }
     }
 
-    fn into_session(
+    async fn into_session(
         self,
         keyspace_holder: Arc<KeyspaceHolder>,
         keyspace_receiver: watch::Receiver<Option<String>>,
@@ -965,6 +971,7 @@ impl<
             self.connection_pool_config,
             beta_protocol,
         )
+        .await
     }
 }
 
@@ -978,6 +985,7 @@ pub enum SessionBuildError {
 /// Builder for easy `Session` creation. Requires static `LoadBalancingStrategy`, but otherwise, other
 /// configuration parameters can be dynamically set. Use concrete implementers to create specific
 /// sessions.
+#[async_trait]
 pub trait SessionBuilder<
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T>,
@@ -1054,7 +1062,7 @@ pub trait SessionBuilder<
     fn with_beta_protocol(self, beta_protocol: bool) -> Self;
 
     /// Builds the resulting session.
-    fn build(self) -> Result<Session<T, CM, LB>, SessionBuildError>;
+    async fn build(self) -> Result<Session<T, CM, LB>, SessionBuildError>;
 }
 
 /// Builder for non-TLS sessions.
@@ -1080,6 +1088,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
     }
 }
 
+#[async_trait]
 impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync + 'static>
     SessionBuilder<TransportTcp, TcpConnectionManager, LB> for TcpSessionBuilder<LB>
 {
@@ -1155,9 +1164,11 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         self
     }
 
-    fn build(self) -> Result<Session<TransportTcp, TcpConnectionManager, LB>, SessionBuildError> {
-        verify_compression_configuration(self.node_config.version, self.config.compression).map(
-            |()| {
+    async fn build(
+        self,
+    ) -> Result<Session<TransportTcp, TcpConnectionManager, LB>, SessionBuildError> {
+        match verify_compression_configuration(self.node_config.version, self.config.compression) {
+            Ok(()) => {
                 let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
                 let connection_manager = TcpConnectionManager::new(
                     self.node_config.authenticator_provider,
@@ -1170,16 +1181,20 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
                     self.node_config.version,
                 );
 
-                self.config.into_session(
-                    keyspace_holder,
-                    keyspace_receiver,
-                    self.node_config.contact_points,
-                    connection_manager,
-                    self.node_config.version,
-                    self.node_config.beta_protocol,
-                )
-            },
-        )
+                Ok(self
+                    .config
+                    .into_session(
+                        keyspace_holder,
+                        keyspace_receiver,
+                        self.node_config.contact_points,
+                        connection_manager,
+                        self.node_config.version,
+                        self.node_config.beta_protocol,
+                    )
+                    .await)
+            }
+            Err(err) => Err(err),
+        }
     }
 }
 
@@ -1209,6 +1224,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
 }
 
 #[cfg(feature = "rust-tls")]
+#[async_trait]
 impl<
         LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync + 'static,
     > SessionBuilder<TransportRustls, RustlsConnectionManager, LB> for RustlsSessionBuilder<LB>
@@ -1285,11 +1301,11 @@ impl<
         self
     }
 
-    fn build(
+    async fn build(
         self,
     ) -> Result<Session<TransportRustls, RustlsConnectionManager, LB>, SessionBuildError> {
-        verify_compression_configuration(self.node_config.version, self.config.compression).map(
-            |()| {
+        match verify_compression_configuration(self.node_config.version, self.config.compression) {
+            Ok(()) => {
                 let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
                 let connection_manager = RustlsConnectionManager::new(
                     self.node_config.dns_name,
@@ -1304,16 +1320,20 @@ impl<
                     self.node_config.version,
                 );
 
-                self.config.into_session(
-                    keyspace_holder,
-                    keyspace_receiver,
-                    self.node_config.contact_points,
-                    connection_manager,
-                    self.node_config.version,
-                    self.node_config.beta_protocol,
-                )
-            },
-        )
+                Ok(self
+                    .config
+                    .into_session(
+                        keyspace_holder,
+                        keyspace_receiver,
+                        self.node_config.contact_points,
+                        connection_manager,
+                        self.node_config.version,
+                        self.node_config.beta_protocol,
+                    )
+                    .await)
+            }
+            Err(err) => Err(err),
+        }
     }
 }
 

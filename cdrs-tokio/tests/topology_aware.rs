@@ -43,6 +43,7 @@ async fn query_topology_aware() {
         "datacenter1".into(),
     )))
     .build()
+    .await
     .unwrap();
 
     let create_keyspace_query = "CREATE KEYSPACE IF NOT EXISTS cdrs_test WITH \
