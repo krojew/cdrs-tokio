@@ -1,5 +1,4 @@
 use arc_swap::ArcSwapOption;
-use async_trait::async_trait;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
@@ -43,6 +42,7 @@ use crate::cluster::{ClusterMetadata, ClusterMetadataManager, SessionContext};
 use crate::cluster::{GenericClusterConfig, KeyspaceHolder};
 use crate::cluster::{NodeTcpConfig, SessionPager};
 use crate::frame_encoding::{FrameEncodingFactory, ProtocolFrameEncodingFactory};
+use crate::future::BoxFuture;
 use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
 use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::load_balancing::{
@@ -759,7 +759,7 @@ impl<
         version: Version,
         connection_pool_config: ConnectionPoolConfig,
         beta_protocol: bool,
-    ) -> Self {
+    ) -> Result<Self, SessionBuildError> {
         let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
             connection_pool_config,
             version,
@@ -821,10 +821,10 @@ impl<
         let (init_complete_sender, init_complete_receiver) = tokio::sync::oneshot::channel();
         let control_connection_handle = tokio::spawn(control_connection.run(init_complete_sender));
         if init_complete_receiver.await.is_err() {
-            tracing::error!("session control connection died without registering init complete")
+            return Err(SessionBuildError::SessionInitFailed);
         }
 
-        Session {
+        Ok(Session {
             load_balancing,
             keyspace_holder,
             retry_policy,
@@ -835,7 +835,7 @@ impl<
             _transport: Default::default(),
             _connection_manager: Default::default(),
             version,
-        }
+        })
     }
 }
 
@@ -881,7 +881,7 @@ where
 {
     let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
     let connection_manager = config.create_manager(keyspace_holder.clone()).await?;
-    Ok(Session::new(
+    Session::new(
         load_balancing,
         keyspace_holder,
         keyspace_receiver,
@@ -896,7 +896,8 @@ where
         config.connection_pool_config(),
         config.beta_protocol(),
     )
-    .await)
+    .await
+    .map_err(|e| error::Error::General(e.to_string()))
 }
 
 struct SessionConfig<
@@ -951,7 +952,7 @@ impl<
         connection_manager: CM,
         version: Version,
         beta_protocol: bool,
-    ) -> Session<T, CM, LB> {
+    ) -> Result<Session<T, CM, LB>, SessionBuildError> {
         if let Some(keyspace) = self.keyspace {
             keyspace_holder.update_current_keyspace_without_notification(keyspace);
         }
@@ -980,12 +981,13 @@ impl<
 pub enum SessionBuildError {
     #[error("Given compression type is not supported for selected protocol!")]
     CompressionTypeNotSupported,
+    #[error("Session control connection died before completing initialization")]
+    SessionInitFailed,
 }
 
 /// Builder for easy `Session` creation. Requires static `LoadBalancingStrategy`, but otherwise, other
 /// configuration parameters can be dynamically set. Use concrete implementers to create specific
 /// sessions.
-#[async_trait]
 pub trait SessionBuilder<
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T>,
@@ -1062,7 +1064,7 @@ pub trait SessionBuilder<
     fn with_beta_protocol(self, beta_protocol: bool) -> Self;
 
     /// Builds the resulting session.
-    async fn build(self) -> Result<Session<T, CM, LB>, SessionBuildError>;
+    fn build(self) -> BoxFuture<'static, Result<Session<T, CM, LB>, SessionBuildError>>;
 }
 
 /// Builder for non-TLS sessions.
@@ -1088,7 +1090,6 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
     }
 }
 
-#[async_trait]
 impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync + 'static>
     SessionBuilder<TransportTcp, TcpConnectionManager, LB> for TcpSessionBuilder<LB>
 {
@@ -1164,37 +1165,45 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         self
     }
 
-    async fn build(
+    fn build(
         self,
-    ) -> Result<Session<TransportTcp, TcpConnectionManager, LB>, SessionBuildError> {
-        match verify_compression_configuration(self.node_config.version, self.config.compression) {
-            Ok(()) => {
-                let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
-                let connection_manager = TcpConnectionManager::new(
-                    self.node_config.authenticator_provider,
-                    keyspace_holder.clone(),
-                    self.config.reconnection_policy.clone(),
-                    self.frame_encoder_factory,
-                    self.config.compression,
-                    self.config.transport_buffer_size,
-                    self.config.tcp_nodelay,
-                    self.node_config.version,
-                );
-
-                Ok(self
-                    .config
-                    .into_session(
-                        keyspace_holder,
-                        keyspace_receiver,
-                        self.node_config.contact_points,
-                        connection_manager,
+    ) -> BoxFuture<
+        'static,
+        Result<Session<TransportTcp, TcpConnectionManager, LB>, SessionBuildError>,
+    > {
+        async move {
+            match verify_compression_configuration(
+                self.node_config.version,
+                self.config.compression,
+            ) {
+                Ok(()) => {
+                    let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
+                    let connection_manager = TcpConnectionManager::new(
+                        self.node_config.authenticator_provider,
+                        keyspace_holder.clone(),
+                        self.config.reconnection_policy.clone(),
+                        self.frame_encoder_factory,
+                        self.config.compression,
+                        self.config.transport_buffer_size,
+                        self.config.tcp_nodelay,
                         self.node_config.version,
-                        self.node_config.beta_protocol,
-                    )
-                    .await)
+                    );
+
+                    self.config
+                        .into_session(
+                            keyspace_holder,
+                            keyspace_receiver,
+                            self.node_config.contact_points,
+                            connection_manager,
+                            self.node_config.version,
+                            self.node_config.beta_protocol,
+                        )
+                        .await
+                }
+                Err(err) => Err(err),
             }
-            Err(err) => Err(err),
         }
+        .boxed()
     }
 }
 
@@ -1224,7 +1233,6 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
 }
 
 #[cfg(feature = "rust-tls")]
-#[async_trait]
 impl<
         LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send + Sync + 'static,
     > SessionBuilder<TransportRustls, RustlsConnectionManager, LB> for RustlsSessionBuilder<LB>
@@ -1301,39 +1309,47 @@ impl<
         self
     }
 
-    async fn build(
+    fn build(
         self,
-    ) -> Result<Session<TransportRustls, RustlsConnectionManager, LB>, SessionBuildError> {
-        match verify_compression_configuration(self.node_config.version, self.config.compression) {
-            Ok(()) => {
-                let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
-                let connection_manager = RustlsConnectionManager::new(
-                    self.node_config.dns_name,
-                    self.node_config.authenticator_provider,
-                    self.node_config.config,
-                    keyspace_holder.clone(),
-                    self.config.reconnection_policy.clone(),
-                    self.frame_encoder_factory,
-                    self.config.compression,
-                    self.config.transport_buffer_size,
-                    self.config.tcp_nodelay,
-                    self.node_config.version,
-                );
-
-                Ok(self
-                    .config
-                    .into_session(
-                        keyspace_holder,
-                        keyspace_receiver,
-                        self.node_config.contact_points,
-                        connection_manager,
+    ) -> BoxFuture<
+        'static,
+        Result<Session<TransportRustls, RustlsConnectionManager, LB>, SessionBuildError>,
+    > {
+        async move {
+            match verify_compression_configuration(
+                self.node_config.version,
+                self.config.compression,
+            ) {
+                Ok(()) => {
+                    let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
+                    let connection_manager = RustlsConnectionManager::new(
+                        self.node_config.dns_name,
+                        self.node_config.authenticator_provider,
+                        self.node_config.config,
+                        keyspace_holder.clone(),
+                        self.config.reconnection_policy.clone(),
+                        self.frame_encoder_factory,
+                        self.config.compression,
+                        self.config.transport_buffer_size,
+                        self.config.tcp_nodelay,
                         self.node_config.version,
-                        self.node_config.beta_protocol,
-                    )
-                    .await)
+                    );
+
+                    self.config
+                        .into_session(
+                            keyspace_holder,
+                            keyspace_receiver,
+                            self.node_config.contact_points,
+                            connection_manager,
+                            self.node_config.version,
+                            self.node_config.beta_protocol,
+                        )
+                        .await
+                }
+                Err(err) => Err(err),
             }
-            Err(err) => Err(err),
         }
+        .boxed()
     }
 }
 
