@@ -2,7 +2,7 @@ use proc_macro2::{Literal, TokenStream};
 use quote::*;
 use syn::{
     parse_str, Data, DataStruct, DeriveInput, Field, Fields, GenericArgument, Ident, Path,
-    PathArguments, PathSegment, Type, TypePath,
+    PathArguments, PathSegment, Type, TypePath, TypeReference,
 };
 
 pub fn get_struct_fields(ast: &DeriveInput) -> Vec<TokenStream> {
@@ -187,6 +187,7 @@ fn get_cdrs_type(ty: &Type, name: &str) -> Type {
 
 fn get_ident<'a>(ty: &'a Type, name: &str) -> &'a Ident {
     match ty {
+        Type::Reference(TypeReference { elem, .. }) => get_ident(elem, name),
         Type::Path(TypePath {
             path: Path { segments, .. },
             ..
