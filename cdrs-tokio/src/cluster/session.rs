@@ -923,9 +923,9 @@ impl<
             transport_buffer_size: DEFAULT_TRANSPORT_BUFFER_SIZE,
             tcp_nodelay: true,
             load_balancing,
-            retry_policy: Box::new(DefaultRetryPolicy::default()),
+            retry_policy: Box::<DefaultRetryPolicy>::default(),
             reconnection_policy: Arc::new(ExponentialReconnectionPolicy::default()),
-            node_distance_evaluator: Box::new(AllLocalNodeDistanceEvaluator::default()),
+            node_distance_evaluator: Box::<AllLocalNodeDistanceEvaluator>::default(),
             speculative_execution_policy: None,
             event_channel_capacity: DEFAULT_EVENT_CHANNEL_CAPACITY,
             connection_pool_config: Default::default(),
@@ -1073,7 +1073,7 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
         TcpSessionBuilder {
             config: SessionConfig::new(load_balancing),
             node_config,
-            frame_encoder_factory: Box::new(ProtocolFrameEncodingFactory::default()),
+            frame_encoder_factory: Box::<ProtocolFrameEncodingFactory>::default(),
         }
     }
 }
@@ -1201,7 +1201,7 @@ impl<LB: LoadBalancingStrategy<TransportRustls, RustlsConnectionManager> + Send 
         RustlsSessionBuilder {
             config: SessionConfig::new(load_balancing),
             node_config,
-            frame_encoder_factory: Box::new(ProtocolFrameEncodingFactory::default()),
+            frame_encoder_factory: Box::<ProtocolFrameEncodingFactory>::default(),
         }
     }
 }

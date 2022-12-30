@@ -36,7 +36,7 @@ pub struct FallthroughRetryPolicy;
 
 impl RetryPolicy for FallthroughRetryPolicy {
     fn new_session(&self) -> Box<dyn RetrySession + Send + Sync> {
-        Box::new(FallthroughRetrySession::default())
+        Box::<FallthroughRetrySession>::default()
     }
 }
 
@@ -56,7 +56,7 @@ pub struct DefaultRetryPolicy;
 
 impl RetryPolicy for DefaultRetryPolicy {
     fn new_session(&self) -> Box<dyn RetrySession + Send + Sync> {
-        Box::new(DefaultRetrySession::default())
+        Box::<DefaultRetrySession>::default()
     }
 }
 

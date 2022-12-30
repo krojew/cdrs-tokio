@@ -36,12 +36,12 @@ impl FrameEncodingFactory for ProtocolFrameEncodingFactory {
     ) -> Box<dyn FrameEncoder + Send + Sync> {
         if version >= Version::V5 {
             match compression {
-                Compression::Lz4 => Box::new(Lz4FrameEncoder::default()),
+                Compression::Lz4 => Box::<Lz4FrameEncoder>::default(),
                 // >= v5 supports only lz4 => fall back to uncompressed
-                _ => Box::new(UncompressedFrameEncoder::default()),
+                _ => Box::<UncompressedFrameEncoder>::default(),
             }
         } else {
-            Box::new(LegacyFrameEncoder::default())
+            Box::<LegacyFrameEncoder>::default()
         }
     }
 
@@ -52,12 +52,12 @@ impl FrameEncodingFactory for ProtocolFrameEncodingFactory {
     ) -> Box<dyn FrameDecoder + Send + Sync> {
         if version >= Version::V5 {
             match compression {
-                Compression::Lz4 => Box::new(Lz4FrameDecoder::default()),
+                Compression::Lz4 => Box::<Lz4FrameDecoder>::default(),
                 // >= v5 supports only lz4 => fall back to uncompressed
-                _ => Box::new(UncompressedFrameDecoder::default()),
+                _ => Box::<UncompressedFrameDecoder>::default(),
             }
         } else {
-            Box::new(LegacyFrameDecoder::default())
+            Box::<LegacyFrameDecoder>::default()
         }
     }
 }
