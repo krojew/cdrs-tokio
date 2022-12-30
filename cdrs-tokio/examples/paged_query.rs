@@ -98,7 +98,7 @@ async fn fill_table(session: &CurrentSession) {
     let insert_struct_cql = "INSERT INTO test_ks.my_test_table (key) VALUES (?)";
 
     for k in 100..110 {
-        let row = RowStruct { key: k as i32 };
+        let row = RowStruct { key: k };
 
         session
             .query_with_values(insert_struct_cql, row.into_query_values())

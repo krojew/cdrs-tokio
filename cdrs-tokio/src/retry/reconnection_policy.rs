@@ -87,11 +87,7 @@ impl ReconnectionPolicy for ExponentialReconnectionPolicy {
 impl Default for ExponentialReconnectionPolicy {
     fn default() -> Self {
         let base_delay = DEFAULT_BASE_DELAY.as_millis() as i64;
-        let ceil = if (base_delay & (base_delay - 1)) == 0 {
-            0
-        } else {
-            1
-        };
+        let ceil = u32::from((base_delay & (base_delay - 1)) != 0);
 
         ExponentialReconnectionPolicy::new(
             DEFAULT_BASE_DELAY,
