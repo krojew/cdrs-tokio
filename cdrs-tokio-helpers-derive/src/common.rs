@@ -33,7 +33,7 @@ fn extract_type(arg: &GenericArgument) -> Type {
     }
 }
 
-pub fn get_map_params_string(ty: &Type) -> (Type, Type) {
+pub fn get_map_params_string(ty: &Type, name: &str) -> (Type, Type) {
     match ty {
         Type::Path(TypePath {
             path: Path { segments, .. },
@@ -58,7 +58,7 @@ pub fn get_map_params_string(ty: &Type) -> (Type, Type) {
             ),
             _ => panic!("Cannot infer field type"),
         },
-        _ => panic!("Cannot infer field type {}", get_ident_string(ty)),
+        _ => panic!("Cannot infer field type {}", get_ident_string(ty, name)),
     }
 }
 
@@ -76,7 +76,7 @@ fn convert_field_into_rust(field: Field) -> TokenStream {
     string_name.append(Literal::string(s.trim()));
     let arguments = get_arguments(string_name);
 
-    into_rust_with_args(&field.ty, arguments)
+    into_rust_with_args(&field.ty, arguments, &s)
 }
 
 fn get_arguments(name: TokenStream) -> TokenStream {
@@ -85,9 +85,9 @@ fn get_arguments(name: TokenStream) -> TokenStream {
     }
 }
 
-fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream {
-    let field_type_ident = get_cdrs_type(field_type);
-    match get_ident_string(&field_type_ident).as_str() {
+fn into_rust_with_args(field_type: &Type, arguments: TokenStream, name: &str) -> TokenStream {
+    let field_type_ident = get_cdrs_type(field_type, name);
+    match get_ident_string(&field_type_ident, name).as_str() {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "Decimal"
         | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime" => {
             quote! {
@@ -95,7 +95,7 @@ fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream
             }
         }
         "List" => {
-            let list_as_rust = as_rust(field_type, quote! {list});
+            let list_as_rust = as_rust(field_type, quote! {list}, name);
 
             quote! {
               match cdrs_tokio::types::list::List::from_cdrs_r(#arguments) {
@@ -107,7 +107,7 @@ fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream
             }
         }
         "Map" => {
-            let map_as_rust = as_rust(field_type, quote! {map});
+            let map_as_rust = as_rust(field_type, quote! {map}, name);
             quote! {
               match cdrs_tokio::types::map::Map::from_cdrs_r(#arguments) {
                 Ok(map) => {
@@ -118,11 +118,11 @@ fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream
             }
         }
         "Option" => {
-            let opt_type = get_ident_params_string(field_type);
-            let opt_type_rustified = get_cdrs_type(&opt_type);
-            let opt_value_as_rust = as_rust(&opt_type, quote! {opt_value});
+            let opt_type = get_ident_params_string(field_type, name);
+            let opt_type_rustified = get_cdrs_type(&opt_type, name);
+            let opt_value_as_rust = as_rust(&opt_type, quote! {opt_value}, name);
 
-            if is_non_zero_primitive(&opt_type_rustified) {
+            if is_non_zero_primitive(&opt_type_rustified, name) {
                 quote! {
                   #opt_type_rustified::from_cdrs_by_name(#arguments)?
                 }
@@ -148,15 +148,15 @@ fn into_rust_with_args(field_type: &Type, arguments: TokenStream) -> TokenStream
     }
 }
 
-fn is_non_zero_primitive(ty: &Type) -> bool {
+fn is_non_zero_primitive(ty: &Type, name: &str) -> bool {
     matches!(
-        get_ident_string(ty).as_str(),
+        get_ident_string(ty, name).as_str(),
         "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64"
     )
 }
 
-fn get_cdrs_type(ty: &Type) -> Type {
-    let type_string = get_ident_string(ty);
+fn get_cdrs_type(ty: &Type, name: &str) -> Type {
+    let type_string = get_ident_string(ty, name);
     match type_string.as_str() {
         "Blob" => parse_str("Blob").unwrap(),
         "String" => parse_str("String").unwrap(),
@@ -185,29 +185,29 @@ fn get_cdrs_type(ty: &Type) -> Type {
     }
 }
 
-fn get_ident(ty: &Type) -> &Ident {
+fn get_ident<'a>(ty: &'a Type, name: &str) -> &'a Ident {
     match ty {
         Type::Path(TypePath {
             path: Path { segments, .. },
             ..
         }) => match segments.last() {
             Some(&PathSegment { ref ident, .. }) => ident,
-            _ => panic!("Cannot infer field type"),
+            _ => panic!("Cannot infer field type: {}", name),
         },
-        _ => panic!("Cannot infer field type {}", get_ident_string(ty)),
+        _ => panic!("Cannot infer field type: {}", name),
     }
 }
 
 // returns single value decoded and optionally iterative mapping that uses decoded value
-fn as_rust(ty: &Type, val: TokenStream) -> TokenStream {
-    let cdrs_type = get_cdrs_type(ty);
-    match get_ident_string(&cdrs_type).as_str() {
+fn as_rust(ty: &Type, val: TokenStream, name: &str) -> TokenStream {
+    let cdrs_type = get_cdrs_type(ty, name);
+    match get_ident_string(&cdrs_type, name).as_str() {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "IpAddr"
         | "Uuid" | "Timespec" | "Decimal" | "PrimitiveDateTime" => val,
         "List" => {
-            let vec_type = get_ident_params_string(ty);
-            let inter_rust_type = get_cdrs_type(&vec_type);
-            let decoded_item = as_rust(&vec_type, quote! {item});
+            let vec_type = get_ident_params_string(ty, name);
+            let inter_rust_type = get_cdrs_type(&vec_type, name);
+            let decoded_item = as_rust(&vec_type, quote! {item}, name);
             quote! {
               {
                 let inner: Vec<#inter_rust_type> = #val.as_r_type()?;
@@ -220,9 +220,9 @@ fn as_rust(ty: &Type, val: TokenStream) -> TokenStream {
             }
         }
         "Map" => {
-            let (map_key_type, map_value_type) = get_map_params_string(ty);
-            let inter_rust_type = get_cdrs_type(&map_value_type);
-            let decoded_item = as_rust(&map_value_type, quote! {val});
+            let (map_key_type, map_value_type) = get_map_params_string(ty, name);
+            let inter_rust_type = get_cdrs_type(&map_value_type, name);
+            let decoded_item = as_rust(&map_value_type, quote! {val}, name);
             quote! {
               {
                 let inner: std::collections::HashMap<#map_key_type, #inter_rust_type> = #val.as_r_type()?;
@@ -235,8 +235,8 @@ fn as_rust(ty: &Type, val: TokenStream) -> TokenStream {
             }
         }
         "Option" => {
-            let opt_type = get_ident_params_string(ty);
-            as_rust(&opt_type, val)
+            let opt_type = get_ident_params_string(ty, name);
+            as_rust(&opt_type, val, name)
         }
         _ => {
             quote! {
@@ -246,11 +246,11 @@ fn as_rust(ty: &Type, val: TokenStream) -> TokenStream {
     }
 }
 
-pub fn get_ident_string(ty: &Type) -> String {
-    get_ident(ty).to_string()
+pub fn get_ident_string(ty: &Type, name: &str) -> String {
+    get_ident(ty, name).to_string()
 }
 
-pub fn get_ident_params_string(ty: &Type) -> Type {
+pub fn get_ident_params_string(ty: &Type, name: &str) -> Type {
     match ty {
         Type::Path(TypePath {
             path: Path { segments, .. },
@@ -265,6 +265,6 @@ pub fn get_ident_params_string(ty: &Type) -> Type {
             },
             _ => panic!("Cannot infer field type"),
         },
-        _ => panic!("Cannot infer field type {}", get_ident_string(ty)),
+        _ => panic!("Cannot infer field type {}", get_ident_string(ty, name)),
     }
 }
