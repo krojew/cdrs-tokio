@@ -18,6 +18,13 @@ type CurrentSession = Session<
     RoundRobinLoadBalancingStrategy<TransportTcp, TcpConnectionManager>,
 >;
 
+#[derive(IntoCdrsValue)]
+#[allow(dead_code)]
+// this caused stack overflow in rustc
+pub struct TestStaticStrReference {
+    pub event_name: &'static str,
+}
+
 #[tokio::main]
 async fn main() {
     let user = "user";
