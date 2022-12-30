@@ -17,6 +17,8 @@ use cdrs_tokio::types::value::{Bytes, Value};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::{AsRust, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio_helpers_derive::IntoCdrsValue;
+#[cfg(feature = "e2e-tests")]
 use common::*;
 #[cfg(feature = "e2e-tests")]
 use maplit::hashmap;
@@ -26,6 +28,14 @@ use std::collections::HashMap;
 use std::io::Cursor;
 #[cfg(feature = "e2e-tests")]
 use time::PrimitiveDateTime;
+
+#[cfg(feature = "e2e-tests")]
+#[derive(IntoCdrsValue)]
+#[allow(dead_code)]
+// this caused stack overflow in rustc
+pub struct TestStaticStrReference {
+    pub event_name: &'static str,
+}
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
