@@ -48,7 +48,7 @@ pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send
     fn create_manager(&self, keyspace_holder: Arc<KeyspaceHolder>) -> BoxFuture<error::Result<CM>>;
 
     /// Returns desired event channel capacity. Take a look at
-    /// [`Session`](self::session::Session) builders for more info.
+    /// [`Session`](session::Session) builders for more info.
     fn event_channel_capacity(&self) -> usize;
 
     /// Cassandra protocol version to use.

@@ -14,7 +14,7 @@ use derive_more::Constructor;
 use std::time::Duration;
 
 /// Current speculative execution context.
-#[derive(Constructor)]
+#[derive(Constructor, Debug)]
 pub struct Context {
     pub running_executions: usize,
 }

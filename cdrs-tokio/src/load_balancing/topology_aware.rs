@@ -4,6 +4,7 @@ use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
 use crate::transport::CdrsTransport;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::token::Murmur3Token;
+use derivative::Derivative;
 use fxhash::{FxHashMap, FxHashSet};
 use itertools::Itertools;
 use rand::prelude::*;
@@ -25,11 +26,15 @@ use std::sync::Arc;
 ///
 /// Note: if a referenced keyspace doesn't use `NetworkTopologyStrategy`, replica nodes will be
 /// chosen ignoring distance information.
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct TopologyAwareLoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
     max_nodes_per_remote_dc: Option<usize>,
     allow_dc_failover_for_local_cl: bool,
     prev_idx: AtomicUsize,
+    #[derivative(Debug = "ignore")]
     _transport: PhantomData<T>,
+    #[derivative(Debug = "ignore")]
     _connection_manager: PhantomData<CM>,
 }
 

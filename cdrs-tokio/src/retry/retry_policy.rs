@@ -31,7 +31,7 @@ pub trait RetryPolicy {
 }
 
 /// Forwards all errors directly to the user, never retries
-#[derive(Default)]
+#[derive(Default, Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FallthroughRetryPolicy;
 
 impl RetryPolicy for FallthroughRetryPolicy {
@@ -40,7 +40,7 @@ impl RetryPolicy for FallthroughRetryPolicy {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FallthroughRetrySession;
 
 impl RetrySession for FallthroughRetrySession {
@@ -51,7 +51,7 @@ impl RetrySession for FallthroughRetrySession {
 
 /// Default retry policy - retries when there is a high chance that a retry might help.  
 /// Behaviour based on [DataStax Java Driver](https://docs.datastax.com/en/developer/java-driver/4.10/manual/core/retries/)
-#[derive(Default)]
+#[derive(Default, Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct DefaultRetryPolicy;
 
 impl RetryPolicy for DefaultRetryPolicy {
@@ -60,7 +60,7 @@ impl RetryPolicy for DefaultRetryPolicy {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct DefaultRetrySession {
     was_unavailable_retry: bool,
     was_read_timeout_retry: bool,
