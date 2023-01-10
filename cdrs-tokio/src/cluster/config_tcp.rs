@@ -1,23 +1,29 @@
 use cassandra_protocol::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider};
 use cassandra_protocol::error::Result;
 use cassandra_protocol::frame::Version;
+use derivative::Derivative;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::cluster::NodeAddress;
 
 /// Single node TCP connection config.
-#[derive(Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct NodeTcpConfig {
     pub contact_points: Vec<SocketAddr>,
+    #[derivative(Debug = "ignore")]
     pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub version: Version,
     pub beta_protocol: bool,
 }
 
 /// Builder structure that helps to configure TCP connection for node.
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct NodeTcpConfigBuilder {
     addrs: Vec<NodeAddress>,
+    #[derivative(Debug = "ignore")]
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     version: Version,
     beta_protocol: bool,

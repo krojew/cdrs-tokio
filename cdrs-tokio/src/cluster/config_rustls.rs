@@ -1,3 +1,4 @@
+use derivative::Derivative;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -8,10 +9,12 @@ use cassandra_protocol::frame::Version;
 use rustls::ServerName;
 
 /// Single node TLS connection config.
-#[derive(Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct NodeRustlsConfig {
     pub contact_points: Vec<SocketAddr>,
     pub dns_name: ServerName,
+    #[derivative(Debug = "ignore")]
     pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub config: Arc<rustls::ClientConfig>,
     pub version: Version,
@@ -19,9 +22,12 @@ pub struct NodeRustlsConfig {
 }
 
 /// Builder structure that helps to configure TLS connection for node.
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct NodeRustlsConfigBuilder {
     addrs: Vec<NodeAddress>,
     dns_name: ServerName,
+    #[derivative(Debug = "ignore")]
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<rustls::ClientConfig>,
     version: Version,

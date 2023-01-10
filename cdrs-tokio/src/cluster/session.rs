@@ -10,6 +10,7 @@ use cassandra_protocol::query::{PreparedQuery, Query, QueryBatch, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
 use cassandra_protocol::types::{CIntShort, SHORT_LEN};
+use derivative::Derivative;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use itertools::Itertools;
@@ -181,19 +182,27 @@ fn serialize_routing_key(values: &[Value], version: Version) -> Vec<u8> {
 
 /// CDRS session that holds a pool of connections to nodes and provides an interface for
 /// interacting with the cluster.
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Session<
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T> + 'static,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
 > {
+    #[derivative(Debug = "ignore")]
     load_balancing: Arc<InitializingWrapperLoadBalancingStrategy<T, CM, LB>>,
     keyspace_holder: Arc<KeyspaceHolder>,
+    #[derivative(Debug = "ignore")]
     retry_policy: Box<dyn RetryPolicy + Send + Sync>,
+    #[derivative(Debug = "ignore")]
     speculative_execution_policy: Option<Box<dyn SpeculativeExecutionPolicy + Send + Sync>>,
     control_connection_handle: JoinHandle<()>,
     event_sender: Sender<ServerEvent>,
+    #[derivative(Debug = "ignore")]
     cluster_metadata_manager: Arc<ClusterMetadataManager<T, CM>>,
+    #[derivative(Debug = "ignore")]
     _transport: PhantomData<T>,
+    #[derivative(Debug = "ignore")]
     _connection_manager: PhantomData<CM>,
     version: Version,
 }

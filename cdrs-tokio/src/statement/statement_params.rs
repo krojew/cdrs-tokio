@@ -2,12 +2,14 @@ use crate::retry::RetryPolicy;
 use cassandra_protocol::query::QueryParams;
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
+use derivative::Derivative;
 use std::sync::Arc;
 
 use crate::speculative_execution::SpeculativeExecutionPolicy;
 
 /// Parameters of Query for query operation.
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Derivative)]
+#[derivative(Debug)]
 pub struct StatementParams {
     /// Protocol-level parameters.
     pub query_params: QueryParams,
@@ -29,8 +31,10 @@ pub struct StatementParams {
     /// Should warnings be enabled.
     pub warnings: bool,
     /// Custom statement speculative execution policy.
+    #[derivative(Debug = "ignore")]
     pub speculative_execution_policy: Option<Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
     /// Custom statement retry policy.
+    #[derivative(Debug = "ignore")]
     pub retry_policy: Option<Arc<dyn RetryPolicy + Send + Sync>>,
     /// Enable beta protocol features. Server will respond with ERROR if protocol version is marked
     /// as beta on server and client does not provide this flag.
