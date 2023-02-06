@@ -314,6 +314,7 @@ impl Envelope {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum CheckEnvelopeSizeError {
     #[error("Not enough bytes!")]
     NotEnoughBytes,
@@ -324,6 +325,7 @@ pub enum CheckEnvelopeSizeError {
 }
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum ParseEnvelopeError {
     /// There are not enough bytes to parse a single envelope, [`Envelope::from_buffer`] should be recalled when it is possible that there are more bytes.
     #[error("Not enough bytes!")]
@@ -343,6 +345,7 @@ pub enum ParseEnvelopeError {
 
 /// Protocol version.
 #[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash, Display)]
+#[non_exhaustive]
 pub enum Version {
     V3,
     V4,
@@ -428,6 +431,7 @@ impl Flags {
 }
 
 #[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash, Display)]
+#[non_exhaustive]
 pub enum Opcode {
     Error,
     Startup,

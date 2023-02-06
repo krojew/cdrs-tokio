@@ -43,6 +43,7 @@ impl FromCursor for ErrorBody {
 /// Protocol-dependent failure information. V5 contains a map of endpoint->code entries, while
 /// previous versions contain only error count.
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[non_exhaustive]
 pub enum FailureInfo {
     /// Represents the number of nodes that experience a failure while executing the request.
     NumFailures(CInt),

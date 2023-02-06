@@ -19,6 +19,7 @@ pub type Result<T> = result::Result<T, Error>;
 /// can be raised by CDRS driver. `Server` error is an error which are ones returned by
 /// a Server via result error frames.
 #[derive(Debug, ThisError)]
+#[non_exhaustive]
 pub enum Error {
     /// Internal IO error.
     #[error("IO error: {0}")]
