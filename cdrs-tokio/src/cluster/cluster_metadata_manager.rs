@@ -371,6 +371,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             ServerEvent::TopologyChange(event) => self.process_topology_event(event).await,
             ServerEvent::StatusChange(event) => self.process_status_event(event).await,
             ServerEvent::SchemaChange(event) => self.process_schema_event(event).await,
+            _ => warn!(?event, "Unrecognized event."),
         }
     }
 
@@ -383,6 +384,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 SchemaChangeType::Dropped => {
                     self.remove_keyspace(keyspace);
                 }
+                _ => warn!(?event, "Unrecognized schema event."),
             }
         }
     }
@@ -414,6 +416,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     );
                 }
             }
+            _ => warn!(?event, "Unrecognized topology change type."),
         }
     }
 
@@ -453,6 +456,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     debug!(broadcast_rpc_address = %event.addr, "Unknown node down.");
                 }
             }
+            _ => warn!(?event, "Unrecognized status event."),
         }
     }
 

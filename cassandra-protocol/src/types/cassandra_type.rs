@@ -9,6 +9,7 @@ use crate::frame::Version;
 use crate::types::CBytes;
 
 #[derive(Debug, PartialEq, Clone)]
+#[non_exhaustive]
 pub enum CassandraType {
     Ascii(String),
     Bigint(i64),

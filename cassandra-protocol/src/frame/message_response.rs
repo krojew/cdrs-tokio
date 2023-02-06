@@ -14,6 +14,7 @@ use crate::types::rows::Row;
 use crate::{error, Error};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[non_exhaustive]
 pub enum ResponseBody {
     Error(ErrorBody),
     Ready,

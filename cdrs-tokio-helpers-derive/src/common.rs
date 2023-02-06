@@ -191,7 +191,7 @@ fn get_ident(ty: &Type) -> &Ident {
             path: Path { segments, .. },
             ..
         }) => match segments.last() {
-            Some(&PathSegment { ref ident, .. }) => ident,
+            Some(PathSegment { ident, .. }) => ident,
             _ => panic!("Cannot infer field type"),
         },
         _ => panic!("Cannot infer field type {}", get_ident_string(ty)),
