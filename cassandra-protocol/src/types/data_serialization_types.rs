@@ -122,7 +122,7 @@ pub fn decode_inet(bytes: &[u8]) -> Result<net::IpAddr, io::Error> {
         }
         _ => Err(io::Error::new(
             io::ErrorKind::Other,
-            format!("Invalid Ip address {:?}", bytes),
+            format!("Invalid Ip address {bytes:?}"),
         )),
     }
 }

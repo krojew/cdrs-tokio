@@ -33,8 +33,8 @@ pub enum CompressionError {
 impl fmt::Display for CompressionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            CompressionError::Snappy(ref err) => write!(f, "Snappy Error: {:?}", err),
-            CompressionError::Lz4(ref err) => write!(f, "Lz4 Error: {:?}", err),
+            CompressionError::Snappy(ref err) => write!(f, "Snappy Error: {err:?}"),
+            CompressionError::Lz4(ref err) => write!(f, "Lz4 Error: {err:?}"),
         }
     }
 }

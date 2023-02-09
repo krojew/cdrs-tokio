@@ -116,7 +116,7 @@ async fn paged_selection_query(session: &CurrentSession) {
         let rows = query_pager.next().await.expect("pager next");
         for row in rows {
             let my_row = RowStruct::try_from_row(row).expect("decode row");
-            println!("row - {:?}", my_row);
+            println!("row - {my_row:?}");
         }
 
         if !query_pager.has_more() {
@@ -220,7 +220,7 @@ async fn paged_selection_query_with_state(session: &CurrentSession, state: Pager
         let rows = query_pager.next().await.expect("pager next");
         for row in rows {
             let my_row = RowStruct::try_from_row(row).expect("decode row");
-            println!("row - {:?}", my_row);
+            println!("row - {my_row:?}");
         }
 
         if !query_pager.has_more() {

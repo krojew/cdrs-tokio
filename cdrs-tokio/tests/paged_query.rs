@@ -43,7 +43,7 @@ async fn paged_query() {
 
     for i in 0..=9 {
         session
-            .query(format!("insert into user(user_id) values ({})", i))
+            .query(format!("insert into user(user_id) values ({i})"))
             .await
             .expect("Could not create table");
     }

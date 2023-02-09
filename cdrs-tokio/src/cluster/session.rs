@@ -302,8 +302,7 @@ impl<
                     .find_node_by_rpc_address(*addr)
                     .ok_or_else(|| {
                         error::Error::from(format!(
-                            "Cannot find node {} for statement re-preparation!",
-                            addr
+                            "Cannot find node {addr} for statement re-preparation!"
                         ))
                     })?;
 

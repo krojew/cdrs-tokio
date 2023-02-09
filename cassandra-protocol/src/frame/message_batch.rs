@@ -149,7 +149,7 @@ impl TryFrom<u8> for BatchType {
             0 => Ok(BatchType::Logged),
             1 => Ok(BatchType::Unlogged),
             2 => Ok(BatchType::Counter),
-            _ => Err(Error::General(format!("Unknown batch type: {}", value))),
+            _ => Err(Error::General(format!("Unknown batch type: {value}"))),
         }
     }
 }

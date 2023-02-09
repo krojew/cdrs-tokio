@@ -192,7 +192,7 @@ fn get_ident<'a>(ty: &'a Type, name: &str) -> &'a Ident {
             path: Path { segments, .. },
             ..
         }) => match segments.last() {
-            Some(&PathSegment { ref ident, .. }) => ident,
+            Some(PathSegment { ident, .. }) => ident,
             _ => panic!("Cannot infer field type: {}", name),
         },
         _ => panic!("Cannot infer field type: {}", name),

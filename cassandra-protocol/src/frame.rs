@@ -368,8 +368,7 @@ impl TryFrom<u8> for Version {
             4 => Ok(Version::V4),
             5 => Ok(Version::V5),
             v => Err(error::Error::General(format!(
-                "Unknown cassandra version: {}",
-                v
+                "Unknown cassandra version: {v}"
             ))),
         }
     }
@@ -496,7 +495,7 @@ impl TryFrom<u8> for Opcode {
             0x0E => Ok(Opcode::AuthChallenge),
             0x0F => Ok(Opcode::AuthResponse),
             0x10 => Ok(Opcode::AuthSuccess),
-            _ => Err(error::Error::General(format!("Unknown opcode: {}", value))),
+            _ => Err(error::Error::General(format!("Unknown opcode: {value}"))),
         }
     }
 }

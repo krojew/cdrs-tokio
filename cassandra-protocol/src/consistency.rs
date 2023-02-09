@@ -96,8 +96,7 @@ impl FromStr for Consistency {
             "LocalOne" => Consistency::LocalOne,
             _ => {
                 return Err(error::Error::General(format!(
-                    "Invalid consistency provided: {}",
-                    s
+                    "Invalid consistency provided: {s}"
                 )))
             }
         };

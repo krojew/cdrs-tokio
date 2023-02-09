@@ -234,7 +234,7 @@ async fn fetch_control_connection_info<T: CdrsTransport>(
     )
     .await?
     .and_then(|mut rows| rows.pop())
-    .ok_or_else(|| format!("Node {} failed to return info about itself!", control_addr).into())
+    .ok_or_else(|| format!("Node {control_addr} failed to return info about itself!").into())
 }
 
 fn build_keyspace(row: &Row) -> Result<(String, KeyspaceMetadata)> {
@@ -243,8 +243,7 @@ fn build_keyspace(row: &Row) -> Result<(String, KeyspaceMetadata)> {
     let replication: String = row.get_r_by_name("replication")?;
     let replication: JsonValue = serde_json::from_str(&replication).map_err(|error| {
         Error::General(format!(
-            "Error parsing replication for {}: {}",
-            keyspace_name, error
+            "Error parsing replication for {keyspace_name}: {error}"
         ))
     })?;
 
@@ -307,7 +306,7 @@ fn extract_replication_factor(value: Option<&JsonValue>) -> Result<usize> {
             };
 
             result.map_err(|error| {
-                format!("Failed to parse ('{}'): {}", replication_factor, error).into()
+                format!("Failed to parse ('{replication_factor}'): {error}").into()
             })
         }
         _ => Err("Missing replication factor!".into()),
