@@ -611,10 +611,7 @@ impl ResponseHandlerMap {
                 Ok(())
             }
             // unmatched stream - probably a bug somewhere
-            None => Err(Error::General(format!(
-                "Unmatched stream id: {}",
-                stream_id
-            ))),
+            None => Err(Error::General(format!("Unmatched stream id: {stream_id}"))),
         }
     }
 

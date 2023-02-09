@@ -82,9 +82,8 @@ pub async fn startup<
                     let io_err = io::Error::new(
                         io::ErrorKind::NotFound,
                         format!(
-                            "Unsupported type of authenticator. {:?} got,
-                             but {} is supported.",
-                            authenticator, auth
+                            "Unsupported type of authenticator. {authenticator:?} got,
+                             but {auth} is supported."
                         ),
                     );
                     return Err(Error::Io(io_err));

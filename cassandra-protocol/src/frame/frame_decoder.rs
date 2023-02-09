@@ -16,20 +16,12 @@ fn create_unexpected_self_contained_error() -> Error {
 
 #[inline]
 fn create_header_crc_mismatch_error(computed_crc: i32, header_crc24: i32) -> Error {
-    format!(
-        "Header CRC mismatch - expected {}, found {}.",
-        header_crc24, computed_crc,
-    )
-    .into()
+    format!("Header CRC mismatch - expected {header_crc24}, found {computed_crc}.",).into()
 }
 
 #[inline]
 fn create_payload_crc_mismatch_error(computed_crc: u32, payload_crc32: u32) -> Error {
-    format!(
-        "Payload CRC mismatch - read {}, computed {}.",
-        payload_crc32, computed_crc,
-    )
-    .into()
+    format!("Payload CRC mismatch - read {payload_crc32}, computed {computed_crc}.",).into()
 }
 
 fn extract_envelopes(buffer: &[u8], compression: Compression) -> Result<(usize, Vec<Envelope>)> {
