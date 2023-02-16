@@ -16,19 +16,17 @@ use std::net::SocketAddr;
 /// it could contain additional information represented by `additional_info` property.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct ErrorBody {
-    /// `CInt` that points to a type of error.
-    pub error_code: CInt,
-    /// Error message string.
+    /// Error message.
     pub message: String,
-    /// Additional information.
-    pub additional_info: AdditionalErrorInfo,
+    /// The type of error, possibly including type specific additional information.
+    pub ty: ErrorType,
 }
 
 impl Serialize for ErrorBody {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
-        self.error_code.serialize(cursor, version);
+        self.ty.to_error_code().serialize(cursor, version);
         serialize_str(cursor, &self.message, version);
-        self.additional_info.serialize(cursor, version);
+        self.ty.serialize(cursor, version);
     }
 }
 
@@ -36,20 +34,16 @@ impl FromCursor for ErrorBody {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<ErrorBody> {
         let error_code = CInt::from_cursor(cursor, version)?;
         let message = from_cursor_str(cursor)?.to_string();
-        let additional_info =
-            AdditionalErrorInfo::from_cursor_with_code(cursor, error_code, version)?;
+        let ty = ErrorType::from_cursor_with_code(cursor, error_code, version)?;
 
-        Ok(ErrorBody {
-            error_code,
-            message,
-            additional_info,
-        })
+        Ok(ErrorBody { message, ty })
     }
 }
 
 /// Protocol-dependent failure information. V5 contains a map of endpoint->code entries, while
 /// previous versions contain only error count.
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[non_exhaustive]
 pub enum FailureInfo {
     /// Represents the number of nodes that experience a failure while executing the request.
     NumFailures(CInt),
@@ -97,7 +91,8 @@ impl FromCursor for FailureInfo {
 /// Additional error info in accordance to
 /// [Cassandra protocol v4](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>).
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub enum AdditionalErrorInfo {
+#[non_exhaustive]
+pub enum ErrorType {
     Server,
     Protocol,
     Authentication,
@@ -118,72 +113,77 @@ pub enum AdditionalErrorInfo {
     Unprepared(UnpreparedError),
 }
 
-impl Serialize for AdditionalErrorInfo {
+impl Serialize for ErrorType {
     fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
         match self {
-            AdditionalErrorInfo::Unavailable(unavailable) => unavailable.serialize(cursor, version),
-            AdditionalErrorInfo::WriteTimeout(write_timeout) => {
-                write_timeout.serialize(cursor, version)
-            }
-            AdditionalErrorInfo::ReadTimeout(read_timeout) => {
-                read_timeout.serialize(cursor, version)
-            }
-            AdditionalErrorInfo::ReadFailure(read_failure) => {
-                read_failure.serialize(cursor, version)
-            }
-            AdditionalErrorInfo::FunctionFailure(function_failure) => {
+            ErrorType::Unavailable(unavailable) => unavailable.serialize(cursor, version),
+            ErrorType::WriteTimeout(write_timeout) => write_timeout.serialize(cursor, version),
+            ErrorType::ReadTimeout(read_timeout) => read_timeout.serialize(cursor, version),
+            ErrorType::ReadFailure(read_failure) => read_failure.serialize(cursor, version),
+            ErrorType::FunctionFailure(function_failure) => {
                 function_failure.serialize(cursor, version)
             }
-            AdditionalErrorInfo::WriteFailure(write_failure) => {
-                write_failure.serialize(cursor, version)
-            }
-            AdditionalErrorInfo::AlreadyExists(already_exists) => {
-                already_exists.serialize(cursor, version)
-            }
-            AdditionalErrorInfo::Unprepared(unprepared) => unprepared.serialize(cursor, version),
+            ErrorType::WriteFailure(write_failure) => write_failure.serialize(cursor, version),
+            ErrorType::AlreadyExists(already_exists) => already_exists.serialize(cursor, version),
+            ErrorType::Unprepared(unprepared) => unprepared.serialize(cursor, version),
             _ => {}
         }
     }
 }
 
-impl AdditionalErrorInfo {
+impl ErrorType {
     pub fn from_cursor_with_code(
         cursor: &mut Cursor<&[u8]>,
         error_code: CInt,
         version: Version,
-    ) -> error::Result<AdditionalErrorInfo> {
+    ) -> error::Result<ErrorType> {
         match error_code {
-            0x0000 => Ok(AdditionalErrorInfo::Server),
-            0x000A => Ok(AdditionalErrorInfo::Protocol),
-            0x0100 => Ok(AdditionalErrorInfo::Authentication),
-            0x1000 => {
-                UnavailableError::from_cursor(cursor, version).map(AdditionalErrorInfo::Unavailable)
+            0x0000 => Ok(ErrorType::Server),
+            0x000A => Ok(ErrorType::Protocol),
+            0x0100 => Ok(ErrorType::Authentication),
+            0x1000 => UnavailableError::from_cursor(cursor, version).map(ErrorType::Unavailable),
+            0x1001 => Ok(ErrorType::Overloaded),
+            0x1002 => Ok(ErrorType::IsBootstrapping),
+            0x1003 => Ok(ErrorType::Truncate),
+            0x1100 => WriteTimeoutError::from_cursor(cursor, version).map(ErrorType::WriteTimeout),
+            0x1200 => ReadTimeoutError::from_cursor(cursor, version).map(ErrorType::ReadTimeout),
+            0x1300 => ReadFailureError::from_cursor(cursor, version).map(ErrorType::ReadFailure),
+            0x1400 => {
+                FunctionFailureError::from_cursor(cursor, version).map(ErrorType::FunctionFailure)
             }
-            0x1001 => Ok(AdditionalErrorInfo::Overloaded),
-            0x1002 => Ok(AdditionalErrorInfo::IsBootstrapping),
-            0x1003 => Ok(AdditionalErrorInfo::Truncate),
-            0x1100 => WriteTimeoutError::from_cursor(cursor, version)
-                .map(AdditionalErrorInfo::WriteTimeout),
-            0x1200 => {
-                ReadTimeoutError::from_cursor(cursor, version).map(AdditionalErrorInfo::ReadTimeout)
+            0x1500 => WriteFailureError::from_cursor(cursor, version).map(ErrorType::WriteFailure),
+            0x2000 => Ok(ErrorType::Syntax),
+            0x2100 => Ok(ErrorType::Unauthorized),
+            0x2200 => Ok(ErrorType::Invalid),
+            0x2300 => Ok(ErrorType::Config),
+            0x2400 => {
+                AlreadyExistsError::from_cursor(cursor, version).map(ErrorType::AlreadyExists)
             }
-            0x1300 => {
-                ReadFailureError::from_cursor(cursor, version).map(AdditionalErrorInfo::ReadFailure)
-            }
-            0x1400 => FunctionFailureError::from_cursor(cursor, version)
-                .map(AdditionalErrorInfo::FunctionFailure),
-            0x1500 => WriteFailureError::from_cursor(cursor, version)
-                .map(AdditionalErrorInfo::WriteFailure),
-            0x2000 => Ok(AdditionalErrorInfo::Syntax),
-            0x2100 => Ok(AdditionalErrorInfo::Unauthorized),
-            0x2200 => Ok(AdditionalErrorInfo::Invalid),
-            0x2300 => Ok(AdditionalErrorInfo::Config),
-            0x2400 => AlreadyExistsError::from_cursor(cursor, version)
-                .map(AdditionalErrorInfo::AlreadyExists),
-            0x2500 => {
-                UnpreparedError::from_cursor(cursor, version).map(AdditionalErrorInfo::Unprepared)
-            }
-            _ => Err(Error::UnexpectedAdditionalErrorInfo(error_code)),
+            0x2500 => UnpreparedError::from_cursor(cursor, version).map(ErrorType::Unprepared),
+            _ => Err(Error::UnexpectedErrorCode(error_code)),
+        }
+    }
+
+    pub fn to_error_code(&self) -> CInt {
+        match self {
+            ErrorType::Server => 0x0000,
+            ErrorType::Protocol => 0x000A,
+            ErrorType::Authentication => 0x0100,
+            ErrorType::Unavailable(_) => 0x1000,
+            ErrorType::Overloaded => 0x1001,
+            ErrorType::IsBootstrapping => 0x1002,
+            ErrorType::Truncate => 0x1003,
+            ErrorType::WriteTimeout(_) => 0x1100,
+            ErrorType::ReadTimeout(_) => 0x1200,
+            ErrorType::ReadFailure(_) => 0x1300,
+            ErrorType::FunctionFailure(_) => 0x1400,
+            ErrorType::WriteFailure(_) => 0x1500,
+            ErrorType::Syntax => 0x2000,
+            ErrorType::Unauthorized => 0x2100,
+            ErrorType::Invalid => 0x2200,
+            ErrorType::Config => 0x2300,
+            ErrorType::AlreadyExists(_) => 0x2400,
+            ErrorType::Unprepared(_) => 0x2500,
         }
     }
 }
@@ -226,7 +226,7 @@ impl FromCursor for UnavailableError {
 }
 
 /// Timeout exception during a write request.
-#[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Ord, PartialOrd, Eq, Hash)]
 pub struct WriteTimeoutError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -234,8 +234,11 @@ pub struct WriteTimeoutError {
     pub received: CInt,
     /// `i32` representing the number of replicas whose acknowledgement is required to achieve `cl`.
     pub block_for: CInt,
-    /// Describes the type of the write that timed out
+    /// Describes the type of the write that timed out.
     pub write_type: WriteType,
+    /// The number of contentions occurred during the CAS operation. The field only presents when
+    /// the `write_type` is `Cas`.
+    pub contentions: Option<CIntShort>,
 }
 
 impl Serialize for WriteTimeoutError {
@@ -244,6 +247,10 @@ impl Serialize for WriteTimeoutError {
         self.received.serialize(cursor, version);
         self.block_for.serialize(cursor, version);
         self.write_type.serialize(cursor, version);
+
+        if let Some(contentions) = self.contentions {
+            contentions.serialize(cursor, version);
+        }
     }
 }
 
@@ -256,12 +263,18 @@ impl FromCursor for WriteTimeoutError {
         let received = CInt::from_cursor(cursor, version)?;
         let block_for = CInt::from_cursor(cursor, version)?;
         let write_type = WriteType::from_cursor(cursor, version)?;
+        let contentions = if write_type == WriteType::Cas {
+            Some(CIntShort::from_cursor(cursor, version)?)
+        } else {
+            None
+        };
 
         Ok(WriteTimeoutError {
             cl,
             received,
             block_for,
             write_type,
+            contentions,
         })
     }
 }
@@ -459,21 +472,31 @@ impl FromCursor for WriteFailureError {
 
 /// Describes the type of the write that failed.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1118)
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone, Display)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Display)]
+#[non_exhaustive]
 pub enum WriteType {
-    /// The write was a non-batched non-counter write
+    /// The write was a non-batched non-counter write.
     Simple,
-    /// The write was a (logged) batch write.
-    /// If this type is received, it means the batch log
-    /// has been successfully written
+    /// The write was a (logged) batch write. If this type is received, it means the batch log
+    /// has been successfully written.
     Batch,
     /// The write was an unlogged batch. No batch log write has been attempted.
     UnloggedBatch,
-    /// The write was a counter write (batched or not)
+    /// The write was a counter write (batched or not).
     Counter,
     /// The failure occurred during the write to the batch log when a (logged) batch
     /// write was requested.
     BatchLog,
+    /// The timeout occurred during the Compare And Set write/update.
+    Cas,
+    /// The timeout occurred when a write involves VIEW update and failure to acquire local view(MV)
+    /// lock for key within timeout.
+    View,
+    /// The timeout occurred when cdc_total_space is exceeded when doing a write to data tracked by
+    /// cdc.
+    Cdc,
+    /// Unknown write type.
+    Unknown(String),
 }
 
 impl Serialize for WriteType {
@@ -484,6 +507,10 @@ impl Serialize for WriteType {
             WriteType::UnloggedBatch => serialize_str(cursor, "UNLOGGED_BATCH", version),
             WriteType::Counter => serialize_str(cursor, "COUNTER", version),
             WriteType::BatchLog => serialize_str(cursor, "BATCH_LOG", version),
+            WriteType::Cas => serialize_str(cursor, "CAS", version),
+            WriteType::View => serialize_str(cursor, "VIEW", version),
+            WriteType::Cdc => serialize_str(cursor, "CDC", version),
+            WriteType::Unknown(write_type) => serialize_str(cursor, write_type, version),
         }
     }
 }
@@ -496,7 +523,10 @@ impl FromCursor for WriteType {
             "UNLOGGED_BATCH" => Ok(WriteType::UnloggedBatch),
             "COUNTER" => Ok(WriteType::Counter),
             "BATCH_LOG" => Ok(WriteType::BatchLog),
-            wt => Err(Error::UnexpectedWriteType(wt.into())),
+            "CAS" => Ok(WriteType::Cas),
+            "VIEW" => Ok(WriteType::View),
+            "CDC" => Ok(WriteType::Cdc),
+            wt => Ok(WriteType::Unknown(wt.into())),
         }
     }
 }
@@ -553,6 +583,7 @@ impl FromCursor for UnpreparedError {
     }
 }
 
+//noinspection DuplicatedCode
 #[cfg(test)]
 fn test_encode_decode(bytes: &[u8], expected: ErrorBody) {
     {
@@ -580,9 +611,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x0000,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Server,
+            ty: ErrorType::Server,
         };
         test_encode_decode(bytes, expected);
     }
@@ -594,9 +624,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x000A,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Protocol,
+            ty: ErrorType::Protocol,
         };
         test_encode_decode(bytes, expected);
     }
@@ -608,9 +637,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x0100,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Authentication,
+            ty: ErrorType::Authentication,
         };
         test_encode_decode(bytes, expected);
     }
@@ -627,9 +655,8 @@ mod error_tests {
             0, 0, 0, 1, // alive
         ];
         let expected = ErrorBody {
-            error_code: 0x1000,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Unavailable(UnavailableError {
+            ty: ErrorType::Unavailable(UnavailableError {
                 cl: Consistency::Any,
                 required: 1,
                 alive: 1,
@@ -645,9 +672,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x1001,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Overloaded,
+            ty: ErrorType::Overloaded,
         };
         test_encode_decode(bytes, expected);
     }
@@ -659,9 +685,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x1002,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::IsBootstrapping,
+            ty: ErrorType::IsBootstrapping,
         };
         test_encode_decode(bytes, expected);
     }
@@ -673,9 +698,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x1003,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Truncate,
+            ty: ErrorType::Truncate,
         };
         test_encode_decode(bytes, expected);
     }
@@ -693,13 +717,13 @@ mod error_tests {
             0, 6, 83, 73, 77, 80, 76, 69, // Write type simple
         ];
         let expected = ErrorBody {
-            error_code: 0x1100,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::WriteTimeout(WriteTimeoutError {
+            ty: ErrorType::WriteTimeout(WriteTimeoutError {
                 cl: Consistency::Any,
                 received: 1,
                 block_for: 1,
                 write_type: WriteType::Simple,
+                contentions: None,
             }),
         };
         test_encode_decode(bytes, expected);
@@ -718,9 +742,8 @@ mod error_tests {
             0, // data present
         ];
         let expected = ErrorBody {
-            error_code: 0x1200,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::ReadTimeout(ReadTimeoutError {
+            ty: ErrorType::ReadTimeout(ReadTimeoutError {
                 cl: Consistency::Any,
                 received: 1,
                 block_for: 1,
@@ -744,9 +767,8 @@ mod error_tests {
             0, // data present
         ];
         let expected = ErrorBody {
-            error_code: 0x1300,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::ReadFailure(ReadFailureError {
+            ty: ErrorType::ReadFailure(ReadFailureError {
                 cl: Consistency::Any,
                 received: 1,
                 block_for: 1,
@@ -764,9 +786,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x2000,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Syntax,
+            ty: ErrorType::Syntax,
         };
         test_encode_decode(bytes, expected);
     }
@@ -778,9 +799,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x2100,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Unauthorized,
+            ty: ErrorType::Unauthorized,
         };
         test_encode_decode(bytes, expected);
     }
@@ -792,9 +812,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x2200,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Invalid,
+            ty: ErrorType::Invalid,
         };
         test_encode_decode(bytes, expected);
     }
@@ -806,9 +825,8 @@ mod error_tests {
             0, 3, 102, 111, 111, // message - foo
         ];
         let expected = ErrorBody {
-            error_code: 0x2300,
             message: "foo".into(),
-            additional_info: AdditionalErrorInfo::Config,
+            ty: ErrorType::Config,
         };
         test_encode_decode(bytes, expected);
     }

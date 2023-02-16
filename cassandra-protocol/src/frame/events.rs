@@ -37,6 +37,7 @@ const AGGREGATE: &str = "AGGREGATE";
 /// about a concrete change. It may be useful for subscription
 /// when you need only string representation of an event.
 #[derive(Debug, PartialEq, Copy, Clone, Ord, PartialOrd, Eq, Hash)]
+#[non_exhaustive]
 pub enum SimpleServerEvent {
     TopologyChange,
     StatusChange,
@@ -94,6 +95,7 @@ impl PartialEq<ServerEvent> for SimpleServerEvent {
 
 /// Full server event that contains all details about a concrete change.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[non_exhaustive]
 pub enum ServerEvent {
     /// Events related to change in the cluster topology
     TopologyChange(TopologyChange),
@@ -171,6 +173,7 @@ impl FromCursor for TopologyChange {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Display)]
+#[non_exhaustive]
 pub enum TopologyChangeType {
     NewNode,
     RemovedNode,
@@ -223,6 +226,7 @@ impl FromCursor for StatusChange {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Display)]
+#[non_exhaustive]
 pub enum StatusChangeType {
     Up,
     Down,
@@ -282,6 +286,7 @@ impl FromCursor for SchemaChange {
 
 /// Represents type of changes.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Display)]
+#[non_exhaustive]
 pub enum SchemaChangeType {
     Created,
     Updated,
@@ -314,6 +319,7 @@ impl FromCursor for SchemaChangeType {
 
 /// Refers to a target of changes were made.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Display)]
+#[non_exhaustive]
 pub enum SchemaChangeTarget {
     Keyspace,
     Table,
@@ -352,6 +358,7 @@ impl FromCursor for SchemaChangeTarget {
 
 /// Information about changes made.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[non_exhaustive]
 pub enum SchemaChangeOptions {
     /// Changes related to keyspaces. Contains keyspace name.
     Keyspace(String),

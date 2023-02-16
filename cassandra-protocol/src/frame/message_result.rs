@@ -14,6 +14,7 @@ use std::io::{Cursor, Error as IoError, Read};
 
 /// `ResultKind` is enum which represents types of result.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Display)]
+#[non_exhaustive]
 pub enum ResultKind {
     /// Void result.
     Void,
@@ -82,6 +83,7 @@ impl FromCursor for ResultKind {
 /// `ResponseBody` is a generalized enum that represents all types of responses. Each of enum
 /// option wraps related body type.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
+#[non_exhaustive]
 pub enum ResResultBody {
     /// Void response body. It's an empty struct.
     Void,
@@ -502,6 +504,7 @@ impl ColSpec {
 
 /// Cassandra data types which could be returned by a server.
 #[derive(Debug, Clone, Display, Copy, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[non_exhaustive]
 pub enum ColType {
     Custom,
     Ascii,
@@ -529,7 +532,6 @@ pub enum ColType {
     Set,
     Udt,
     Tuple,
-    Null,
 }
 
 impl TryFrom<CIntShort> for ColType {
@@ -607,7 +609,6 @@ impl Serialize for ColType {
             ColType::Set => 0x0022,
             ColType::Udt => 0x0030,
             ColType::Tuple => 0x0031,
-            _ => 0x6666,
         } as CIntShort)
             .serialize(cursor, version);
     }
@@ -680,6 +681,7 @@ impl FromCursor for ColTypeOption {
 
 /// Enum that represents all possible types of `value` of `ColTypeOption`.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[non_exhaustive]
 pub enum ColTypeOptionValue {
     CString(String),
     ColType(ColType),

@@ -13,6 +13,7 @@ use crate::{error, Error};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[allow(clippy::large_enum_variant)]
+#[non_exhaustive]
 pub enum RequestBody {
     Startup(BodyReqStartup),
     Options(BodyReqOptions),

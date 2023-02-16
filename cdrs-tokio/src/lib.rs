@@ -19,6 +19,7 @@
 //!         .unwrap();
 //!     let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
 //!         .build()
+//!         .await
 //!         .unwrap();
 //!
 //!     let create_ks = "CREATE KEYSPACE IF NOT EXISTS test_ks WITH REPLICATION = { \

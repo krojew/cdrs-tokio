@@ -19,6 +19,7 @@ pub type Result<T> = result::Result<T, Error>;
 /// can be raised by CDRS driver. `Server` error is an error which are ones returned by
 /// a Server via result error frames.
 #[derive(Debug, ThisError)]
+#[non_exhaustive]
 pub enum Error {
     /// Internal IO error.
     #[error("IO error: {0}")]
@@ -63,8 +64,8 @@ pub enum Error {
     #[error("Unexpected schema change target: {0}")]
     UnexpectedSchemaChangeTarget(String),
     /// Unexpected additional error info.
-    #[error("Unexpected additional error info: {0}")]
-    UnexpectedAdditionalErrorInfo(CInt),
+    #[error("Unexpected error code: {0}")]
+    UnexpectedErrorCode(CInt),
     /// Unexpected write type.
     #[error("Unexpected write type: {0}")]
     UnexpectedWriteType(String),
@@ -141,9 +142,7 @@ impl Clone for Error {
             Error::UnexpectedSchemaChangeTarget(value) => {
                 Error::UnexpectedSchemaChangeTarget(value.clone())
             }
-            Error::UnexpectedAdditionalErrorInfo(value) => {
-                Error::UnexpectedAdditionalErrorInfo(*value)
-            }
+            Error::UnexpectedErrorCode(value) => Error::UnexpectedErrorCode(*value),
             Error::UnexpectedWriteType(value) => Error::UnexpectedWriteType(value.clone()),
             Error::NonRequestOpcode(value) => Error::NonRequestOpcode(*value),
             Error::NonResponseOpcode(value) => Error::NonResponseOpcode(*value),

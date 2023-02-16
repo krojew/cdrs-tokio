@@ -130,6 +130,7 @@ impl FromCursor for BodyReqBatch {
 
 /// Batch type
 #[derive(Debug, Clone, Copy, PartialEq, Ord, PartialOrd, Eq, Hash, Display)]
+#[non_exhaustive]
 pub enum BatchType {
     /// The batch will be "logged". This is equivalent to a
     /// normal CQL3 batch statement.

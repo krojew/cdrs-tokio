@@ -5,9 +5,10 @@ use cassandra_protocol::frame::events::{
     SchemaChangeOptions, SchemaChangeType, StatusChange, StatusChangeType, TopologyChange,
     TopologyChangeType,
 };
-use cassandra_protocol::frame::message_error::{AdditionalErrorInfo, ErrorBody};
+use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType};
+use cassandra_protocol::frame::message_query::BodyReqQuery;
 use cassandra_protocol::frame::{Envelope, Flags, Version};
-use cassandra_protocol::query::{Query, QueryParams, QueryParamsBuilder, QueryValues};
+use cassandra_protocol::query::{QueryParams, QueryParamsBuilder, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::list::List;
 use cassandra_protocol::types::rows::Row;
@@ -78,9 +79,9 @@ async fn send_query_with_params<T: CdrsTransport>(
     version: Version,
     beta_protocol: bool,
 ) -> Result<Option<Vec<Row>>> {
-    let query = Query {
+    let query = BodyReqQuery {
         query: query.to_string(),
-        params: query_params,
+        query_params,
     };
 
     let flags = if beta_protocol {
@@ -369,6 +370,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             ServerEvent::TopologyChange(event) => self.process_topology_event(event).await,
             ServerEvent::StatusChange(event) => self.process_status_event(event).await,
             ServerEvent::SchemaChange(event) => self.process_schema_event(event).await,
+            _ => warn!(?event, "Unrecognized event."),
         }
     }
 
@@ -381,6 +383,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 SchemaChangeType::Dropped => {
                     self.remove_keyspace(keyspace);
                 }
+                _ => warn!(?event, "Unrecognized schema event."),
             }
         }
     }
@@ -412,6 +415,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     );
                 }
             }
+            _ => warn!(?event, "Unrecognized topology change type."),
         }
     }
 
@@ -451,6 +455,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     debug!(broadcast_rpc_address = %event.addr, "Unknown node down.");
                 }
             }
+            _ => warn!(?event, "Unrecognized status event."),
         }
     }
 
@@ -706,7 +711,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             Err(Error::Server {
                 body:
                     ErrorBody {
-                        additional_info: AdditionalErrorInfo::Invalid,
+                        ty: ErrorType::Invalid,
                         ..
                     },
                 ..

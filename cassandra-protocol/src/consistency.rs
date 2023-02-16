@@ -13,6 +13,7 @@ use std::str::FromStr;
 /// To find more details about each consistency level please refer to the following documentation:
 /// <https://docs.datastax.com/en/cql-oss/3.x/cql/cql_reference/cqlshConsistency.html>
 #[derive(Debug, PartialEq, Clone, Copy, Display, Ord, PartialOrd, Eq, Hash)]
+#[non_exhaustive]
 pub enum Consistency {
     /// Closest replica, as determined by the snitch.
     /// If all replica nodes are down, write succeeds after a hinted handoff.

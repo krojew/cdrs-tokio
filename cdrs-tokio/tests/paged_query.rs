@@ -24,6 +24,7 @@ async fn paged_query() {
     let session = TcpSessionBuilder::new(lb, cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
         .build()
+        .await
         .unwrap();
 
     session

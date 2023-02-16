@@ -9,6 +9,7 @@ use crate::frame::Version;
 use crate::types::CBytes;
 
 #[derive(Debug, PartialEq, Clone)]
+#[non_exhaustive]
 pub enum CassandraType {
     Ascii(String),
     Bigint(i64),
@@ -69,7 +70,6 @@ pub fn wrapper_fn(
         ColType::Set => &wrappers::set,
         ColType::Udt => &wrappers::udt,
         ColType::Tuple => &wrappers::tuple,
-        ColType::Null => &wrappers::null,
     }
 }
 

@@ -50,7 +50,10 @@ async fn main() {
         .await
         .unwrap();
     let lb = RoundRobinLoadBalancingStrategy::new();
-    let session = TcpSessionBuilder::new(lb, cluster_config).build().unwrap();
+    let session = TcpSessionBuilder::new(lb, cluster_config)
+        .build()
+        .await
+        .unwrap();
 
     create_keyspace(&session).await;
     create_udt(&session).await;
@@ -196,11 +199,19 @@ async fn paged_with_values_list(session: &CurrentSession) {
     println!("Testing values 100 and 101");
     assert_amount_query_pager!(2);
     assert!(query_pager.has_more());
-    assert!(!query_pager.pager_state().cursor().unwrap().is_empty());
+    assert!(!query_pager
+        .pager_state()
+        .cursor()
+        .unwrap()
+        .is_null_or_empty());
     println!("Testing values 102 and 103");
     assert_amount_query_pager!(2);
     assert!(query_pager.has_more());
-    assert!(!query_pager.pager_state().cursor().unwrap().is_empty());
+    assert!(!query_pager
+        .pager_state()
+        .cursor()
+        .unwrap()
+        .is_null_or_empty());
     println!("Testing value 104");
     assert_amount_query_pager!(1);
     // Now no more rows should be queried
