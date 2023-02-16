@@ -112,7 +112,7 @@ impl VirtualConnectionManager {
                 config.authenticator.clone(),
                 keyspace_holder,
                 config.reconnection_policy.clone(),
-                Box::new(ProtocolFrameEncodingFactory::default()),
+                Box::<ProtocolFrameEncodingFactory>::default(),
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
                 true,
@@ -174,9 +174,9 @@ async fn main() {
         &cluster_config,
         nodes,
         load_balancing,
-        RetryPolicyWrapper(Box::new(DefaultRetryPolicy::default())),
+        RetryPolicyWrapper(Box::<DefaultRetryPolicy>::default()),
         ReconnectionPolicyWrapper(reconnection_policy),
-        NodeDistanceEvaluatorWrapper(Box::new(AllLocalNodeDistanceEvaluator::default())),
+        NodeDistanceEvaluatorWrapper(Box::<AllLocalNodeDistanceEvaluator>::default()),
         None,
     )
     .await
@@ -272,7 +272,7 @@ async fn select_struct(session: &mut CurrentSession) {
 
     for row in rows {
         let my_row: RowStruct = RowStruct::try_from_row(row).expect("into RowStruct");
-        println!("struct got: {:?}", my_row);
+        println!("struct got: {my_row:?}");
     }
 }
 

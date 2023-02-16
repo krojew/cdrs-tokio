@@ -78,7 +78,7 @@ pub async fn setup_multiple(
         session.query(create_cql.to_owned()).await?;
 
         if let Some(table_name) = table_name {
-            let cql = format!("TRUNCATE TABLE {}", table_name);
+            let cql = format!("TRUNCATE TABLE {table_name}");
             session.query(cql).await?;
         }
     }

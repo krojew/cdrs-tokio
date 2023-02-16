@@ -18,7 +18,7 @@ pub trait ReconnectionPolicy {
 }
 
 /// Schedules reconnection at constant interval.
-#[derive(Copy, Clone, Constructor)]
+#[derive(Copy, Clone, Constructor, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ConstantReconnectionPolicy {
     base_delay: Duration,
 }
@@ -47,7 +47,7 @@ impl ReconnectionSchedule for ConstantReconnectionSchedule {
 }
 
 /// Never schedules reconnections.
-#[derive(Default, Copy, Clone)]
+#[derive(Default, Copy, Clone, Debug, PartialEq, Ord, PartialOrd, Eq, Hash)]
 pub struct NeverReconnectionPolicy;
 
 impl ReconnectionPolicy for NeverReconnectionPolicy {
@@ -67,7 +67,7 @@ impl ReconnectionSchedule for NeverReconnectionSchedule {
 /// A reconnection policy that waits exponentially longer between each reconnection attempt (but
 /// keeps a constant delay once a maximum delay is reached). The delay will increase exponentially,
 /// with an added jitter.
-#[derive(Copy, Clone, Constructor)]
+#[derive(Copy, Clone, Constructor, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ExponentialReconnectionPolicy {
     base_delay: Duration,
     max_delay: Duration,
@@ -87,11 +87,7 @@ impl ReconnectionPolicy for ExponentialReconnectionPolicy {
 impl Default for ExponentialReconnectionPolicy {
     fn default() -> Self {
         let base_delay = DEFAULT_BASE_DELAY.as_millis() as i64;
-        let ceil = if (base_delay & (base_delay - 1)) == 0 {
-            0
-        } else {
-            1
-        };
+        let ceil = u32::from((base_delay & (base_delay - 1)) != 0);
 
         ExponentialReconnectionPolicy::new(
             DEFAULT_BASE_DELAY,

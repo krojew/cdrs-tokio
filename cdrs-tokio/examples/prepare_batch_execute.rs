@@ -51,7 +51,7 @@ async fn main() {
         .expect("Prepare query error");
 
     for k in 100..110 {
-        let row = RowStruct { key: k as i32 };
+        let row = RowStruct { key: k };
 
         insert_row(&mut session, row, &prepared_query).await;
     }

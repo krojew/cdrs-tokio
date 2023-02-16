@@ -93,7 +93,7 @@ impl TryFrom<String> for Murmur3Token {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         value
             .parse()
-            .map_err(|error| format!("Error parsing token: {}", error).into())
+            .map_err(|error| format!("Error parsing token: {error}").into())
             .map(Murmur3Token::new)
     }
 }

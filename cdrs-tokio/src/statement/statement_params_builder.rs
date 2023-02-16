@@ -3,13 +3,15 @@ use cassandra_protocol::query::{QueryFlags, QueryParams, QueryValues};
 use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
 use cassandra_protocol::types::{CBytes, CInt, CLong};
+use derivative::Derivative;
 use std::sync::Arc;
 
 use crate::retry::RetryPolicy;
 use crate::speculative_execution::SpeculativeExecutionPolicy;
 use crate::statement::StatementParams;
 
-#[derive(Default)]
+#[derive(Default, Derivative)]
+#[derivative(Debug)]
 pub struct StatementParamsBuilder {
     consistency: Consistency,
     flags: Option<QueryFlags>,
@@ -26,7 +28,9 @@ pub struct StatementParamsBuilder {
     routing_key: Option<Vec<Value>>,
     tracing: bool,
     warnings: bool,
+    #[derivative(Debug = "ignore")]
     speculative_execution_policy: Option<Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
+    #[derivative(Debug = "ignore")]
     retry_policy: Option<Arc<dyn RetryPolicy + Send + Sync>>,
     beta_protocol: bool,
 }

@@ -101,7 +101,7 @@ async fn fill_table(session: &CurrentSession) {
     let insert_struct_cql = "INSERT INTO test_ks.my_test_table (key) VALUES (?)";
 
     for k in 100..110 {
-        let row = RowStruct { key: k as i32 };
+        let row = RowStruct { key: k };
 
         session
             .query_with_values(insert_struct_cql, row.into_query_values())
@@ -119,7 +119,7 @@ async fn paged_selection_query(session: &CurrentSession) {
         let rows = query_pager.next().await.expect("pager next");
         for row in rows {
             let my_row = RowStruct::try_from_row(row).expect("decode row");
-            println!("row - {:?}", my_row);
+            println!("row - {my_row:?}");
         }
 
         if !query_pager.has_more() {
@@ -231,7 +231,7 @@ async fn paged_selection_query_with_state(session: &CurrentSession, state: Pager
         let rows = query_pager.next().await.expect("pager next");
         for row in rows {
             let my_row = RowStruct::try_from_row(row).expect("decode row");
-            println!("row - {:?}", my_row);
+            println!("row - {my_row:?}");
         }
 
         if !query_pager.has_more() {

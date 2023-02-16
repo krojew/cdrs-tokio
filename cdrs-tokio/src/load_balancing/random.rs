@@ -1,3 +1,4 @@
+use derivative::Derivative;
 use std::marker::PhantomData;
 
 use rand::prelude::*;
@@ -8,9 +9,12 @@ use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
 use crate::transport::CdrsTransport;
 
 /// Pure random load balancing.
-#[derive(Default)]
+#[derive(Default, Derivative)]
+#[derivative(Debug)]
 pub struct RandomLoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
+    #[derivative(Debug = "ignore")]
     _transport: PhantomData<T>,
+    #[derivative(Debug = "ignore")]
     _connection_manager: PhantomData<CM>,
 }
 

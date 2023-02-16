@@ -1,3 +1,4 @@
+use derivative::Derivative;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -6,10 +7,13 @@ use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
 use crate::transport::CdrsTransport;
 
 /// Round-robin load balancing.
-#[derive(Default)]
+#[derive(Derivative, Default)]
+#[derivative(Debug)]
 pub struct RoundRobinLoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
     prev_idx: AtomicUsize,
+    #[derivative(Debug = "ignore")]
     _transport: PhantomData<T>,
+    #[derivative(Debug = "ignore")]
     _connection_manager: PhantomData<CM>,
 }
 

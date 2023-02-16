@@ -83,6 +83,7 @@ mock! {
 }
 
 /// Default Tcp transport.
+#[derive(Debug)]
 pub struct TransportTcp {
     inner: AsyncTransport,
 }
@@ -145,6 +146,7 @@ impl CdrsTransport for TransportTcp {
 }
 
 #[cfg(feature = "rust-tls")]
+#[derive(Debug)]
 pub struct TransportRustls {
     inner: AsyncTransport,
 }
@@ -212,6 +214,7 @@ impl CdrsTransport for TransportRustls {
     }
 }
 
+#[derive(Debug)]
 struct AsyncTransport {
     addr: SocketAddr,
     compression: Compression,
@@ -608,10 +611,7 @@ impl ResponseHandlerMap {
                 Ok(())
             }
             // unmatched stream - probably a bug somewhere
-            None => Err(Error::General(format!(
-                "Unmatched stream id: {}",
-                stream_id
-            ))),
+            None => Err(Error::General(format!("Unmatched stream id: {stream_id}"))),
         }
     }
 

@@ -9,7 +9,7 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
     if let Data::Struct(DataStruct { ref fields, .. }) = ast.data {
         let convert_into_bytes = fields.iter().map(|field| {
             let field_ident = field.ident.clone().unwrap();
-            if get_ident_string(&field.ty).as_str() == "Option" {
+            if get_ident_string(&field.ty, &field_ident.to_string()) == "Option" {
                 // We are assuming here primitive value serialization will not change across protocol
                 // versions, which gives us simpler user API.
                 quote! {
@@ -47,6 +47,6 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> TokenStream {
             }
         }
     } else {
-        panic!("#[derive(IntoCdrsValue)] is only defined for structs, not for enums!");
+        panic!("#[derive(IntoCdrsValue)] can only be defined for structs!");
     }
 }

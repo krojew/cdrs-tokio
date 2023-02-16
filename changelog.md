@@ -1,3 +1,9 @@
+## 7.0.4
+
+### Fixed
+
+* Invalid Murmur3 hash for keys longer than 15 bytes.
+
 ## 7.0.3
 
 ### Fixed

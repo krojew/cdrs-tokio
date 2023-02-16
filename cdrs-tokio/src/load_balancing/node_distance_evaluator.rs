@@ -14,7 +14,7 @@ pub trait NodeDistanceEvaluator {
 }
 
 /// A simple evaluator which treats all nodes as local.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct AllLocalNodeDistanceEvaluator;
 
 impl NodeDistanceEvaluator for AllLocalNodeDistanceEvaluator {
@@ -26,7 +26,7 @@ impl NodeDistanceEvaluator for AllLocalNodeDistanceEvaluator {
 /// An evaluator which is aware of node location in relation to local DC. Built-in
 /// [`TopologyAwareLoadBalancingStrategy`](crate::load_balancing::TopologyAwareLoadBalancingStrategy)
 /// can use this information to properly identify which nodes to use in query plans.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
 pub struct TopologyAwareNodeDistanceEvaluator {
     local_dc: String,
 }

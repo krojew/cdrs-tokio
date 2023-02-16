@@ -104,6 +104,6 @@ async fn select_struct(session: Arc<CurrentSession>) {
 
     for row in rows {
         let my_row: RowStruct = RowStruct::try_from_row(row).expect("into RowStruct");
-        println!("struct got: {:?}", my_row);
+        println!("struct got: {my_row:?}");
     }
 }
