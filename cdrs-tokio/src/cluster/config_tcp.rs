@@ -13,13 +13,13 @@ use crate::cluster::NodeAddress;
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct NodeTcpConfig {
-    pub contact_points: Vec<SocketAddr>,
+    pub(crate) contact_points: Vec<SocketAddr>,
     #[derivative(Debug = "ignore")]
-    pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
-    pub version: Version,
-    pub beta_protocol: bool,
+    pub(crate) authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
+    pub(crate) version: Version,
+    pub(crate) beta_protocol: bool,
     #[cfg(feature = "http-proxy")]
-    pub http_proxy: Option<HttpProxyConfig>,
+    pub(crate) http_proxy: Option<HttpProxyConfig>,
 }
 
 /// Builder structure that helps to configure TCP connection for node.
