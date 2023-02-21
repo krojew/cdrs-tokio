@@ -117,6 +117,8 @@ impl VirtualConnectionManager {
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
                 true,
                 config.version,
+                #[cfg(feature = "http-proxy")]
+                None,
             ),
             mask: config.mask,
             actual: config.actual,

@@ -5,6 +5,8 @@ use derivative::Derivative;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
+#[cfg(feature = "http-proxy")]
+use crate::cluster::HttpProxyConfig;
 use crate::cluster::NodeAddress;
 
 /// Single node TCP connection config.
@@ -16,6 +18,8 @@ pub struct NodeTcpConfig {
     pub authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub version: Version,
     pub beta_protocol: bool,
+    #[cfg(feature = "http-proxy")]
+    pub http_proxy: Option<HttpProxyConfig>,
 }
 
 /// Builder structure that helps to configure TCP connection for node.
@@ -27,6 +31,8 @@ pub struct NodeTcpConfigBuilder {
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     version: Version,
     beta_protocol: bool,
+    #[cfg(feature = "http-proxy")]
+    http_proxy: Option<HttpProxyConfig>,
 }
 
 impl Default for NodeTcpConfigBuilder {
@@ -36,6 +42,8 @@ impl Default for NodeTcpConfigBuilder {
             authenticator_provider: Arc::new(NoneAuthenticatorProvider),
             version: Version::V4,
             beta_protocol: false,
+            #[cfg(feature = "http-proxy")]
+            http_proxy: None,
         }
     }
 }
@@ -84,6 +92,14 @@ impl NodeTcpConfigBuilder {
         self
     }
 
+    /// Adds HTTP proxy configuration
+    #[cfg(feature = "http-proxy")]
+    #[must_use]
+    pub fn with_http_proxy(mut self, config: HttpProxyConfig) -> Self {
+        self.http_proxy = Some(config);
+        self
+    }
+
     /// Finalizes building process
     pub async fn build(self) -> Result<NodeTcpConfig> {
         // replace with map() when async lambdas become available
@@ -97,6 +113,8 @@ impl NodeTcpConfigBuilder {
             authenticator_provider: self.authenticator_provider,
             version: self.version,
             beta_protocol: self.beta_protocol,
+            #[cfg(feature = "http-proxy")]
+            http_proxy: self.http_proxy,
         })
     }
 }

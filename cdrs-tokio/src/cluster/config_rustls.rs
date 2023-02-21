@@ -1,12 +1,14 @@
-use derivative::Derivative;
-use std::net::SocketAddr;
-use std::sync::Arc;
-
-use crate::cluster::NodeAddress;
 use cassandra_protocol::authenticators::{NoneAuthenticatorProvider, SaslAuthenticatorProvider};
 use cassandra_protocol::error::Result;
 use cassandra_protocol::frame::Version;
+use derivative::Derivative;
 use rustls::ServerName;
+use std::net::SocketAddr;
+use std::sync::Arc;
+
+#[cfg(feature = "http-proxy")]
+use crate::cluster::HttpProxyConfig;
+use crate::cluster::NodeAddress;
 
 /// Single node TLS connection config.
 #[derive(Derivative, Clone)]
@@ -19,6 +21,8 @@ pub struct NodeRustlsConfig {
     pub config: Arc<rustls::ClientConfig>,
     pub version: Version,
     pub beta_protocol: bool,
+    #[cfg(feature = "http-proxy")]
+    pub http_proxy: Option<HttpProxyConfig>,
 }
 
 /// Builder structure that helps to configure TLS connection for node.
@@ -32,6 +36,8 @@ pub struct NodeRustlsConfigBuilder {
     config: Arc<rustls::ClientConfig>,
     version: Version,
     beta_protocol: bool,
+    #[cfg(feature = "http-proxy")]
+    http_proxy: Option<HttpProxyConfig>,
 }
 
 impl NodeRustlsConfigBuilder {
@@ -43,6 +49,8 @@ impl NodeRustlsConfigBuilder {
             config,
             version: Version::V4,
             beta_protocol: false,
+            #[cfg(feature = "http-proxy")]
+            http_proxy: None,
         }
     }
 
@@ -85,6 +93,14 @@ impl NodeRustlsConfigBuilder {
         self
     }
 
+    /// Adds HTTP proxy configuration
+    #[cfg(feature = "http-proxy")]
+    #[must_use]
+    pub fn with_http_proxy(mut self, config: HttpProxyConfig) -> Self {
+        self.http_proxy = Some(config);
+        self
+    }
+
     /// Finalizes building process
     pub async fn build(self) -> Result<NodeRustlsConfig> {
         // replace with map() when async lambdas become available
@@ -100,6 +116,8 @@ impl NodeRustlsConfigBuilder {
             config: self.config,
             version: self.version,
             beta_protocol: self.beta_protocol,
+            #[cfg(feature = "http-proxy")]
+            http_proxy: self.http_proxy,
         })
     }
 }

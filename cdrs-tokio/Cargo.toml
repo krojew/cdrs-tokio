@@ -15,6 +15,7 @@ license = "MIT/Apache-2.0"
 rust-tls = ["rustls", "tokio-rustls", "webpki"]
 e2e-tests = []
 derive = ["cdrs-tokio-helpers-derive"]
+http-proxy = ["async-http-proxy"]
 
 [dependencies]
 arc-swap ="1.4.0"
@@ -36,6 +37,11 @@ tokio-rustls = { version = "0.23.4", optional = true }
 tracing = "0.1.35"
 uuid = "1.0.0"
 webpki = { version = "0.22.0", optional = true }
+
+[dependencies.async-http-proxy]
+version = "1.2.5"
+optional = true
+features = ["runtime-tokio", "basic-auth"]
 
 [dependencies.rustls]
 version = "0.20.6"
