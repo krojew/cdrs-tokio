@@ -1,4 +1,6 @@
 pub(crate) use self::cluster_metadata_manager::ClusterMetadataManager;
+#[cfg(feature = "http-proxy")]
+pub use self::config_proxy::{HttpProxyConfig, HttpProxyConfigBuilder};
 #[cfg(feature = "rust-tls")]
 pub use self::config_rustls::{NodeRustlsConfig, NodeRustlsConfigBuilder};
 pub use self::config_tcp::{NodeTcpConfig, NodeTcpConfigBuilder};
@@ -22,6 +24,8 @@ use cassandra_protocol::frame::Version;
 use std::sync::Arc;
 
 mod cluster_metadata_manager;
+#[cfg(feature = "http-proxy")]
+mod config_proxy;
 #[cfg(feature = "rust-tls")]
 mod config_rustls;
 mod config_tcp;

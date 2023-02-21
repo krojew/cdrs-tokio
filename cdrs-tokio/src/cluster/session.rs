@@ -1195,6 +1195,8 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
                         self.config.transport_buffer_size,
                         self.config.tcp_nodelay,
                         self.node_config.version,
+                        #[cfg(feature = "http-proxy")]
+                        self.node_config.http_proxy,
                     );
 
                     self.config
@@ -1341,6 +1343,8 @@ impl<
                         self.config.transport_buffer_size,
                         self.config.tcp_nodelay,
                         self.node_config.version,
+                        #[cfg(feature = "http-proxy")]
+                        self.node_config.http_proxy,
                     );
 
                     self.config

@@ -103,22 +103,46 @@ impl TransportTcp {
     ) -> io::Result<TransportTcp> {
         TcpStream::connect(addr).await.and_then(move |socket| {
             socket.set_nodelay(tcp_nodelay)?;
+            Self::with_stream(
+                socket,
+                addr,
+                keyspace_holder,
+                event_handler,
+                error_handler,
+                compression,
+                frame_encoder,
+                frame_decoder,
+                buffer_size,
+            )
+        })
+    }
 
-            let (read_half, write_half) = split(socket);
-            Ok(TransportTcp {
-                inner: AsyncTransport::new(
-                    addr,
-                    compression,
-                    frame_encoder,
-                    frame_decoder,
-                    buffer_size,
-                    read_half,
-                    write_half,
-                    event_handler,
-                    error_handler,
-                    keyspace_holder,
-                ),
-            })
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_stream<T: AsyncRead + AsyncWrite + Send + Sync + 'static>(
+        stream: T,
+        addr: SocketAddr,
+        keyspace_holder: Arc<KeyspaceHolder>,
+        event_handler: Option<mpsc::Sender<Envelope>>,
+        error_handler: Option<mpsc::Sender<Error>>,
+        compression: Compression,
+        frame_encoder: Box<dyn FrameEncoder + Send + Sync>,
+        frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
+        buffer_size: usize,
+    ) -> io::Result<TransportTcp> {
+        let (read_half, write_half) = split(stream);
+        Ok(TransportTcp {
+            inner: AsyncTransport::new(
+                addr,
+                compression,
+                frame_encoder,
+                frame_decoder,
+                buffer_size,
+                read_half,
+                write_half,
+                event_handler,
+                error_handler,
+                keyspace_holder,
+            ),
         })
     }
 }
@@ -170,6 +194,36 @@ impl TransportRustls {
         let stream = TcpStream::connect(addr).await?;
         stream.set_nodelay(tcp_nodelay)?;
 
+        Self::with_stream(
+            stream,
+            addr,
+            dns_name,
+            config,
+            keyspace_holder,
+            event_handler,
+            error_handler,
+            compression,
+            frame_encoder,
+            frame_decoder,
+            buffer_size,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn with_stream<T: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static>(
+        stream: T,
+        addr: SocketAddr,
+        dns_name: rustls::ServerName,
+        config: Arc<rustls::ClientConfig>,
+        keyspace_holder: Arc<KeyspaceHolder>,
+        event_handler: Option<mpsc::Sender<Envelope>>,
+        error_handler: Option<mpsc::Sender<Error>>,
+        compression: Compression,
+        frame_encoder: Box<dyn FrameEncoder + Send + Sync>,
+        frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
+        buffer_size: usize,
+    ) -> io::Result<Self> {
         let connector = RustlsConnector::from(config.clone());
         let stream = connector.connect(dns_name, stream).await?;
         let (read_half, write_half) = split(stream);
