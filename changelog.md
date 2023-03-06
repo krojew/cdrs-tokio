@@ -1,3 +1,21 @@
+## 8.0.0-beta.1
+
+### Fixed
+
+* Fixed stack overflow when cannot determine field type during struct serialization.
+* Properly supporting references during struct serialization.
+
+### New
+
+* Many types are now `Debug`.
+* HTTP proxy support via the `http-proxy` feature.
+
+### Changed
+
+* Made protocol enums non-exhaustive for future compatibility.
+* Session builders are now async and wait for control connection to be ready before returning a session.
+* `CBytes::new_empty()` -> `CBytes::new_null()`, `CBytes::is_empty()` -> `CBytes::is_null_or_empty()`.
+
 ## 7.0.4
 
 ### Fixed
