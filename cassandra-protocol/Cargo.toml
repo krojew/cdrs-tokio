@@ -1,6 +1,6 @@
 [package]
 name = "cassandra-protocol"
-version = "2.0.1"
+version = "3.0.0-beta.1"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 description = "Cassandra protocol implementation"
