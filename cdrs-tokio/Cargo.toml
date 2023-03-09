@@ -18,24 +18,24 @@ derive = ["cdrs-tokio-helpers-derive"]
 http-proxy = ["async-http-proxy"]
 
 [dependencies]
-arc-swap ="1.4.0"
+arc-swap.workspace = true
 atomic = "0.5.1"
-bytes = "1.1.0"
+bytes.workspace = true
 cassandra-protocol = { path = "../cassandra-protocol", version = "3.0.0-beta.1" }
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "5.0.1", optional = true }
-derive_more = "0.99.17"
-derivative = "2.1.1"
+derive_more.workspace = true
+derivative.workspace = true
 futures = { version = "0.3.21", default_features = false, features = ["alloc"] }
 fxhash = "0.2.1"
-itertools = "0.10.3"
+itertools.workspace = true
 lazy_static = "1.4.0"
 rand = "0.8.5"
 serde_json = "1.0.81"
-thiserror = "1.0.31"
+thiserror.workspace = true
 tokio = { version = "1.19.2", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
 tokio-rustls = { version = "0.23.4", optional = true }
 tracing = "0.1.35"
-uuid = "1.0.0"
+uuid.workspace = true
 webpki = { version = "0.22.0", optional = true }
 
 [dependencies.async-http-proxy]
