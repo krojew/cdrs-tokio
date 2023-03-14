@@ -82,7 +82,7 @@ impl FromCursor for ResultKind {
 
 /// `ResponseBody` is a generalized enum that represents all types of responses. Each of enum
 /// option wraps related body type.
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 #[non_exhaustive]
 pub enum ResResultBody {
     /// Void response body. It's an empty struct.
@@ -218,7 +218,7 @@ impl FromCursor for BodyResResultSetKeyspace {
 
 /// Structure that represents result of type
 /// [rows](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L533).
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct BodyResResultRows {
     /// Rows metadata
     pub metadata: RowsMetadata,
@@ -279,7 +279,7 @@ impl FromCursor for BodyResResultRows {
 }
 
 /// Rows metadata.
-#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RowsMetadata {
     /// Flags.
     pub flags: RowsMetadataFlags,
@@ -394,6 +394,7 @@ impl FromCursor for RowsMetadata {
 }
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct RowsMetadataFlags: i32 {
         const GLOBAL_TABLE_SPACE = 0x0001;
         const HAS_MORE_PAGES = 0x0002;
@@ -791,7 +792,7 @@ impl FromCursor for CTuple {
 }
 
 /// The structure represents a body of a response envelope of type `prepared`
-#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Clone, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Hash)]
 pub struct BodyResResultPrepared {
     /// id of prepared request
     pub id: CBytesShort,

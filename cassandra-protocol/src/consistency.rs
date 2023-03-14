@@ -12,7 +12,7 @@ use std::str::FromStr;
 /// `Consistency` is an enum which represents Cassandra's consistency levels.
 /// To find more details about each consistency level please refer to the following documentation:
 /// <https://docs.datastax.com/en/cql-oss/3.x/cql/cql_reference/cqlshConsistency.html>
-#[derive(Debug, PartialEq, Clone, Copy, Display, Ord, PartialOrd, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Copy, Display, Ord, PartialOrd, Eq, Hash, Default)]
 #[non_exhaustive]
 pub enum Consistency {
     /// Closest replica, as determined by the snitch.
@@ -24,6 +24,7 @@ pub enum Consistency {
     ///
     /// A write must be written to the commit log and memtable of at least one replica node.
     /// Satisfies the needs of most users because consistency requirements are not stringent.
+    #[default]
     One,
     /// A write must be written to the commit log and memtable of at least two replica nodes.
     /// Similar to ONE.
@@ -71,12 +72,6 @@ pub enum Consistency {
     /// in an offline datacenter to prevent automatic connection
     /// to online nodes in other data centers if an offline node goes down.
     LocalOne,
-}
-
-impl Default for Consistency {
-    fn default() -> Consistency {
-        Consistency::One
-    }
 }
 
 impl FromStr for Consistency {

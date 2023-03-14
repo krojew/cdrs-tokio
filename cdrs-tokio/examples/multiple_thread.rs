@@ -35,7 +35,6 @@ async fn main() {
     create_table(session.clone()).await;
 
     let futures: Vec<tokio::task::JoinHandle<()>> = (0..20)
-        .into_iter()
         .map(|i| {
             let thread_session = session.clone();
             tokio::spawn(insert_struct(thread_session, i))

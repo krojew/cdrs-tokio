@@ -6,6 +6,7 @@ use crate::frame::{FromCursor, Serialize, Version};
 use crate::types::INT_LEN;
 
 bitflags! {
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct QueryFlags: u32 {
         /// Indicates that Query Params contain value.
         const VALUE = 0x001;
