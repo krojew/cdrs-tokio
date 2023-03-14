@@ -628,7 +628,6 @@ impl AsyncTransport {
     ) -> Result<()> {
         frame_stream_ids
             .drain(..)
-            .into_iter()
             .map(|stream_id| response_handler_map.send_response(stream_id, Err(error.clone())))
             .try_collect()
     }

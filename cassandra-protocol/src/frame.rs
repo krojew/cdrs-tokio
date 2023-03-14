@@ -73,7 +73,7 @@ pub const MAX_FRAME_SIZE: usize = PAYLOAD_SIZE_LIMIT
 /// Cassandra stream identifier.
 pub type StreamId = i16;
 
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Constructor)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Constructor)]
 pub struct ParsedEnvelope {
     /// How many bytes from the buffer have been read.
     pub envelope_len: usize,
@@ -81,7 +81,7 @@ pub struct ParsedEnvelope {
     pub envelope: Envelope,
 }
 
-#[derive(Derivative, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[derive(Derivative, Clone, PartialEq, Eq, Hash)]
 #[derivative(Debug)]
 pub struct Envelope {
     pub version: Version,
@@ -408,6 +408,7 @@ impl From<u8> for Direction {
 
 bitflags! {
     /// Envelope flags
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
     pub struct Flags: u8 {
         const COMPRESSION = 0x01;
         const TRACING = 0x02;
@@ -930,10 +931,7 @@ mod tests {
     }
 
     fn create_large_envelope_data() -> (Envelope, Vec<u8>) {
-        let body: Vec<u8> = (0..262144)
-            .into_iter()
-            .map(|value| (value % 256) as u8)
-            .collect();
+        let body: Vec<u8> = (0..262144).map(|value| (value % 256) as u8).collect();
 
         let mut raw_envelope = vec![4, 0, 0, 0, 7, 0, 4, 0, 0];
         raw_envelope.append(&mut body.clone());

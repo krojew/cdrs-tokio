@@ -182,7 +182,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ConnectionPool<T, CM> {
         };
 
         // initialize the pool
-        let pool = try_join_all((0..size).into_iter().map(|_| {
+        let pool = try_join_all((0..size).map(|_| {
             new_connection(
                 connection_manager.as_ref(),
                 broadcast_rpc_address,
