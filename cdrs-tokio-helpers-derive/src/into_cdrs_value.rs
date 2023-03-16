@@ -38,9 +38,9 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> Result<TokenStream> {
         // for a struct it's enough to implement Into<Bytes> in order to be convertible into Value
         // which is used for making queries
         Ok(quote! {
+            #[automatically_derived]
             impl From<#name> for cdrs_tokio::types::value::Bytes {
               fn from(value: #name) -> Self {
-                #[allow(unused_imports)]
                 use cdrs_tokio::frame::Serialize;
 
                 let mut bytes: Vec<u8> = Vec::new();
