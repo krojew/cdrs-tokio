@@ -1,15 +1,22 @@
+use itertools::Itertools;
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::DeriveInput;
+use syn::spanned::Spanned;
+use syn::{DeriveInput, Error, Result};
 
 use crate::common::struct_fields;
 
-pub fn impl_db_mirror(ast: &DeriveInput) -> TokenStream {
+pub fn impl_db_mirror(ast: &DeriveInput) -> Result<TokenStream> {
     let name = &ast.ident;
-    let idents = struct_fields(ast)
+    let idents: Vec<_> = struct_fields(ast)?
+        .named
         .iter()
-        .map(|f| f.ident.clone().unwrap())
-        .collect::<Vec<_>>();
+        .map(|f| {
+            f.ident
+                .clone()
+                .ok_or_else(|| Error::new(f.span(), "Expected a named field!"))
+        })
+        .try_collect()?;
     let idents_copy = idents.clone();
 
     let fields = idents
@@ -23,7 +30,7 @@ pub fn impl_db_mirror(ast: &DeriveInput) -> TokenStream {
         .collect::<Vec<String>>()
         .join(", ");
 
-    quote! {
+    Ok(quote! {
         impl #name {
             pub fn insert_query() -> &'static str {
                 concat!("insert into ", stringify!(#name), "(",
@@ -44,5 +51,5 @@ pub fn impl_db_mirror(ast: &DeriveInput) -> TokenStream {
                 cdrs_tokio::query::QueryValues::NamedValues(values)
             }
         }
-    }
+    })
 }
