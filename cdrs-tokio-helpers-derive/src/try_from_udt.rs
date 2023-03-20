@@ -1,13 +1,14 @@
 use proc_macro2::TokenStream;
 use quote::*;
-use syn::DeriveInput;
+use syn::{DeriveInput, Result};
 
 use crate::common::get_struct_fields;
 
-pub fn impl_try_from_udt(ast: &DeriveInput) -> TokenStream {
+pub fn impl_try_from_udt(ast: &DeriveInput) -> Result<TokenStream> {
     let name = &ast.ident;
-    let fields = get_struct_fields(ast);
-    quote! {
+    let fields = get_struct_fields(ast)?;
+
+    Ok(quote! {
         impl cdrs_tokio::frame::TryFromUdt for #name {
             fn try_from_udt(cdrs: cdrs_tokio::types::udt::Udt) -> cdrs_tokio::Result<Self> {
                 #[allow(unused_imports)]
@@ -24,5 +25,5 @@ pub fn impl_try_from_udt(ast: &DeriveInput) -> TokenStream {
                 })
             }
         }
-    }
+    })
 }

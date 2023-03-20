@@ -1,7 +1,7 @@
 //! This trait provides functionality for derivation  `IntoCDRSBytes` trait implementation
 //! for underlying
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{parse_macro_input, DeriveInput, Error};
 
 mod common;
 mod db_mirror;
@@ -20,7 +20,9 @@ pub fn db_mirror(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
     // Build the impl
-    impl_db_mirror(&ast).into()
+    impl_db_mirror(&ast)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
 }
 
 #[proc_macro_derive(IntoCdrsValue)]
@@ -29,7 +31,9 @@ pub fn into_cdrs_value(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
     // Build the impl
-    impl_into_cdrs_value(&ast).into()
+    impl_into_cdrs_value(&ast)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
 }
 
 #[proc_macro_derive(TryFromRow)]
@@ -38,7 +42,9 @@ pub fn try_from_row(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
     // Build the impl
-    impl_try_from_row(&ast).into()
+    impl_try_from_row(&ast)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
 }
 
 #[proc_macro_derive(TryFromUdt)]
@@ -47,5 +53,7 @@ pub fn try_from_udt(input: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);
 
     // Build the impl
-    impl_try_from_udt(&ast).into()
+    impl_try_from_udt(&ast)
+        .unwrap_or_else(Error::into_compile_error)
+        .into()
 }
