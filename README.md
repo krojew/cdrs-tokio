@@ -1,4 +1,6 @@
-# CDRS tokio [![crates.io version](https://img.shields.io/crates/v/cdrs-tokio.svg)](https://crates.io/crates/cdrs-tokio) ![build status](https://github.com/krojew/cdrs-tokio/actions/workflows/rust.yml/badge.svg)
+# CDRS tokio
+
+[![crates.io version](https://img.shields.io/crates/v/cdrs-tokio.svg)](https://crates.io/crates/cdrs-tokio) ![build status](https://github.com/krojew/cdrs-tokio/actions/workflows/rust.yml/badge.svg) ![Maintenance](https://img.shields.io/maintenance/yes/2023)
 
 ![CDRS tokio - async Apache Cassandra driver using tokio](./cdrs-logo.png)
 

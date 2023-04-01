@@ -12,7 +12,7 @@ keywords = ["cassandra", "driver", "client", "cassandradb", "async"]
 license = "MIT/Apache-2.0"
 
 [features]
-rust-tls = ["rustls", "tokio-rustls", "webpki"]
+rust-tls = ["tokio-rustls", "webpki"]
 e2e-tests = []
 derive = ["cdrs-tokio-helpers-derive"]
 http-proxy = ["async-http-proxy"]
@@ -33,7 +33,7 @@ rand = "0.8.5"
 serde_json = "1.0.81"
 thiserror.workspace = true
 tokio = { version = "1.19.2", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
-tokio-rustls = { version = "0.23.4", optional = true }
+tokio-rustls = { version = "0.24", optional = true }
 tracing = "0.1.35"
 uuid.workspace = true
 webpki = { version = "0.22.0", optional = true }
@@ -42,11 +42,6 @@ webpki = { version = "0.22.0", optional = true }
 version = "1.2.5"
 optional = true
 features = ["runtime-tokio", "basic-auth"]
-
-[dependencies.rustls]
-version = "0.20.6"
-optional = true
-default-features = false
 
 [dev-dependencies]
 float_eq = "1.0.0"

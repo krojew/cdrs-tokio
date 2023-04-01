@@ -2,9 +2,9 @@ use cassandra_protocol::authenticators::{NoneAuthenticatorProvider, SaslAuthenti
 use cassandra_protocol::error::Result;
 use cassandra_protocol::frame::Version;
 use derivative::Derivative;
-use rustls::ServerName;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tokio_rustls::rustls::{ClientConfig, ServerName};
 
 #[cfg(feature = "http-proxy")]
 use crate::cluster::HttpProxyConfig;
@@ -18,7 +18,7 @@ pub struct NodeRustlsConfig {
     pub(crate) dns_name: ServerName,
     #[derivative(Debug = "ignore")]
     pub(crate) authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
-    pub(crate) config: Arc<rustls::ClientConfig>,
+    pub(crate) config: Arc<ClientConfig>,
     pub(crate) version: Version,
     pub(crate) beta_protocol: bool,
     #[cfg(feature = "http-proxy")]
@@ -33,7 +33,7 @@ pub struct NodeRustlsConfigBuilder {
     dns_name: ServerName,
     #[derivative(Debug = "ignore")]
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
-    config: Arc<rustls::ClientConfig>,
+    config: Arc<ClientConfig>,
     version: Version,
     beta_protocol: bool,
     #[cfg(feature = "http-proxy")]
@@ -41,7 +41,7 @@ pub struct NodeRustlsConfigBuilder {
 }
 
 impl NodeRustlsConfigBuilder {
-    pub fn new(dns_name: ServerName, config: Arc<rustls::ClientConfig>) -> Self {
+    pub fn new(dns_name: ServerName, config: Arc<ClientConfig>) -> Self {
         NodeRustlsConfigBuilder {
             addrs: vec![],
             dns_name,

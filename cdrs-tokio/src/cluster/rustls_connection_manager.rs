@@ -11,6 +11,7 @@ use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio::time::sleep;
+use tokio_rustls::rustls::{ClientConfig, ServerName};
 
 use crate::cluster::connection_manager::{startup, ConnectionManager};
 #[cfg(feature = "http-proxy")]
@@ -26,9 +27,9 @@ use cassandra_protocol::error::{Error, Result};
 use cassandra_protocol::frame::{Envelope, Version};
 
 pub struct RustlsConnectionManager {
-    dns_name: rustls::ServerName,
+    dns_name: ServerName,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
-    config: Arc<rustls::ClientConfig>,
+    config: Arc<ClientConfig>,
     keyspace_holder: Arc<KeyspaceHolder>,
     reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
@@ -72,9 +73,9 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
 impl RustlsConnectionManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        dns_name: rustls::ServerName,
+        dns_name: ServerName,
         authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
-        config: Arc<rustls::ClientConfig>,
+        config: Arc<ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
@@ -172,7 +173,7 @@ impl RustlsConnectionManager {
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> io::Result<TransportRustls> {
-        TransportRustls::new(
+        Transportnew(
             addr,
             self.dns_name.clone(),
             self.config.clone(),
