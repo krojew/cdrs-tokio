@@ -173,7 +173,7 @@ impl RustlsConnectionManager {
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> io::Result<TransportRustls> {
-        Transportnew(
+        TransportRustls::new(
             addr,
             self.dns_name.clone(),
             self.config.clone(),
