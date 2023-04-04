@@ -1,3 +1,10 @@
+## 8.0.0
+
+### Changed
+
+* Removed `Ord, ParialOrd` from `QueryFlags`.
+* Using `rustls` types exported from `tokio-rustls`, rather than depending on `rustls` directly.
+
 ## 8.0.0-beta.1
 
 ### Fixed
