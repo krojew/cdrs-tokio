@@ -19,11 +19,12 @@ async fn new_connection<T: CdrsTransport, CM: ConnectionManager<T>>(
     connection_manager: &CM,
     broadcast_rpc_address: SocketAddr,
     timeout: Option<Duration>,
+    max_retries: usize,
 ) -> CdrsResult<T> {
     if let Some(timeout) = timeout {
         tokio::time::timeout(
             timeout,
-            connection_manager.connection(None, None, broadcast_rpc_address),
+            connection_manager.try_connection(None, None, broadcast_rpc_address, max_retries),
         )
         .await
         .map_err(|_| {
@@ -34,7 +35,7 @@ async fn new_connection<T: CdrsTransport, CM: ConnectionManager<T>>(
         .and_then(|result| result)
     } else {
         connection_manager
-            .connection(None, None, broadcast_rpc_address)
+            .try_connection(None, None, broadcast_rpc_address, max_retries)
             .await
     }
 }
@@ -47,6 +48,7 @@ pub struct ConnectionPoolConfig {
     local_size: usize,
     remote_size: usize,
     connect_timeout: Option<Duration>,
+    max_retries: usize,
 }
 
 impl Default for ConnectionPoolConfig {
@@ -55,6 +57,7 @@ impl Default for ConnectionPoolConfig {
             local_size: 1,
             remote_size: 1,
             connect_timeout: None,
+            max_retries: 3,
         }
     }
 }
@@ -67,7 +70,13 @@ impl ConnectionPoolConfig {
             local_size,
             remote_size,
             connect_timeout,
+            ..Default::default()
         }
+    }
+
+    /// Set maximum retries when trying to establish connection.
+    pub fn set_max_retries(&mut self, max_retries: usize) {
+        self.max_retries = max_retries;
     }
 }
 
@@ -187,6 +196,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ConnectionPool<T, CM> {
                 connection_manager.as_ref(),
                 broadcast_rpc_address,
                 config.connect_timeout,
+                config.max_retries,
             )
         }))
         .await?
@@ -220,6 +230,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ConnectionPool<T, CM> {
                 self.connection_manager.as_ref(),
                 self.broadcast_rpc_address,
                 self.config.connect_timeout,
+                self.config.max_retries,
             )
             .await?,
         );

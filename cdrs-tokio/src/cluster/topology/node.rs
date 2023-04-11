@@ -208,15 +208,32 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     }
 
     /// Creates a new connection to the node with optional event and error handlers.
+    #[deprecated(since = "8.1.0", note = "Use try_new_connection() instead.")]
     pub async fn new_connection(
         &self,
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
     ) -> Result<T> {
+        self.try_new_connection(event_handler, error_handler, usize::MAX)
+            .await
+    }
+
+    /// Creates a new connection to the node with optional event and error handlers.
+    pub async fn try_new_connection(
+        &self,
+        event_handler: Option<Sender<Envelope>>,
+        error_handler: Option<Sender<Error>>,
+        max_retries: usize,
+    ) -> Result<T> {
         debug!("Establishing new connection to node...");
         self.connection_pool_factory
             .connection_manager()
-            .connection(event_handler, error_handler, self.broadcast_rpc_address)
+            .try_connection(
+                event_handler,
+                error_handler,
+                self.broadcast_rpc_address,
+                max_retries,
+            )
             .await
     }
 

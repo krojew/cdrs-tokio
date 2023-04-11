@@ -40,14 +40,16 @@ pub struct TcpConnectionManager {
 
 impl ConnectionManager<TransportTcp> for TcpConnectionManager {
     //noinspection DuplicatedCode
-    fn connection(
+    fn try_connection(
         &self,
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
+        max_retries: usize,
     ) -> BoxFuture<Result<TransportTcp>> {
         async move {
             let mut schedule = self.reconnection_policy.new_node_schedule();
+            let mut retry = 0;
 
             loop {
                 let transport = self
@@ -56,6 +58,12 @@ impl ConnectionManager<TransportTcp> for TcpConnectionManager {
                 match transport {
                     Ok(transport) => return Ok(transport),
                     Err(error) => {
+                        if retry >= max_retries {
+                            return Err(error);
+                        }
+
+                        retry += 1;
+
                         let delay = schedule.next_delay().ok_or(error)?;
                         sleep(delay).await;
                     }
