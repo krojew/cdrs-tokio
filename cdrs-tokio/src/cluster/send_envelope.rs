@@ -35,7 +35,11 @@ pub async fn send_envelope<T: CdrsTransport + 'static, CM: ConnectionManager<T> 
                         }
                     }
                 },
-                Err(error) => return Some(Err(error)),
+                Err(error) => {
+                    eprintln!("Trasport error: {:?}; for node {:?}", error,node);
+                    node.set_state_to_unknown();
+                    continue 'next_node;
+                }
             }
         }
     }

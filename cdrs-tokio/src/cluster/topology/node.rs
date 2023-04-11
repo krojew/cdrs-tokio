@@ -152,6 +152,11 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         self.state.load(Ordering::Relaxed)
     }
 
+    #[inline]
+    pub fn set_state_to_unknown(&self) {
+        self.state.store(NodeState::Unknown,Ordering::Relaxed);
+    }
+
     /// The host ID that is assigned to this node by Cassandra. This value can be used to uniquely
     /// identify a node even when the underling IP address changes.
     #[inline]
