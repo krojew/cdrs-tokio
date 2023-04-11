@@ -16,6 +16,8 @@ pub async fn send_envelope<T: CdrsTransport + 'static, CM: ConnectionManager<T> 
     is_idempotent: bool,
     mut retry_session: Box<dyn RetrySession + Send + Sync>,
 ) -> Option<error::Result<Envelope>> {
+    let mut result = None;
+
     'next_node: for node in query_plan {
         loop {
             let transport = node.persistent_connection().await;
@@ -35,10 +37,14 @@ pub async fn send_envelope<T: CdrsTransport + 'static, CM: ConnectionManager<T> 
                         }
                     }
                 },
-                Err(error) => return Some(Err(error)),
+                // save the error, but keep trying, since another node might be up
+                Err(error) => {
+                    result = Some(Err(error));
+                    continue 'next_node;
+                }
             }
         }
     }
 
-    None
+    result
 }
