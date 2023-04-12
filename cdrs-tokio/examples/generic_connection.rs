@@ -88,18 +88,16 @@ struct VirtualConnectionManager {
 }
 
 impl ConnectionManager<TransportTcp> for VirtualConnectionManager {
-    fn try_connection(
+    fn connection(
         &self,
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
-        max_retries: usize,
     ) -> BoxFuture<Result<TransportTcp>> {
-        self.inner.try_connection(
+        self.inner.connection(
             event_handler,
             error_handler,
             rewrite(addr, &self.mask, &self.actual),
-            max_retries,
         )
     }
 }

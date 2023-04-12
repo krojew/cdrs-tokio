@@ -112,10 +112,9 @@ impl<
 
                     for node in nodes {
                         if let Ok(connection) = node
-                            .try_new_connection(
+                            .new_connection(
                                 Some(event_envelope_sender.clone()),
                                 Some(error_sender.clone()),
-                                0,
                             )
                             .await
                         {
