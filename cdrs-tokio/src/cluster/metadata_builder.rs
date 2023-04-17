@@ -9,7 +9,7 @@ use crate::cluster::{ClusterMetadata, ConnectionManager, NodeInfo};
 use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::transport::CdrsTransport;
 
-pub fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
+pub(crate) fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_infos: Vec<NodeInfo>,
     keyspaces: FxHashMap<String, KeyspaceMetadata>,
     contact_points: &[Arc<Node<T, CM>>],
@@ -53,7 +53,7 @@ pub fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     ClusterMetadata::new(nodes, keyspaces)
 }
 
-pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
+pub(crate) fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_infos: &[NodeInfo],
     old_metadata: &ClusterMetadata<T, CM>,
     connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
@@ -102,7 +102,7 @@ pub fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     ClusterMetadata::new(added_or_updated, old_metadata.keyspaces().clone())
 }
 
-pub fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
+pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_info: NodeInfo,
     old_metadata: &ClusterMetadata<T, CM>,
     connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
@@ -152,6 +152,7 @@ mod tests {
     use crate::cluster::topology::{Node, NodeDistance, NodeState};
     use crate::cluster::{ClusterMetadata, NodeInfo};
     use crate::load_balancing::node_distance_evaluator::MockNodeDistanceEvaluator;
+    use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
 
     fn create_connection_pool_factory(
@@ -159,11 +160,13 @@ mod tests {
     {
         let (_, keyspace_receiver) = watch::channel(None);
         let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        let reconnection_policy = MockReconnectionPolicy::new();
         let connection_pool_factory = ConnectionPoolFactory::new(
             Default::default(),
             Version::V4,
             connection_manager,
             keyspace_receiver,
+            Arc::new(reconnection_policy),
         );
 
         Arc::new(connection_pool_factory)

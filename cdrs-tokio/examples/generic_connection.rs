@@ -9,7 +9,7 @@ use cdrs_tokio::frame::{Envelope, Version};
 use cdrs_tokio::frame_encoding::ProtocolFrameEncodingFactory;
 use cdrs_tokio::future::BoxFuture;
 use cdrs_tokio::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
-use cdrs_tokio::retry::{ConstantReconnectionPolicy, ReconnectionPolicy};
+use cdrs_tokio::retry::ConstantReconnectionPolicy;
 use cdrs_tokio::IntoCdrsValue;
 use cdrs_tokio::{
     authenticators::{SaslAuthenticatorProvider, StaticPasswordAuthenticatorProvider},
@@ -55,7 +55,6 @@ struct VirtualClusterConfig {
     authenticator: Arc<dyn SaslAuthenticatorProvider + Sync + Send>,
     mask: Ipv4Addr,
     actual: Ipv4Addr,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     version: Version,
 }
 
@@ -111,7 +110,6 @@ impl VirtualConnectionManager {
             inner: TcpConnectionManager::new(
                 config.authenticator.clone(),
                 keyspace_holder,
-                config.reconnection_policy.clone(),
                 Box::<ProtocolFrameEncodingFactory>::default(),
                 Compression::None,
                 DEFAULT_TRANSPORT_BUFFER_SIZE,
@@ -163,7 +161,6 @@ async fn main() {
         authenticator,
         mask,
         actual,
-        reconnection_policy: reconnection_policy.clone(),
         version: Version::V5,
     };
     let nodes = [

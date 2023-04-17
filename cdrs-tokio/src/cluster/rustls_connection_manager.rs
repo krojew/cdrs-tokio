@@ -1,5 +1,16 @@
+use crate::cluster::connection_manager::{startup, ConnectionManager};
+#[cfg(feature = "http-proxy")]
+use crate::cluster::HttpProxyConfig;
+use crate::cluster::KeyspaceHolder;
+use crate::frame_encoding::FrameEncodingFactory;
+use crate::future::BoxFuture;
+use crate::transport::TransportRustls;
 #[cfg(feature = "http-proxy")]
 use async_http_proxy::{http_connect_tokio, http_connect_tokio_with_basic_auth};
+use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::error::{Error, Result};
+use cassandra_protocol::frame::{Envelope, Version};
 use futures::FutureExt;
 use std::io;
 #[cfg(feature = "http-proxy")]
@@ -10,28 +21,13 @@ use std::sync::Arc;
 #[cfg(feature = "http-proxy")]
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
-use tokio::time::sleep;
 use tokio_rustls::rustls::{ClientConfig, ServerName};
-
-use crate::cluster::connection_manager::{startup, ConnectionManager};
-#[cfg(feature = "http-proxy")]
-use crate::cluster::HttpProxyConfig;
-use crate::cluster::KeyspaceHolder;
-use crate::frame_encoding::FrameEncodingFactory;
-use crate::future::BoxFuture;
-use crate::retry::ReconnectionPolicy;
-use crate::transport::TransportRustls;
-use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
-use cassandra_protocol::compression::Compression;
-use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::frame::{Envelope, Version};
 
 pub struct RustlsConnectionManager {
     dns_name: ServerName,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<ClientConfig>,
     keyspace_holder: Arc<KeyspaceHolder>,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
     compression: Compression,
     buffer_size: usize,
@@ -49,24 +45,8 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<Result<TransportRustls>> {
-        async move {
-            let mut schedule = self.reconnection_policy.new_node_schedule();
-
-            loop {
-                let transport = self
-                    .establish_connection(event_handler.clone(), error_handler.clone(), addr)
-                    .await;
-
-                match transport {
-                    Ok(transport) => return Ok(transport),
-                    Err(error) => {
-                        let delay = schedule.next_delay().ok_or(error)?;
-                        sleep(delay).await;
-                    }
-                }
-            }
-        }
-        .boxed()
+        self.establish_connection(event_handler, error_handler, addr)
+            .boxed()
     }
 }
 
@@ -77,7 +57,6 @@ impl RustlsConnectionManager {
         authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
         config: Arc<ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
-        reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
         compression: Compression,
         buffer_size: usize,
@@ -90,7 +69,6 @@ impl RustlsConnectionManager {
             authenticator_provider,
             config,
             keyspace_holder,
-            reconnection_policy,
             frame_encoder_factory,
             compression,
             buffer_size,

@@ -314,7 +314,10 @@ fn extract_replication_factor(value: Option<&JsonValue>) -> Result<usize> {
     }
 }
 
-pub struct ClusterMetadataManager<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
+pub(crate) struct ClusterMetadataManager<
+    T: CdrsTransport + 'static,
+    CM: ConnectionManager<T> + 'static,
+> {
     metadata: ArcSwap<ClusterMetadata<T, CM>>,
     contact_points: Vec<Arc<Node<T, CM>>>,
     connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
@@ -327,7 +330,7 @@ pub struct ClusterMetadataManager<T: CdrsTransport + 'static, CM: ConnectionMana
 }
 
 impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMetadataManager<T, CM> {
-    pub fn new(
+    pub(crate) fn new(
         contact_points: Vec<Arc<Node<T, CM>>>,
         connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         session_context: Arc<SessionContext<T>>,
@@ -348,12 +351,19 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         }
     }
 
-    pub fn listen_to_events(self: Arc<Self>, mut event_receiver: Receiver<ServerEvent>) {
+    pub(crate) fn listen_to_events(self: &Arc<Self>, mut event_receiver: Receiver<ServerEvent>) {
+        let cmm = Arc::downgrade(self);
         tokio::spawn(async move {
             loop {
                 let event = event_receiver.recv().await;
                 match event {
-                    Ok(event) => self.process_event(event).await,
+                    Ok(event) => {
+                        if let Some(cmm) = cmm.upgrade() {
+                            cmm.process_event(event).await;
+                        } else {
+                            break;
+                        }
+                    }
                     Err(RecvError::Lagged(n)) => {
                         warn!("Skipped {} events.", n);
                     }
@@ -586,12 +596,12 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     #[inline]
-    pub fn metadata(&self) -> Arc<ClusterMetadata<T, CM>> {
+    pub(crate) fn metadata(&self) -> Arc<ClusterMetadata<T, CM>> {
         self.metadata.load().clone()
     }
 
     #[inline]
-    pub fn find_node_by_rpc_address(
+    pub(crate) fn find_node_by_rpc_address(
         &self,
         broadcast_rpc_address: SocketAddr,
     ) -> Option<Arc<Node<T, CM>>> {
@@ -601,7 +611,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     // Refreshes stored metadata. Note: it is expected to be called by the control connection.
-    pub async fn refresh_metadata(&self) -> Result<()> {
+    pub(crate) async fn refresh_metadata(&self) -> Result<()> {
         let (node_infos, keyspaces) =
             tokio::try_join!(self.refresh_node_infos(), self.refresh_keyspaces())?;
 

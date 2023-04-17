@@ -773,6 +773,7 @@ impl<
             version,
             connection_manager,
             keyspace_receiver,
+            reconnection_policy.clone(),
         ));
 
         let contact_points = contact_points
@@ -812,9 +813,7 @@ impl<
             beta_protocol,
         ));
 
-        cluster_metadata_manager
-            .clone()
-            .listen_to_events(event_receiver);
+        cluster_metadata_manager.listen_to_events(event_receiver);
 
         let control_connection = ControlConnection::new(
             load_balancing.clone(),
@@ -1189,7 +1188,6 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
                     let connection_manager = TcpConnectionManager::new(
                         self.node_config.authenticator_provider,
                         keyspace_holder.clone(),
-                        self.config.reconnection_policy.clone(),
                         self.frame_encoder_factory,
                         self.config.compression,
                         self.config.transport_buffer_size,
@@ -1337,7 +1335,6 @@ impl<
                         self.node_config.authenticator_provider,
                         self.node_config.config,
                         keyspace_holder.clone(),
-                        self.config.reconnection_policy.clone(),
                         self.frame_encoder_factory,
                         self.config.compression,
                         self.config.transport_buffer_size,

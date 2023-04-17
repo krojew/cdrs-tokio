@@ -18,7 +18,7 @@ const DEFAULT_RECONNECT_DELAY: Duration = Duration::from_secs(10);
 const EVENT_CHANNEL_CAPACITY: usize = 32;
 
 #[derive(Constructor)]
-pub struct ControlConnection<
+pub(crate) struct ControlConnection<
     T: CdrsTransport + 'static,
     CM: ConnectionManager<T> + 'static,
     LB: LoadBalancingStrategy<T, CM> + Send + Sync,
@@ -38,7 +38,7 @@ impl<
         LB: LoadBalancingStrategy<T, CM> + Send + Sync,
     > ControlConnection<T, CM, LB>
 {
-    pub async fn run(self, init_complete_sender: tokio::sync::oneshot::Sender<()>) {
+    pub(crate) async fn run(self, init_complete_sender: tokio::sync::oneshot::Sender<()>) {
         let (event_envelope_sender, event_envelope_receiver) = channel(EVENT_CHANNEL_CAPACITY);
         let (error_sender, mut error_receiver) = channel(1);
 

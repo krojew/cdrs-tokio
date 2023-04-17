@@ -40,6 +40,19 @@ impl FromCursor for ErrorBody {
     }
 }
 
+impl ErrorBody {
+    /// Is the error related to bad protocol used. This is a special case which is used in some
+    /// situations to detect when a node should not be contacted.
+    pub fn is_bad_protocol(&self) -> bool {
+        // based on ProtocolInitHandler from the Datastax driver
+        (self.ty == ErrorType::Server || self.ty == ErrorType::Protocol)
+            && (self
+                .message
+                .contains("Invalid or unsupported protocol version")
+                || self.message.contains("Beta version of the protocol used"))
+    }
+}
+
 /// Protocol-dependent failure information. V5 contains a map of endpoint->code entries, while
 /// previous versions contain only error count.
 #[derive(Debug, PartialEq, Eq, Clone)]

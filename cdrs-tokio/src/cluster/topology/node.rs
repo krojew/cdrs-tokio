@@ -46,9 +46,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
-    /// Creates a node from an address. The node state and distance is unknown at this time.
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub(crate) fn new(
         connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
@@ -58,7 +57,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         rack: String,
         datacenter: String,
     ) -> Self {
-        Node {
+        Self {
             connection_pool_factory,
             connection_pool: Default::default(),
             broadcast_rpc_address,
@@ -72,9 +71,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         }
     }
 
-    /// Creates a node from full state.
     #[allow(clippy::too_many_arguments)]
-    pub fn new_with_state(
+    pub(crate) fn new_with_state(
         connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
@@ -85,7 +83,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         rack: String,
         datacenter: String,
     ) -> Self {
-        Node {
+        Self {
             connection_pool_factory,
             connection_pool: Default::default(),
             broadcast_rpc_address,
@@ -99,9 +97,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         }
     }
 
-    /// Creates a node from an address. The node distance is unknown at this time.
     #[allow(clippy::too_many_arguments)]
-    pub fn with_state(
+    pub(crate) fn with_state(
         connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
@@ -111,7 +108,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         rack: String,
         datacenter: String,
     ) -> Self {
-        Node {
+        Self {
             connection_pool_factory,
             connection_pool: Default::default(),
             broadcast_rpc_address,
@@ -126,14 +123,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     }
 
     #[cfg(test)]
-    pub fn with_distance(
+    pub(crate) fn with_distance(
         connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
         broadcast_rpc_address: SocketAddr,
         broadcast_address: Option<SocketAddr>,
         host_id: Option<Uuid>,
         distance: NodeDistance,
     ) -> Self {
-        Node {
+        Self {
             connection_pool_factory,
             connection_pool: Default::default(),
             broadcast_rpc_address,
@@ -193,18 +190,36 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
 
     /// Returns a connection to given node.
     #[inline]
-    pub async fn persistent_connection(&self) -> Result<Arc<T>> {
+    pub async fn persistent_connection(self: &Arc<Self>) -> Result<Arc<T>> {
         let pool = self
             .connection_pool
             .get_or_try_init(|| {
                 self.connection_pool_factory.create(
                     self.distance.unwrap_or(NodeDistance::Remote),
                     self.broadcast_rpc_address,
+                    Arc::downgrade(self),
                 )
             })
-            .await?;
+            .await;
 
-        pool.connection().await
+        let pool = match pool {
+            Ok(pool) => pool,
+            Err(Error::InvalidProtocol(addr)) => {
+                // we can't connect to this node even if it's up
+                self.force_down();
+                return Err(Error::InvalidProtocol(addr));
+            }
+            Err(error) => return Err(error),
+        };
+
+        match pool.connection().await {
+            Ok(connection) => Ok(connection),
+            Err(error) => {
+                // mark this node as down, since there's no available connection
+                self.state.store(NodeState::Down, Ordering::Relaxed);
+                Err(error)
+            }
+        }
     }
 
     /// Creates a new connection to the node with optional event and error handlers.
@@ -244,6 +259,18 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         self.distance.is_none() || self.state.load(Ordering::Relaxed) != NodeState::Up
     }
 
+    pub(crate) fn force_down(&self) {
+        self.state.store(NodeState::ForcedDown, Ordering::Relaxed);
+    }
+
+    pub(crate) fn mark_down(&self) {
+        self.state.store(NodeState::Down, Ordering::Relaxed);
+    }
+
+    pub(crate) fn mark_up(&self) {
+        self.state.store(NodeState::Up, Ordering::Relaxed);
+    }
+
     #[inline]
     pub(crate) fn clone_with_node_info(&self, node_info: NodeInfo) -> Self {
         let address_changed = self
@@ -253,7 +280,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             // know its state
             .unwrap_or(false);
 
-        Node {
+        Self {
             connection_pool_factory: self.connection_pool_factory.clone(),
             connection_pool: Default::default(),
             broadcast_rpc_address: node_info.broadcast_rpc_address,
@@ -275,7 +302,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     #[inline]
     pub(crate) fn clone_as_contact_point(&self, node_info: NodeInfo) -> Self {
         // control points might have valid state already, so no need to reset
-        Node {
+        Self {
             connection_pool_factory: self.connection_pool_factory.clone(),
             connection_pool: self.connection_pool.clone(),
             broadcast_rpc_address: self.broadcast_rpc_address,
@@ -295,7 +322,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         node_info: NodeInfo,
         state: NodeState,
     ) -> Self {
-        Node {
+        Self {
             connection_pool_factory: self.connection_pool_factory.clone(),
             connection_pool: Default::default(),
             broadcast_rpc_address: node_info.broadcast_rpc_address,
@@ -312,7 +339,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
 
     #[inline]
     pub(crate) fn clone_with_node_state(&self, state: NodeState) -> Self {
-        Node {
+        Self {
             connection_pool_factory: self.connection_pool_factory.clone(),
             connection_pool: Default::default(),
             broadcast_rpc_address: self.broadcast_rpc_address,

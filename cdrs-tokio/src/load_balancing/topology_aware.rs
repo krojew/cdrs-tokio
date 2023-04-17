@@ -317,6 +317,7 @@ mod tests {
     use crate::load_balancing::{
         LoadBalancingStrategy, Request, TopologyAwareLoadBalancingStrategy,
     };
+    use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
 
     lazy_static! {
@@ -331,11 +332,13 @@ mod tests {
     ) -> ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
         let (_, keyspace_receiver) = watch::channel(None);
         let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        let reconnection_policy = MockReconnectionPolicy::new();
         let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
             Default::default(),
             Version::V4,
             connection_manager,
             keyspace_receiver,
+            Arc::new(reconnection_policy),
         ));
 
         let mut nodes = FxHashMap::default();

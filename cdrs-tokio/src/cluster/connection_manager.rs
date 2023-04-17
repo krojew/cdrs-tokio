@@ -56,7 +56,14 @@ pub async fn startup<
 ) -> Result<()> {
     let startup_envelope =
         Envelope::new_req_startup(compression.as_str().map(String::from), version);
-    let start_response = transport.write_envelope(&startup_envelope, true).await?;
+
+    let start_response = match transport.write_envelope(&startup_envelope, true).await {
+        Ok(response) => Ok(response),
+        Err(Error::Server { body, .. }) if body.is_bad_protocol() => {
+            Err(Error::InvalidProtocol(transport.address()))
+        }
+        Err(error) => Err(error),
+    }?;
 
     if start_response.opcode == Opcode::Ready {
         return set_keyspace(transport, keyspace_holder, version).await;
