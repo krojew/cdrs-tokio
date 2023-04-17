@@ -360,8 +360,20 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
     }
 
     pub(crate) async fn connection(&self) -> CdrsResult<Arc<T>> {
+        fn create_no_connections_error(broadcast_rpc_address: SocketAddr) -> Error {
+            warn!(%broadcast_rpc_address, "All connections down to node.");
+            Error::General(format!(
+                "No active connections to: {}",
+                broadcast_rpc_address
+            ))
+        }
+
         let pool = self.pool.read().await;
         let pool_len = pool.len();
+        if pool_len == 0 {
+            return Err(create_no_connections_error(self.broadcast_rpc_address));
+        }
+
         let mut index = self.current_index.fetch_add(1, Ordering::Relaxed) % pool_len;
         let first_index = index;
 
@@ -375,11 +387,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
 
             if index == first_index {
                 // we've checked the whole pool and everything's down
-                warn!(broadcast_rpc_address = %self.broadcast_rpc_address, "All connections down to node.");
-                return Err(Error::General(format!(
-                    "No active connections to: {}",
-                    self.broadcast_rpc_address
-                )));
+                return Err(create_no_connections_error(self.broadcast_rpc_address));
             }
         }
     }
