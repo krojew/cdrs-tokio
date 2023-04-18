@@ -70,7 +70,7 @@ impl Default for ConnectionPoolConfig {
             local_size: 1,
             remote_size: 1,
             connect_timeout: None,
-            heartbeat_interval: Duration::from_secs(1),
+            heartbeat_interval: Duration::from_secs(30),
         }
     }
 }
