@@ -6,13 +6,13 @@ use futures::future::join_all;
 use itertools::Itertools;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::sync::watch::Receiver;
 use tokio::sync::{mpsc, RwLock};
-use tokio::time::sleep;
+use tokio::time::{interval_at, sleep, Instant};
 use tracing::*;
 
 use crate::cluster::topology::{Node, NodeDistance, NodeState};
@@ -61,6 +61,7 @@ pub struct ConnectionPoolConfig {
     local_size: usize,
     remote_size: usize,
     connect_timeout: Option<Duration>,
+    heartbeat_interval: Duration,
 }
 
 impl Default for ConnectionPoolConfig {
@@ -69,18 +70,25 @@ impl Default for ConnectionPoolConfig {
             local_size: 1,
             remote_size: 1,
             connect_timeout: None,
+            heartbeat_interval: Duration::from_secs(1),
         }
     }
 }
 
 impl ConnectionPoolConfig {
     /// Creates a new configuration for a pool of given size, with optional connect timeout.
-    pub fn new(local_size: usize, remote_size: usize, connect_timeout: Option<Duration>) -> Self {
+    pub fn new(
+        local_size: usize,
+        remote_size: usize,
+        connect_timeout: Option<Duration>,
+        heartbeat_interval: Duration,
+    ) -> Self {
         assert!(local_size > 0 && remote_size > 0);
         ConnectionPoolConfig {
             local_size,
             remote_size,
             connect_timeout,
+            heartbeat_interval,
         }
     }
 }
@@ -144,11 +152,20 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
             .await?,
         );
 
+        let weak_pool = Arc::downgrade(&pool);
+
         Self::monitor_connections(
             error_receiver,
-            Arc::downgrade(&pool),
-            node,
+            weak_pool.clone(),
+            node.clone(),
             self.reconnection_policy.clone(),
+        );
+
+        Self::start_heartbeat(
+            weak_pool,
+            node,
+            self.config.heartbeat_interval,
+            self.version,
         );
 
         // watch for keyspace changes
@@ -191,6 +208,57 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         });
 
         Ok(pool)
+    }
+
+    fn start_heartbeat(
+        pool: Weak<ConnectionPool<T, CM>>,
+        node: Weak<Node<T, CM>>,
+        heartbeat_interval: Duration,
+        version: Version,
+    ) {
+        let mut interval = interval_at(Instant::now() + heartbeat_interval, heartbeat_interval);
+        tokio::spawn(async move {
+            loop {
+                interval.tick().await;
+
+                if let Some(node) = node.upgrade() {
+                    let broadcast_rpc_address = node.broadcast_address();
+                    let state = node.state();
+                    if state == NodeState::ForcedDown {
+                        debug!(
+                            ?broadcast_rpc_address,
+                            "Stopping heartbeat due to node being forced down."
+                        );
+                        break;
+                    }
+
+                    if state == NodeState::Up {
+                        if let Some(pool) = pool.upgrade() {
+                            let envelope = Envelope::new_req_options(version);
+
+                            let pool = pool.pool.read().await;
+                            for connection in pool.deref() {
+                                if let Err(error) =
+                                    connection.write_envelope(&envelope, false).await
+                                {
+                                    warn!(?broadcast_rpc_address, %error, "Error waiting for heartbeat response - the connection will probably go down.");
+                                }
+                            }
+                        } else {
+                            debug!(
+                                ?broadcast_rpc_address,
+                                "Stopping heartbeat due to pool being gone."
+                            );
+                            break;
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            debug!("Stopped heartbeat.");
+        });
     }
 
     fn monitor_connections(
