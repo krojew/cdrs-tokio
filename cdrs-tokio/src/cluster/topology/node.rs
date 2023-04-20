@@ -212,14 +212,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             Err(error) => return Err(error),
         };
 
-        match pool.connection().await {
-            Ok(connection) => Ok(connection),
-            Err(error) => {
-                // mark this node as down, since there's no available connection
-                self.state.store(NodeState::Down, Ordering::Relaxed);
-                Err(error)
-            }
-        }
+        pool.connection().await
     }
 
     /// Creates a new connection to the node with optional event and error handlers.
