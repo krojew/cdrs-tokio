@@ -270,19 +270,6 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         tokio::spawn(async move {
             let reconnection_state = Arc::new(Atomic::new(ReconnectionState::NotRunning));
             while receiver.recv().await.is_some() {
-                // when one connection goes down, all of them will most likely go down, so we need
-                // to protect against many reconnection attempts
-                let state = reconnection_state.load(Ordering::Relaxed);
-                if state != ReconnectionState::NotRunning {
-                    if state == ReconnectionState::Disabled {
-                        break;
-                    }
-
-                    continue;
-                }
-
-                reconnection_state.store(ReconnectionState::InProgress, Ordering::Relaxed);
-
                 if let Some(node) = node.upgrade() {
                     let broadcast_rpc_address = node.broadcast_address();
 
@@ -294,12 +281,39 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                         break;
                     }
 
+                    {
+                        // check if the node is down (no active connections)
+                        if let Some(pool) = pool.upgrade() {
+                            if Self::are_all_connections_down(pool.deref()).await {
+                                debug!(
+                                    ?broadcast_rpc_address,
+                                    "All connections broken - marking node as down."
+                                );
+                                node.mark_down();
+                            }
+                        } else {
+                            // the pool is gone - we're shutting down
+                            break;
+                        }
+                    }
+
+                    // when one connection goes down, all of them will most likely go down, so we need
+                    // to protect against many reconnection attempts
+                    let state = reconnection_state.load(Ordering::Relaxed);
+                    if state != ReconnectionState::NotRunning {
+                        if state == ReconnectionState::Disabled {
+                            break;
+                        }
+
+                        continue;
+                    }
+
+                    reconnection_state.store(ReconnectionState::InProgress, Ordering::Relaxed);
+
                     warn!(
                         ?broadcast_rpc_address,
                         "Connection down. Starting reconnection."
                     );
-
-                    node.mark_down();
 
                     let reconnection_schedule = reconnection_policy.new_node_schedule();
                     let reconnecting = reconnection_state.clone();
@@ -308,7 +322,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
 
                     tokio::spawn(async move {
                         let new_state =
-                            Self::run_reconnection_loop(reconnection_schedule, pool).await;
+                            Self::run_reconnection_loop(reconnection_schedule, pool.clone()).await;
 
                         reconnecting.store(new_state, Ordering::Relaxed);
                         debug!(?broadcast_rpc_address, %new_state, "Reconnection loop stopped.");
@@ -326,6 +340,22 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                                 debug!(?broadcast_rpc_address, "All connections reestablished.");
                                 node.mark_up();
                             }
+                        } else if let Some(pool) = pool.upgrade() {
+                            if Self::is_any_connection_up(pool.deref()).await {
+                                if let Some(node) = node.upgrade() {
+                                    debug!(
+                                        ?broadcast_rpc_address,
+                                        "Marking node as up - some connections are established."
+                                    );
+                                    node.mark_up();
+                                }
+                            }
+                        } else if let Some(node) = node.upgrade() {
+                            debug!(
+                                ?broadcast_rpc_address,
+                                "Pool gone while in reconnection loop."
+                            );
+                            node.force_down();
                         }
                     });
                 } else {
@@ -336,6 +366,28 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
 
             debug!("Pool monitoring stopped.");
         });
+    }
+
+    async fn are_all_connections_down(pool: &ConnectionPool<T, CM>) -> bool {
+        let connections = pool.pool.read().await;
+        for connection in connections.deref() {
+            if !connection.is_broken() {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    async fn is_any_connection_up(pool: &ConnectionPool<T, CM>) -> bool {
+        let connections = pool.pool.read().await;
+        for connection in connections.deref() {
+            if !connection.is_broken() {
+                return true;
+            }
+        }
+
+        false
     }
 
     async fn run_reconnection_loop(
