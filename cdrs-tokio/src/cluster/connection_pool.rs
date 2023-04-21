@@ -341,7 +341,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                                 node.mark_up();
                             }
                         } else if let Some(pool) = pool.upgrade() {
-                            if Self::is_any_connection_up(pool.deref()).await {
+                            if pool.is_any_connection_up().await {
                                 if let Some(node) = node.upgrade() {
                                     debug!(
                                         ?broadcast_rpc_address,
@@ -377,17 +377,6 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         }
 
         true
-    }
-
-    async fn is_any_connection_up(pool: &ConnectionPool<T, CM>) -> bool {
-        let connections = pool.pool.read().await;
-        for connection in connections.deref() {
-            if !connection.is_broken() {
-                return true;
-            }
-        }
-
-        false
     }
 
     async fn run_reconnection_loop(
@@ -510,6 +499,17 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
                 return Err(create_no_connections_error(self.broadcast_rpc_address));
             }
         }
+    }
+
+    pub(crate) async fn is_any_connection_up(&self) -> bool {
+        let connections = self.pool.read().await;
+        for connection in connections.deref() {
+            if !connection.is_broken() {
+                return true;
+            }
+        }
+
+        false
     }
 
     async fn reconnect_broken(&self) -> CdrsResult<bool> {

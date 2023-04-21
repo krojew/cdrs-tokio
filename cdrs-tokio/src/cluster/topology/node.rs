@@ -215,6 +215,15 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         pool.connection().await
     }
 
+    /// Checks if any connection is still available.
+    pub async fn is_any_connection_up(&self) -> bool {
+        if let Some(pool) = self.connection_pool.get() {
+            pool.is_any_connection_up().await
+        } else {
+            false
+        }
+    }
+
     /// Creates a new connection to the node with optional event and error handlers.
     pub async fn new_connection(
         &self,
