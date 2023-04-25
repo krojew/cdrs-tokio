@@ -56,7 +56,7 @@ async fn new_connection<T: CdrsTransport, CM: ConnectionManager<T>>(
 /// Configuration for node connection pools. By default, the pool size depends on the number of
 /// cpu for local nodes and a fixed value for remote, and there is no timeout. If the distance to a
 /// given node is unknown, it is treated as remote.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct ConnectionPoolConfig {
     local_size: usize,
     remote_size: usize,
@@ -75,21 +75,43 @@ impl Default for ConnectionPoolConfig {
     }
 }
 
-impl ConnectionPoolConfig {
-    /// Creates a new configuration for a pool of given size, with optional connect timeout.
-    pub fn new(
-        local_size: usize,
-        remote_size: usize,
-        connect_timeout: Option<Duration>,
-        heartbeat_interval: Duration,
-    ) -> Self {
-        assert!(local_size > 0 && remote_size > 0);
-        ConnectionPoolConfig {
-            local_size,
-            remote_size,
-            connect_timeout,
-            heartbeat_interval,
-        }
+/// A builder for [ConnectionPoolConfig].
+#[derive(Default, Clone, Debug)]
+pub struct ConnectionPoolConfigBuilder {
+    config: ConnectionPoolConfig,
+}
+
+impl ConnectionPoolConfigBuilder {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    /// Sets local node pool size.
+    #[must_use]
+    pub fn with_local_size(mut self, local_size: usize) -> Self {
+        self.config.local_size = local_size;
+        self
+    }
+
+    /// Sets remote node pool size.
+    #[must_use]
+    pub fn with_remote_size(mut self, remote_size: usize) -> Self {
+        self.config.remote_size = remote_size;
+        self
+    }
+
+    /// Sets new connection timeout.
+    #[must_use]
+    pub fn with_connect_timeout(mut self, connect_timeout: Option<Duration>) -> Self {
+        self.config.connect_timeout = connect_timeout;
+        self
+    }
+
+    /// Sets new heartbeat interval.
+    #[must_use]
+    pub fn with_heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
+        self.config.heartbeat_interval = heartbeat_interval;
+        self
     }
 }
 
