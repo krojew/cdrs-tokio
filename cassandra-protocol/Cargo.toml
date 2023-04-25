@@ -9,6 +9,7 @@ homepage = "https://github.com/krojew/cdrs-tokio"
 repository = "https://github.com/krojew/cdrs-tokio"
 keywords = ["cassandra", "client", "cassandradb"]
 license = "MIT/Apache-2.0"
+categories = ["asynchronous", "database"]
 
 [features]
 e2e-tests = []

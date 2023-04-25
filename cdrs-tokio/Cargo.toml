@@ -10,6 +10,7 @@ repository = "https://github.com/krojew/cdrs-tokio"
 readme = "../README.md"
 keywords = ["cassandra", "driver", "client", "cassandradb", "async"]
 license = "MIT/Apache-2.0"
+categories = ["asynchronous", "database"]
 
 [features]
 rust-tls = ["tokio-rustls", "webpki"]
