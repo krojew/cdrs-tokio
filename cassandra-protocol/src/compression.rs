@@ -70,7 +70,7 @@ pub enum Compression {
     Lz4,
     /// [snappy](https://code.google.com/p/snappy/) compression
     Snappy,
-    /// Non compression
+    /// No compression
     None,
 }
 
