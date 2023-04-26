@@ -21,6 +21,7 @@ use crate::future::BoxFuture;
 use crate::transport::CdrsTransport;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::Version;
+pub use cassandra_protocol::token::Murmur3Token;
 use std::sync::Arc;
 
 mod cluster_metadata_manager;
@@ -29,7 +30,10 @@ mod config_proxy;
 #[cfg(feature = "rust-tls")]
 mod config_rustls;
 mod config_tcp;
-pub(crate) mod connection_manager;
+#[cfg(not(test))]
+mod connection_manager;
+#[cfg(test)]
+pub mod connection_manager;
 pub mod connection_pool;
 mod control_connection;
 mod keyspace_holder;

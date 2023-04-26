@@ -1,11 +1,11 @@
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::query::{QueryFlags, QueryParams, QueryValues};
-use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
 use cassandra_protocol::types::{CBytes, CInt, CLong};
 use derivative::Derivative;
 use std::sync::Arc;
 
+use crate::cluster::Murmur3Token;
 use crate::retry::RetryPolicy;
 use crate::speculative_execution::SpeculativeExecutionPolicy;
 use crate::statement::StatementParams;

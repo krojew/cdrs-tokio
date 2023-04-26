@@ -10,7 +10,7 @@ use tokio_rustls::rustls::{ClientConfig, ServerName};
 use crate::cluster::HttpProxyConfig;
 use crate::cluster::NodeAddress;
 
-/// Single node TLS connection config.
+/// Single node TLS connection config. See [NodeRustlsConfigBuilder].
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct NodeRustlsConfig {

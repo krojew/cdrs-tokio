@@ -1,10 +1,10 @@
-use crate::retry::RetryPolicy;
 use cassandra_protocol::query::QueryParams;
-use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
 use derivative::Derivative;
 use std::sync::Arc;
 
+use crate::cluster::Murmur3Token;
+use crate::retry::RetryPolicy;
 use crate::speculative_execution::SpeculativeExecutionPolicy;
 
 /// Parameters of Query for query operation.

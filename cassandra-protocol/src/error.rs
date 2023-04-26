@@ -90,6 +90,11 @@ pub enum Error {
     /// Unexpected startup response.
     #[error("Unexpected startup response: {0}")]
     UnexpectedStartupResponse(Opcode),
+    /// Special error for cases when starting up a connection and protocol negotiation fails. There
+    /// currently is no explicit server-side code for this, so the information must be inferred from
+    /// returned error response.
+    #[error("Invalid protocol used when communicating with a node: {0}")]
+    InvalidProtocol(SocketAddr),
 }
 
 pub fn column_is_empty_err<T: Display>(column_name: T) -> Error {
@@ -153,6 +158,7 @@ impl Clone for Error {
             },
             Error::UnexpectedAuthResponse(value) => Error::UnexpectedAuthResponse(*value),
             Error::UnexpectedStartupResponse(value) => Error::UnexpectedStartupResponse(*value),
+            Error::InvalidProtocol(addr) => Error::InvalidProtocol(*addr),
         }
     }
 }

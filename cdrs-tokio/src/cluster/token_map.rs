@@ -1,4 +1,3 @@
-use cassandra_protocol::token::Murmur3Token;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
@@ -6,6 +5,7 @@ use std::sync::Arc;
 
 use crate::cluster::topology::{Node, NodeMap};
 use crate::cluster::ConnectionManager;
+use crate::cluster::Murmur3Token;
 use crate::transport::CdrsTransport;
 
 /// Map of tokens to nodes.
@@ -109,7 +109,6 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
 #[cfg(test)]
 mod tests {
     use cassandra_protocol::frame::Version;
-    use cassandra_protocol::token::Murmur3Token;
     use itertools::Itertools;
     use lazy_static::lazy_static;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -120,7 +119,9 @@ mod tests {
     use crate::cluster::connection_manager::MockConnectionManager;
     use crate::cluster::connection_pool::ConnectionPoolFactory;
     use crate::cluster::topology::{Node, NodeMap};
+    use crate::cluster::Murmur3Token;
     use crate::cluster::TokenMap;
+    use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
 
     lazy_static! {
@@ -132,11 +133,13 @@ mod tests {
     fn prepare_nodes() -> NodeMap<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
         let (_, keyspace_receiver) = watch::channel(None);
         let connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        let reconnection_policy = MockReconnectionPolicy::new();
         let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
             Default::default(),
             Version::V4,
             connection_manager,
             keyspace_receiver,
+            Arc::new(reconnection_policy),
         ));
 
         let mut nodes = NodeMap::default();

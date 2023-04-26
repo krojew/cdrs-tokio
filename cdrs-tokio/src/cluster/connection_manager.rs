@@ -19,24 +19,11 @@ use cassandra_protocol::query::utils::quote;
 pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {
     /// Tries to establish a new, ready to use connection with optional server event and error
     /// handlers.
-    #[deprecated(since = "8.1.0", note = "Use try_connection() instead.")]
     fn connection(
         &self,
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
-    ) -> BoxFuture<Result<T>> {
-        self.try_connection(event_handler, error_handler, addr, usize::MAX)
-    }
-
-    /// Tries to establish a new, ready to use connection with optional server event and error
-    /// handlers.
-    fn try_connection(
-        &self,
-        event_handler: Option<Sender<Envelope>>,
-        error_handler: Option<Sender<Error>>,
-        addr: SocketAddr,
-        max_retries: usize,
     ) -> BoxFuture<Result<T>>;
 }
 
@@ -47,12 +34,11 @@ mock! {
 
     #[allow(dead_code)]
     impl<T: CdrsTransport> ConnectionManager<T> for ConnectionManager<T> {
-        fn try_connection<'a>(
+        fn connection<'a>(
             &'a self,
             event_handler: Option<Sender<Envelope>>,
             error_handler: Option<Sender<Error>>,
             addr: SocketAddr,
-            max_retries: usize,
         ) -> BoxFuture<'a, Result<T>>;
     }
 }
@@ -70,7 +56,14 @@ pub async fn startup<
 ) -> Result<()> {
     let startup_envelope =
         Envelope::new_req_startup(compression.as_str().map(String::from), version);
-    let start_response = transport.write_envelope(&startup_envelope, true).await?;
+
+    let start_response = match transport.write_envelope(&startup_envelope, true).await {
+        Ok(response) => Ok(response),
+        Err(Error::Server { body, .. }) if body.is_bad_protocol() => {
+            Err(Error::InvalidProtocol(transport.address()))
+        }
+        Err(error) => Err(error),
+    }?;
 
     if start_response.opcode == Opcode::Ready {
         return set_keyspace(transport, keyspace_holder, version).await;

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use crate::cluster::HttpProxyConfig;
 use crate::cluster::NodeAddress;
 
-/// Single node TCP connection config.
+/// Single node TCP connection config. See [NodeTcpConfigBuilder].
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct NodeTcpConfig {

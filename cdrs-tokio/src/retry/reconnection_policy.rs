@@ -1,4 +1,6 @@
 use derive_more::Constructor;
+#[cfg(test)]
+use mockall::automock;
 use rand::{thread_rng, Rng};
 use std::time::Duration;
 
@@ -12,6 +14,7 @@ pub trait ReconnectionSchedule {
 }
 
 /// Creates reconnection schedules when trying to re-establish connections.
+#[cfg_attr(test, automock)]
 pub trait ReconnectionPolicy {
     /// Creates new schedule when a connection needs to be re-established.
     fn new_node_schedule(&self) -> Box<dyn ReconnectionSchedule + Send + Sync>;

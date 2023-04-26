@@ -1,5 +1,16 @@
+use crate::cluster::connection_manager::{startup, ConnectionManager};
+#[cfg(feature = "http-proxy")]
+use crate::cluster::HttpProxyConfig;
+use crate::cluster::KeyspaceHolder;
+use crate::frame_encoding::FrameEncodingFactory;
+use crate::future::BoxFuture;
+use crate::transport::TransportTcp;
 #[cfg(feature = "http-proxy")]
 use async_http_proxy::{http_connect_tokio, http_connect_tokio_with_basic_auth};
+use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
+use cassandra_protocol::compression::Compression;
+use cassandra_protocol::error::{Error, Result};
+use cassandra_protocol::frame::{Envelope, Version};
 use futures::FutureExt;
 use std::io;
 #[cfg(feature = "http-proxy")]
@@ -10,25 +21,10 @@ use std::sync::Arc;
 #[cfg(feature = "http-proxy")]
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
-use tokio::time::sleep;
-
-use crate::cluster::connection_manager::{startup, ConnectionManager};
-#[cfg(feature = "http-proxy")]
-use crate::cluster::HttpProxyConfig;
-use crate::cluster::KeyspaceHolder;
-use crate::frame_encoding::FrameEncodingFactory;
-use crate::future::BoxFuture;
-use crate::retry::ReconnectionPolicy;
-use crate::transport::TransportTcp;
-use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
-use cassandra_protocol::compression::Compression;
-use cassandra_protocol::error::{Error, Result};
-use cassandra_protocol::frame::{Envelope, Version};
 
 pub struct TcpConnectionManager {
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     keyspace_holder: Arc<KeyspaceHolder>,
-    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
     compression: Compression,
     buffer_size: usize,
@@ -40,37 +36,14 @@ pub struct TcpConnectionManager {
 
 impl ConnectionManager<TransportTcp> for TcpConnectionManager {
     //noinspection DuplicatedCode
-    fn try_connection(
+    fn connection(
         &self,
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
-        max_retries: usize,
     ) -> BoxFuture<Result<TransportTcp>> {
-        async move {
-            let mut schedule = self.reconnection_policy.new_node_schedule();
-            let mut retry = 0;
-
-            loop {
-                let transport = self
-                    .establish_connection(event_handler.clone(), error_handler.clone(), addr)
-                    .await;
-                match transport {
-                    Ok(transport) => return Ok(transport),
-                    Err(error) => {
-                        if retry >= max_retries {
-                            return Err(error);
-                        }
-
-                        retry += 1;
-
-                        let delay = schedule.next_delay().ok_or(error)?;
-                        sleep(delay).await;
-                    }
-                }
-            }
-        }
-        .boxed()
+        self.establish_connection(event_handler, error_handler, addr)
+            .boxed()
     }
 }
 
@@ -79,7 +52,6 @@ impl TcpConnectionManager {
     pub fn new(
         authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
         keyspace_holder: Arc<KeyspaceHolder>,
-        reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
         frame_encoder_factory: Box<dyn FrameEncodingFactory + Send + Sync>,
         compression: Compression,
         buffer_size: usize,
@@ -90,7 +62,6 @@ impl TcpConnectionManager {
         Self {
             authenticator_provider,
             keyspace_holder,
-            reconnection_policy,
             frame_encoder_factory,
             compression,
             buffer_size,
