@@ -9,7 +9,6 @@ use cassandra_protocol::frame::message_response::ResponseBody;
 use cassandra_protocol::frame::message_result::{BodyResResultPrepared, TableSpec};
 use cassandra_protocol::frame::{Envelope, Flags, Serialize, Version};
 use cassandra_protocol::query::{PreparedQuery, QueryBatch, QueryValues};
-use cassandra_protocol::token::Murmur3Token;
 use cassandra_protocol::types::value::Value;
 use cassandra_protocol::types::{CIntShort, SHORT_LEN};
 use derivative::Derivative;
@@ -37,6 +36,7 @@ use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
 use crate::cluster::send_envelope::send_envelope;
 use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::cluster::topology::{Node, NodeDistance, NodeState};
+use crate::cluster::Murmur3Token;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::NodeRustlsConfig;
 use crate::cluster::{ClusterMetadata, ClusterMetadataManager, SessionContext};

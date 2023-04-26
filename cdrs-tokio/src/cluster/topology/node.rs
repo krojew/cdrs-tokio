@@ -1,7 +1,6 @@
 use atomic::Atomic;
 use cassandra_protocol::error::{Error, Result};
 use cassandra_protocol::frame::Envelope;
-use cassandra_protocol::token::Murmur3Token;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 use std::sync::atomic::Ordering;
@@ -13,6 +12,7 @@ use uuid::Uuid;
 
 use crate::cluster::connection_pool::{ConnectionPool, ConnectionPoolFactory};
 use crate::cluster::topology::{NodeDistance, NodeState};
+use crate::cluster::Murmur3Token;
 use crate::cluster::{ConnectionManager, NodeInfo};
 use crate::transport::CdrsTransport;
 

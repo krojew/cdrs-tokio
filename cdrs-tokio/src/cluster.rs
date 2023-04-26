@@ -21,6 +21,7 @@ use crate::future::BoxFuture;
 use crate::transport::CdrsTransport;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::Version;
+pub use cassandra_protocol::token::Murmur3Token;
 use std::sync::Arc;
 
 mod cluster_metadata_manager;
