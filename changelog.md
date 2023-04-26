@@ -1,4 +1,21 @@
-## 8.0.0
+## 8.1.0
+
+### Fixed
+
+* Sending envelopes now properly jumps to next node in query plan, if current one is unreachable.
+
+### New
+
+* `InvalidProtocol` special error for a case when a node doesn't accept requested protocol during handshake.
+* `ConnectionPoolConfigBuilder` for building configuration easily.
+* Configurable heartbeat messages to keep connection alive in the pool.
+
+### Changed
+
+* Due to an edge case with reconnecting to a seemingly downed node, internal reconnection handling mechanism has been improved.
+* Hidden internal structures, which were public but not usable in any way.
+
+## 8.0.0 (unavailable)
 
 ### Changed
 
