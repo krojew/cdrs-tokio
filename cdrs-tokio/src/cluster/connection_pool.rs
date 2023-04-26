@@ -113,6 +113,12 @@ impl ConnectionPoolConfigBuilder {
         self.config.heartbeat_interval = heartbeat_interval;
         self
     }
+
+    /// Build the resulting config.
+    #[must_use]
+    pub fn build(self) -> ConnectionPoolConfig {
+        self.config
+    }
 }
 
 pub(crate) struct ConnectionPoolFactory<
