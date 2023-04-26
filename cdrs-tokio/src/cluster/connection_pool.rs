@@ -55,7 +55,7 @@ async fn new_connection<T: CdrsTransport, CM: ConnectionManager<T>>(
 
 /// Configuration for node connection pools. By default, the pool size depends on the number of
 /// cpu for local nodes and a fixed value for remote, and there is no timeout. If the distance to a
-/// given node is unknown, it is treated as remote.
+/// given node is unknown, it is treated as remote. See [ConnectionPoolConfigBuilder].
 #[derive(Clone, Copy, Debug)]
 pub struct ConnectionPoolConfig {
     local_size: usize,
