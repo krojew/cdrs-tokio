@@ -1,3 +1,9 @@
+## 8.1.1
+
+### Fixed
+
+* Non-fatal errors closing connections.
+
 ## 8.1.0
 
 ### Fixed
