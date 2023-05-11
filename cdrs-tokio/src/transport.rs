@@ -461,7 +461,6 @@ impl AsyncTransport {
 
             let envelopes = frame_decoder.consume(&mut buffer, compression)?;
             for envelope in envelopes {
-                let envelope = convert_envelope_into_result(envelope, addr)?;
                 if envelope.stream_id >= 0 {
                     // in case we get a SetKeyspace result, we need to store current keyspace
                     // checks are done manually for speed
@@ -481,7 +480,10 @@ impl AsyncTransport {
                     }
 
                     // normal response to query
-                    response_handler_map.send_response(envelope.stream_id, Ok(envelope))?;
+                    response_handler_map.send_response(
+                        envelope.stream_id,
+                        convert_envelope_into_result(envelope, addr),
+                    )?;
                 } else if envelope.stream_id == EVENT_STREAM_ID {
                     // server event
                     if let Some(event_handler) = &event_handler {
