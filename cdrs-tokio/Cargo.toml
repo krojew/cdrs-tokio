@@ -20,7 +20,7 @@ http-proxy = ["async-http-proxy"]
 
 [dependencies]
 arc-swap.workspace = true
-atomic = "0.5.1"
+atomic = "0.6.0"
 bytes.workspace = true
 cassandra-protocol = { path = "../cassandra-protocol", version = "3.1.0" }
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "5.0.2", optional = true }
