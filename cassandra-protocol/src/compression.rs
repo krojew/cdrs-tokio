@@ -257,9 +257,9 @@ mod tests {
     }
 
     #[test]
-    fn test_compression_encode_lz4_with_invalid_input() {
+    fn test_compression_decode_lz4_with_invalid_input() {
         let lz4_compression = Compression::Lz4;
-        let decode = lz4_compression.decode(vec![0, 0, 0, 0x7f, 0]);
+        let decode = lz4_compression.decode(vec![0, 0, 0, 0x7f]);
         assert!(decode.is_err());
     }
 

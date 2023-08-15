@@ -1,4 +1,5 @@
 use atomic::Atomic;
+use bytemuck::NoUninit;
 use cassandra_protocol::frame::{Envelope, Version};
 use cassandra_protocol::query::utils::quote;
 use derive_more::Display;
@@ -21,7 +22,8 @@ use crate::error::{Error, Result as CdrsResult};
 use crate::retry::{ReconnectionPolicy, ReconnectionSchedule};
 use crate::transport::CdrsTransport;
 
-#[derive(Copy, Clone, PartialEq, Eq, Display)]
+#[derive(Copy, Clone, PartialEq, Eq, Display, NoUninit)]
+#[repr(u8)]
 enum ReconnectionState {
     NotRunning,
     InProgress,
