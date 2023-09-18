@@ -34,7 +34,7 @@ async fn multi_node_speculative_execution() {
         .unwrap();
 
     let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
-        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
         .with_speculative_execution_policy(Box::new(ConstantSpeculativeExecutionPolicy::new(
             5,
             Duration::from_secs(0),

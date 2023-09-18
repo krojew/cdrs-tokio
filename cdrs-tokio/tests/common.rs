@@ -50,7 +50,7 @@ pub async fn setup_multiple(
         .await
         .unwrap();
     let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
-        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
         .build()
         .await
         .unwrap();

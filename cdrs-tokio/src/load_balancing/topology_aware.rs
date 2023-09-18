@@ -220,7 +220,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
 
         // add unignored non-replicas
         let unignored_nodes = self.round_robin_unignored_local_nodes(cluster);
-        let replicas = result.into_iter().chain(unignored_nodes.into_iter());
+        let replicas = result.into_iter().chain(unignored_nodes);
 
         // now the result contains (in order): local replicas, remote replicas, local non-replicas
         if let Some(max_nodes_per_remote_dc) = self.max_nodes_per_remote_dc {
@@ -234,7 +234,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
             remote_nodes.shuffle(&mut rng);
 
             replicas
-                .chain(remote_nodes.into_iter())
+                .chain(remote_nodes)
                 .unique_by(|node| node.broadcast_rpc_address())
                 .collect()
         } else {
@@ -261,7 +261,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         let unignored_nodes = self.round_robin_unignored_nodes(cluster);
         replicas
             .into_iter()
-            .chain(unignored_nodes.into_iter())
+            .chain(unignored_nodes)
             .unique_by(|node| node.broadcast_rpc_address())
             .collect()
     }

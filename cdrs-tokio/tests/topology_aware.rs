@@ -38,7 +38,7 @@ async fn query_topology_aware() {
         TopologyAwareLoadBalancingStrategy::new(None, false),
         cluster_config,
     )
-    .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+    .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
     .with_node_distance_evaluator(Box::new(TopologyAwareNodeDistanceEvaluator::new(
         "datacenter1".into(),
     )))

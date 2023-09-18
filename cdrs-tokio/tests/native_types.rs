@@ -195,7 +195,7 @@ async fn integer_test(session: CurrentSession) {
 
 // TODO counter, varint
 #[tokio::test]
-#[cfg(all(feature = "e2e-tests"))]
+#[cfg(feature = "e2e-tests")]
 async fn integer_advanced_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_integer_v4 \
                (my_bigint bigint PRIMARY KEY, my_int int, my_smallint smallint, \
@@ -207,7 +207,7 @@ async fn integer_advanced_v4() {
 
 // TODO counter, varint
 #[tokio::test]
-#[cfg(all(feature = "e2e-tests"))]
+#[cfg(feature = "e2e-tests")]
 async fn integer_advanced_v5() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_integer_v4 \
                (my_bigint bigint PRIMARY KEY, my_int int, my_smallint smallint, \
