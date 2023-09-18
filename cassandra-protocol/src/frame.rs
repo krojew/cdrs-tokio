@@ -58,9 +58,9 @@ const fn const_max(a: usize, b: usize) -> usize {
 /// Maximum size of frame payloads - aggregated envelopes or a part of a single envelope.
 pub const PAYLOAD_SIZE_LIMIT: usize = 1 << 17;
 
-pub(self) const UNCOMPRESSED_FRAME_HEADER_LENGTH: usize = 6;
-pub(self) const COMPRESSED_FRAME_HEADER_LENGTH: usize = 8;
-pub(self) const FRAME_TRAILER_LENGTH: usize = 4;
+const UNCOMPRESSED_FRAME_HEADER_LENGTH: usize = 6;
+const COMPRESSED_FRAME_HEADER_LENGTH: usize = 8;
+const FRAME_TRAILER_LENGTH: usize = 4;
 
 /// Maximum size of an entire frame.
 pub const MAX_FRAME_SIZE: usize = PAYLOAD_SIZE_LIMIT

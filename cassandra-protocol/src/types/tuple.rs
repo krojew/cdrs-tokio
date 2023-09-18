@@ -52,7 +52,7 @@ impl Tuple {
             data: metadata
                 .types
                 .iter()
-                .zip(elements.into_iter())
+                .zip(elements)
                 .map(|(val_type, val_b)| (val_type.clone(), val_b))
                 .collect(),
             protocol_version,

@@ -35,7 +35,7 @@ async fn encode_decode_test(version: Version) {
         .unwrap();
 
     let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
-        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
         .with_compression(Compression::Lz4)
         .build()
         .await
