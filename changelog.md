@@ -1,3 +1,9 @@
+## 8.1.2
+
+### Changed
+
+* Dependency updates.
+
 ## 8.1.1
 
 ### Fixed
