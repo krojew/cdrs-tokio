@@ -32,7 +32,7 @@ async fn create_keyspace() {
         .unwrap();
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
-        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
         .build()
         .await
         .unwrap();
@@ -106,7 +106,7 @@ async fn alter_keyspace() {
         .unwrap();
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
-        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
         .build()
         .await
         .unwrap();
@@ -171,7 +171,7 @@ async fn use_keyspace() {
         .unwrap();
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
-        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
         .build()
         .await
         .unwrap();
@@ -209,7 +209,7 @@ async fn drop_keyspace() {
         .unwrap();
     let lb = RoundRobinLoadBalancingStrategy::new();
     let session = TcpSessionBuilder::new(lb, cluster_config)
-        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy::default()))
+        .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
         .build()
         .await
         .unwrap();

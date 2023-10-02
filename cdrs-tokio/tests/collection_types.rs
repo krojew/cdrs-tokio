@@ -96,7 +96,7 @@ async fn list_test(session: CurrentSession) {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "e2e-tests"))]
+#[cfg(feature = "e2e-tests")]
 async fn list_advanced_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_lists_v4 \
                (my_text_list frozen<list<text>> PRIMARY KEY, \
@@ -107,7 +107,7 @@ async fn list_advanced_v4() {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "e2e-tests"))]
+#[cfg(feature = "e2e-tests")]
 async fn list_advanced_v5() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_lists_v4 \
                (my_text_list frozen<list<text>> PRIMARY KEY, \
@@ -244,7 +244,7 @@ async fn set_test(session: CurrentSession) {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "e2e-tests"))]
+#[cfg(feature = "e2e-tests")]
 async fn set_advanced_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_sets_v4 \
                (my_text_set frozen<set<text>> PRIMARY KEY, \
@@ -255,7 +255,7 @@ async fn set_advanced_v4() {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "e2e-tests"))]
+#[cfg(feature = "e2e-tests")]
 async fn set_advanced_v5() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_sets_v4 \
                (my_text_set frozen<set<text>> PRIMARY KEY, \
@@ -406,7 +406,7 @@ async fn map_without_blob_test(session: CurrentSession) {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "e2e-tests"))]
+#[cfg(feature = "e2e-tests")]
 async fn map_without_blob_advanced_v4() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps_without_blob_v4 \
                (my_text_map frozen<map<text, text>> PRIMARY KEY, \
@@ -417,7 +417,7 @@ async fn map_without_blob_advanced_v4() {
 }
 
 #[tokio::test]
-#[cfg(all(feature = "e2e-tests"))]
+#[cfg(feature = "e2e-tests")]
 async fn map_without_blob_advanced_v5() {
     let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_maps_without_blob_v4 \
                (my_text_map frozen<map<text, text>> PRIMARY KEY, \

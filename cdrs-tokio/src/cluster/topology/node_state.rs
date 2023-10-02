@@ -1,7 +1,9 @@
+use bytemuck::NoUninit;
 use derive_more::Display;
 
 /// The state of a node, as viewed from the driver.
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display)]
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug, Display, NoUninit)]
+#[repr(u8)]
 pub enum NodeState {
     /// The driver has never tried to connect to the node, nor received any topology events about it.
     ///
