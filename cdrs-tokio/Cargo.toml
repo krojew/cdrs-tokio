@@ -21,24 +21,24 @@ http-proxy = ["async-http-proxy"]
 [dependencies]
 arc-swap.workspace = true
 atomic = "0.6.0"
-bytemuck = { version = "1.13.1", features = ["derive"] }
+bytemuck = { version = "1.14.0", features = ["derive"] }
 bytes.workspace = true
 cassandra-protocol = { path = "../cassandra-protocol", version = "3.1.0" }
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "5.0.2", optional = true }
 derive_more.workspace = true
 derivative.workspace = true
-futures = { version = "0.3.21", default_features = false, features = ["alloc"] }
+futures = { version = "0.3.28", default_features = false, features = ["alloc"] }
 fxhash = "0.2.1"
 itertools.workspace = true
 lazy_static = "1.4.0"
 rand = "0.8.5"
-serde_json = "1.0.81"
+serde_json = "1.0.107"
 thiserror.workspace = true
-tokio = { version = "1.19.2", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
-tokio-rustls = { version = "0.24", optional = true }
-tracing = "0.1.35"
+tokio = { version = "1.32.0", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
+tokio-rustls = { version = "0.24.1", optional = true }
+tracing = "0.1.37"
 uuid.workspace = true
-webpki = { version = "0.22.0", optional = true }
+webpki = { version = "0.22.2", optional = true }
 
 [dependencies.async-http-proxy]
 version = "1.2.5"
@@ -46,13 +46,13 @@ optional = true
 features = ["runtime-tokio", "basic-auth"]
 
 [dev-dependencies]
-float_eq = "1.0.0"
-maplit = "1.0.0"
-mockall = "0.11.1"
+float_eq = "1.0.1"
+maplit = "1.0.2"
+mockall = "0.11.4"
 lazy_static = "1.4.0"
-regex = "1.5.6"
-uuid = { version = "1.0.0", features = ["v4"] }
-time = { version = "0.3.9", features = ["std", "macros"] }
+regex = "1.9.6"
+uuid = { version = "1.4.1", features = ["v4"] }
+time = { version = "0.3.29", features = ["std", "macros"] }
 
 [[example]]
 name = "crud_operations"
