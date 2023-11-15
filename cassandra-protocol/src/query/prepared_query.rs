@@ -37,13 +37,7 @@ impl Eq for PreparedQuery {}
 impl PartialOrd for PreparedQuery {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match self.id.partial_cmp(&other.id) {
-            Some(Ordering::Equal) | None => self
-                .result_metadata_id
-                .load()
-                .partial_cmp(&other.result_metadata_id.load()),
-            result => result,
-        }
+        Some(self.cmp(other))
     }
 }
 

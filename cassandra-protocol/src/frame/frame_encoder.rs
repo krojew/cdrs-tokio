@@ -154,9 +154,7 @@ impl FrameEncoder for UncompressedFrameEncoder {
 
 impl Default for UncompressedFrameEncoder {
     fn default() -> Self {
-        let mut buffer = vec![];
-        buffer.resize(UNCOMPRESSED_FRAME_HEADER_LENGTH, 0);
-
+        let buffer = vec![0; UNCOMPRESSED_FRAME_HEADER_LENGTH];
         Self { buffer }
     }
 }
@@ -265,9 +263,7 @@ impl FrameEncoder for Lz4FrameEncoder {
 
 impl Default for Lz4FrameEncoder {
     fn default() -> Self {
-        let mut buffer = vec![];
-        buffer.resize(COMPRESSED_FRAME_HEADER_LENGTH, 0);
-
+        let buffer = vec![0; COMPRESSED_FRAME_HEADER_LENGTH];
         Self { buffer }
     }
 }
