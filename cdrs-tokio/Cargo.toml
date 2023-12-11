@@ -48,7 +48,7 @@ features = ["runtime-tokio", "basic-auth"]
 [dev-dependencies]
 float_eq = "1.0.1"
 maplit = "1.0.2"
-mockall = "0.11.4"
+mockall = "0.12.0"
 lazy_static = "1.4.0"
 regex = "1.9.6"
 uuid = { version = "1.4.1", features = ["v4"] }
