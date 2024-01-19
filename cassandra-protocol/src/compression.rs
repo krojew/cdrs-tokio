@@ -7,7 +7,6 @@
 /// must never be compressed.  However, once the STARTUP envelope has been received
 /// by the server, messages can be compressed (including the response to the STARTUP
 /// request).
-use derive_more::Display;
 use snap::raw::{Decoder, Encoder};
 use std::convert::{From, TryInto};
 use std::error::Error;
@@ -64,7 +63,7 @@ impl Clone for CompressionError {
 }
 
 /// Enum which represents a type of compression. Only non-startup frame's body can be compressed.
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Ord, PartialOrd, Hash, Display)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Ord, PartialOrd, Hash)]
 pub enum Compression {
     /// [lz4](https://code.google.com/p/lz4/) compression
     Lz4,
@@ -169,6 +168,28 @@ impl From<String> for Compression {
     }
 }
 
+impl From<Compression> for String {
+    /// It converts `Compression` into `String`. If compression is `None` then empty string will be
+    /// returned
+    fn from(compression: Compression) -> String {
+        match compression {
+            Compression::Lz4 => LZ4.to_string(),
+            Compression::Snappy => SNAPPY.to_string(),
+            Compression::None => "NONE".to_string(),
+        }
+    }
+}
+
+impl fmt::Display for Compression {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Compression::Lz4 => write!(fmt, "lz4"),
+            Compression::Snappy => write!(fmt, "snappy"),
+            Compression::None => write!(fmt, "none"),
+        }
+    }
+}
+
 impl<'a> From<&'a str> for Compression {
     /// It converts `str` into `Compression`. If string is neither `lz4` nor `snappy` then
     /// `Compression::None` will be returned
@@ -184,6 +205,19 @@ impl<'a> From<&'a str> for Compression {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_compression_to_string() {
+        let lz4 = Compression::Lz4;
+        let lz4_string: String = lz4.into();
+        assert_eq!("lz4", lz4_string);
+
+        let snappy = Compression::Snappy;
+        assert_eq!("snappy", snappy.to_string());
+
+        let none = Compression::None;
+        assert_eq!("none", none.to_string());
+    }
 
     #[test]
     fn test_compression_from_str() {
