@@ -168,24 +168,23 @@ impl From<String> for Compression {
     }
 }
 
-impl From<Compression> for String {
+impl Compression {
     /// It converts `Compression` into `String`. If compression is `None` then empty string will be
     /// returned
-    fn from(compression: Compression) -> String {
-        match compression {
-            Compression::Lz4 => LZ4.to_string(),
-            Compression::Snappy => SNAPPY.to_string(),
+    pub fn to_protocol_string(self) -> String {
+        match self {
+            Compression::Lz4 => "LZ4".to_string(),
+            Compression::Snappy => "SNAPPY".to_string(),
             Compression::None => "NONE".to_string(),
         }
     }
-}
 
-impl fmt::Display for Compression {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Compression::Lz4 => write!(fmt, "lz4"),
-            Compression::Snappy => write!(fmt, "snappy"),
-            Compression::None => write!(fmt, "none"),
+    pub fn from_protocol_string(protocol_string: &str) -> std::result::Result<Self, String> {
+        match protocol_string {
+            "lz4" | "LZ4" => Ok(Compression::Lz4),
+            "snappy" | "SNAPPY" => Ok(Compression::Snappy),
+            "none" | "NONE" => Ok(Compression::None),
+            _ => Err("Unknown compression".to_string()),
         }
     }
 }
@@ -207,26 +206,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_compression_to_string() {
+    fn test_compression_to_protocol_string() {
         let lz4 = Compression::Lz4;
-        let lz4_string: String = lz4.into();
-        assert_eq!("lz4", lz4_string);
+        assert_eq!("LZ4", lz4.to_protocol_string());
 
         let snappy = Compression::Snappy;
-        assert_eq!("snappy", snappy.to_string());
+        assert_eq!("SNAPPY", snappy.to_protocol_string());
 
         let none = Compression::None;
-        assert_eq!("none", none.to_string());
+        assert_eq!("NONE", none.to_protocol_string());
     }
 
     #[test]
-    fn test_compression_from_str() {
+    fn test_compression_from_protocol_str() {
         let lz4 = "lz4";
-        assert_eq!(Compression::from(lz4), Compression::Lz4);
+        assert_eq!(
+            Compression::from_protocol_string(lz4).unwrap(),
+            Compression::Lz4
+        );
+
+        let lz4 = "LZ4";
+        assert_eq!(
+            Compression::from_protocol_string(lz4).unwrap(),
+            Compression::Lz4
+        );
+
         let snappy = "snappy";
-        assert_eq!(Compression::from(snappy), Compression::Snappy);
-        let none = "x";
-        assert_eq!(Compression::from(none), Compression::None);
+        assert_eq!(
+            Compression::from_protocol_string(snappy).unwrap(),
+            Compression::Snappy
+        );
+
+        let snappy = "SNAPPY";
+        assert_eq!(
+            Compression::from_protocol_string(snappy).unwrap(),
+            Compression::Snappy
+        );
+
+        let none = "none";
+        assert_eq!(
+            Compression::from_protocol_string(none).unwrap(),
+            Compression::None
+        );
+
+        let none = "NONE";
+        assert_eq!(
+            Compression::from_protocol_string(none).unwrap(),
+            Compression::None
+        );
     }
 
     #[test]
