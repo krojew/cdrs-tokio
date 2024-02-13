@@ -82,7 +82,7 @@ async fn encode_decode_test(version: Version) {
         .unwrap()
         .into_rows()
         .unwrap()
-        .get(0)
+        .first()
         .unwrap()
         .r_by_index::<Blob>(0)
         .unwrap();
