@@ -1364,7 +1364,8 @@ macro_rules! as_rust_type {
             ColType::Timestamp => match $data_value.as_slice() {
                 Some(ref bytes) => decode_timestamp(bytes)
                     .map(|ts| {
-                        NaiveDateTime::from_timestamp_opt(ts / 1000, (ts % 1000 * 1_000_000) as u32)
+                        DateTime::from_timestamp(ts / 1000, (ts % 1000 * 1_000_000) as u32)
+                            .map(|dt| dt.naive_utc())
                     })
                     .map_err(Into::into),
                 None => Ok(None),
@@ -1381,13 +1382,10 @@ macro_rules! as_rust_type {
             ColType::Timestamp => match $data_value.as_slice() {
                 Some(ref bytes) => decode_timestamp(bytes)
                     .map(|ts| {
-                        Some(DateTime::from_naive_utc_and_offset(
-                            NaiveDateTime::from_timestamp_opt(
-                                ts / 1000,
-                                (ts % 1000 * 1_000_000) as u32,
-                            )?,
-                            Utc,
-                        ))
+                        DateTime::from_timestamp(
+                            ts / 1000,
+                            (ts % 1000 * 1_000_000) as u32,
+                        )
                     })
                     .map_err(Into::into),
                 None => Ok(None),

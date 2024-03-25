@@ -1,11 +1,13 @@
 # CDRS tokio
 
-[![crates.io version](https://img.shields.io/crates/v/cdrs-tokio.svg)](https://crates.io/crates/cdrs-tokio) ![build status](https://github.com/krojew/cdrs-tokio/actions/workflows/rust.yml/badge.svg) ![Maintenance](https://img.shields.io/maintenance/yes/2023)
+[![crates.io version](https://img.shields.io/crates/v/cdrs-tokio.svg)](https://crates.io/crates/cdrs-tokio) ![build status](https://github.com/krojew/cdrs-tokio/actions/workflows/rust.yml/badge.svg)
 
 ![CDRS tokio - async Apache Cassandra driver using tokio](./cdrs-logo.png)
 
-CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u**s**t. Focuses on providing high
-level of configurability to suit most use cases at any scale, as its Java counterpart, while also leveraging the
+CDRS is production-ready Apache **C**assandra **d**river written in pure **R**u*
+*s**t. Focuses on providing high
+level of configurability to suit most use cases at any scale, as its Java
+counterpart, while also leveraging the
 safety and performance of Rust.
 
 ## Features
@@ -32,15 +34,20 @@ safety and performance of Rust.
 
 ## Performance
 
-Due to high configurability of **CDRS**, the performance will vary depending on use case. The following benchmarks
-have been made against the latest (master as of 03-12-2021) versions of respective libraries (except 
+Due to high configurability of **CDRS**, the performance will vary depending on
+use case. The following benchmarks
+have been made against the latest (master as of 03-12-2021) versions of
+respective libraries (except
 cassandra-cpp: 2.16.0) and protocol version 4.
 
-- `cdrs-tokio-large-pool` - **CDRS** with node connection pool equal to double of physical CPU cores
+- `cdrs-tokio-large-pool` - **CDRS** with node connection pool equal to double
+  of physical CPU cores
 - `cdrs-tokio-small-pool` - **CDRS** with a single connection per node
-- `scylladb-rust-large-pool` - `scylla` crate with node connection pool equal to double of physical CPU cores
+- `scylladb-rust-large-pool` - `scylla` crate with node connection pool equal to
+  double of physical CPU cores
 - `scylladb-rust-small-pool` - `scylla` crate with a single connection per node
-- `cassandra-cpp` - Rust bindings for Datastax C++ Driver, running on multiple threads using Tokio
+- `cassandra-cpp` - Rust bindings for Datastax C++ Driver, running on multiple
+  threads using Tokio
 - `gocql` - a driver written in Go
 
 <img src="./perf-inserts.png" alt="insert benchmark">
@@ -54,11 +61,13 @@ Knowing given use case, CDRS can be optimized for peak performance.
 - [User guide](./documentation).
 - [Examples](./cdrs-tokio/examples).
 - [API docs](https://docs.rs/cdrs-tokio/latest/cdrs_tokio/).
-- Using ScyllaDB with RUST [lesson](https://university.scylladb.com/courses/using-scylla-drivers/lessons/rust-and-scylla/).
+- Using ScyllaDB with
+  RUST [lesson](https://university.scylladb.com/courses/using-scylla-drivers/lessons/rust-and-scylla/).
 
 ## Getting started
 
-This example configures a cluster consisting of a single node without authentication, and uses round-robin 
+This example configures a cluster consisting of a single node without
+authentication, and uses round-robin
 load balancing. Other options are kept as default.
 
 ```rust
@@ -92,7 +101,9 @@ async fn main() {
 
 This project is licensed under either of
 
-- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT))
+- Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE)
+  or [http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))
+- MIT license ([LICENSE-MIT](LICENSE-MIT)
+  or [http://opensource.org/licenses/MIT](http://opensource.org/licenses/MIT))
 
 at your option.

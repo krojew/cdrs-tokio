@@ -265,7 +265,7 @@ impl From<Decimal> for Bytes {
 impl From<NaiveDateTime> for Bytes {
     #[inline]
     fn from(value: NaiveDateTime) -> Self {
-        value.timestamp_millis().into()
+        value.and_utc().timestamp_millis().into()
     }
 }
 
