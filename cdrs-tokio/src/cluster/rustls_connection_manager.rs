@@ -21,10 +21,10 @@ use std::sync::Arc;
 #[cfg(feature = "http-proxy")]
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
-use tokio_rustls::rustls::{ClientConfig, ServerName};
+use tokio_rustls::rustls::{pki_types::ServerName, ClientConfig};
 
 pub struct RustlsConnectionManager {
-    dns_name: ServerName,
+    dns_name: ServerName<'static>,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<ClientConfig>,
     keyspace_holder: Arc<KeyspaceHolder>,
@@ -53,7 +53,7 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
 impl RustlsConnectionManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        dns_name: ServerName,
+        dns_name: ServerName<'static>,
         authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
         config: Arc<ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,

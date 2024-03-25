@@ -35,7 +35,9 @@ rand = "0.8.5"
 serde_json = "1.0.107"
 thiserror.workspace = true
 tokio = { version = "1.32.0", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
-tokio-rustls = { version = "0.24.1", optional = true }
+# note: default features for tokio-rustls include aws_lc_rs, which require clang on Windows => disable and let users
+# enable it explicitly
+tokio-rustls = { version = "0.26.0", optional = true, default-features = false, features = ["logging", "tls12"] }
 tracing = "0.1.37"
 uuid.workspace = true
 webpki = { version = "0.22.2", optional = true }

@@ -4,7 +4,7 @@ use cassandra_protocol::frame::Version;
 use derivative::Derivative;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio_rustls::rustls::{ClientConfig, ServerName};
+use tokio_rustls::rustls::{pki_types::ServerName, ClientConfig};
 
 #[cfg(feature = "http-proxy")]
 use crate::cluster::HttpProxyConfig;
@@ -15,7 +15,7 @@ use crate::cluster::NodeAddress;
 #[derivative(Debug)]
 pub struct NodeRustlsConfig {
     pub(crate) contact_points: Vec<SocketAddr>,
-    pub(crate) dns_name: ServerName,
+    pub(crate) dns_name: ServerName<'static>,
     #[derivative(Debug = "ignore")]
     pub(crate) authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub(crate) config: Arc<ClientConfig>,
@@ -30,7 +30,7 @@ pub struct NodeRustlsConfig {
 #[derivative(Debug)]
 pub struct NodeRustlsConfigBuilder {
     addrs: Vec<NodeAddress>,
-    dns_name: ServerName,
+    dns_name: ServerName<'static>,
     #[derivative(Debug = "ignore")]
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<ClientConfig>,
@@ -41,7 +41,7 @@ pub struct NodeRustlsConfigBuilder {
 }
 
 impl NodeRustlsConfigBuilder {
-    pub fn new(dns_name: ServerName, config: Arc<ClientConfig>) -> Self {
+    pub fn new(dns_name: ServerName<'static>, config: Arc<ClientConfig>) -> Self {
         NodeRustlsConfigBuilder {
             addrs: vec![],
             dns_name,
