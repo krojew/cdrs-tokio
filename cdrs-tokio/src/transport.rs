@@ -33,7 +33,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 #[cfg(feature = "rust-tls")]
-use tokio_rustls::rustls::{ClientConfig, ServerName};
+use tokio_rustls::rustls::{pki_types::ServerName, ClientConfig};
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::TlsConnector as RustlsConnector;
 use tracing::*;
@@ -182,7 +182,7 @@ impl TransportRustls {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
         addr: SocketAddr,
-        dns_name: ServerName,
+        dns_name: ServerName<'static>,
         config: Arc<ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Envelope>>,
@@ -216,7 +216,7 @@ impl TransportRustls {
     pub async fn with_stream<T: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static>(
         stream: T,
         addr: SocketAddr,
-        dns_name: ServerName,
+        dns_name: ServerName<'static>,
         config: Arc<ClientConfig>,
         keyspace_holder: Arc<KeyspaceHolder>,
         event_handler: Option<mpsc::Sender<Envelope>>,
