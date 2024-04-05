@@ -30,6 +30,7 @@ pub mod rows;
 pub mod tuple;
 pub mod udt;
 pub mod value;
+pub mod vector;
 
 pub mod prelude {
     pub use crate::error::{Error, Result};
