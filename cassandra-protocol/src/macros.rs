@@ -27,6 +27,22 @@ macro_rules! query_values {
     };
 }
 
+macro_rules! vector_as_rust {
+    (f32) => {
+        impl AsRustType<Vec<f32>> for Vector {
+            fn as_rust_type(&self) -> Result<Option<Vec<f32>>> {
+                let mut result: Vec<f32> = Vec::new();
+                for data_value in &self.data {
+                    let float = decode_float(data_value.as_slice().unwrap())?;
+                    result.push(float);
+                }
+
+                Ok(Some(result))
+            }
+        }
+    };
+}
+
 macro_rules! list_as_rust {
     (List) => (
         impl AsRustType<Vec<List>> for List {
@@ -185,6 +201,58 @@ macro_rules! list_as_cassandra_type {
                     _ => Err(Error::General(format!(
                         "Invalid conversion. \
                             Cannot convert {:?} into List (valid types: List, Set).",
+                        self.metadata.value
+                    ))),
+                }
+            }
+        }
+    };
+}
+
+macro_rules! vector_as_cassandra_type {
+    () => {
+        impl crate::types::AsCassandraType for Vector {
+            fn as_cassandra_type(
+                &self,
+            ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::error::Error;
+                use crate::types::cassandra_type::wrapper_fn;
+                use crate::types::cassandra_type::CassandraType;
+
+                let protocol_version = self.protocol_version;
+
+                match &self.metadata {
+                    ColTypeOption {
+                        id: ColType::Custom,
+                        value,
+                    } => {
+                        let VectorInfo { internal_type, .. } =
+                            get_vector_type_info(&value.as_ref().unwrap()).unwrap();
+
+                        if internal_type == "FloatType" {
+                            let internal_type_option = ColTypeOption {
+                                id: ColType::Float,
+                                value: None,
+                            };
+
+                            let wrapper = wrapper_fn(&ColType::Float);
+
+                            let convert = self.map(|bytes| {
+                                wrapper(bytes, &internal_type_option, protocol_version).unwrap()
+                            });
+
+                            return Ok(Some(CassandraType::Vector(convert)));
+                        } else {
+                            return Err(Error::General(format!(
+                                "Invalid conversion. \
+            Cannot convert Vector<{:?}> into Vector (valid types: Vector<FloatType>",
+                                internal_type
+                            )));
+                        }
+                    }
+                    _ => Err(Error::General(format!(
+                        "Invalid conversion. \
+                            Cannot convert {:?} into Vector (valid types: Custom).",
                         self.metadata.value
                     ))),
                 }
@@ -550,6 +618,19 @@ macro_rules! into_rust_by_name {
                     .and_then(|(col_spec, cbytes)| {
                         let col_type = &col_spec.col_type;
                         as_rust_type!(col_type, cbytes, protocol_version, List)
+                    })
+            }
+        }
+    );
+    (Row, Vector) => (
+        impl IntoRustByName<Vector> for Row {
+            fn get_by_name(&self, name: &str) -> Result<Option<Vector>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_name(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Vector)
                     })
             }
         }
@@ -1271,6 +1352,25 @@ macro_rules! as_rust_type {
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into List (valid types: List, Set).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, $version:ident, Vector) => {
+        match $data_type_option.id {
+            ColType::Custom => match $data_value.as_slice() {
+                Some(ref bytes) => {
+                    let crate::types::vector::VectorInfo { internal_type: _, count  } = crate::types::vector::get_vector_type_info($data_type_option.value.as_ref().unwrap()).unwrap();
+
+                    decode_vector(bytes, $version, count)
+                        .map(|data| Some(Vector::new($data_type_option.clone(), data, $version)))
+                        .map_err(Into::into)
+                },
+                None => Ok(None),
+            },
+            _ => Err(crate::error::Error::General(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into Vector (valid types: Custom).",
                 $data_type_option.id
             ))),
         }

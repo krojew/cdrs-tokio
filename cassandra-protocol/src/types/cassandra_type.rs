@@ -36,6 +36,7 @@ pub enum CassandraType {
     Set(Vec<CassandraType>),
     Udt(HashMap<String, CassandraType>),
     Tuple(Vec<CassandraType>),
+    Vector(Vec<CassandraType>),
     Null,
 }
 
@@ -48,7 +49,7 @@ pub fn wrapper_fn(
         ColType::Ascii => &wrappers::ascii,
         ColType::Int => &wrappers::int,
         ColType::List => &wrappers::list,
-        ColType::Custom => &|_, _, _| Err("Conversion into custom types is not supported!".into()),
+        ColType::Custom => &wrappers::custom,
         ColType::Bigint => &wrappers::bigint,
         ColType::Boolean => &wrappers::bool,
         ColType::Counter => &wrappers::counter,
@@ -80,9 +81,39 @@ pub mod wrappers {
     use crate::frame::Version;
     use crate::types::data_serialization_types::*;
     use crate::types::list::List;
+    use crate::types::vector::{get_vector_type_info, Vector, VectorInfo};
     use crate::types::AsCassandraType;
     use crate::types::CBytes;
     use crate::types::{map::Map, tuple::Tuple, udt::Udt};
+
+    pub fn custom(
+        bytes: &CBytes,
+        col_type: &ColTypeOption,
+        version: Version,
+    ) -> CDRSResult<CassandraType> {
+        if let ColTypeOption {
+            id: ColType::Custom,
+            value: Some(value),
+        } = col_type
+        {
+            let VectorInfo {
+                internal_type: _,
+                count,
+            } = get_vector_type_info(value).unwrap();
+
+            if let Some(actual_bytes) = bytes.as_slice() {
+                let vector = decode_vector(actual_bytes, version, count)
+                    .map(|data| Some(Vector::new(col_type.clone(), data, version)))
+                    .expect("could not decode vector")
+                    .unwrap()
+                    .as_cassandra_type()?
+                    .unwrap_or(CassandraType::Null);
+                return Ok(vector);
+            }
+        }
+
+        Ok(CassandraType::Null)
+    }
 
     pub fn map(
         bytes: &CBytes,
