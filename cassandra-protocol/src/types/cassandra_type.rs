@@ -102,7 +102,7 @@ pub mod wrappers {
             } = get_vector_type_info(value).unwrap();
 
             if let Some(actual_bytes) = bytes.as_slice() {
-                let vector = decode_vector(actual_bytes, version, count)
+                let vector = decode_float_vector(actual_bytes, version, count)
                     .map(|data| Some(Vector::new(col_type.clone(), data, version)))
                     .expect("could not decode vector")
                     .unwrap()

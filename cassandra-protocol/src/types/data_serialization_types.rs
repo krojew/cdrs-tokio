@@ -151,7 +151,7 @@ pub fn decode_list(bytes: &[u8], version: Version) -> Result<Vec<CBytes>, io::Er
     Ok(list)
 }
 
-pub fn decode_vector(
+pub fn decode_float_vector(
     bytes: &[u8],
     _version: Version,
     count: usize,
