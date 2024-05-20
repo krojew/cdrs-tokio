@@ -1,4 +1,4 @@
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::frame::message_result::{ColType, ColTypeOption, ColTypeOptionValue};
 use crate::frame::Version;
 use crate::types::data_serialization_types::*;
@@ -32,7 +32,7 @@ pub struct VectorInfo {
 pub fn get_vector_type_info(option_value: &ColTypeOptionValue) -> Result<VectorInfo> {
     let input = match option_value {
         ColTypeOptionValue::CString(ref s) => s,
-        _ => panic!(),
+        _ => return Err(Error::General("option value must be a string".into())),
     };
 
     let _custom_type = input.split('(').next().unwrap().rsplit('.').next().unwrap();

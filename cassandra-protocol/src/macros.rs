@@ -33,7 +33,9 @@ macro_rules! vector_as_rust {
             fn as_rust_type(&self) -> Result<Option<Vec<f32>>> {
                 let mut result: Vec<f32> = Vec::new();
                 for data_value in &self.data {
-                    let float = decode_float(data_value.as_slice().unwrap())?;
+                    let float = decode_float(data_value.as_slice().unwrap_or(Err(
+                        Error::General(format!("Failed to convert {:?} into float", data_value)),
+                    )?))?;
                     result.push(float);
                 }
 
@@ -226,28 +228,31 @@ macro_rules! vector_as_cassandra_type {
                         id: ColType::Custom,
                         value,
                     } => {
-                        let VectorInfo { internal_type, .. } =
-                            get_vector_type_info(&value.as_ref().unwrap()).unwrap();
+                        if let Some(value) = value {
+                            let VectorInfo { internal_type, .. } = get_vector_type_info(value)?;
 
-                        if internal_type == "FloatType" {
-                            let internal_type_option = ColTypeOption {
-                                id: ColType::Float,
-                                value: None,
-                            };
+                            if internal_type == "FloatType" {
+                                let internal_type_option = ColTypeOption {
+                                    id: ColType::Float,
+                                    value: None,
+                                };
 
-                            let wrapper = wrapper_fn(&ColType::Float);
+                                let wrapper = wrapper_fn(&ColType::Float);
 
-                            let convert = self.map(|bytes| {
-                                wrapper(bytes, &internal_type_option, protocol_version).unwrap()
-                            });
+                                let convert = self.map(|bytes| {
+                                    wrapper(bytes, &internal_type_option, protocol_version).unwrap()
+                                });
 
-                            return Ok(Some(CassandraType::Vector(convert)));
-                        } else {
-                            return Err(Error::General(format!(
-                                "Invalid conversion. \
+                                return Ok(Some(CassandraType::Vector(convert)));
+                            } else {
+                                return Err(Error::General(format!(
+                                    "Invalid conversion. \
             Cannot convert Vector<{:?}> into Vector (valid types: Vector<FloatType>",
-                                internal_type
-                            )));
+                                    internal_type
+                                )));
+                            }
+                        } else {
+                            return Err(Error::General("Custom type string is none".to_string()));
                         }
                     }
                     _ => Err(Error::General(format!(
@@ -1362,13 +1367,13 @@ macro_rules! as_rust_type {
                 Some(ref bytes) => {
                     let crate::types::vector::VectorInfo { internal_type: _, count  } = crate::types::vector::get_vector_type_info($data_type_option.value.as_ref().unwrap()).unwrap();
 
-                    decode_vector(bytes, $version, count)
+                    decode_float_vector(bytes, $version, count)
                         .map(|data| Some(Vector::new($data_type_option.clone(), data, $version)))
                         .map_err(Into::into)
                 },
                 None => Ok(None),
             },
-            _ => Err(crate::error::Error::General(format!(
+            _ => Err(crate::error::Error::(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into Vector (valid types: Custom).",
                 $data_type_option.id
