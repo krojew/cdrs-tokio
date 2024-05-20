@@ -16,7 +16,7 @@ fn build_datacenter_info<T: CdrsTransport, CM: ConnectionManager<T>>(
     let grouped_by_dc = nodes
         .values()
         .sorted_unstable_by_key(|node| node.datacenter())
-        .group_by(|node| node.datacenter());
+        .chunk_by(|node| node.datacenter());
 
     (&grouped_by_dc)
         .into_iter()

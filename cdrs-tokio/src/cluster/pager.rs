@@ -162,7 +162,7 @@ impl<
 
         self.pager_state.has_more_pages =
             Some(metadata.flags.contains(RowsMetadataFlags::HAS_MORE_PAGES));
-        self.pager_state.cursor = metadata.paging_state.clone();
+        self.pager_state.cursor.clone_from(&metadata.paging_state);
 
         body.into_rows()
             .ok_or_else(|| "Pager query should yield a vector of rows".into())
@@ -215,7 +215,7 @@ impl<
 
         self.pager_state.has_more_pages =
             Some(metadata.flags.contains(RowsMetadataFlags::HAS_MORE_PAGES));
-        self.pager_state.cursor = metadata.paging_state.clone();
+        self.pager_state.cursor.clone_from(&metadata.paging_state);
 
         body.into_rows()
             .ok_or_else(|| "Pager query should yield a vector of rows".into())
