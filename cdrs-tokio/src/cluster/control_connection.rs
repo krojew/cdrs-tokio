@@ -107,7 +107,7 @@ impl<
 
                         // when the whole cluster goes down, there's nothing to update LB state, so
                         // we're left with contact points
-                        nodes = self.contact_points.clone();
+                        nodes.clone_from(&self.contact_points);
                     }
 
                     for node in nodes {
