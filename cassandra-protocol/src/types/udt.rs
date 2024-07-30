@@ -16,7 +16,7 @@ use crate::types::list::List;
 use crate::types::map::Map;
 use crate::types::tuple::Tuple;
 use crate::types::{ByName, CBytes, IntoRustByName};
-use num::BigInt;
+use num_bigint::BigInt;
 
 #[derive(Clone, Debug)]
 pub struct Udt {

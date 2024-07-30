@@ -1,6 +1,6 @@
 use derive_more::Constructor;
 use float_eq::*;
-use num::BigInt;
+use num_bigint::BigInt;
 use std::io::Cursor;
 
 use crate::frame::{Serialize, Version};

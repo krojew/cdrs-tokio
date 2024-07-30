@@ -16,7 +16,6 @@ e2e-tests = []
 
 [dependencies]
 arc-swap.workspace = true
-arrayref = "0.3.7"
 bitflags = "2.5.0"
 chrono = { version = "0.4.31", default_features = false, features = ["std"] }
 crc32fast = "1.4.0"
@@ -25,10 +24,10 @@ derive_more.workspace = true
 float_eq = "1.0.1"
 integer-encoding = "4.0.0"
 itertools.workspace = true
-num = "0.4.1"
+num-bigint = "0.4.1"
 lz4_flex = "0.11.1"
 snap = "1.1.0"
 thiserror.workspace = true
-time = { version = "0.3.29", features = ["std", "macros"] }
+time = { version = "0.3.29", features = ["macros"] }
 uuid.workspace = true
 bytes.workspace = true

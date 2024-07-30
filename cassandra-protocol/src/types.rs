@@ -497,7 +497,7 @@ pub fn cursor_next_value_ref<'a>(
 mod tests {
     use super::*;
     use crate::frame::traits::FromCursor;
-    use num::BigInt;
+    use num_bigint::BigInt;
     use std::io::Cursor;
 
     fn from_i_bytes(bytes: &[u8]) -> i64 {
