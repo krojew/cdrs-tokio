@@ -19,7 +19,7 @@ use crate::types::map::Map;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
 use crate::types::{ByIndex, ByName, CBytes, IntoRustByIndex, IntoRustByName};
-use num::BigInt;
+use num_bigint::BigInt;
 
 #[derive(Clone, Debug)]
 pub struct Row {

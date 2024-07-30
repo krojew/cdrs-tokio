@@ -1,5 +1,5 @@
 use chrono::prelude::*;
-use num::BigInt;
+use num_bigint::BigInt;
 use std::hash::{Hash, Hasher};
 use std::net::IpAddr;
 use time::PrimitiveDateTime;

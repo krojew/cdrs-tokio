@@ -1,4 +1,4 @@
-use num::BigInt;
+use num_bigint::BigInt;
 use std::collections::HashMap;
 use std::net::IpAddr;
 

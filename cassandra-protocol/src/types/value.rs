@@ -7,7 +7,7 @@ use std::net::IpAddr;
 use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 
 use chrono::prelude::*;
-use num::BigInt;
+use num_bigint::BigInt;
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 

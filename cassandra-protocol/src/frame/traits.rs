@@ -1,7 +1,7 @@
 use crate::error;
 use crate::frame::Version;
 use crate::query;
-use num::BigInt;
+use num_bigint::BigInt;
 use std::io::{Cursor, Write};
 
 /// Trait that should be implemented by all types that wish to be serialized to a buffer.

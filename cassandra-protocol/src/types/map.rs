@@ -13,7 +13,7 @@ use crate::types::list::List;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
 use crate::types::{AsRust, AsRustType, CBytes};
-use num::BigInt;
+use num_bigint::BigInt;
 
 #[derive(Debug)]
 pub struct Map {

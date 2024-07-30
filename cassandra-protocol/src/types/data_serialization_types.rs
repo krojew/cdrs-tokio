@@ -1,6 +1,6 @@
-use arrayref::array_ref;
 use integer_encoding::VarInt;
-use num::BigInt;
+use num_bigint::BigInt;
+use std::convert::TryInto;
 use std::io;
 use std::net;
 use std::string::FromUtf8Error;
@@ -12,7 +12,7 @@ use crate::error;
 use crate::frame::{FromCursor, Version};
 use crate::types::{
     try_f32_from_bytes, try_f64_from_bytes, try_i16_from_bytes, try_i32_from_bytes,
-    try_i64_from_bytes, u16_from_bytes, CBytes, CInt, INT_LEN,
+    try_i64_from_bytes, CBytes, CInt, INT_LEN,
 };
 
 // https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L813
@@ -105,20 +105,14 @@ pub fn decode_float(bytes: &[u8]) -> Result<f32, io::Error> {
 pub fn decode_inet(bytes: &[u8]) -> Result<net::IpAddr, io::Error> {
     match bytes.len() {
         // v4
-        4 => Ok(net::IpAddr::V4(net::Ipv4Addr::new(
-            bytes[0], bytes[1], bytes[2], bytes[3],
-        ))),
+        4 => {
+            let array: [u8; 4] = bytes[0..4].try_into().unwrap();
+            Ok(net::IpAddr::V4(net::Ipv4Addr::from(array)))
+        }
         // v6
         16 => {
-            let a = u16_from_bytes(*array_ref!(bytes, 0, 2));
-            let b = u16_from_bytes(*array_ref!(bytes, 2, 2));
-            let c = u16_from_bytes(*array_ref!(bytes, 4, 2));
-            let d = u16_from_bytes(*array_ref!(bytes, 6, 2));
-            let e = u16_from_bytes(*array_ref!(bytes, 8, 2));
-            let f = u16_from_bytes(*array_ref!(bytes, 10, 2));
-            let g = u16_from_bytes(*array_ref!(bytes, 12, 2));
-            let h = u16_from_bytes(*array_ref!(bytes, 14, 2));
-            Ok(net::IpAddr::V6(net::Ipv6Addr::new(a, b, c, d, e, f, g, h)))
+            let array: [u8; 16] = bytes[0..16].try_into().unwrap();
+            Ok(net::IpAddr::V6(net::Ipv6Addr::from(array)))
         }
         _ => Err(io::Error::new(
             io::ErrorKind::Other,

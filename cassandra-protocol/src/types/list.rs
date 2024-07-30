@@ -1,5 +1,5 @@
 use derive_more::Constructor;
-use num::BigInt;
+use num_bigint::BigInt;
 use std::net::IpAddr;
 use uuid::Uuid;
 
