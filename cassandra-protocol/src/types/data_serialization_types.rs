@@ -145,6 +145,21 @@ pub fn decode_list(bytes: &[u8], version: Version) -> Result<Vec<CBytes>, io::Er
     Ok(list)
 }
 
+pub fn decode_float_vector(
+    bytes: &[u8],
+    _version: Version,
+    count: usize,
+) -> Result<Vec<CBytes>, io::Error> {
+    let type_size = 4;
+
+    let mut vector = Vec::with_capacity(count);
+    for i in (0..(count * type_size)).step_by(4) {
+        vector.push(CBytes::new(bytes[i..i + type_size].to_vec()));
+    }
+
+    Ok(vector)
+}
+
 // Decodes Cassandra `set` data (bytes)
 #[inline]
 pub fn decode_set(bytes: &[u8], version: Version) -> Result<Vec<CBytes>, io::Error> {

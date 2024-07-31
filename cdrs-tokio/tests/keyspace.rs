@@ -22,7 +22,6 @@ use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 
 #[cfg(feature = "e2e-tests")]
 #[tokio::test]
-#[cfg(feature = "e2e-tests")]
 async fn create_keyspace() {
     let cluster_config = NodeTcpConfigBuilder::new()
         .with_contact_point("127.0.0.1:9042".into())

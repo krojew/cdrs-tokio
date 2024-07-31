@@ -27,6 +27,24 @@ macro_rules! query_values {
     };
 }
 
+macro_rules! vector_as_rust {
+    (f32) => {
+        impl AsRustType<Vec<f32>> for Vector {
+            fn as_rust_type(&self) -> Result<Option<Vec<f32>>> {
+                let mut result: Vec<f32> = Vec::new();
+                for data_value in &self.data {
+                    let float = decode_float(data_value.as_slice().unwrap_or(Err(
+                        Error::General(format!("Failed to convert {:?} into float", data_value)),
+                    )?))?;
+                    result.push(float);
+                }
+
+                Ok(Some(result))
+            }
+        }
+    };
+}
+
 macro_rules! list_as_rust {
     (List) => (
         impl AsRustType<Vec<List>> for List {
@@ -177,14 +195,69 @@ macro_rules! list_as_cassandra_type {
                     | Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.deref().clone();
                         let wrapper = wrapper_fn(&type_option_ref.id);
-                        let convert = self.map(|bytes| {
-                            wrapper(bytes, &type_option_ref, protocol_version).unwrap()
-                        });
-                        Ok(Some(CassandraType::List(convert)))
+                        let convert = self
+                            .try_map(|bytes| wrapper(bytes, &type_option_ref, protocol_version));
+
+                        convert.map(|convert| Some(CassandraType::List(convert)))
                     }
                     _ => Err(Error::General(format!(
                         "Invalid conversion. \
                             Cannot convert {:?} into List (valid types: List, Set).",
+                        self.metadata.value
+                    ))),
+                }
+            }
+        }
+    };
+}
+
+macro_rules! vector_as_cassandra_type {
+    () => {
+        impl crate::types::AsCassandraType for Vector {
+            fn as_cassandra_type(
+                &self,
+            ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
+                use crate::error::Error;
+                use crate::types::cassandra_type::wrapper_fn;
+                use crate::types::cassandra_type::CassandraType;
+
+                let protocol_version = self.protocol_version;
+
+                match &self.metadata {
+                    ColTypeOption {
+                        id: ColType::Custom,
+                        value,
+                    } => {
+                        if let Some(value) = value {
+                            let VectorInfo { internal_type, .. } = get_vector_type_info(value)?;
+
+                            if internal_type == "FloatType" {
+                                let internal_type_option = ColTypeOption {
+                                    id: ColType::Float,
+                                    value: None,
+                                };
+
+                                let wrapper = wrapper_fn(&ColType::Float);
+
+                                let convert = self.try_map(|bytes| {
+                                    wrapper(bytes, &internal_type_option, protocol_version)
+                                });
+
+                                return convert.map(|convert| Some(CassandraType::Vector(convert)));
+                            } else {
+                                return Err(Error::General(format!(
+                                    "Invalid conversion. \
+            Cannot convert Vector<{:?}> into Vector (valid types: Vector<FloatType>",
+                                    internal_type
+                                )));
+                            }
+                        } else {
+                            return Err(Error::General("Custom type string is none".to_string()));
+                        }
+                    }
+                    _ => Err(Error::General(format!(
+                        "Invalid conversion. \
+                            Cannot convert {:?} into Vector (valid types: Custom).",
                         self.metadata.value
                     ))),
                 }
@@ -201,6 +274,7 @@ macro_rules! map_as_cassandra_type {
             ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
                 use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
+                use itertools::Itertools;
                 use std::ops::Deref;
 
                 if let Some(ColTypeOptionValue::CMap(
@@ -217,21 +291,21 @@ macro_rules! map_as_cassandra_type {
 
                     let protocol_version = self.protocol_version;
 
-                    let map = self
+                    return self
                         .data
                         .iter()
                         .map(|(key, value)| {
-                            (
-                                key_wrapper(key, &key_col_type_option, protocol_version).unwrap(),
-                                value_wrapper(value, &value_col_type_option, protocol_version)
-                                    .unwrap(),
+                            key_wrapper(key, &key_col_type_option, protocol_version).and_then(
+                                |key| {
+                                    value_wrapper(value, &value_col_type_option, protocol_version)
+                                        .map(|value| (key, value))
+                                },
                             )
                         })
-                        .collect::<Vec<(CassandraType, CassandraType)>>();
-
-                    return Ok(Some(CassandraType::Map(map)));
+                        .try_collect()
+                        .map(|map| Some(CassandraType::Map(map)));
                 } else {
-                    panic!("not  amap")
+                    panic!("not a map")
                 }
             }
         }
@@ -246,6 +320,7 @@ macro_rules! tuple_as_cassandra_type {
             ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
                 use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
+                use itertools::Itertools;
 
                 let protocol_version = self.protocol_version;
                 let values = self
@@ -253,9 +328,9 @@ macro_rules! tuple_as_cassandra_type {
                     .iter()
                     .map(|(col_type, bytes)| {
                         let wrapper = wrapper_fn(&col_type.id);
-                        wrapper(&bytes, col_type, protocol_version).unwrap()
+                        wrapper(&bytes, col_type, protocol_version)
                     })
-                    .collect();
+                    .try_collect()?;
 
                 Ok(Some(CassandraType::Tuple(values)))
             }
@@ -276,11 +351,11 @@ macro_rules! udt_as_cassandra_type {
                 let mut map = HashMap::with_capacity(self.data.len());
                 let protocol_version = self.protocol_version;
 
-                self.data.iter().for_each(|(key, (col_type, bytes))| {
+                for (key, (col_type, bytes)) in &self.data {
                     let wrapper = wrapper_fn(&col_type.id);
-                    let value = wrapper(&bytes, col_type, protocol_version).unwrap();
+                    let value = wrapper(&bytes, col_type, protocol_version)?;
                     map.insert(key.clone(), value);
-                });
+                }
 
                 Ok(Some(CassandraType::Udt(map)))
             }
@@ -550,6 +625,19 @@ macro_rules! into_rust_by_name {
                     .and_then(|(col_spec, cbytes)| {
                         let col_type = &col_spec.col_type;
                         as_rust_type!(col_type, cbytes, protocol_version, List)
+                    })
+            }
+        }
+    );
+    (Row, Vector) => (
+        impl IntoRustByName<Vector> for Row {
+            fn get_by_name(&self, name: &str) -> Result<Option<Vector>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_name(name)
+                    .ok_or(column_is_empty_err(name))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Vector)
                     })
             }
         }
@@ -1271,6 +1359,25 @@ macro_rules! as_rust_type {
             _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into List (valid types: List, Set).",
+                $data_type_option.id
+            ))),
+        }
+    };
+    ($data_type_option:ident, $data_value:ident, $version:ident, Vector) => {
+        match $data_type_option.id {
+            ColType::Custom => match $data_value.as_slice() {
+                Some(ref bytes) => {
+                    let crate::types::vector::VectorInfo { internal_type: _, count  } = crate::types::vector::get_vector_type_info($data_type_option.value.as_ref()?)?;
+
+                    decode_float_vector(bytes, $version, count)
+                        .map(|data| Some(Vector::new($data_type_option.clone(), data, $version)))
+                        .map_err(Into::into)
+                },
+                None => Ok(None),
+            },
+            _ => Err(crate::error::Error::(format!(
+                "Invalid conversion. \
+                 Cannot convert {:?} into Vector (valid types: Custom).",
                 $data_type_option.id
             ))),
         }

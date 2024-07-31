@@ -1,4 +1,5 @@
 use derive_more::Constructor;
+use itertools::Itertools;
 use num_bigint::BigInt;
 use std::net::IpAddr;
 use uuid::Uuid;
@@ -30,6 +31,13 @@ impl List {
         F: FnMut(&CBytes) -> T,
     {
         self.data.iter().map(f).collect()
+    }
+
+    fn try_map<T, F>(&self, f: F) -> Result<Vec<T>>
+    where
+        F: FnMut(&CBytes) -> Result<T>,
+    {
+        self.data.iter().map(f).try_collect()
     }
 }
 
