@@ -195,10 +195,10 @@ macro_rules! list_as_cassandra_type {
                     | Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.deref().clone();
                         let wrapper = wrapper_fn(&type_option_ref.id);
-                        let convert = self.map(|bytes| {
-                            wrapper(bytes, &type_option_ref, protocol_version).unwrap()
-                        });
-                        Ok(Some(CassandraType::List(convert)))
+                        let convert = self
+                            .try_map(|bytes| wrapper(bytes, &type_option_ref, protocol_version));
+
+                        convert.map(|convert| Some(CassandraType::List(convert)))
                     }
                     _ => Err(Error::General(format!(
                         "Invalid conversion. \
@@ -239,11 +239,11 @@ macro_rules! vector_as_cassandra_type {
 
                                 let wrapper = wrapper_fn(&ColType::Float);
 
-                                let convert = self.map(|bytes| {
-                                    wrapper(bytes, &internal_type_option, protocol_version).unwrap()
+                                let convert = self.try_map(|bytes| {
+                                    wrapper(bytes, &internal_type_option, protocol_version)
                                 });
 
-                                return Ok(Some(CassandraType::Vector(convert)));
+                                return convert.map(|convert| Some(CassandraType::Vector(convert)));
                             } else {
                                 return Err(Error::General(format!(
                                     "Invalid conversion. \
@@ -274,6 +274,7 @@ macro_rules! map_as_cassandra_type {
             ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
                 use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
+                use itertools::Itertools;
                 use std::ops::Deref;
 
                 if let Some(ColTypeOptionValue::CMap(
@@ -290,21 +291,21 @@ macro_rules! map_as_cassandra_type {
 
                     let protocol_version = self.protocol_version;
 
-                    let map = self
+                    return self
                         .data
                         .iter()
                         .map(|(key, value)| {
-                            (
-                                key_wrapper(key, &key_col_type_option, protocol_version).unwrap(),
-                                value_wrapper(value, &value_col_type_option, protocol_version)
-                                    .unwrap(),
+                            key_wrapper(key, &key_col_type_option, protocol_version).and_then(
+                                |key| {
+                                    value_wrapper(value, &value_col_type_option, protocol_version)
+                                        .map(|value| (key, value))
+                                },
                             )
                         })
-                        .collect::<Vec<(CassandraType, CassandraType)>>();
-
-                    return Ok(Some(CassandraType::Map(map)));
+                        .try_collect()
+                        .map(|map| Some(CassandraType::Map(map)));
                 } else {
-                    panic!("not  amap")
+                    panic!("not a map")
                 }
             }
         }
@@ -319,6 +320,7 @@ macro_rules! tuple_as_cassandra_type {
             ) -> Result<Option<crate::types::cassandra_type::CassandraType>> {
                 use crate::types::cassandra_type::wrapper_fn;
                 use crate::types::cassandra_type::CassandraType;
+                use itertools::Itertools;
 
                 let protocol_version = self.protocol_version;
                 let values = self
@@ -326,9 +328,9 @@ macro_rules! tuple_as_cassandra_type {
                     .iter()
                     .map(|(col_type, bytes)| {
                         let wrapper = wrapper_fn(&col_type.id);
-                        wrapper(&bytes, col_type, protocol_version).unwrap()
+                        wrapper(&bytes, col_type, protocol_version)
                     })
-                    .collect();
+                    .try_collect()?;
 
                 Ok(Some(CassandraType::Tuple(values)))
             }
@@ -349,11 +351,11 @@ macro_rules! udt_as_cassandra_type {
                 let mut map = HashMap::with_capacity(self.data.len());
                 let protocol_version = self.protocol_version;
 
-                self.data.iter().for_each(|(key, (col_type, bytes))| {
+                for (key, (col_type, bytes)) in &self.data {
                     let wrapper = wrapper_fn(&col_type.id);
-                    let value = wrapper(&bytes, col_type, protocol_version).unwrap();
+                    let value = wrapper(&bytes, col_type, protocol_version)?;
                     map.insert(key.clone(), value);
-                });
+                }
 
                 Ok(Some(CassandraType::Udt(map)))
             }
@@ -1365,7 +1367,7 @@ macro_rules! as_rust_type {
         match $data_type_option.id {
             ColType::Custom => match $data_value.as_slice() {
                 Some(ref bytes) => {
-                    let crate::types::vector::VectorInfo { internal_type: _, count  } = crate::types::vector::get_vector_type_info($data_type_option.value.as_ref().unwrap()).unwrap();
+                    let crate::types::vector::VectorInfo { internal_type: _, count  } = crate::types::vector::get_vector_type_info($data_type_option.value.as_ref()?)?;
 
                     decode_float_vector(bytes, $version, count)
                         .map(|data| Some(Vector::new($data_type_option.clone(), data, $version)))

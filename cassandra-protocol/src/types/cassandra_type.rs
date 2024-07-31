@@ -99,13 +99,11 @@ pub mod wrappers {
             let VectorInfo {
                 internal_type: _,
                 count,
-            } = get_vector_type_info(value).unwrap();
+            } = get_vector_type_info(value)?;
 
             if let Some(actual_bytes) = bytes.as_slice() {
                 let vector = decode_float_vector(actual_bytes, version, count)
-                    .map(|data| Some(Vector::new(col_type.clone(), data, version)))
-                    .expect("could not decode vector")
-                    .unwrap()
+                    .map(|data| Vector::new(col_type.clone(), data, version))?
                     .as_cassandra_type()?
                     .unwrap_or(CassandraType::Null);
                 return Ok(vector);
