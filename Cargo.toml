@@ -9,7 +9,7 @@ members = [
 arc-swap = "1.6.0"
 uuid = "1.8.0"
 derivative = "2.2.0"
-derive_more = "1.0.0"
+derive_more = { version = "1.0.0", features = ["constructor", "display"] }
 bytes = "1.5.0"
 itertools = "0.13.0"
 thiserror = "1.0.48"

@@ -17,7 +17,7 @@ e2e-tests = []
 [dependencies]
 arc-swap.workspace = true
 bitflags = "2.5.0"
-chrono = { version = "0.4.31", default_features = false, features = ["std"] }
+chrono = { version = "0.4.31", default-features = false, features = ["std"] }
 crc32fast = "1.4.0"
 derivative.workspace = true
 derive_more.workspace = true
