@@ -12,4 +12,4 @@ derivative = "2.2.0"
 derive_more = { version = "1.0.0", features = ["constructor", "display"] }
 bytes = "1.5.0"
 itertools = "0.13.0"
-thiserror = "1.0.48"
+thiserror = "2.0.0"
