@@ -1,15 +1,15 @@
 //!This module contains a declaration of `CdrsTransport` trait which should be implemented
-//!for particular transport in order to be able using it as a transport of CDRS client.
+//!for particular transport to be able using it as transport of CDRS client.
 //!
-//!Currently CDRS provides to concrete transports which implement `CdrsTransport` trait. There
-//! are:
+//!Currently, CDRS provides concrete transport which implements `CdrsTransport` trait.
+//!There are:
 //!
 //! * [`TransportTcp`] is default TCP transport which is usually used to establish
 //!connection and exchange frames.
 //!
 //! * [`TransportRustls`] is a transport which is used to establish SSL encrypted connection
 //!with Apache Cassandra server. **Note:** this option is available if and only if CDRS is imported
-//!with `rust-tls` feature.
+//!with the `rust-tls` feature.
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::frame::frame_decoder::FrameDecoder;
 use cassandra_protocol::frame::frame_encoder::FrameEncoder;
@@ -457,7 +457,13 @@ impl AsyncTransport {
     ) -> Result<()> {
         let mut buffer = Vec::with_capacity(MAX_FRAME_SIZE);
         loop {
-            read_half.read_buf(&mut buffer).await?;
+            let num_read = read_half.read_buf(&mut buffer).await?;
+            if num_read == 0 {
+                break Err(Error::Io(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "EOF",
+                )));
+            }
 
             let envelopes = frame_decoder.consume(&mut buffer, compression)?;
             for envelope in envelopes {
