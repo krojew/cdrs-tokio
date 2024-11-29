@@ -17,6 +17,7 @@ e2e-tests = []
 [dependencies]
 arc-swap.workspace = true
 bitflags = "2.5.0"
+bytes = "1.5.0"
 chrono = { version = "0.4.31", default-features = false, features = ["std"] }
 crc32fast = "1.4.0"
 derivative.workspace = true
@@ -30,4 +31,3 @@ snap = "1.1.0"
 thiserror.workspace = true
 time = { version = "0.3.29", features = ["macros"] }
 uuid.workspace = true
-bytes.workspace = true
