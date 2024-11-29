@@ -1,3 +1,9 @@
+## 8.1.4
+
+### Fixed
+
+* CPU spike after some time running.
+
 ## 8.1.3
 
 * Dependency updates.
@@ -60,7 +66,8 @@
 * Made protocol enums non-exhaustive for future compatibility.
 * Session builders are now async and wait for control connection to be ready
   before returning a session.
-* `CBytes::new_empty()` -> `CBytes::new_null()`, `CBytes::is_empty()` -> `CBytes::is_null_or_empty()`.
+* `CBytes::new_empty()` -> `CBytes::new_null()`, `CBytes::is_empty()` ->
+  `CBytes::is_null_or_empty()`.
 
 ## 7.0.4
 
