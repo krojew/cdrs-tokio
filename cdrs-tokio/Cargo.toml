@@ -22,7 +22,6 @@ http-proxy = ["async-http-proxy"]
 arc-swap.workspace = true
 atomic = "0.6.0"
 bytemuck = { version = "1.15.0", features = ["derive"] }
-bytes.workspace = true
 cassandra-protocol = { path = "../cassandra-protocol", version = "3.2.0" }
 cdrs-tokio-helpers-derive = { path = "../cdrs-tokio-helpers-derive", version = "5.0.3", optional = true }
 derive_more.workspace = true
