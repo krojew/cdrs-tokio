@@ -34,7 +34,7 @@ pub(crate) fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>
                     node_info.broadcast_address,
                     Some(node_info.host_id),
                     node_distance_evaluator.compute_distance(&node_info),
-                    NodeState::Up,
+                    NodeState::Unknown,
                     node_info.tokens.clone(),
                     node_info.rack,
                     node_info.datacenter,
