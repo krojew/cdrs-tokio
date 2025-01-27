@@ -30,7 +30,7 @@ futures = { version = "0.3.28", default-features = false, features = ["alloc"] }
 fxhash = "0.2.1"
 itertools.workspace = true
 lazy_static = "1.4.0"
-rand = "0.8.5"
+rand = "0.9.0"
 serde_json = "1.0.107"
 thiserror.workspace = true
 tokio = { version = "1.36.0", features = ["net", "io-util", "rt", "sync", "macros", "rt-multi-thread", "time"] }
