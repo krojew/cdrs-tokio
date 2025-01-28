@@ -1,18 +1,18 @@
-use cassandra_protocol::consistency::Consistency;
-use derivative::Derivative;
-use fxhash::{FxHashMap, FxHashSet};
-use itertools::Itertools;
-use rand::prelude::*;
-use std::cmp::Ordering as CmpOrdering;
-use std::marker::PhantomData;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-
 use crate::cluster::topology::{KeyspaceMetadata, Node, NodeDistance, ReplicationStrategy};
 use crate::cluster::Murmur3Token;
 use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
 use crate::transport::CdrsTransport;
+use cassandra_protocol::consistency::Consistency;
+use derivative::Derivative;
+use fxhash::{FxHashMap, FxHashSet};
+use itertools::Itertools;
+use rand::prelude::*;
+use rand::rng;
+use std::cmp::Ordering as CmpOrdering;
+use std::marker::PhantomData;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 /// Topology-aware load balancing strategy. Depends on up-to-date topology information, which is
 /// constantly monitored in the background by a control connection. For best results, a
@@ -210,7 +210,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         // remove ignored
         result.retain(|node| !node.is_ignored());
 
-        let mut rng = thread_rng();
+        let mut rng = rng();
 
         // find now many local nodes we have
         let local_count = result.iter().position(|node| node.is_remote()).unwrap_or(0);
@@ -256,7 +256,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
             .filter(|node| !node.is_ignored())
             .collect_vec();
 
-        replicas.shuffle(&mut thread_rng());
+        replicas.shuffle(&mut rng());
 
         let unignored_nodes = self.round_robin_unignored_nodes(cluster);
         replicas

@@ -14,7 +14,7 @@ use cassandra_protocol::types::rows::Row;
 use cassandra_protocol::types::{AsRustType, ByName, IntoRustByName};
 use fxhash::FxHashMap;
 use itertools::Itertools;
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use serde_json::{Map, Value as JsonValue};
 use std::convert::TryInto;
 use std::net::{IpAddr, SocketAddr};
@@ -136,7 +136,7 @@ fn build_node_info(row: &Row, broadcast_rpc_address: SocketAddr) -> Result<NodeI
                 .map(|token| {
                     token.try_into().unwrap_or_else(|_| {
                     warn!(%broadcast_rpc_address, "Unsupported token type - using a dummy value.");
-                    Murmur3Token::new(thread_rng().gen()) })
+                    Murmur3Token::new(rng().random()) })
                 })
                 .collect(),
             rack,

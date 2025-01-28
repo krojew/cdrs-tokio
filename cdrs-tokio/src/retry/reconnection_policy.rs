@@ -1,7 +1,7 @@
 use derive_more::Constructor;
 #[cfg(test)]
 use mockall::automock;
-use rand::{thread_rng, Rng};
+use rand::{rng, Rng};
 use std::time::Duration;
 
 const DEFAULT_BASE_DELAY: Duration = Duration::from_secs(1);
@@ -120,7 +120,7 @@ impl ReconnectionSchedule for ExponentialReconnectionSchedule {
             .saturating_mul(1u32.checked_shl(self.attempt as u32).unwrap_or(u32::MAX))
             .min(self.max_delay);
 
-        let jitter = thread_rng().gen_range(85..116);
+        let jitter = rng().random_range(85..116);
 
         Some(
             (delay / 100)
