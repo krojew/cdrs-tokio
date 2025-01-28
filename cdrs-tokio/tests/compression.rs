@@ -22,6 +22,7 @@ use cdrs_tokio::retry::NeverReconnectionPolicy;
 use common::*;
 #[cfg(feature = "e2e-tests")]
 use rand::prelude::*;
+use rand::rng;
 #[cfg(feature = "e2e-tests")]
 use std::sync::Arc;
 
@@ -57,11 +58,11 @@ async fn encode_decode_test(version: Version) {
         .await
         .unwrap();
 
-    let mut rng = thread_rng();
+    let mut rng = rng();
 
     let mut data = vec![0u8; 5 * 1024 * 1024];
     for elem in &mut data {
-        *elem = rng.gen();
+        *elem = rng.random();
     }
 
     let blob = Blob::new(data);

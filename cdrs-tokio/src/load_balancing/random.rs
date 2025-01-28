@@ -2,7 +2,7 @@ use derivative::Derivative;
 use std::marker::PhantomData;
 
 use rand::prelude::*;
-use rand::thread_rng;
+use rand::rng;
 
 use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
@@ -37,7 +37,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
     ) -> QueryPlan<T, CM> {
         let mut result = cluster.unignored_nodes();
 
-        result.shuffle(&mut thread_rng());
+        result.shuffle(&mut rng());
         result
     }
 }
