@@ -194,6 +194,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         let pool = self
             .connection_pool
             .get_or_try_init(|| {
+                debug!(?self.host_id, "Creating connection pool");
+
                 self.connection_pool_factory.create(
                     self.distance.unwrap_or(NodeDistance::Remote),
                     self.broadcast_rpc_address,

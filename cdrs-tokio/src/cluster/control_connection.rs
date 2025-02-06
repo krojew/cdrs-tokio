@@ -97,6 +97,8 @@ impl<
                 let mut schedule = self.reconnection_policy.new_node_schedule();
 
                 loop {
+                    let mut full_refresh = false;
+
                     let mut nodes = self
                         .load_balancing
                         .query_plan(None, self.cluster_metadata_manager.metadata().as_ref());
@@ -108,6 +110,9 @@ impl<
                         // when the whole cluster goes down, there's nothing to update LB state, so
                         // we're left with contact points
                         nodes.clone_from(&self.contact_points);
+                        // it means that we need to build metadata from scratch once we are
+                        // reconnected
+                        full_refresh = true;
                     }
 
                     for node in nodes {
@@ -124,8 +129,10 @@ impl<
                                 .control_connection_transport
                                 .store(Some(Arc::new(connection)));
 
-                            if let Err(error) =
-                                self.cluster_metadata_manager.refresh_metadata().await
+                            if let Err(error) = self
+                                .cluster_metadata_manager
+                                .refresh_metadata(full_refresh)
+                                .await
                             {
                                 error!(%error, "Error refreshing nodes! Trying to refresh control connection.");
                                 continue;
