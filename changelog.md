@@ -1,3 +1,10 @@
+## 8.1.5
+
+### Fixed
+
+* Race condition when reconnecting to a cluster with all nodes down (by Denis
+  Kosenkov).
+
 ## 8.1.4
 
 ### Fixed
