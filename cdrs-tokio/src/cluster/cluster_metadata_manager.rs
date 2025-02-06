@@ -617,7 +617,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     // Refreshes stored metadata. Note: it is expected to be called by the control connection.
-    pub(crate) async fn refresh_metadata(&self) -> Result<()> {
+    pub(crate) async fn refresh_metadata(&self, full_refresh: bool) -> Result<()> {
         let (node_infos, keyspaces) =
             tokio::try_join!(self.refresh_node_infos(), self.refresh_keyspaces())?;
 
@@ -635,12 +635,22 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             )));
         } else {
             self.metadata.rcu(move |old_metadata| {
-                refresh_metadata(
-                    &node_infos,
-                    old_metadata.as_ref(),
-                    &self.connection_pool_factory,
-                    self.node_distance_evaluator.as_ref(),
-                )
+                if full_refresh {
+                    build_initial_metadata(
+                        node_infos.clone(),
+                        keyspaces.clone(),
+                        &self.contact_points,
+                        &self.connection_pool_factory,
+                        self.node_distance_evaluator.as_ref(),
+                    )
+                } else {
+                    refresh_metadata(
+                        &node_infos,
+                        old_metadata.as_ref(),
+                        &self.connection_pool_factory,
+                        self.node_distance_evaluator.as_ref(),
+                    )
+                }
             });
         };
 

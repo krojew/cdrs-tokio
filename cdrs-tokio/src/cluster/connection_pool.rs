@@ -369,6 +369,11 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                             if let Some(node) = node.upgrade() {
                                 debug!(?broadcast_rpc_address, "All connections reestablished.");
                                 node.mark_up();
+                            } else {
+                                debug!(
+                                    ?broadcast_rpc_address,
+                                    "Node is discarded during reconnection."
+                                );
                             }
                         } else if let Some(pool) = pool.upgrade() {
                             if pool.is_any_connection_up().await {
