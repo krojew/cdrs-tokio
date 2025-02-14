@@ -284,6 +284,22 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             // know its state
             .unwrap_or(false);
 
+        let mut new_node_state = self.state.load(Ordering::Relaxed);
+        if address_changed {
+            new_node_state = NodeState::Unknown;
+        }
+
+        // If we recreate the node with the status Down, it will be removed from the load-balancing strategy.
+        // The only way to promote the node back to the Up state is to receive an error in
+        // connection_pool.rs::monitor_connections and schedule the reconnection. This method
+        // is triggered only when we call persistent_connection on the node, which means that the node
+        // must be a part of the load-balancing strategy at least once.
+        // We do not care about it for Unknown and ForcedDown, because these will be taken care of
+        // on topology events in control_connection.rs::process_events or in load balancers
+        if new_node_state == NodeState::Down {
+            new_node_state = NodeState::Up;
+        }
+
         Self {
             connection_pool_factory: self.connection_pool_factory.clone(),
             connection_pool: Default::default(),
@@ -291,11 +307,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_address: node_info.broadcast_address,
             // since address could change, we can't be sure of distance or state
             distance: if address_changed { None } else { self.distance },
-            state: if address_changed {
-                Atomic::new(NodeState::Unknown)
-            } else {
-                Atomic::new(self.state.load(Ordering::Relaxed))
-            },
+            state: Atomic::new(new_node_state),
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,
             rack: node_info.rack,
