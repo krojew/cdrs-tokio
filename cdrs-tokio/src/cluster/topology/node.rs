@@ -297,6 +297,10 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         // We do not care about it for Unknown and ForcedDown, because these will be taken care of
         // on topology events in control_connection.rs::process_events or in load balancers
         if new_node_state == NodeState::Down {
+            debug!(
+                ?node_info.broadcast_rpc_address,
+                "Cloned the node with Down state",
+            );
             new_node_state = NodeState::Up;
         }
 
