@@ -1,3 +1,10 @@
+## 8.1.6
+
+### Fixed
+
+* Refreshing node information can preserve invalid `Down` state (by Denis
+  Kosenkov).
+
 ## 8.1.5
 
 ### Fixed
