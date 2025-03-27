@@ -15,11 +15,10 @@ use derivative::Derivative;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use std::io::{Cursor, Write};
 use std::marker::PhantomData;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use thiserror::Error;
 use tokio::sync::broadcast::{channel, Receiver, Sender};
 use tokio::sync::watch;
@@ -61,9 +60,8 @@ use crate::transport::{CdrsTransport, TransportTcp};
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
 
-lazy_static! {
-    static ref DEFAULT_STATEMET_PARAMETERS: StatementParams = Default::default();
-}
+static DEFAULT_STATEMENT_PARAMETERS: LazyLock<StatementParams> =
+    LazyLock::new(|| Default::default());
 
 #[inline]
 fn convert_to_prepared(body: ResponseBody) -> error::Result<BodyResResultPrepared> {
@@ -406,7 +404,7 @@ impl<
     /// Executes given prepared query.
     #[inline]
     pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Envelope> {
-        self.exec_with_params(prepared, &DEFAULT_STATEMET_PARAMETERS)
+        self.exec_with_params(prepared, &DEFAULT_STATEMENT_PARAMETERS)
             .await
     }
 
@@ -476,7 +474,7 @@ impl<
     /// Executes batch query.
     #[inline]
     pub async fn batch(&self, batch: QueryBatch) -> error::Result<Envelope> {
-        self.batch_with_params(batch, &DEFAULT_STATEMET_PARAMETERS)
+        self.batch_with_params(batch, &DEFAULT_STATEMENT_PARAMETERS)
             .await
     }
 
@@ -512,7 +510,7 @@ impl<
     /// Executes a query.
     #[inline]
     pub async fn query<Q: ToString>(&self, query: Q) -> error::Result<Envelope> {
-        self.query_with_params(query, DEFAULT_STATEMET_PARAMETERS.clone())
+        self.query_with_params(query, DEFAULT_STATEMENT_PARAMETERS.clone())
             .await
     }
 

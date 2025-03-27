@@ -110,9 +110,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
 mod tests {
     use cassandra_protocol::frame::Version;
     use itertools::Itertools;
-    use lazy_static::lazy_static;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    use std::sync::Arc;
+    use std::sync::{Arc, LazyLock};
     use tokio::sync::watch;
     use uuid::Uuid;
 
@@ -124,11 +123,9 @@ mod tests {
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
 
-    lazy_static! {
-        static ref HOST_ID_1: Uuid = Uuid::new_v4();
-        static ref HOST_ID_2: Uuid = Uuid::new_v4();
-        static ref HOST_ID_3: Uuid = Uuid::new_v4();
-    }
+    static HOST_ID_1: LazyLock<Uuid> = LazyLock::new(|| Uuid::new_v4());
+    static HOST_ID_2: LazyLock<Uuid> = LazyLock::new(|| Uuid::new_v4());
+    static HOST_ID_3: LazyLock<Uuid> = LazyLock::new(|| Uuid::new_v4());
 
     fn prepare_nodes() -> NodeMap<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
         let (_, keyspace_receiver) = watch::channel(None);
