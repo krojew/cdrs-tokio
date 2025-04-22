@@ -579,7 +579,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
                 ));
             }
 
-            // at this point either all connections are up or some might have died in the meantime,
+            // at this point either all connections are up, or some might have died in the meantime,
             // which will trigger a new reconnection
             Ok(true)
         } else {
