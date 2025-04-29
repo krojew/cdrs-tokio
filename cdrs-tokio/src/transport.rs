@@ -519,7 +519,7 @@ impl AsyncTransport {
                 response_handler_map.add_handler(stream_id, request.handler);
 
                 if request.handshake {
-                    // handshake messages are not framed, so let's just write them directly
+                    // handshake messages are not framed, so let's write them directly
                     if let Err(error) = write_half.write_all(&request.data).await {
                         response_handler_map.send_response(stream_id, Err(error.into()))?;
                         return Err(Error::General("Write channel failure!".into()));
@@ -532,7 +532,7 @@ impl AsyncTransport {
                             break;
                         }
 
-                        // flush previous frame or create a non-self-contained one
+                        // flush the previous frame or create a non-self-contained one
                         if frame_encoder.has_envelopes() {
                             // we have some envelopes => flush current frame
                             Self::write_self_contained_frame(

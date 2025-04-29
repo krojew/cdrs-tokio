@@ -454,8 +454,10 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     let state = node.state();
                     if state != NodeState::Down && state != NodeState::ForcedDown {
                         if node.is_any_connection_up().await {
-                            debug!(?node, "Not marking node as down, since there are established connections.");
-                            return;
+                            warn!(
+                                ?node,
+                                "Marking node as down while there are established connections."
+                            );
                         }
 
                         debug!(?node, "Setting existing node state to down.");
