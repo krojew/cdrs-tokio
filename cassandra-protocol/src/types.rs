@@ -78,7 +78,7 @@ pub trait AsRust {
     }
 }
 
-/// Should be used to return a single column as Rust value by its name.
+/// Should be used to return a single column as a Rust value by its name.
 pub trait IntoRustByName<R> {
     fn get_by_name(&self, name: &str) -> CDRSResult<Option<R>>;
 
@@ -105,7 +105,7 @@ pub trait ByName {
     }
 }
 
-/// Should be used to return a single column as Rust value by its name.
+/// Should be used to return a single column as a Rust value by its name.
 pub trait IntoRustByIndex<R> {
     fn get_by_index(&self, index: usize) -> CDRSResult<Option<R>>;
 
@@ -273,7 +273,7 @@ pub fn from_cursor_string_list(cursor: &mut Cursor<&[u8]>) -> CDRSResult<Vec<Str
 }
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Ord, PartialOrd)]
-/// The structure that represents Cassandra byte type.
+/// The structure that represents a Cassandra byte type.
 pub struct CBytes {
     bytes: Option<Vec<u8>>,
 }
@@ -353,7 +353,7 @@ impl CBytesShort {
         CBytesShort { bytes: Some(bytes) }
     }
 
-    /// Converts `CBytesShort` into plain vector of bytes
+    /// Converts `CBytesShort` into a plain vector of bytes
     #[inline]
     pub fn into_bytes(self) -> Option<Vec<u8>> {
         self.bytes
@@ -377,8 +377,8 @@ impl CBytesShort {
 }
 
 impl FromCursor for CBytesShort {
-    /// from_cursor gets Cursor who's position is set such that it should be a start of bytes.
-    /// It reads required number of bytes and returns a CBytes
+    /// `from_cursor` gets the Cursor whose position is set such that it should be a start of bytes.
+    /// It reads the required number of bytes and returns a CBytes
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> CDRSResult<CBytesShort> {
         let len = CIntShort::from_cursor(cursor, version)?;
 
@@ -386,9 +386,7 @@ impl FromCursor for CBytesShort {
             return Ok(CBytesShort { bytes: None });
         }
 
-        cursor_next_value(cursor, len as usize)
-            .map(CBytesShort::new)
-            .map_err(Into::into)
+        cursor_next_value(cursor, len as usize).map(CBytesShort::new)
     }
 }
 

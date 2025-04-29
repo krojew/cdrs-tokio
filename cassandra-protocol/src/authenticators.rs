@@ -5,12 +5,12 @@ use crate::types::CBytes;
 ///
 /// The lifecycle of an authenticator consists of:
 /// - The `initial_response` function will be called. The initial return value will be sent to the
-/// server to initiate the handshake.
+///   server to initiate the handshake.
 /// - The server will respond to each client response by either issuing a challenge or indicating
-///  that the authentication is complete (successfully or not). If a new challenge is issued,
-///  the authenticator's `evaluate_challenge` function will be called to produce a response
-///  that will be sent to the server. This challenge/response negotiation will continue until
-///  the server responds that authentication is successful or an error is raised.
+///   that the authentication is complete (successfully or not). If a new challenge is issued,
+///   the authenticator's `evaluate_challenge` function will be called to produce a response
+///   that will be sent to the server. This challenge/response negotiation will continue until
+///   the server responds that authentication is successful or an error is raised.
 /// - On success, the `handle_success` will be called with data returned by the server.
 pub trait SaslAuthenticator {
     fn initial_response(&self) -> CBytes;

@@ -1,3 +1,10 @@
+## 8.1.7
+
+### Fixed
+
+* Not recreating connections on down event if there are still apparently open
+  ones.
+
 ## 8.1.6
 
 ### Fixed
