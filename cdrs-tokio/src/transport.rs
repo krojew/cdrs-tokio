@@ -396,6 +396,10 @@ impl AsyncTransport {
 
             is_broken.store(true, Ordering::Relaxed);
             response_handler_map.signal_general_error(&error);
+
+            if let Some(error_handler) = error_handler {
+                let _ = error_handler.send(error).await;
+            }
         }
     }
 

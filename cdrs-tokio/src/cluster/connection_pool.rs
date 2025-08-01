@@ -485,11 +485,21 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
 
         if pool.len() != desired_size {
             // some connections have failed, but can be brought back up, so trigger reconnection
-            let _ = error_sender
-                .send(Error::General(
-                    "Not all pool connections could be established!".to_string(),
-                ))
-                .await;
+            match error_sender.try_send(Error::General(
+                "Not all pool connections could be established!".to_string(),
+            )) {
+                Ok(()) => {
+                    // Sent successfully
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    // Channel is full, maybe log or retry
+                    warn!("Error channel is full, could not send error notification.");
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    // Channel is closed, log or handle accordingly
+                    warn!("Error channel is closed, could not send error notification.");
+                }
+            }
         }
 
         Ok(ConnectionPool {
