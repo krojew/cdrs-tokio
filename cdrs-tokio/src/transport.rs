@@ -398,7 +398,10 @@ impl AsyncTransport {
             response_handler_map.signal_general_error(&error);
 
             if let Some(error_handler) = error_handler {
-                let _ = error_handler.send(error).await;
+                match error_handler.try_send(error) {
+                    Ok(_) => debug!("Error handler notified!"),
+                    Err(e) => warn!("Error handler failed to notify: {e}"),
+                }
             }
         }
     }
