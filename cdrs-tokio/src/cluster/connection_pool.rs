@@ -485,11 +485,12 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
 
         if pool.len() != desired_size {
             // some connections have failed, but can be brought back up, so trigger reconnection
-            let _ = error_sender
-                .send(Error::General(
-                    "Not all pool connections could be established!".to_string(),
-                ))
-                .await;
+            match error_sender.try_send(Error::General(
+                "Not all pool connections could be established!".to_string(),
+            )) {
+                Ok(_) => debug!("Error handler notified!"),
+                Err(e) => warn!("Error handler failed to notify: {e}"),
+            }
         }
 
         Ok(ConnectionPool {
