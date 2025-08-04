@@ -1,3 +1,9 @@
+## 8.1.8
+
+### Fixed
+
+* Fixed deadlock on transport error (by jojoxhsieh).
+
 ## 8.1.7
 
 ### Fixed
