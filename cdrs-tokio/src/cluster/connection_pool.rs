@@ -192,7 +192,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         );
 
         Self::start_heartbeat(
-            weak_pool,
+            weak_pool.clone(),
             node,
             self.config.heartbeat_interval,
             self.version,
@@ -200,12 +200,22 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
 
         // watch for keyspace changes
         let mut keyspace_receiver = self.keyspace_receiver.clone();
-        let pool_clone = pool.clone();
+        let weak_pool_for_keyspace = weak_pool.clone();
         let version = self.version;
 
         tokio::spawn(async move {
             while let Ok(()) = keyspace_receiver.changed().await {
                 let keyspace = keyspace_receiver.borrow().clone();
+
+                // Try to upgrade the weak reference to a strong Arc
+                let pool = match weak_pool_for_keyspace.upgrade() {
+                    Some(pool) => pool,
+                    None => {
+                        debug!("Pool dropped, exiting keyspace watcher task.");
+                        break;
+                    }
+                };
+
                 if let Some(keyspace) = keyspace {
                     let use_envelope = Arc::new(Envelope::new_req_query(
                         format!("USE {}", quote(&keyspace)),
@@ -222,8 +232,8 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                         version,
                     ));
 
-                    let pool = pool_clone.pool.read().await;
-                    join_all(pool.iter()
+                    let pool_guard = pool.pool.read().await;
+                    join_all(pool_guard.iter()
                         .filter(|connection| !connection.is_broken())
                         .map(|connection| {
                             let use_envelope = use_envelope.clone();
