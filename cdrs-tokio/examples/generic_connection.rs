@@ -92,7 +92,7 @@ impl ConnectionManager<TransportTcp> for VirtualConnectionManager {
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
-    ) -> BoxFuture<Result<TransportTcp>> {
+    ) -> BoxFuture<'_, Result<TransportTcp>> {
         self.inner.connection(
             event_handler,
             error_handler,
@@ -128,7 +128,7 @@ impl GenericClusterConfig<TransportTcp, VirtualConnectionManager> for VirtualClu
     fn create_manager(
         &self,
         keyspace_holder: Arc<KeyspaceHolder>,
-    ) -> BoxFuture<Result<VirtualConnectionManager>> {
+    ) -> BoxFuture<'_, Result<VirtualConnectionManager>> {
         // create a connection manager that points at the rewritten address so that's where it connects, but
         // then return a manager with the 'virtual' address for internal purposes.
         VirtualConnectionManager::new(self, keyspace_holder).boxed()
