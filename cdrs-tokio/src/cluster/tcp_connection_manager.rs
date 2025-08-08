@@ -41,7 +41,7 @@ impl ConnectionManager<TransportTcp> for TcpConnectionManager {
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
-    ) -> BoxFuture<Result<TransportTcp>> {
+    ) -> BoxFuture<'_, Result<TransportTcp>> {
         self.establish_connection(event_handler, error_handler, addr)
             .boxed()
     }

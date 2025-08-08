@@ -24,7 +24,7 @@ pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
-    ) -> BoxFuture<Result<T>>;
+    ) -> BoxFuture<'_, Result<T>>;
 }
 
 #[cfg(test)]

@@ -22,6 +22,7 @@ use cdrs_tokio::retry::NeverReconnectionPolicy;
 use common::*;
 #[cfg(feature = "e2e-tests")]
 use rand::prelude::*;
+#[cfg(feature = "e2e-tests")]
 use rand::rng;
 #[cfg(feature = "e2e-tests")]
 use std::sync::Arc;

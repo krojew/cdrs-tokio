@@ -320,11 +320,11 @@ mod tests {
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
 
-    static HOST_ID_1: LazyLock<Uuid> = LazyLock::new(|| Uuid::new_v4());
-    static HOST_ID_2: LazyLock<Uuid> = LazyLock::new(|| Uuid::new_v4());
-    static HOST_ID_3: LazyLock<Uuid> = LazyLock::new(|| Uuid::new_v4());
-    static HOST_ID_4: LazyLock<Uuid> = LazyLock::new(|| Uuid::new_v4());
-    static HOST_ID_5: LazyLock<Uuid> = LazyLock::new(|| Uuid::new_v4());
+    static HOST_ID_1: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
+    static HOST_ID_2: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
+    static HOST_ID_3: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
+    static HOST_ID_4: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
+    static HOST_ID_5: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
 
     fn create_cluster(
     ) -> ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {

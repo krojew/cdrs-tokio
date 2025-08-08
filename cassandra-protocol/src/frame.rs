@@ -261,8 +261,7 @@ impl Envelope {
             let mut tracing_id = self
                 .tracing_id
                 .ok_or_else(|| {
-                    error::Error::Io(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    error::Error::Io(std::io::Error::other(
                         "Tracing flag was set but Envelope has no tracing_id",
                     ))
                 })?

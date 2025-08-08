@@ -171,7 +171,7 @@ impl Lz4FrameDecoder {
             &buffer[COMPRESSED_FRAME_HEADER_LENGTH..compressed_payload_end],
             uncompressed_length,
         )
-        .map_err(|error| CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error)).into())
+        .map_err(|error| CompressionError::Lz4(io::Error::other(error)).into())
         .map(|payload| {
             *buffer = buffer.split_off(frame_end);
             Some((self_contained, payload))

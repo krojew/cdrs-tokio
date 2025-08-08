@@ -44,7 +44,7 @@ impl ConnectionManager<TransportRustls> for RustlsConnectionManager {
         event_handler: Option<Sender<Envelope>>,
         error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
-    ) -> BoxFuture<Result<TransportRustls>> {
+    ) -> BoxFuture<'_, Result<TransportRustls>> {
         self.establish_connection(event_handler, error_handler, addr)
             .boxed()
     }
