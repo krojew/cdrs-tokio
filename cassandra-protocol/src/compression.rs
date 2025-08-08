@@ -144,20 +144,21 @@ impl Compression {
         result[..4].copy_from_slice(&len.to_be_bytes());
 
         let compressed_len = lz4_flex::compress_into(bytes, &mut result[4..])
-            .map_err(|error| CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error)))?;
+            .map_err(|error| CompressionError::Lz4(io::Error::other(error)))?;
 
         result.truncate(4 + compressed_len);
         Ok(result)
     }
 
     fn decode_lz4(bytes: Vec<u8>) -> Result<Vec<u8>> {
-        let uncompressed_size =
-            i32::from_be_bytes(bytes[..4].try_into().map_err(|error| {
-                CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error))
-            })?);
+        let uncompressed_size = i32::from_be_bytes(
+            bytes[..4]
+                .try_into()
+                .map_err(|error| CompressionError::Lz4(io::Error::other(error)))?,
+        );
 
         lz4_flex::decompress(&bytes[4..], uncompressed_size as usize)
-            .map_err(|error| CompressionError::Lz4(io::Error::new(io::ErrorKind::Other, error)))
+            .map_err(|error| CompressionError::Lz4(io::Error::other(error)))
     }
 }
 

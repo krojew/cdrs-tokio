@@ -1,6 +1,6 @@
 [package]
 name = "cdrs-tokio"
-version = "8.1.8"
+version = "8.1.9"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 description = "Async Cassandra DB driver written in Rust"
@@ -11,6 +11,7 @@ readme = "../README.md"
 keywords = ["cassandra", "driver", "client", "cassandradb", "async"]
 license = "MIT/Apache-2.0"
 categories = ["asynchronous", "database"]
+rust-version = "1.74"
 
 [features]
 rust-tls = ["tokio-rustls", "webpki"]

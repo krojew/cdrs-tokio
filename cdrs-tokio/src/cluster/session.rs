@@ -60,8 +60,7 @@ use crate::transport::{CdrsTransport, TransportTcp};
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
 
-static DEFAULT_STATEMENT_PARAMETERS: LazyLock<StatementParams> =
-    LazyLock::new(|| Default::default());
+static DEFAULT_STATEMENT_PARAMETERS: LazyLock<StatementParams> = LazyLock::new(Default::default);
 
 #[inline]
 fn convert_to_prepared(body: ResponseBody) -> error::Result<BodyResResultPrepared> {
@@ -226,7 +225,7 @@ impl<
     > Session<T, CM, LB>
 {
     /// Returns new `SessionPager` that can be used for performing paged queries.
-    pub fn paged(&self, page_size: i32) -> SessionPager<T, CM, LB> {
+    pub fn paged(&self, page_size: i32) -> SessionPager<'_, T, CM, LB> {
         SessionPager::new(self, page_size)
     }
 

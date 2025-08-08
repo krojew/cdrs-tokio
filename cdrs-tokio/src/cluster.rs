@@ -53,7 +53,10 @@ pub mod topology;
 /// Generic connection configuration trait that can be used to create user-supplied
 /// connection objects that can be used with the `session::connect()` function.
 pub trait GenericClusterConfig<T: CdrsTransport, CM: ConnectionManager<T>>: Send + Sync {
-    fn create_manager(&self, keyspace_holder: Arc<KeyspaceHolder>) -> BoxFuture<error::Result<CM>>;
+    fn create_manager(
+        &self,
+        keyspace_holder: Arc<KeyspaceHolder>,
+    ) -> BoxFuture<'_, error::Result<CM>>;
 
     /// Returns desired event channel capacity. Take a look at
     /// [`Session`](session::Session) builders for more info.

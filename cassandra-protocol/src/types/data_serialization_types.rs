@@ -114,10 +114,7 @@ pub fn decode_inet(bytes: &[u8]) -> Result<net::IpAddr, io::Error> {
             let array: [u8; 16] = bytes[0..16].try_into().unwrap();
             Ok(net::IpAddr::V6(net::Ipv6Addr::from(array)))
         }
-        _ => Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("Invalid Ip address {bytes:?}"),
-        )),
+        _ => Err(io::Error::other(format!("Invalid Ip address {bytes:?}"))),
     }
 }
 
