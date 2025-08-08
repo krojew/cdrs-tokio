@@ -1,6 +1,6 @@
 [package]
 name = "cdrs-tokio"
-version = "8.1.8"
+version = "8.1.9"
 authors = ["Alex Pikalov <alex.pikalov.khar@gmail.com>", "Kamil Rojewski <kamil.rojewski@gmail.com>"]
 edition = "2018"
 description = "Async Cassandra DB driver written in Rust"

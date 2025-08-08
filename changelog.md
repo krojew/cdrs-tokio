@@ -1,3 +1,9 @@
+## 8.1.9
+
+### Fixed
+
+* Fixed pool leak (by jojoxhsieh).
+
 ## 8.1.8
 
 ### Fixed
