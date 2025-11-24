@@ -49,7 +49,7 @@ features = ["runtime-tokio", "basic-auth"]
 [dev-dependencies]
 float_eq = "1.0.1"
 maplit = "1.0.2"
-mockall = "0.13.0"
+mockall = "0.14.0"
 regex = "1.11.1"
 uuid = { version = "1.16.0", features = ["v4"] }
 time = { version = "0.3.41", features = ["std", "macros"] }
