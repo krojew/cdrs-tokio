@@ -2,14 +2,29 @@ use crate::consistency::Consistency;
 use crate::error::{Error as CError, Result as CResult};
 use crate::frame::message_batch::{BatchQuery, BatchQuerySubj, BatchType, BodyReqBatch};
 use crate::query::{PreparedQuery, QueryValues};
-use crate::types::{CInt, CLong};
+use crate::types::{CBytesShort, CInt, CLong};
+use derivative::Derivative;
+use derive_more::Constructor;
+use std::collections::HashMap;
 
-pub type QueryBatch = BodyReqBatch;
+#[derive(Debug, Clone, PartialEq, Eq, Constructor)]
+pub struct QueryBatchPreparedStatement {
+    pub query: String,
+    pub keyspace: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Constructor, Derivative)]
+pub struct QueryBatch {
+    pub request: BodyReqBatch,
+    #[derivative(Debug = "ignore")]
+    pub prepared_queries: HashMap<CBytesShort, QueryBatchPreparedStatement>,
+}
 
 #[derive(Debug)]
 pub struct BatchQueryBuilder {
     batch_type: BatchType,
     queries: Vec<BatchQuery>,
+    prepared_queries: HashMap<CBytesShort, QueryBatchPreparedStatement>,
     consistency: Consistency,
     serial_consistency: Option<Consistency>,
     timestamp: Option<CLong>,
@@ -22,6 +37,7 @@ impl Default for BatchQueryBuilder {
         BatchQueryBuilder {
             batch_type: BatchType::Logged,
             queries: vec![],
+            prepared_queries: HashMap::new(),
             consistency: Consistency::One,
             serial_consistency: None,
             timestamp: None,
@@ -59,6 +75,11 @@ impl BatchQueryBuilder {
             subject: BatchQuerySubj::PreparedId(query.id.clone()),
             values,
         });
+        self.prepared_queries.insert(
+            query.id.clone(),
+            QueryBatchPreparedStatement::new(query.query.clone(), query.keyspace.clone()),
+        );
+
         self
     }
 
@@ -98,7 +119,7 @@ impl BatchQueryBuilder {
         self
     }
 
-    pub fn build(self) -> CResult<BodyReqBatch> {
+    pub fn build(self) -> CResult<QueryBatch> {
         let with_names_for_values = self.queries.iter().all(|q| q.values.has_names());
 
         if !with_names_for_values {
@@ -106,20 +127,22 @@ impl BatchQueryBuilder {
 
             if some_names_for_values {
                 return Err(CError::General(String::from(
-                    "Inconsistent query values - mixed \
-                     with and without names values",
+                    "Inconsistent query values - mixed with and without names values",
                 )));
             }
         }
 
-        Ok(BodyReqBatch {
-            batch_type: self.batch_type,
-            queries: self.queries,
-            consistency: self.consistency,
-            serial_consistency: self.serial_consistency,
-            timestamp: self.timestamp,
-            keyspace: self.keyspace,
-            now_in_seconds: self.now_in_seconds,
-        })
+        Ok(QueryBatch::new(
+            BodyReqBatch {
+                batch_type: self.batch_type,
+                queries: self.queries,
+                consistency: self.consistency,
+                serial_consistency: self.serial_consistency,
+                timestamp: self.timestamp,
+                keyspace: self.keyspace,
+                now_in_seconds: self.now_in_seconds,
+            },
+            self.prepared_queries,
+        ))
     }
 }
