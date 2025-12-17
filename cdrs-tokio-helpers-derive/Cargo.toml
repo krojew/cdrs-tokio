@@ -12,7 +12,7 @@ proc-macro = true
 
 [dependencies]
 itertools = "0.14.0"
-proc-macro2 = "1.0.67"
-syn = "2.0.37"
-quote = "1.0.33"
+proc-macro2 = "1.0.103"
+syn = "2.0.111"
+quote = "1.0.42"
 
