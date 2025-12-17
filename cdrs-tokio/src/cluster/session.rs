@@ -357,7 +357,7 @@ impl<
             .await
     }
 
-    /// Prepares a query for execution. Along with query itself, the
+    /// Prepares a query for execution. Along with the query itself, the
     /// method takes `with_tracing` and `with_warnings` flags to get
     /// tracing information and warnings. Returns the raw prepared
     /// query result.
@@ -369,12 +369,51 @@ impl<
         with_warnings: bool,
         beta_protocol: bool,
     ) -> error::Result<BodyResResultPrepared> {
+        self.prepare_raw_tw_with_query_plan(
+            query,
+            keyspace,
+            with_tracing,
+            with_warnings,
+            beta_protocol,
+            None,
+        )
+        .await
+    }
+
+    /// Prepares a query for execution. Along with the query itself, the
+    /// method takes `with_tracing` and `with_warnings` flags to get
+    /// tracing information and warnings. Returns the raw prepared
+    /// query result. Optional query plan can be provided to customize
+    /// query preparation.
+    pub async fn prepare_raw_tw_with_query_plan<Q: ToString>(
+        &self,
+        query: Q,
+        keyspace: Option<String>,
+        with_tracing: bool,
+        with_warnings: bool,
+        beta_protocol: bool,
+        query_plan: Option<QueryPlan<T, CM>>,
+    ) -> error::Result<BodyResResultPrepared> {
         let flags = prepare_flags(with_tracing, with_warnings, beta_protocol);
 
         let envelope = Envelope::new_req_prepare(query.to_string(), keyspace, flags, self.version);
 
-        self.send_envelope(envelope, true, None, None, None, None, None, None)
+        let response = match query_plan {
+            None => {
+                self.send_envelope(envelope, true, None, None, None, None, None, None)
+                    .await
+            }
+            Some(query_plan) => send_envelope(
+                query_plan.into_iter(),
+                &envelope,
+                true,
+                self.retry_policy.as_ref().new_session(),
+            )
             .await
+            .unwrap_or_else(|| Err("No response for prepare!".into())),
+        };
+
+        response
             .and_then(|response| response.response_body())
             .and_then(convert_to_prepared)
     }
