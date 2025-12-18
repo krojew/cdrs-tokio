@@ -99,23 +99,23 @@ impl<
                 loop {
                     let mut full_refresh = false;
 
-                    let mut nodes = self
+                    let mut plan = self
                         .load_balancing
                         .query_plan(None, self.cluster_metadata_manager.metadata().as_ref());
-                    if nodes.is_empty() {
+                    if plan.nodes.is_empty() {
                         warn!("No nodes found for control connection!");
 
                         Self::wait_for_reconnection(&mut schedule).await;
 
                         // when the whole cluster goes down, there's nothing to update LB state, so
                         // we're left with contact points
-                        nodes.clone_from(&self.contact_points);
+                        plan.nodes.clone_from(&self.contact_points);
                         // it means that we need to build metadata from scratch once we are
                         // reconnected
                         full_refresh = true;
                     }
 
-                    for node in nodes {
+                    for node in &plan.nodes {
                         if let Ok(connection) = node
                             .new_connection(
                                 Some(event_envelope_sender.clone()),
@@ -150,7 +150,7 @@ impl<
     }
 
     async fn wait_for_reconnection(schedule: &mut Box<dyn ReconnectionSchedule + Send + Sync>) {
-        // as long as the session is alive, try establishing control connection
+        // as long as the session is alive, try establishing the control connection
         let delay = schedule.next_delay().unwrap_or(DEFAULT_RECONNECT_DELAY);
         sleep(delay).await;
     }

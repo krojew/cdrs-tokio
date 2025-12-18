@@ -37,12 +37,12 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
     ) -> QueryPlan<T, CM> {
         let mut nodes = cluster.unignored_nodes();
         if nodes.is_empty() {
-            return nodes;
+            return QueryPlan::new(nodes);
         }
 
         let cur_idx = self.prev_idx.fetch_add(1, Ordering::SeqCst) % nodes.len();
 
         nodes.rotate_left(cur_idx);
-        nodes
+        QueryPlan::new(nodes)
     }
 }

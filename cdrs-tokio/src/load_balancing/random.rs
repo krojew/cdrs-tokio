@@ -38,6 +38,6 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         let mut result = cluster.unignored_nodes();
 
         result.shuffle(&mut rng());
-        result
+        QueryPlan::new(result)
     }
 }

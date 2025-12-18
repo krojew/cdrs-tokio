@@ -350,7 +350,7 @@ impl<
         .await
     }
 
-    /// Executes given prepared query.
+    /// Executes the given prepared query.
     #[inline]
     pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Envelope> {
         self.exec_with_params(prepared, &DEFAULT_STATEMENT_PARAMETERS)
@@ -404,7 +404,7 @@ impl<
                     .await
             }
             Some(query_plan) => send_envelope(
-                query_plan.into_iter(),
+                query_plan.nodes.into_iter(),
                 &envelope,
                 true,
                 self.retry_policy.as_ref().new_session(),
@@ -743,7 +743,7 @@ impl<
 
         match speculative_execution_policy {
             Some(speculative_execution_policy) if is_idempotent => {
-                let shared_query_plan = SharedQueryPlan::new(query_plan.into_iter());
+                let shared_query_plan = SharedQueryPlan::new(query_plan.nodes.into_iter());
 
                 let mut context = Context::new(1);
                 let mut async_tasks = FuturesUnordered::new();
@@ -806,7 +806,7 @@ impl<
                 }
             }
             _ => send_envelope(
-                query_plan.into_iter(),
+                query_plan.nodes.into_iter(),
                 &envelope,
                 is_idempotent,
                 retry_policy.new_session(),
@@ -938,11 +938,10 @@ pub struct SpeculativeExecutionPolicyWrapper(pub Box<dyn SpeculativeExecutionPol
 
 /// This function uses a user-supplied connection configuration to initialize all the
 /// connections in the session. It can be used to supply your own transport and load
-/// balancing mechanisms in order to support unusual node discovery mechanisms
-/// or configuration needs.
+/// balancing mechanisms to support unusual node discovery mechanisms or configuration needs.
 ///
 /// The config object supplied differs from the [`NodeTcpConfig`] and [`NodeRustlsConfig`]
-/// objects in that it is not expected to include an address. Instead the same configuration
+/// objects in that it is not expected to include an address. Instead, the same configuration
 /// will be applied to all connections across the cluster.
 pub async fn connect_generic<T, C, A, CM, LB>(
     config: &C,
@@ -1112,7 +1111,7 @@ pub trait SessionBuilder<
         speculative_execution_policy: Box<dyn SpeculativeExecutionPolicy + Send + Sync>,
     ) -> Self;
 
-    /// Sets new transport buffer size. High values are recommended with large amounts of in flight
+    /// Sets new transport buffer size. High values are recommended with large numbers of in flight
     /// queries.
     #[must_use]
     fn with_transport_buffer_size(self, transport_buffer_size: usize) -> Self;
@@ -1131,7 +1130,7 @@ pub trait SessionBuilder<
     fn with_connection_pool_config(self, connection_pool_config: ConnectionPoolConfig) -> Self;
 
     /// Sets the keyspace to use. If not using a keyspace explicitly in queries, one should be set
-    /// either by calling this function, or by a `USE` statement. Due to the asynchronous nature of
+    /// either by calling this function or by a `USE` statement. Due to the asynchronous nature of
     /// the driver and the usage of connection pools, the effect of switching current keyspace via
     /// `USE` might not propagate immediately to all active connections, resulting in queries
     /// using a wrong keyspace. If one is known upfront, it's safer to set it while building
@@ -1139,8 +1138,8 @@ pub trait SessionBuilder<
     #[must_use]
     fn with_keyspace(self, keyspace: String) -> Self;
 
-    /// Sets the beta protocol flag. Server will respond with ERROR if protocol version is marked as
-    /// beta on server and client does not provide this flag.
+    /// Sets the beta protocol flag. Server will respond with ERROR if the protocol version is
+    /// marked as beta on server and the client does not provide this flag.
     #[must_use]
     fn with_beta_protocol(self, beta_protocol: bool) -> Self;
 

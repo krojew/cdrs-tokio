@@ -50,7 +50,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
         if let Some(request) = request {
             self.replicas_for_request(request, cluster)
         } else {
-            self.round_robin_unignored_local_nodes(cluster)
+            QueryPlan::new(self.round_robin_unignored_local_nodes(cluster))
         }
     }
 }
@@ -85,7 +85,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         if let Some(token) = token {
             self.replicas_for_token(token, request.keyspace, request.consistency, cluster)
         } else {
-            self.round_robin_unignored_local_nodes(cluster)
+            QueryPlan::new(self.round_robin_unignored_local_nodes(cluster))
         }
     }
 
@@ -99,7 +99,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         keyspace
             .and_then(|keyspace| cluster.keyspace(keyspace))
             .map(|keyspace| self.replicas_for_keyspace(token, keyspace, consistency, cluster))
-            .unwrap_or_else(|| self.round_robin_unignored_local_nodes(cluster))
+            .unwrap_or_else(|| QueryPlan::new(self.round_robin_unignored_local_nodes(cluster)))
     }
 
     fn replicas_for_keyspace(
@@ -188,7 +188,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
             }
         }
 
-        // result now contains mixed local/remote and ignored/unignored nodes - put local in front
+        // the result now contains mixed local/remote and ignored/unignored nodes - put local in
+        // front
         result.sort_unstable_by(|a, b| {
             let a_distance = a.distance();
             let b_distance = b.distance();
@@ -226,21 +227,25 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         if let Some(max_nodes_per_remote_dc) = self.max_nodes_per_remote_dc {
             if let Some(consistency) = consistency {
                 if !self.allow_dc_failover_for_local_cl && consistency.is_dc_local() {
-                    return replicas.collect();
+                    return QueryPlan::new(replicas.collect());
                 }
             }
 
             let mut remote_nodes = cluster.unignored_remote_nodes_capped(max_nodes_per_remote_dc);
             remote_nodes.shuffle(&mut rng);
 
-            replicas
-                .chain(remote_nodes)
-                .unique_by(|node| node.broadcast_rpc_address())
-                .collect()
+            QueryPlan::new(
+                replicas
+                    .chain(remote_nodes)
+                    .unique_by(|node| node.broadcast_rpc_address())
+                    .collect(),
+            )
         } else {
-            replicas
-                .unique_by(|node| node.broadcast_rpc_address())
-                .collect()
+            QueryPlan::new(
+                replicas
+                    .unique_by(|node| node.broadcast_rpc_address())
+                    .collect(),
+            )
         }
     }
 
@@ -259,11 +264,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         replicas.shuffle(&mut rng());
 
         let unignored_nodes = self.round_robin_unignored_nodes(cluster);
-        replicas
-            .into_iter()
-            .chain(unignored_nodes)
-            .unique_by(|node| node.broadcast_rpc_address())
-            .collect()
+        QueryPlan::new(
+            replicas
+                .into_iter()
+                .chain(unignored_nodes)
+                .unique_by(|node| node.broadcast_rpc_address())
+                .collect(),
+        )
     }
 
     fn round_robin_unignored_nodes(
@@ -480,9 +487,9 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
         let query_plan = lb.query_plan(None, &cluster);
-        assert_eq!(query_plan.len(), 3);
+        assert_eq!(query_plan.nodes.len(), 3);
 
-        for node in &query_plan {
+        for node in &query_plan.nodes {
             assert!(node.is_local());
         }
     }
@@ -493,9 +500,9 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
         let query_plan = lb.query_plan(None, &cluster);
-        assert_eq!(query_plan.len(), 3);
+        assert_eq!(query_plan.nodes.len(), 3);
 
-        for node in &query_plan {
+        for node in &query_plan.nodes {
             assert!(node.is_local());
         }
     }
@@ -506,9 +513,9 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
         let query_plan = lb.query_plan(Some(Request::new(None, None, None, None)), &cluster);
-        assert_eq!(query_plan.len(), 3);
+        assert_eq!(query_plan.nodes.len(), 3);
 
-        for node in &query_plan {
+        for node in &query_plan.nodes {
             assert!(node.is_local());
         }
     }
@@ -522,9 +529,9 @@ mod tests {
             Some(Request::new(None, Some(Murmur3Token::new(4)), None, None)),
             &cluster,
         );
-        assert_eq!(query_plan.len(), 3);
+        assert_eq!(query_plan.nodes.len(), 3);
 
-        for node in &query_plan {
+        for node in &query_plan.nodes {
             assert!(node.is_local());
         }
     }
@@ -543,8 +550,8 @@ mod tests {
             )),
             &cluster,
         );
-        assert_eq!(query_plan.len(), 5); // 1 replica + 4 unignored
-        assert_eq!(query_plan[0].host_id().unwrap(), *HOST_ID_2);
+        assert_eq!(query_plan.nodes.len(), 5); // 1 replica + 4 unignored
+        assert_eq!(query_plan.nodes[0].host_id().unwrap(), *HOST_ID_2);
     }
 
     #[test]
@@ -562,16 +569,16 @@ mod tests {
             &cluster,
         );
 
-        assert_eq!(query_plan.len(), 5); // 2 replicas + 3 unignored
+        assert_eq!(query_plan.nodes.len(), 5); // 2 replicas + 3 unignored
         assert!(
-            query_plan[0].host_id().unwrap() == *HOST_ID_2
-                || query_plan[0].host_id().unwrap() == *HOST_ID_4
+            query_plan.nodes[0].host_id().unwrap() == *HOST_ID_2
+                || query_plan.nodes[0].host_id().unwrap() == *HOST_ID_4
         );
         assert!(
-            query_plan[1].host_id().unwrap() == *HOST_ID_2
-                || query_plan[1].host_id().unwrap() == *HOST_ID_4
+            query_plan.nodes[1].host_id().unwrap() == *HOST_ID_2
+                || query_plan.nodes[1].host_id().unwrap() == *HOST_ID_4
         );
-        assert!(query_plan.iter().all(|node| !node.is_ignored()));
+        assert!(query_plan.nodes.iter().all(|node| !node.is_ignored()));
     }
 
     #[test]
@@ -588,23 +595,23 @@ mod tests {
             )),
             &cluster,
         );
-        assert_eq!(query_plan.len(), 4);
+        assert_eq!(query_plan.nodes.len(), 4);
         assert!(
-            query_plan[0].host_id().unwrap() == *HOST_ID_1
-                || query_plan[0].host_id().unwrap() == *HOST_ID_2
-                || query_plan[0].host_id().unwrap() == *HOST_ID_3
+            query_plan.nodes[0].host_id().unwrap() == *HOST_ID_1
+                || query_plan.nodes[0].host_id().unwrap() == *HOST_ID_2
+                || query_plan.nodes[0].host_id().unwrap() == *HOST_ID_3
         );
         assert!(
-            query_plan[1].host_id().unwrap() == *HOST_ID_1
-                || query_plan[1].host_id().unwrap() == *HOST_ID_2
-                || query_plan[1].host_id().unwrap() == *HOST_ID_3
+            query_plan.nodes[1].host_id().unwrap() == *HOST_ID_1
+                || query_plan.nodes[1].host_id().unwrap() == *HOST_ID_2
+                || query_plan.nodes[1].host_id().unwrap() == *HOST_ID_3
         );
         assert!(
-            query_plan[2].host_id().unwrap() == *HOST_ID_1
-                || query_plan[2].host_id().unwrap() == *HOST_ID_2
-                || query_plan[2].host_id().unwrap() == *HOST_ID_3
+            query_plan.nodes[2].host_id().unwrap() == *HOST_ID_1
+                || query_plan.nodes[2].host_id().unwrap() == *HOST_ID_2
+                || query_plan.nodes[2].host_id().unwrap() == *HOST_ID_3
         );
-        assert_eq!(query_plan[3].host_id().unwrap(), *HOST_ID_4);
+        assert_eq!(query_plan.nodes[3].host_id().unwrap(), *HOST_ID_4);
     }
 
     #[test]
@@ -622,17 +629,17 @@ mod tests {
             &cluster,
         );
 
-        assert_eq!(query_plan.len(), 4);
+        assert_eq!(query_plan.nodes.len(), 4);
         assert!(
-            query_plan[0].host_id().unwrap() == *HOST_ID_1
-                || query_plan[0].host_id().unwrap() == *HOST_ID_3
+            query_plan.nodes[0].host_id().unwrap() == *HOST_ID_1
+                || query_plan.nodes[0].host_id().unwrap() == *HOST_ID_3
         );
         assert!(
-            query_plan[1].host_id().unwrap() == *HOST_ID_1
-                || query_plan[1].host_id().unwrap() == *HOST_ID_3
+            query_plan.nodes[1].host_id().unwrap() == *HOST_ID_1
+                || query_plan.nodes[1].host_id().unwrap() == *HOST_ID_3
         );
-        assert_eq!(query_plan[2].host_id().unwrap(), *HOST_ID_4);
-        assert_eq!(query_plan[3].host_id().unwrap(), *HOST_ID_2);
+        assert_eq!(query_plan.nodes[2].host_id().unwrap(), *HOST_ID_4);
+        assert_eq!(query_plan.nodes[3].host_id().unwrap(), *HOST_ID_2);
     }
 
     #[test]
@@ -650,17 +657,17 @@ mod tests {
             &cluster,
         );
 
-        assert_eq!(query_plan.len(), 5);
+        assert_eq!(query_plan.nodes.len(), 5);
         assert!(
-            query_plan[0].host_id().unwrap() == *HOST_ID_1
-                || query_plan[0].host_id().unwrap() == *HOST_ID_3
+            query_plan.nodes[0].host_id().unwrap() == *HOST_ID_1
+                || query_plan.nodes[0].host_id().unwrap() == *HOST_ID_3
         );
         assert!(
-            query_plan[1].host_id().unwrap() == *HOST_ID_1
-                || query_plan[1].host_id().unwrap() == *HOST_ID_3
+            query_plan.nodes[1].host_id().unwrap() == *HOST_ID_1
+                || query_plan.nodes[1].host_id().unwrap() == *HOST_ID_3
         );
-        assert_eq!(query_plan[2].host_id().unwrap(), *HOST_ID_4);
-        assert_eq!(query_plan[3].host_id().unwrap(), *HOST_ID_2);
-        assert_eq!(query_plan[4].host_id().unwrap(), *HOST_ID_5);
+        assert_eq!(query_plan.nodes[2].host_id().unwrap(), *HOST_ID_4);
+        assert_eq!(query_plan.nodes[3].host_id().unwrap(), *HOST_ID_2);
+        assert_eq!(query_plan.nodes[4].host_id().unwrap(), *HOST_ID_5);
     }
 }

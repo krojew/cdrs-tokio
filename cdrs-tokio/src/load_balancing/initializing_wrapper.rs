@@ -37,7 +37,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>, LB: LoadBalancingStrategy<T, CM
     pub fn new(inner: LB, contact_points: Vec<Arc<Node<T, CM>>>) -> Self {
         InitializingWrapperLoadBalancingStrategy {
             inner,
-            contact_points_query_plan: contact_points,
+            contact_points_query_plan: QueryPlan::new(contact_points),
         }
     }
 }
