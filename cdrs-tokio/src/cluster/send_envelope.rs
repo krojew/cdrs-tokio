@@ -7,9 +7,9 @@ use crate::cluster::ConnectionManager;
 use crate::retry::{QueryInfo, RetryDecision, RetrySession};
 use crate::transport::CdrsTransport;
 
-/// Mid-level interface for sending envelopes to the cluster. Uses a query plan to route envelope to
-/// appropriate node, and retry policy for error handling. Returns `None` if no nodes were present
-/// in the query plan.
+/// Mid-level interface for sending envelopes to the cluster. Uses a query plan to route the envelope
+/// to the appropriate node, and retry policy for error handling. Returns `None` if no nodes were
+/// present in the query plan.
 pub async fn send_envelope<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static>(
     query_plan: impl Iterator<Item = Arc<Node<T, CM>>>,
     envelope: &Envelope,

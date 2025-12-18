@@ -165,7 +165,7 @@ impl From<BatchType> for u8 {
     }
 }
 
-/// Contains either an id of prepared query or CQL string.
+/// Contains either an id of a prepared query or CQL string.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum BatchQuerySubj {
     PreparedId(CBytesShort),
@@ -175,7 +175,7 @@ pub enum BatchQuerySubj {
 /// The structure that represents a query to be batched.
 #[derive(Debug, Clone, Constructor, PartialEq, Eq)]
 pub struct BatchQuery {
-    /// Contains either id of prepared query or a query itself.
+    /// Contains either id of a prepared query or a query itself.
     pub subject: BatchQuerySubj,
     /// **Important note:** QueryValues::NamedValues does not work and should not be
     /// used for batches. It is specified in a way that makes it impossible for the server

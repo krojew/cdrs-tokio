@@ -3,14 +3,14 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
 use cassandra_protocol::events::ServerEvent;
-use cassandra_protocol::frame::message_error::ErrorType;
+use cassandra_protocol::frame::message_error::{ErrorType, UnpreparedError};
 use cassandra_protocol::frame::message_query::BodyReqQuery;
 use cassandra_protocol::frame::message_response::ResponseBody;
 use cassandra_protocol::frame::message_result::{BodyResResultPrepared, TableSpec};
 use cassandra_protocol::frame::{Envelope, Flags, Serialize, Version};
 use cassandra_protocol::query::{PreparedQuery, QueryBatch, QueryValues};
 use cassandra_protocol::types::value::Value;
-use cassandra_protocol::types::{CIntShort, SHORT_LEN};
+use cassandra_protocol::types::{CBytesShort, CIntShort, SHORT_LEN};
 use derivative::Derivative;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
@@ -230,159 +230,109 @@ impl<
     }
 
     /// Executes given prepared query with query parameters.
-    pub async fn exec_with_params(
-        &self,
-        prepared: &PreparedQuery,
-        parameters: &StatementParams,
-    ) -> error::Result<Envelope> {
-        let consistency = parameters.query_params.consistency;
-        let flags = prepare_flags(
-            parameters.tracing,
-            parameters.warnings,
-            parameters.beta_protocol,
-        );
+    pub fn exec_with_params<'a, 'b: 'a>(
+        &'a self,
+        prepared: &'b PreparedQuery,
+        parameters: &'b StatementParams,
+    ) -> BoxFuture<'a, error::Result<Envelope>> {
+        async move {
+            let consistency = parameters.query_params.consistency;
+            let flags = prepare_flags(
+                parameters.tracing,
+                parameters.warnings,
+                parameters.beta_protocol,
+            );
 
-        let result_metadata_id = prepared
-            .result_metadata_id
-            .load()
-            .as_ref()
-            .map(|metadata| (**metadata).clone());
+            let result_metadata_id = prepared
+                .result_metadata_id
+                .load()
+                .as_ref()
+                .map(|metadata| (**metadata).clone());
 
-        let envelope = Envelope::new_req_execute(
-            &prepared.id,
-            result_metadata_id.as_ref(),
-            &parameters.query_params,
-            flags,
-            self.version,
-        );
+            let envelope = Envelope::new_req_execute(
+                &prepared.id,
+                result_metadata_id.as_ref(),
+                &parameters.query_params,
+                flags,
+                self.version,
+            );
 
-        let keyspace = prepared
-            .keyspace
-            .as_deref()
-            .or(parameters.keyspace.as_deref());
+            let keyspace = prepared
+                .keyspace
+                .as_deref()
+                .or(parameters.keyspace.as_deref());
 
-        let routing_key = parameters
-            .query_params
-            .values
-            .as_ref()
-            .and_then(|values| match values {
-                QueryValues::SimpleValues(values) => {
-                    serialize_routing_key_with_indexes(values, &prepared.pk_indexes, self.version)
+            let routing_key =
+                parameters
+                    .query_params
+                    .values
+                    .as_ref()
+                    .and_then(|values| match values {
+                        QueryValues::SimpleValues(values) => serialize_routing_key_with_indexes(
+                            values,
+                            &prepared.pk_indexes,
+                            self.version,
+                        )
                         .or_else(|| {
                             parameters
                                 .routing_key
                                 .as_ref()
                                 .map(|values| serialize_routing_key(values, self.version))
-                        })
-                }
-                QueryValues::NamedValues(_) => None,
-            });
+                        }),
+                        QueryValues::NamedValues(_) => None,
+                    });
 
-        let mut result = self
-            .send_envelope(
-                envelope,
-                parameters.is_idempotent,
-                keyspace,
-                parameters.token,
-                routing_key.as_deref(),
-                Some(consistency),
-                parameters.speculative_execution_policy.as_ref(),
-                parameters.retry_policy.as_ref(),
-            )
-            .await;
-
-        if let Err(error::Error::Server { body: error, addr }) = &result {
-            // if query is unprepared
-            if let ErrorType::Unprepared(_) = error.ty {
-                debug!("Re-preparing statement.");
-
-                // We need to send the prepare statement to the failing node.
-                let node = self
-                    .cluster_metadata_manager
-                    .find_node_by_rpc_address(*addr)
-                    .ok_or_else(|| {
-                        error::Error::from(format!(
-                            "Cannot find node {addr} for statement re-preparation!"
-                        ))
-                    })?;
-
-                let prepare_envelope = Envelope::new_req_prepare(
-                    prepared.query.clone(),
-                    keyspace.map(|keyspace| keyspace.to_string()),
-                    flags,
-                    self.version,
-                );
-
-                let retry_policy = self.effective_retry_policy(parameters.retry_policy.as_ref());
-                let prepare_result = send_envelope(
-                    [node].iter().cloned(),
-                    &prepare_envelope,
-                    true,
-                    retry_policy.new_session(),
+            let result = self
+                .send_envelope(
+                    envelope,
+                    parameters.is_idempotent,
+                    keyspace,
+                    parameters.token,
+                    routing_key.as_deref(),
+                    Some(consistency),
+                    parameters.speculative_execution_policy.as_ref(),
+                    parameters.retry_policy.as_ref(),
                 )
-                .await
-                .unwrap_or_else(|| Err("No response for re-prepare statement!".into()))
-                .and_then(|response| response.response_body())
-                .and_then(convert_to_prepared);
+                .await;
 
-                if let Ok(new) = prepare_result {
-                    // re-prepare the statement and check the resulting id - it should remain the
-                    // same as the old one, except when schema changed in the meantime, in which
-                    // case, the client should have the knowledge how to handle it
-                    // see: https://issues.apache.org/jira/browse/CASSANDRA-10786
-
-                    if prepared.id != new.id {
-                        return Err("Re-preparing an unprepared statement resulted in a different id - probably schema changed on the server.".into());
-                    }
-
-                    let flags = prepare_flags(
-                        parameters.tracing,
-                        parameters.warnings,
-                        parameters.beta_protocol,
-                    );
-
-                    let envelope = Envelope::new_req_execute(
-                        &new.id,
-                        new.result_metadata_id.as_ref(),
-                        &parameters.query_params,
-                        flags,
-                        self.version,
-                    );
-
-                    result = self
-                        .send_envelope(
-                            envelope,
-                            parameters.is_idempotent,
-                            keyspace,
-                            parameters.token,
-                            routing_key.as_deref(),
-                            Some(consistency),
-                            parameters.speculative_execution_policy.as_ref(),
-                            parameters.retry_policy.as_ref(),
+            if let Err(error::Error::Server { body: error, addr }) = &result {
+                // if the query is unprepared
+                if let ErrorType::Unprepared(_) = error.ty {
+                    if let Ok(()) = self
+                        .reprepare(
+                            &prepared.id,
+                            prepared.query.clone(),
+                            keyspace.map(|keyspace| keyspace.to_string()),
+                            parameters,
+                            *addr,
                         )
-                        .await;
+                        .await
+                    {
+                        return self.exec_with_params(prepared, parameters).await;
+                    }
                 }
             }
-        }
 
-        let response = result
-            .as_ref()
-            .map_err(|error| error.clone())
-            .and_then(|result| result.response_body());
+            let response = result
+                .as_ref()
+                .map_err(|error| error.clone())
+                .and_then(|result| result.response_body());
 
-        let new_metadata_id = response.as_ref().map(|result| {
+            let new_metadata_id = response.as_ref().map(|result| {
+                result
+                    .as_rows_metadata()
+                    .and_then(|metadata| metadata.new_metadata_id.as_ref())
+            });
+
+            if let Ok(Some(new_metadata_id)) = new_metadata_id {
+                prepared
+                    .result_metadata_id
+                    .swap(Some(Arc::new(new_metadata_id.clone())));
+            }
+
             result
-                .as_rows_metadata()
-                .and_then(|metadata| metadata.new_metadata_id.as_ref())
-        });
-
-        if let Ok(Some(new_metadata_id)) = new_metadata_id {
-            prepared
-                .result_metadata_id
-                .swap(Some(Arc::new(new_metadata_id.clone())));
         }
-
-        result
+        .boxed()
     }
 
     /// Executes given prepared query with query values.
@@ -400,14 +350,14 @@ impl<
         .await
     }
 
-    /// Executes given prepared query.
+    /// Executes the given prepared query.
     #[inline]
     pub async fn exec(&self, prepared: &PreparedQuery) -> error::Result<Envelope> {
         self.exec_with_params(prepared, &DEFAULT_STATEMENT_PARAMETERS)
             .await
     }
 
-    /// Prepares a query for execution. Along with query itself, the
+    /// Prepares a query for execution. Along with the query itself, the
     /// method takes `with_tracing` and `with_warnings` flags to get
     /// tracing information and warnings. Returns the raw prepared
     /// query result.
@@ -419,24 +369,63 @@ impl<
         with_warnings: bool,
         beta_protocol: bool,
     ) -> error::Result<BodyResResultPrepared> {
+        self.prepare_raw_tw_with_query_plan(
+            query,
+            keyspace,
+            with_tracing,
+            with_warnings,
+            beta_protocol,
+            None,
+        )
+        .await
+    }
+
+    /// Prepares a query for execution. Along with the query itself, the
+    /// method takes `with_tracing` and `with_warnings` flags to get
+    /// tracing information and warnings. Returns the raw prepared
+    /// query result. Optional query plan can be provided to customize
+    /// query preparation.
+    pub async fn prepare_raw_tw_with_query_plan<Q: ToString>(
+        &self,
+        query: Q,
+        keyspace: Option<String>,
+        with_tracing: bool,
+        with_warnings: bool,
+        beta_protocol: bool,
+        query_plan: Option<QueryPlan<T, CM>>,
+    ) -> error::Result<BodyResResultPrepared> {
         let flags = prepare_flags(with_tracing, with_warnings, beta_protocol);
 
         let envelope = Envelope::new_req_prepare(query.to_string(), keyspace, flags, self.version);
 
-        self.send_envelope(envelope, true, None, None, None, None, None, None)
+        let response = match query_plan {
+            None => {
+                self.send_envelope(envelope, true, None, None, None, None, None, None)
+                    .await
+            }
+            Some(query_plan) => send_envelope(
+                query_plan.nodes.into_iter(),
+                &envelope,
+                true,
+                self.retry_policy.as_ref().new_session(),
+            )
             .await
+            .unwrap_or_else(|| Err("No response for prepare!".into())),
+        };
+
+        response
             .and_then(|response| response.response_body())
             .and_then(convert_to_prepared)
     }
 
-    /// Prepares query without additional tracing information and warnings.
+    /// Prepares a query without additional tracing information and warnings.
     /// Returns the raw prepared query result.
     #[inline]
     pub async fn prepare_raw<Q: ToString>(&self, query: Q) -> error::Result<BodyResResultPrepared> {
         self.prepare_raw_tw(query, None, false, false, false).await
     }
 
-    /// Prepares a query for execution. Along with query itself,
+    /// Prepares a query for execution. Along with the query itself,
     /// the method takes `with_tracing` and `with_warnings` flags
     /// to get tracing information and warnings. Returns the prepared
     /// query.
@@ -463,7 +452,7 @@ impl<
             })
     }
 
-    /// It prepares query without additional tracing information and warnings.
+    /// Prepares a query without additional tracing information and warnings.
     /// Returns the prepared query.
     #[inline]
     pub async fn prepare<Q: ToString>(&self, query: Q) -> error::Result<PreparedQuery> {
@@ -477,33 +466,121 @@ impl<
             .await
     }
 
-    /// Executes batch query with parameters.
-    pub async fn batch_with_params(
-        &self,
+    /// Executes a batch query with parameters.
+    pub fn batch_with_params<'a, 'b: 'a>(
+        &'a self,
         batch: QueryBatch,
+        parameters: &'b StatementParams,
+    ) -> BoxFuture<'a, error::Result<Envelope>> {
+        async move {
+            let flags = prepare_flags(
+                parameters.tracing,
+                parameters.warnings,
+                parameters.beta_protocol,
+            );
+
+            let consistency = batch.request.consistency;
+
+            let envelope = Envelope::new_req_batch(batch.request.clone(), flags, self.version);
+
+            let mut result = self
+                .send_envelope(
+                    envelope,
+                    parameters.is_idempotent,
+                    parameters.keyspace.as_deref(),
+                    None,
+                    None,
+                    Some(consistency),
+                    parameters.speculative_execution_policy.as_ref(),
+                    parameters.retry_policy.as_ref(),
+                )
+                .await;
+
+            if let Err(error::Error::Server { body: error, addr }) = &result {
+                // if the query is unprepared
+                if let ErrorType::Unprepared(UnpreparedError { id }) = &error.ty {
+                    let query = match batch.prepared_queries.get(id) {
+                        None => {
+                            warn!(
+                                ?id,
+                                "Cannot find prepared query for unprepared statement in a batch!"
+                            );
+                            return result;
+                        }
+                        Some(query) => query,
+                    };
+
+                    let prepare_result = self
+                        .reprepare(
+                            id,
+                            query.query.clone(),
+                            query.keyspace.clone(),
+                            parameters,
+                            *addr,
+                        )
+                        .await;
+
+                    if let Ok(()) = prepare_result {
+                        result = self.batch_with_params(batch, parameters).await
+                    }
+                }
+            }
+
+            result
+        }
+        .boxed()
+    }
+
+    async fn reprepare(
+        &self,
+        id: &CBytesShort,
+        query: String,
+        keyspace: Option<String>,
         parameters: &StatementParams,
-    ) -> error::Result<Envelope> {
+        node_broadcast_rpc_address: SocketAddr,
+    ) -> error::Result<()> {
+        debug!("Re-preparing statement.");
+
         let flags = prepare_flags(
             parameters.tracing,
             parameters.warnings,
             parameters.beta_protocol,
         );
 
-        let consistency = batch.consistency;
+        // We need to send the prepare statement to the failing node.
+        let node = self
+            .cluster_metadata_manager
+            .find_node_by_rpc_address(node_broadcast_rpc_address)
+            .ok_or_else(|| {
+                error::Error::from(format!(
+                    "Cannot find node {node_broadcast_rpc_address} for statement re-preparation!"
+                ))
+            })?;
 
-        let envelope = Envelope::new_req_batch(batch, flags, self.version);
+        let prepare_envelope = Envelope::new_req_prepare(query, keyspace, flags, self.version);
 
-        self.send_envelope(
-            envelope,
-            parameters.is_idempotent,
-            parameters.keyspace.as_deref(),
-            None,
-            None,
-            Some(consistency),
-            parameters.speculative_execution_policy.as_ref(),
-            parameters.retry_policy.as_ref(),
+        let retry_policy = self.effective_retry_policy(parameters.retry_policy.as_ref());
+        let prepare_result = send_envelope(
+            [node].iter().cloned(),
+            &prepare_envelope,
+            true,
+            retry_policy.new_session(),
         )
         .await
+        .unwrap_or_else(|| Err("No response for re-prepare statement!".into()))
+        .and_then(|response| response.response_body())
+        .and_then(convert_to_prepared)?;
+
+        // re-prepare the statement and check the resulting id - it should remain the
+        // same as the old one, except when schema changed in the meantime, in which
+        // case, the client should have the knowledge how to handle it
+        // see: https://issues.apache.org/jira/browse/CASSANDRA-10786
+
+        if id != &prepare_result.id {
+            return Err("Re-preparing an unprepared statement resulted in a different id - probably schema changed on the server.".into());
+        }
+
+        Ok(())
     }
 
     /// Executes a query.
@@ -666,7 +743,7 @@ impl<
 
         match speculative_execution_policy {
             Some(speculative_execution_policy) if is_idempotent => {
-                let shared_query_plan = SharedQueryPlan::new(query_plan.into_iter());
+                let shared_query_plan = SharedQueryPlan::new(query_plan.nodes.into_iter());
 
                 let mut context = Context::new(1);
                 let mut async_tasks = FuturesUnordered::new();
@@ -729,7 +806,7 @@ impl<
                 }
             }
             _ => send_envelope(
-                query_plan.into_iter(),
+                query_plan.nodes.into_iter(),
                 &envelope,
                 is_idempotent,
                 retry_policy.new_session(),
@@ -861,11 +938,10 @@ pub struct SpeculativeExecutionPolicyWrapper(pub Box<dyn SpeculativeExecutionPol
 
 /// This function uses a user-supplied connection configuration to initialize all the
 /// connections in the session. It can be used to supply your own transport and load
-/// balancing mechanisms in order to support unusual node discovery mechanisms
-/// or configuration needs.
+/// balancing mechanisms to support unusual node discovery mechanisms or configuration needs.
 ///
 /// The config object supplied differs from the [`NodeTcpConfig`] and [`NodeRustlsConfig`]
-/// objects in that it is not expected to include an address. Instead the same configuration
+/// objects in that it is not expected to include an address. Instead, the same configuration
 /// will be applied to all connections across the cluster.
 pub async fn connect_generic<T, C, A, CM, LB>(
     config: &C,
@@ -1035,7 +1111,7 @@ pub trait SessionBuilder<
         speculative_execution_policy: Box<dyn SpeculativeExecutionPolicy + Send + Sync>,
     ) -> Self;
 
-    /// Sets new transport buffer size. High values are recommended with large amounts of in flight
+    /// Sets new transport buffer size. High values are recommended with large numbers of in flight
     /// queries.
     #[must_use]
     fn with_transport_buffer_size(self, transport_buffer_size: usize) -> Self;
@@ -1054,7 +1130,7 @@ pub trait SessionBuilder<
     fn with_connection_pool_config(self, connection_pool_config: ConnectionPoolConfig) -> Self;
 
     /// Sets the keyspace to use. If not using a keyspace explicitly in queries, one should be set
-    /// either by calling this function, or by a `USE` statement. Due to the asynchronous nature of
+    /// either by calling this function or by a `USE` statement. Due to the asynchronous nature of
     /// the driver and the usage of connection pools, the effect of switching current keyspace via
     /// `USE` might not propagate immediately to all active connections, resulting in queries
     /// using a wrong keyspace. If one is known upfront, it's safer to set it while building
@@ -1062,8 +1138,8 @@ pub trait SessionBuilder<
     #[must_use]
     fn with_keyspace(self, keyspace: String) -> Self;
 
-    /// Sets the beta protocol flag. Server will respond with ERROR if protocol version is marked as
-    /// beta on server and client does not provide this flag.
+    /// Sets the beta protocol flag. Server will respond with ERROR if the protocol version is
+    /// marked as beta on server and the client does not provide this flag.
     #[must_use]
     fn with_beta_protocol(self, beta_protocol: bool) -> Self;
 

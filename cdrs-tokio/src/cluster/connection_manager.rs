@@ -17,7 +17,7 @@ use cassandra_protocol::query::utils::quote;
 
 /// Manages establishing connections to nodes.
 pub trait ConnectionManager<T: CdrsTransport>: Send + Sync {
-    /// Tries to establish a new, ready to use connection with optional server event and error
+    /// Tries to establish a new, ready-to-use connection with optional server event and error
     /// handlers.
     fn connection(
         &self,

@@ -84,18 +84,6 @@ impl<
         self.query_with_pager_state_params(query, PagerState::new(), qp)
     }
 
-    #[deprecated(note = "Please use query_with_params() instead.")]
-    pub fn query_with_param<Q>(
-        &'a mut self,
-        query: Q,
-        qp: QueryParams,
-    ) -> QueryPager<'a, Q, SessionPager<'a, T, CM, LB>>
-    where
-        Q: ToString,
-    {
-        self.query_with_params(query, qp)
-    }
-
     pub fn exec_with_pager_state(
         &'a mut self,
         query: &'a PreparedQuery,
@@ -257,16 +245,6 @@ impl PagerState {
             cursor: Some(cursor),
             has_more_pages: Some(has_more),
         }
-    }
-
-    #[deprecated(note = "Use new_with_cursor().")]
-    pub fn with_cursor(cursor: CBytes) -> Self {
-        Self::new_with_cursor(cursor)
-    }
-
-    #[deprecated(note = "Use new_with_cursor_and_more_flag().")]
-    pub fn with_cursor_and_more_flag(cursor: CBytes, has_more: bool) -> Self {
-        Self::new_with_cursor_and_more_flag(cursor, has_more)
     }
 
     #[inline]

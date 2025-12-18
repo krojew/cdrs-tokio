@@ -5,8 +5,6 @@ mod request;
 mod round_robin;
 mod topology_aware;
 
-use std::sync::Arc;
-
 pub(crate) use self::initializing_wrapper::InitializingWrapperLoadBalancingStrategy;
 pub use self::random::RandomLoadBalancingStrategy;
 pub use self::request::Request;
@@ -15,8 +13,19 @@ pub use self::topology_aware::TopologyAwareLoadBalancingStrategy;
 use crate::cluster::topology::Node;
 use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::transport::CdrsTransport;
+use derive_more::Constructor;
+use std::sync::Arc;
 
-pub type QueryPlan<T, CM> = Vec<Arc<Node<T, CM>>>;
+#[derive(Debug, Constructor, Default)]
+pub struct QueryPlan<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
+    pub nodes: Vec<Arc<Node<T, CM>>>,
+}
+
+impl<T: CdrsTransport, CM: ConnectionManager<T>> Clone for QueryPlan<T, CM> {
+    fn clone(&self) -> Self {
+        QueryPlan::new(self.nodes.clone())
+    }
+}
 
 /// Load balancing strategy, usually used for managing target node connections.
 pub trait LoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
