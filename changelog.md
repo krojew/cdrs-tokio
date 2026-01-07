@@ -1,3 +1,17 @@
+## 9.0.0
+
+### Fixed
+
+* Fixed not re-preparing statements in batch queries.
+
+### New
+
+* New `Session::prepare_raw_tw_with_query_plan()` function.
+
+### Changed
+
+* Removed deprecated functions.
+
 ## 8.1.9
 
 ### Fixed
