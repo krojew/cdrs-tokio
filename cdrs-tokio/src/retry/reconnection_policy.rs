@@ -1,7 +1,7 @@
 use derive_more::Constructor;
 #[cfg(test)]
 use mockall::automock;
-use rand::{rng, Rng};
+use rand::{rng, RngExt};
 use std::time::Duration;
 
 const DEFAULT_BASE_DELAY: Duration = Duration::from_secs(1);

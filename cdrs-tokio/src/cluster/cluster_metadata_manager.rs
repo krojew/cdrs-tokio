@@ -14,7 +14,7 @@ use cassandra_protocol::types::rows::Row;
 use cassandra_protocol::types::{AsRustType, ByName, IntoRustByName};
 use fxhash::FxHashMap;
 use itertools::Itertools;
-use rand::{rng, Rng};
+use rand::{rng, RngExt};
 use serde_json::{Map, Value as JsonValue};
 use std::convert::TryInto;
 use std::net::{IpAddr, SocketAddr};
