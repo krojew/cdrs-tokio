@@ -10,7 +10,7 @@ use crate::types::{
 use bitflags::bitflags;
 use derive_more::{Constructor, Display};
 use std::convert::{TryFrom, TryInto};
-use std::io::{Cursor, Error as IoError, Read};
+use std::io::{Cursor, Error as IoError, Read, Write};
 
 /// `ResultKind` is enum which represents types of result.
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone, Hash, Display)]
@@ -533,6 +533,8 @@ pub enum ColType {
     Set,
     Udt,
     Tuple,
+    /// CQL vector<T, N> type (Cassandra 5.0, type ID 0x0023).
+    Vector,
 }
 
 impl TryFrom<CIntShort> for ColType {
@@ -564,6 +566,7 @@ impl TryFrom<CIntShort> for ColType {
             0x0020 => Ok(ColType::List),
             0x0021 => Ok(ColType::Map),
             0x0022 => Ok(ColType::Set),
+            0x0023 => Ok(ColType::Vector),
             0x0030 => Ok(ColType::Udt),
             0x0031 => Ok(ColType::Tuple),
             0x0080 => Ok(ColType::Varchar),
@@ -608,6 +611,7 @@ impl Serialize for ColType {
             ColType::List => 0x0020,
             ColType::Map => 0x0021,
             ColType::Set => 0x0022,
+            ColType::Vector => 0x0023,
             ColType::Udt => 0x0030,
             ColType::Tuple => 0x0031,
         } as CIntShort)
@@ -673,6 +677,14 @@ impl FromCursor for ColTypeOption {
                     Box::new(value_type),
                 ))
             }
+            ColType::Vector => {
+                // vector<T, N>: element type option followed by i32 dimension count
+                let elem_type = ColTypeOption::from_cursor(cursor, version)?;
+                let mut dim_buf = [0u8; INT_LEN];
+                cursor.read_exact(&mut dim_buf)?;
+                let dimensions = CInt::from_be_bytes(dim_buf) as u16;
+                Some(ColTypeOptionValue::CVector(Box::new(elem_type), dimensions))
+            }
             _ => None,
         };
 
@@ -691,6 +703,8 @@ pub enum ColTypeOptionValue {
     UdtType(CUdt),
     TupleType(CTuple),
     CMap(Box<ColTypeOption>, Box<ColTypeOption>),
+    /// Vector type: element type + dimension count.
+    CVector(Box<ColTypeOption>, u16),
 }
 
 impl Serialize for ColTypeOptionValue {
@@ -706,6 +720,12 @@ impl Serialize for ColTypeOptionValue {
             Self::CMap(v1, v2) => {
                 v1.serialize(cursor, version);
                 v2.serialize(cursor, version);
+            }
+            Self::CVector(elem, dimensions) => {
+                elem.serialize(cursor, version);
+                cursor
+                    .write_all(&(*dimensions as i32).to_be_bytes())
+                    .unwrap();
             }
         }
     }
@@ -1615,5 +1635,82 @@ mod schema_change {
         });
 
         test_encode_decode(bytes, expected);
+    }
+}
+
+#[cfg(test)]
+mod vector_type {
+    use super::*;
+
+    #[test]
+    fn col_type_vector_roundtrip() {
+        assert_eq!(ColType::try_from(0x0023i16).unwrap(), ColType::Vector);
+
+        let mut buf = Vec::new();
+        let mut cursor = Cursor::new(&mut buf);
+        ColType::Vector.serialize(&mut cursor, Version::V4);
+        assert_eq!(buf, vec![0x00, 0x23]);
+    }
+
+    #[test]
+    fn col_type_option_vector_float_4() {
+        // Wire format: [0x0023][0x0008 (float)][0x0004 (dims)]
+        let bytes: &[u8] = &[0x00, 0x23, 0x00, 0x08, 0x00, 0x00, 0x00, 0x04];
+        let mut cursor = Cursor::new(bytes);
+        let option = ColTypeOption::from_cursor(&mut cursor, Version::V4).unwrap();
+
+        assert_eq!(option.id, ColType::Vector);
+        match option.value {
+            Some(ColTypeOptionValue::CVector(elem, dims)) => {
+                assert_eq!(elem.id, ColType::Float);
+                assert_eq!(dims, 4);
+            }
+            other => panic!("expected CVector, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn col_type_option_vector_float_768() {
+        let bytes: &[u8] = &[0x00, 0x23, 0x00, 0x08, 0x00, 0x00, 0x03, 0x00];
+        let mut cursor = Cursor::new(bytes);
+        let option = ColTypeOption::from_cursor(&mut cursor, Version::V4).unwrap();
+
+        match option.value {
+            Some(ColTypeOptionValue::CVector(elem, dims)) => {
+                assert_eq!(elem.id, ColType::Float);
+                assert_eq!(dims, 768);
+            }
+            other => panic!("expected CVector, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn col_type_option_vector_serialize_roundtrip() {
+        let option = ColTypeOption {
+            id: ColType::Vector,
+            value: Some(ColTypeOptionValue::CVector(
+                Box::new(ColTypeOption {
+                    id: ColType::Float,
+                    value: None,
+                }),
+                4,
+            )),
+        };
+
+        let mut buf = Vec::new();
+        let mut cursor = Cursor::new(&mut buf);
+        option.serialize(&mut cursor, Version::V4);
+
+        let mut read_cursor = Cursor::new(buf.as_slice());
+        let parsed = ColTypeOption::from_cursor(&mut read_cursor, Version::V4).unwrap();
+
+        assert_eq!(parsed.id, ColType::Vector);
+        match parsed.value {
+            Some(ColTypeOptionValue::CVector(elem, dims)) => {
+                assert_eq!(elem.id, ColType::Float);
+                assert_eq!(dims, 4);
+            }
+            other => panic!("expected CVector, got {:?}", other),
+        }
     }
 }

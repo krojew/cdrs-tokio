@@ -71,6 +71,7 @@ pub fn wrapper_fn(
         ColType::Set => &wrappers::set,
         ColType::Udt => &wrappers::udt,
         ColType::Tuple => &wrappers::tuple,
+        ColType::Vector => &wrappers::blob, // Vectors serialize as raw bytes (same as blob)
     }
 }
 
