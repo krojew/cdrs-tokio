@@ -648,9 +648,14 @@ impl FromCursor for ColTypeOption {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<ColTypeOption> {
         let id = ColType::from_cursor(cursor, version)?;
         let value = match id {
-            ColType::Custom => Some(ColTypeOptionValue::CString(
-                from_cursor_str(cursor)?.to_string(),
-            )),
+            ColType::Custom => {
+                let class_name = from_cursor_str(cursor)?.to_string();
+                if let Some(vec_info) = parse_vector_class_name(&class_name) {
+                    Some(ColTypeOptionValue::CVector(vec_info.0, vec_info.1))
+                } else {
+                    Some(ColTypeOptionValue::CString(class_name))
+                }
+            }
             ColType::Set => {
                 let col_type = ColTypeOption::from_cursor(cursor, version)?;
                 Some(ColTypeOptionValue::CSet(Box::new(col_type)))
@@ -691,6 +696,9 @@ pub enum ColTypeOptionValue {
     UdtType(CUdt),
     TupleType(CTuple),
     CMap(Box<ColTypeOption>, Box<ColTypeOption>),
+    /// Vector type parsed from Custom class name: element type name + dimensions.
+    /// e.g. VectorType(FloatType, 768) → CVector("FloatType", 768)
+    CVector(String, u16),
 }
 
 impl Serialize for ColTypeOptionValue {
@@ -707,8 +715,45 @@ impl Serialize for ColTypeOptionValue {
                 v1.serialize(cursor, version);
                 v2.serialize(cursor, version);
             }
+            Self::CVector(elem_type, dimensions) => {
+                // Serialize as Custom type class name string
+                let class_name = format!(
+                    "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.{} , {})",
+                    elem_type, dimensions
+                );
+                serialize_str(cursor, &class_name, version);
+            }
         }
     }
+}
+
+const VECTOR_TYPE_PREFIX: &str = "org.apache.cassandra.db.marshal.VectorType(";
+
+/// Parse a Custom type class name to detect VectorType.
+///
+/// Cassandra 5.0 sends vector columns as Custom (0x0000) with class name:
+/// `org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType , 4)`
+///
+/// Returns Some((element_type_short_name, dimensions)) if it's a VectorType.
+fn parse_vector_class_name(class_name: &str) -> Option<(String, u16)> {
+    let inner = class_name
+        .strip_prefix(VECTOR_TYPE_PREFIX)?
+        .strip_suffix(')')?;
+
+    // Split on last comma — format is "element_type , dimensions"
+    let (elem_str, dim_str) = if let Some(pos) = inner.rfind(',') {
+        (&inner[..pos], inner[pos + 1..].trim())
+    } else {
+        return None;
+    };
+
+    let elem_str = elem_str.trim();
+
+    // Extract short type name from fully qualified class name
+    let elem_short = elem_str.rsplit('.').next().unwrap_or(elem_str).to_string();
+
+    let dimensions: u16 = dim_str.parse().ok()?;
+    Some((elem_short, dimensions))
 }
 
 /// User defined type.
@@ -1615,5 +1660,98 @@ mod schema_change {
         });
 
         test_encode_decode(bytes, expected);
+    }
+}
+
+#[cfg(test)]
+mod vector_type {
+    use super::*;
+
+    #[test]
+    fn parse_vector_float_4() {
+        let class_name =
+            "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType , 4)";
+        let (elem, dims) = parse_vector_class_name(class_name).unwrap();
+        assert_eq!(elem, "FloatType");
+        assert_eq!(dims, 4);
+    }
+
+    #[test]
+    fn parse_vector_float_768() {
+        let class_name =
+            "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType , 768)";
+        let (elem, dims) = parse_vector_class_name(class_name).unwrap();
+        assert_eq!(elem, "FloatType");
+        assert_eq!(dims, 768);
+    }
+
+    #[test]
+    fn parse_vector_double() {
+        let class_name =
+            "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.DoubleType , 3)";
+        let (elem, dims) = parse_vector_class_name(class_name).unwrap();
+        assert_eq!(elem, "DoubleType");
+        assert_eq!(dims, 3);
+    }
+
+    #[test]
+    fn parse_vector_compact_format() {
+        let class_name =
+            "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType,4)";
+        let (elem, dims) = parse_vector_class_name(class_name).unwrap();
+        assert_eq!(elem, "FloatType");
+        assert_eq!(dims, 4);
+    }
+
+    #[test]
+    fn parse_non_vector_returns_none() {
+        assert!(parse_vector_class_name("org.apache.cassandra.db.marshal.UTF8Type").is_none());
+        assert!(parse_vector_class_name("").is_none());
+        assert!(parse_vector_class_name("not a type").is_none());
+    }
+
+    #[test]
+    fn custom_type_with_vector_class_name_becomes_cvector() {
+        // Simulate what from_cursor would produce for Custom(VectorType(...))
+        let class_name = "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType , 4)";
+
+        // Build wire bytes: [0x0000 (Custom)][string class_name]
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0x0000u16.to_be_bytes()); // Custom type ID
+        buf.extend_from_slice(&(class_name.len() as u16).to_be_bytes());
+        buf.extend_from_slice(class_name.as_bytes());
+
+        let mut cursor = Cursor::new(buf.as_slice());
+        let option = ColTypeOption::from_cursor(&mut cursor, Version::V4).unwrap();
+
+        assert_eq!(option.id, ColType::Custom);
+        match option.value {
+            Some(ColTypeOptionValue::CVector(elem, dims)) => {
+                assert_eq!(elem, "FloatType");
+                assert_eq!(dims, 4);
+            }
+            other => panic!("expected CVector, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn custom_type_non_vector_stays_cstring() {
+        let class_name = "org.apache.cassandra.db.marshal.UTF8Type";
+
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&0x0000u16.to_be_bytes());
+        buf.extend_from_slice(&(class_name.len() as u16).to_be_bytes());
+        buf.extend_from_slice(class_name.as_bytes());
+
+        let mut cursor = Cursor::new(buf.as_slice());
+        let option = ColTypeOption::from_cursor(&mut cursor, Version::V4).unwrap();
+
+        assert_eq!(option.id, ColType::Custom);
+        match option.value {
+            Some(ColTypeOptionValue::CString(s)) => {
+                assert_eq!(s, class_name);
+            }
+            other => panic!("expected CString, got {:?}", other),
+        }
     }
 }

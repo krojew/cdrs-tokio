@@ -929,6 +929,10 @@ macro_rules! as_rust_type {
                             return as_res_opt!($data_value, decode_blob);
                         }
                     }
+                    // Vector columns (Custom with CVector) contain raw bytes
+                    if let Some(crate::frame::message_result::ColTypeOptionValue::CVector(..)) = &$data_type_option.value {
+                        return as_res_opt!($data_value, decode_blob);
+                    }
 
                     Err(crate::error::Error::General(format!(
                         "Invalid conversion. \
