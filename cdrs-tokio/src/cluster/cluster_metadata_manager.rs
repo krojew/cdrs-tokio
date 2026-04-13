@@ -747,6 +747,17 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 self.is_schema_v2.store(false, Ordering::Relaxed);
                 self.query_legacy_peers(transport).await
             }
+            Err(Error::Server {
+                body:
+                    ErrorBody {
+                        ty: ErrorType::Server,
+                        ref message,
+                    },
+                ..
+            }) if message.contains("Unknown keyspace/cf pair (system.peers_v2)") => {
+                self.is_schema_v2.store(false, Ordering::Relaxed);
+                self.query_legacy_peers(transport).await
+            }
             Err(error) => Err(error),
         }
     }
