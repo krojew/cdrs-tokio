@@ -1,3 +1,9 @@
+## 9.0.1
+
+### Fixed
+
+* Fixe querying peers in `yugabytedb` (by Andries Hiemstra).
+
 ## 9.0.0
 
 ### Fixed
