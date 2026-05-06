@@ -31,9 +31,21 @@ pub struct VectorInfo {
 }
 
 pub fn get_vector_type_info(option_value: &ColTypeOptionValue) -> Result<VectorInfo> {
+    // Handle structured CVector (parsed from Custom class name)
+    if let ColTypeOptionValue::CVector(ref elem_type, dimensions) = option_value {
+        return Ok(VectorInfo {
+            internal_type: elem_type.clone(),
+            count: *dimensions as usize,
+        });
+    }
+
     let input = match option_value {
         ColTypeOptionValue::CString(ref s) => s,
-        _ => return Err(Error::General("Option value must be a string!".into())),
+        _ => {
+            return Err(Error::General(
+                "Option value must be a string or CVector!".into(),
+            ))
+        }
     };
 
     let _custom_type = input.split('(').next().unwrap().rsplit('.').next().unwrap();
