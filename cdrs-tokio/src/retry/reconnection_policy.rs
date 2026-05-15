@@ -67,13 +67,21 @@ impl ReconnectionSchedule for NeverReconnectionSchedule {
     }
 }
 
-/// A reconnection policy that waits exponentially longer between each reconnection attempt (but
-/// keeps a constant delay once a maximum delay is reached). The delay will increase exponentially,
-/// with an added jitter.
+/// A reconnection policy that waits exponentially longer between each reconnection attempt
+/// (but keeps a constant delay once a maximum delay is reached). The delay will increase
+/// exponentially, with an added jitter.
+///
+/// Note: by design this policy retries forever. The delay grows by a factor of two on each
+/// attempt up to `max_delay`, then stays at `max_delay` indefinitely. The `max_attempts`
+/// field controls only when the delay saturates - it is the number of doublings before
+/// `base_delay` reaches `max_delay`, NOT a hard cap on the number of reconnection attempts.
+/// Use [`NeverReconnectionPolicy`] if you want to avoid reconnections entirely.
 #[derive(Copy, Clone, Constructor, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ExponentialReconnectionPolicy {
     base_delay: Duration,
     max_delay: Duration,
+    /// Attempts after which the delay has saturated at [`Self::max_delay`]. Subsequent
+    /// reconnection attempts continue to be scheduled at `max_delay` indefinitely.
     max_attempts: usize,
 }
 
@@ -109,7 +117,11 @@ struct ExponentialReconnectionSchedule {
 
 impl ReconnectionSchedule for ExponentialReconnectionSchedule {
     fn next_delay(&mut self) -> Option<Duration> {
-        if self.attempt == self.max_attempts {
+        // Once we've reached the saturation point, keep returning the max
+        // delay forever. Use `>=` rather than `==` so that nothing - including
+        // a future caller mutating fields directly - can accidentally skip
+        // this branch and re-enter the doubling logic on a saturated counter.
+        if self.attempt >= self.max_attempts {
             return Some(self.max_delay);
         }
 
@@ -120,6 +132,8 @@ impl ReconnectionSchedule for ExponentialReconnectionSchedule {
             .saturating_mul(1u32.checked_shl(self.attempt as u32).unwrap_or(u32::MAX))
             .min(self.max_delay);
 
+        // Apply +/-15% jitter so a flock of clients reconnecting at the same
+        // time don't all retry in lockstep.
         let jitter = rng().random_range(85..116);
 
         Some(
@@ -156,5 +170,30 @@ mod tests {
         };
 
         schedule.next_delay();
+    }
+
+    // Once the schedule's attempt counter has reached or surpassed
+    // max_attempts, every subsequent call must return Some(max_delay) -
+    // never None and never something larger than max_delay. This is the
+    // documented saturation behaviour of [`ExponentialReconnectionPolicy`].
+    #[test]
+    fn saturated_schedule_keeps_returning_max_delay() {
+        use std::time::Duration;
+        let max_delay = Duration::from_secs(60);
+        let mut schedule = ExponentialReconnectionSchedule {
+            base_delay: Duration::from_secs(1),
+            max_delay,
+            // arrange the attempt counter slightly past max_attempts so the
+            // saturation branch is the one we exercise. Without `>=` (only
+            // `==`) the schedule would skip this branch and try to double
+            // the delay again - which we explicitly do not want once we're
+            // already at the cap.
+            max_attempts: 5,
+            attempt: 6,
+        };
+
+        for _ in 0..3 {
+            assert_eq!(schedule.next_delay(), Some(max_delay));
+        }
     }
 }
