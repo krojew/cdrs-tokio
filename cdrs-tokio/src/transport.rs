@@ -688,21 +688,50 @@ impl ResponseHandlerMap {
     }
 
     pub fn next_stream_id(&self) -> StreamId {
+        // We allocate stream ids in [INITIAL_STREAM_ID, i16::MAX] inclusive,
+        // wrapping back to INITIAL_STREAM_ID once the maximum has been used.
+        //
+        // The previous implementation called `fetch_add` and then tried to
+        // compare-and-swap the *pre-increment* value back to INITIAL when it
+        // saw a negative result. By construction the post-increment value is
+        // already on the counter at that point, so the CAS expected the wrong
+        // value and almost never succeeded under contention - the counter
+        // would walk through ~32K negative values before yielding usable ids
+        // again, and could yield stream id 0 (which we never want).
+        //
+        // Using a CAS loop that observes the current value and atomically
+        // computes both the value to return AND the next counter state keeps
+        // every returned id strictly inside the allowed range and skips no
+        // ids on wrap.
         loop {
-            let stream = self.available_stream_id.fetch_add(1, Ordering::Relaxed);
-            if stream < 0 {
-                match self.available_stream_id.compare_exchange(
-                    stream,
-                    INITIAL_STREAM_ID,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => return INITIAL_STREAM_ID,
-                    Err(_) => continue,
-                }
-            }
+            let current = self.available_stream_id.load(Ordering::Relaxed);
+            let (return_value, new_value) = if current < INITIAL_STREAM_ID {
+                // defensive: counter somehow ended up below INITIAL (e.g. a
+                // future caller stored a bad value). Recover by snapping back
+                // to the start of the range.
+                (INITIAL_STREAM_ID, INITIAL_STREAM_ID + 1)
+            } else if current == i16::MAX {
+                // last id in the range - return it and wrap the counter
+                // straight back to INITIAL_STREAM_ID for the next caller.
+                (i16::MAX, INITIAL_STREAM_ID)
+            } else {
+                (current, current + 1)
+            };
 
-            return stream;
+            if self
+                .available_stream_id
+                .compare_exchange_weak(
+                    current,
+                    new_value,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
+                return return_value;
+            }
+            // CAS lost the race; another thread updated the counter. Reload
+            // and try again - we'll get the next id in sequence.
         }
     }
 }
@@ -718,5 +747,35 @@ impl Request {
     #[inline]
     fn set_stream_id(&mut self, stream_d: StreamId) {
         self.data[2..4].copy_from_slice(&stream_d.to_be_bytes());
+    }
+}
+
+#[cfg(test)]
+mod stream_id_tests {
+    use super::*;
+
+    #[test]
+    fn next_stream_id_starts_at_initial_value() {
+        let map = ResponseHandlerMap::new();
+        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID);
+        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID + 1);
+    }
+
+    #[test]
+    fn next_stream_id_wraps_to_initial_after_overflow() {
+        let map = ResponseHandlerMap::new();
+        // arrange the counter so the very next fetch_add overflows i16
+        map.available_stream_id.store(i16::MAX, Ordering::Relaxed);
+
+        // the call right at the boundary still returns the last positive id
+        assert_eq!(map.next_stream_id(), i16::MAX);
+
+        // after the wrap, all returned ids must remain valid (positive) and
+        // the sequence must restart at INITIAL_STREAM_ID. Without the fix the
+        // function would either burn ~32K negative ids before yielding 0, or
+        // return 0 itself, neither of which is correct for our protocol.
+        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID);
+        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID + 1);
+        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID + 2);
     }
 }
