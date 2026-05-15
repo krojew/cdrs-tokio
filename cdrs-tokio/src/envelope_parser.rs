@@ -1,4 +1,5 @@
 use std::convert::TryFrom;
+use std::io;
 use std::io::Cursor;
 use std::net::SocketAddr;
 use tokio::io::AsyncReadExt;
@@ -13,6 +14,12 @@ use cassandra_protocol::types::data_serialization_types::decode_timeuuid;
 use cassandra_protocol::types::{
     from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN,
 };
+
+// Cassandra's documented hard cap for an envelope body. Pre-V5 (unframed)
+// connections can in principle send anything up to 256 MiB. Using this as the
+// upper bound prevents a hostile or malfunctioning server from making us
+// allocate gigabytes from a single 4-byte length field.
+const MAX_ENVELOPE_BODY_SIZE: usize = 256 * 1024 * 1024;
 
 async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
@@ -36,7 +43,27 @@ async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
     let flags = Flags::from_bits_truncate(flag_bytes[0]);
     let stream_id = try_i16_from_bytes(&stream_bytes)?;
     let opcode = Opcode::try_from(opcode_bytes[0])?;
-    let length = try_i32_from_bytes(&length_bytes)? as usize;
+
+    // The wire format encodes the body length as a signed 32-bit int. Without
+    // validation a negative value would wrap around to a multi-gigabyte usize,
+    // and even a legitimate large positive value would happily allocate up to
+    // 2 GiB before reading any body bytes. Reject both before allocating.
+    let length_signed = try_i32_from_bytes(&length_bytes)?;
+    if length_signed < 0 {
+        return Err(error::Error::Io(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("negative envelope body length {length_signed}"),
+        )));
+    }
+    let length = length_signed as usize;
+    if length > MAX_ENVELOPE_BODY_SIZE {
+        return Err(error::Error::Io(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "envelope body length {length} exceeds maximum {MAX_ENVELOPE_BODY_SIZE}"
+            ),
+        )));
+    }
 
     let mut body_bytes = vec![0; length];
 
@@ -105,5 +132,51 @@ pub(crate) fn convert_envelope_into_result(
             _ => unreachable!(),
         }),
         _ => Ok(envelope),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cassandra_protocol::frame::Version;
+
+    // Build a minimal valid envelope header byte sequence with the supplied
+    // 4-byte length field. The header layout is:
+    //   1 byte version | 1 byte flags | 2 bytes stream | 1 byte opcode | 4 bytes length
+    fn header_with_length(length_bytes: [u8; 4]) -> Vec<u8> {
+        let mut buf = vec![
+            u8::from(Version::V4),  // version
+            0,                      // flags
+            0, 0,                   // stream id
+            u8::from(Opcode::Ready) // opcode (any valid one will do)
+        ];
+        buf.extend_from_slice(&length_bytes);
+        buf
+    }
+
+    #[tokio::test]
+    async fn parse_envelope_rejects_negative_body_length() {
+        // a length field of 0xFFFFFFFF reads as -1 in i32. Without validation
+        // this would be cast to usize::MAX-ish and immediately OOM the process.
+        let mut payload = header_with_length([0xff, 0xff, 0xff, 0xff]);
+        let mut cursor = std::io::Cursor::new(&mut payload);
+        let mut bytes = vec![];
+        tokio::io::AsyncReadExt::read_to_end(&mut cursor, &mut bytes)
+            .await
+            .unwrap();
+
+        let mut reader = bytes.as_slice();
+        assert!(parse_raw_envelope(&mut reader, Compression::None).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn parse_envelope_rejects_oversized_body_length() {
+        // i32::MAX (~2 GiB) is well past any plausible Cassandra envelope.
+        // We expect a clean error rather than allocation of a giant buffer
+        // up-front before even reading the body.
+        let payload = header_with_length(i32::MAX.to_be_bytes());
+
+        let mut reader = payload.as_slice();
+        assert!(parse_raw_envelope(&mut reader, Compression::None).await.is_err());
     }
 }
