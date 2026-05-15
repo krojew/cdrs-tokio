@@ -53,19 +53,25 @@ impl Serialize for Value {
 
 impl FromCursor for Value {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, _version: Version) -> Result<Value, Error> {
+        // Per the protocol spec: a [value] is encoded as a [int] n followed by
+        // n bytes when n is non-negative. Special negative encodings stand for
+        // null (-1) and "not set" (-2). A length of zero is therefore valid and
+        // represents an empty value (e.g. an empty BLOB or empty TEXT).
         let value_size = {
             let mut buff = [0; INT_LEN];
             cursor.read_exact(&mut buff)?;
             CInt::from_be_bytes(buff)
         };
 
-        if value_size > 0 {
+        if value_size >= 0 {
+            // covers both positive lengths and the empty-value (length 0) case
             Ok(Value::Some(cursor_next_value(cursor, value_size as usize)?))
-        } else if value_size == -1 {
+        } else if value_size == NULL_INT_VALUE {
             Ok(Value::Null)
-        } else if value_size == -2 {
+        } else if value_size == NOT_SET_INT_VALUE {
             Ok(Value::NotSet)
         } else {
+            // any other negative value is not part of the protocol
             Err(Error::General("Could not decode query values".into()))
         }
     }
@@ -384,6 +390,48 @@ mod tests {
             Value::NotSet.serialize_to_vec(Version::V4),
             vec![255, 255, 255, 254]
         )
+    }
+
+    #[test]
+    fn test_value_from_cursor_handles_all_lengths() {
+        // length 0 — a zero-length value is a valid Cassandra value (an empty
+        // string, an empty blob, etc.). It must round-trip as `Value::Some(vec![])`,
+        // not be rejected as malformed.
+        let bytes = vec![0, 0, 0, 0];
+        let mut cursor = Cursor::new(bytes.as_slice());
+        assert_eq!(
+            Value::from_cursor(&mut cursor, Version::V4).unwrap(),
+            Value::Some(vec![])
+        );
+
+        // positive length — value bytes follow the 4-byte length
+        let bytes = vec![0, 0, 0, 3, 1, 2, 3];
+        let mut cursor = Cursor::new(bytes.as_slice());
+        assert_eq!(
+            Value::from_cursor(&mut cursor, Version::V4).unwrap(),
+            Value::Some(vec![1, 2, 3])
+        );
+
+        // -1 (0xFFFFFFFF) means null
+        let bytes = vec![255, 255, 255, 255];
+        let mut cursor = Cursor::new(bytes.as_slice());
+        assert_eq!(
+            Value::from_cursor(&mut cursor, Version::V4).unwrap(),
+            Value::Null
+        );
+
+        // -2 (0xFFFFFFFE) means "not set" (unbound bind variable)
+        let bytes = vec![255, 255, 255, 254];
+        let mut cursor = Cursor::new(bytes.as_slice());
+        assert_eq!(
+            Value::from_cursor(&mut cursor, Version::V4).unwrap(),
+            Value::NotSet
+        );
+
+        // anything else (e.g. -3) is malformed and must error
+        let bytes = vec![255, 255, 255, 253];
+        let mut cursor = Cursor::new(bytes.as_slice());
+        assert!(Value::from_cursor(&mut cursor, Version::V4).is_err());
     }
 
     #[test]
