@@ -136,13 +136,17 @@ pub fn decode_timestamp(bytes: &[u8]) -> Result<i64, io::Error> {
     try_i64_from_bytes(bytes)
 }
 
-//noinspection DuplicatedCode
 // Decodes Cassandra `list` data (bytes)
 pub fn decode_list(bytes: &[u8], version: Version) -> Result<Vec<CBytes>, io::Error> {
     let mut cursor = io::Cursor::new(bytes);
     let l = CInt::from_cursor(&mut cursor, version)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let mut list = Vec::with_capacity(l as usize);
+    // Don't pre-allocate based on the wire-stated count. The count is
+    // attacker-controlled and could be near i32::MAX, in which case
+    // Vec::with_capacity would request many gigabytes up-front before
+    // reading a single element. Vec::new + push grows by doubling and
+    // bounds memory at roughly 2x the data we actually receive.
+    let mut list = Vec::new();
     for _ in 0..l {
         let b = CBytes::from_cursor(&mut cursor, version)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
@@ -198,7 +202,10 @@ pub fn decode_map(bytes: &[u8], version: Version) -> Result<Vec<(CBytes, CBytes)
     let mut cursor = io::Cursor::new(bytes);
     let l = CInt::from_cursor(&mut cursor, version)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
-    let mut map = Vec::with_capacity(l as usize);
+    // See decode_list - skip the wire-stated capacity reservation so a
+    // hostile count cannot make us request gigabytes before reading any
+    // entries.
+    let mut map = Vec::new();
     for _ in 0..l {
         let k = CBytes::from_cursor(&mut cursor, version)
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
@@ -401,6 +408,8 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].as_slice().unwrap(), &[1, 2]);
     }
+
+
 
     #[test]
     fn decode_duration_test() {
