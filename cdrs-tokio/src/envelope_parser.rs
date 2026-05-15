@@ -135,7 +135,13 @@ pub(crate) fn convert_envelope_into_result(
     match envelope.opcode {
         Opcode::Error => envelope.response_body().and_then(|err| match err {
             ResponseBody::Error(err) => Err(error::Error::Server { body: err, addr }),
-            _ => unreachable!(),
+            // ResponseBody::try_from is expected to always return Error for
+            // Opcode::Error, but if a future protocol change ever broke that
+            // invariant we don't want to crash the reader task with a panic
+            // - surface it as a normal error instead.
+            other => Err(error::Error::General(format!(
+                "Expected ResponseBody::Error for Opcode::Error envelope, got {other:?}"
+            ))),
         }),
         _ => Ok(envelope),
     }
