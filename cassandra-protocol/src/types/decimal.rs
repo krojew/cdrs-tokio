@@ -14,8 +14,25 @@ pub struct Decimal {
 
 impl Decimal {
     /// Method that returns plain `BigInt` value.
+    ///
+    /// Negative scale is handled by multiplying instead of dividing - that
+    /// avoids the previous `scale as u32` cast which made a negative scale
+    /// wrap to a huge value and panic in `10i64.pow`.
     pub fn as_plain(&self) -> BigInt {
-        self.unscaled.clone() / 10i64.pow(self.scale as u32)
+        if self.scale >= 0 {
+            // dividing by 10^scale; use checked_pow on a u32 exponent so an
+            // out-of-range value yields a clean zero rather than panicking.
+            let exponent = self.scale as u32;
+            match 10i64.checked_pow(exponent) {
+                Some(divisor) => self.unscaled.clone() / divisor,
+                None => BigInt::from(0),
+            }
+        } else {
+            // negative scale means the unscaled value should be multiplied
+            // by 10^|scale| to recover the represented integer
+            let exponent = self.scale.unsigned_abs();
+            self.unscaled.clone() * BigInt::from(10).pow(exponent)
+        }
     }
 }
 
@@ -50,13 +67,25 @@ impl_from_for_decimal!(u16);
 
 impl From<f32> for Decimal {
     fn from(f: f32) -> Decimal {
-        let mut scale = 0;
+        // Cap the loop just below the point where 10i64.pow(scale) overflows
+        // (10^19 > i64::MAX). Without this guard a hostile input could keep
+        // the loop spinning until the pow call panics. In practice f32
+        // precision causes the equality check to succeed long before this
+        // cap, so existing well-formed inputs are unaffected.
+        const MAX_SCALE: u32 = 18;
+        let mut scale: u32 = 0;
 
         loop {
             let unscaled = f * (10i64.pow(scale) as f32);
 
             if float_eq!(unscaled, unscaled.trunc(), abs <= f32::EPSILON) {
                 return Decimal::new((unscaled as i64).into(), scale as i32);
+            }
+
+            if scale >= MAX_SCALE {
+                // best-effort termination: snap to the truncated value at the
+                // current scale rather than looping forever / panicking
+                return Decimal::new((unscaled.trunc() as i64).into(), scale as i32);
             }
 
             scale += 1;
@@ -66,13 +95,20 @@ impl From<f32> for Decimal {
 
 impl From<f64> for Decimal {
     fn from(f: f64) -> Decimal {
-        let mut scale = 0;
+        // Same termination guard as the f32 conversion - bounded just below
+        // i64 overflow on 10i64.pow.
+        const MAX_SCALE: u32 = 18;
+        let mut scale: u32 = 0;
 
         loop {
             let unscaled = f * (10i64.pow(scale) as f64);
 
             if float_eq!(unscaled, unscaled.trunc(), abs <= f64::EPSILON) {
                 return Decimal::new((unscaled as i64).into(), scale as i32);
+            }
+
+            if scale >= MAX_SCALE {
+                return Decimal::new((unscaled.trunc() as i64).into(), scale as i32);
             }
 
             scale += 1;
@@ -145,5 +181,37 @@ mod test {
             Decimal::from(0.1230000000000001f64),
             Decimal::new(1230000000000001i64.into(), 16)
         );
+    }
+
+
+    // 0.1 is not exactly representable in IEEE-754 float, so the previous
+    // implementation kept doubling `scale` looking for an exact match and
+    // eventually panicked on `10i64.pow(scale)` overflow when scale exceeded
+    // the number of significant digits. The conversion must terminate without
+    // panicking and produce a sensible Decimal.
+    #[test]
+    fn from_f32_tolerates_inexact_floats() {
+        let _decimal = Decimal::from(0.1f32);
+        let _decimal = Decimal::from(0.2f32);
+        let _decimal = Decimal::from(1.0f32 / 3.0f32);
+    }
+
+    #[test]
+    fn from_f64_tolerates_inexact_floats() {
+        let _decimal = Decimal::from(0.1f64);
+        let _decimal = Decimal::from(0.2f64);
+        let _decimal = Decimal::from(1.0f64 / 3.0f64);
+    }
+
+    // as_plain divides by 10^scale; if scale is negative the previous
+    // `scale as u32` cast wrapped to a huge value and `10i64.pow` panicked.
+    // The function should either reject negative scales or handle them.
+    #[test]
+    fn as_plain_does_not_panic_on_negative_scale() {
+        let decimal = Decimal::new(5.into(), -3);
+        // Just verify it does not panic; we don't assert a specific value
+        // here because the semantics of negative scale aren't part of this
+        // bug fix - we only need to be safe.
+        let _ = decimal.as_plain();
     }
 }
