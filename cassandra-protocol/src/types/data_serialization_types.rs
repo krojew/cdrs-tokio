@@ -286,6 +286,15 @@ pub fn decode_duration(bytes: &[u8]) -> Result<Duration, io::Error> {
 }
 
 // Decodes Cassandra `Udt` data (bytes)
+///
+/// Note: when the input is shorter than `l` would require, fields beyond the
+/// available bytes are filled with `CBytes::new_null()`. This matches the
+/// "older driver, newer schema" tolerance described by the protocol spec
+/// (a server that has added fields can still serve clients that don't know
+/// about them). Callers that care about strict decoding should validate the
+/// returned UDT length matches the expected schema field count, since the
+/// crate cannot distinguish a truncated payload from an intentional schema
+/// mismatch here.
 pub fn decode_udt(bytes: &[u8], l: usize, version: Version) -> Result<Vec<CBytes>, io::Error> {
     let mut cursor = io::Cursor::new(bytes);
     let mut udt = Vec::with_capacity(l);
@@ -294,6 +303,8 @@ pub fn decode_udt(bytes: &[u8], l: usize, version: Version) -> Result<Vec<CBytes
             .or_else(|err| match err {
                 error::Error::Io(io_err) => {
                     if io_err.kind() == io::ErrorKind::UnexpectedEof {
+                        // intentional - see the function-level doc for the
+                        // rationale (forward-compat with newer-schema servers)
                         Ok(CBytes::new_null())
                     } else {
                         Err(io_err.into())
