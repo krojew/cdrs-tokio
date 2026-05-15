@@ -115,10 +115,19 @@ fn verify_compression_configuration(
 
 // https://github.com/apache/cassandra/blob/3a950b45c321e051a9744721408760c568c05617/src/java/org/apache/cassandra/db/marshal/CompositeType.java#L39
 fn serialize_routing_value(cursor: &mut Cursor<&mut Vec<u8>>, value: &Vec<u8>, version: Version) {
+    // Reserve 2 bytes for the value length, write the value, then come back
+    // and patch the length in. The cursor MUST be in a position where this
+    // 2-byte rewind is valid - i.e. the placeholder above was just written.
+    // Calling this helper on a fresh cursor would underflow the unsigned
+    // subtraction below; the debug assertion documents the precondition.
     let temp_size: CIntShort = 0;
     temp_size.serialize(cursor, version);
 
     let before_value_pos = cursor.position();
+    debug_assert!(
+        before_value_pos >= SHORT_LEN as u64,
+        "serialize_routing_value invariant violated: cursor must be past the size placeholder"
+    );
     value.serialize(cursor, version);
 
     let after_value_pos = cursor.position();
