@@ -532,10 +532,19 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             match row {
                 Some(row) => {
                     let (keyspace_name, keyspace) = build_keyspace(&row)?;
-                    let metadata = self.metadata.load().clone();
-                    self.metadata.store(Arc::new(
-                        metadata.clone_with_keyspace(keyspace_name, keyspace),
-                    ));
+                    // Use rcu so that a concurrent metadata mutation (e.g.
+                    // another schema event landing in parallel, or the
+                    // status/topology event handlers) cannot be silently
+                    // overwritten between load() and store(). The closure
+                    // may run more than once if the ArcSwap loses a CAS
+                    // race, so we clone the freshly-built keyspace data
+                    // each iteration.
+                    self.metadata.rcu(|metadata| {
+                        Arc::new(
+                            metadata
+                                .clone_with_keyspace(keyspace_name.clone(), keyspace.clone()),
+                        )
+                    });
                 }
                 None => {
                     warn!(%keyspace, "Keyspace to refresh disappeared.");
