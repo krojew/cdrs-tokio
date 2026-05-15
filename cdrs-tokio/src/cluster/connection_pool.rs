@@ -13,7 +13,7 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::sync::watch::Receiver;
 use tokio::sync::{mpsc, RwLock};
-use tokio::time::{interval_at, sleep, Instant};
+use tokio::time::{interval_at, sleep, Instant, Interval, MissedTickBehavior};
 use tracing::*;
 
 use crate::cluster::topology::{Node, NodeDistance, NodeState};
@@ -256,7 +256,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         heartbeat_interval: Duration,
         version: Version,
     ) {
-        let mut interval = interval_at(Instant::now() + heartbeat_interval, heartbeat_interval);
+        let mut interval = create_heartbeat_interval(Instant::now(), heartbeat_interval);
         tokio::spawn(async move {
             loop {
                 interval.tick().await;
@@ -597,5 +597,30 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
             // connection manager is gone - we're probably dropping the session
             Ok(false)
         }
+    }
+}
+
+/// Builds the [`Interval`] used by the heartbeat loop. The first tick fires
+/// `period` after `now`, then every `period`. We explicitly set the missed
+/// tick behavior to `Skip` so that if a heartbeat round takes longer than
+/// the configured period (e.g. a slow node, a stalled connection), the
+/// runtime does not pile up a burst of catch-up ticks the moment we return
+/// to `tick().await`. Without this, tokio's default behavior would keep
+/// firing immediately until it had "caught up", which on a healthy cluster
+/// just means a thundering herd of OPTIONS messages.
+fn create_heartbeat_interval(now: Instant, period: Duration) -> Interval {
+    let mut interval = interval_at(now + period, period);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    interval
+}
+
+#[cfg(test)]
+mod heartbeat_interval_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn create_heartbeat_interval_skips_missed_ticks() {
+        let interval = create_heartbeat_interval(Instant::now(), Duration::from_secs(30));
+        assert_eq!(interval.missed_tick_behavior(), MissedTickBehavior::Skip);
     }
 }
