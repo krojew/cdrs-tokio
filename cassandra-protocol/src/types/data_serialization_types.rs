@@ -80,6 +80,15 @@ pub fn decode_date(bytes: &[u8]) -> Result<i32, io::Error> {
 
 // Decodes Cassandra `decimal` data (bytes)
 pub fn decode_decimal(bytes: &[u8]) -> Result<Decimal, io::Error> {
+    // wire format: 4-byte int scale followed by a variable-length signed
+    // big-endian integer (no length prefix). At minimum we need the scale.
+    if bytes.len() < INT_LEN {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "decimal requires at least 4 bytes for the scale",
+        ));
+    }
+
     let lr = bytes.split_at(INT_LEN);
 
     let scale = try_i32_from_bytes(lr.0)?;
@@ -149,8 +158,29 @@ pub fn decode_float_vector(
 ) -> Result<Vec<CBytes>, io::Error> {
     let type_size = 4;
 
+    // validate up front so we can produce a clean error rather than panicking
+    // on out-of-bounds slice indexing when the payload is truncated. We also
+    // use checked_mul to defend against `count * type_size` wrapping on
+    // pathological inputs (e.g. count near usize::MAX).
+    let needed = count.checked_mul(type_size).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "float vector size overflowed usize",
+        )
+    })?;
+
+    if bytes.len() < needed {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            format!(
+                "float vector of {count} elements needs {needed} bytes, got {}",
+                bytes.len()
+            ),
+        ));
+    }
+
     let mut vector = Vec::with_capacity(count);
-    for i in (0..(count * type_size)).step_by(4) {
+    for i in (0..needed).step_by(type_size) {
         vector.push(CBytes::new(bytes[i..i + type_size].to_vec()));
     }
 
@@ -186,9 +216,14 @@ pub fn decode_smallint(bytes: &[u8]) -> Result<i16, io::Error> {
 }
 
 // Decodes Cassandra `tinyint` data (bytes)
-#[inline]
 pub fn decode_tinyint(bytes: &[u8]) -> Result<i8, io::Error> {
-    Ok(bytes[0] as i8)
+    // a tinyint is a single signed byte; bail with a descriptive error rather
+    // than panicking when the server hands us an empty value
+    bytes
+        .first()
+        .copied()
+        .map(|b| b as i8)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::UnexpectedEof, "tinyint requires 1 byte"))
 }
 
 // Decodes Cassandra `text` data (bytes)
@@ -400,6 +435,29 @@ mod tests {
     #[test]
     fn decode_tinyint_test() {
         assert_eq!(decode_tinyint(&[10]).unwrap(), 10);
+    }
+
+    #[test]
+    fn decode_tinyint_empty_returns_error_not_panic() {
+        // a tinyint requires at least one byte; an empty slice must surface
+        // as an error rather than panicking on `bytes[0]`
+        assert!(decode_tinyint(&[]).is_err());
+    }
+
+    #[test]
+    fn decode_decimal_short_input_returns_error_not_panic() {
+        // a decimal needs at least 4 bytes for the scale; less than that must
+        // not panic when split_at(INT_LEN) would otherwise be out of bounds
+        assert!(decode_decimal(&[]).is_err());
+        assert!(decode_decimal(&[0, 0, 0]).is_err());
+    }
+
+    #[test]
+    fn decode_float_vector_short_input_returns_error_not_panic() {
+        // a vector of 4 floats requires 16 bytes; anything less must error
+        // instead of panicking on out-of-bounds slice indexing
+        assert!(decode_float_vector(&[], Version::V5, 4).is_err());
+        assert!(decode_float_vector(&[0; 8], Version::V5, 4).is_err());
     }
 
     #[test]
