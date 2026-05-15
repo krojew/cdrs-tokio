@@ -60,6 +60,13 @@ use crate::transport::{CdrsTransport, TransportTcp};
 pub const DEFAULT_TRANSPORT_BUFFER_SIZE: usize = 1024;
 const DEFAULT_EVENT_CHANNEL_CAPACITY: usize = 128;
 
+/// How many times execution will reprepare-and-retry an Unprepared statement
+/// before giving up. Without an upper bound a misbehaving cluster (e.g.
+/// repeatedly evicting prepared statements) could keep us looping
+/// indefinitely. Five attempts is enough to ride out transient schema or
+/// node restarts while still surfacing a real failure to the caller.
+const MAX_REPREPARE_ATTEMPTS: usize = 5;
+
 static DEFAULT_STATEMENT_PARAMETERS: LazyLock<StatementParams> = LazyLock::new(Default::default);
 
 #[inline]
@@ -282,36 +289,53 @@ impl<
                         QueryValues::NamedValues(_) => None,
                     });
 
-            let result = self
-                .send_envelope(
-                    envelope,
-                    parameters.is_idempotent,
-                    keyspace,
-                    parameters.token,
-                    routing_key.as_deref(),
-                    Some(consistency),
-                    parameters.speculative_execution_policy.as_ref(),
-                    parameters.retry_policy.as_ref(),
-                )
-                .await;
+            // Bounded retry loop. Previously this was an unbounded recursive
+            // self-call: if the cluster kept returning Unprepared even after
+            // a successful reprepare (rare but possible during schema/cluster
+            // instability), the client would recurse forever. Capping at
+            // MAX_REPREPARE_ATTEMPTS gives the cluster a few chances to settle
+            // and then surfaces the original error to the caller.
+            let mut attempts_remaining = MAX_REPREPARE_ATTEMPTS;
+            let result = loop {
+                let result = self
+                    .send_envelope(
+                        envelope.clone(),
+                        parameters.is_idempotent,
+                        keyspace,
+                        parameters.token,
+                        routing_key.as_deref(),
+                        Some(consistency),
+                        parameters.speculative_execution_policy.as_ref(),
+                        parameters.retry_policy.as_ref(),
+                    )
+                    .await;
 
-            if let Err(error::Error::Server { body: error, addr }) = &result {
-                // if the query is unprepared
-                if let ErrorType::Unprepared(_) = error.ty {
-                    if let Ok(()) = self
-                        .reprepare(
-                            &prepared.id,
-                            prepared.query.clone(),
-                            keyspace.map(|keyspace| keyspace.to_string()),
-                            parameters,
-                            *addr,
-                        )
-                        .await
-                    {
-                        return self.exec_with_params(prepared, parameters).await;
+                // Try to identify an Unprepared error and the address of the
+                // node that reported it. If we have budget left, reprepare on
+                // that node and retry. Otherwise fall through with the result
+                // we have - good or bad.
+                if let Err(error::Error::Server { body: error, addr }) = &result {
+                    if let ErrorType::Unprepared(_) = error.ty {
+                        if attempts_remaining > 0 {
+                            attempts_remaining -= 1;
+                            if self
+                                .reprepare(
+                                    &prepared.id,
+                                    prepared.query.clone(),
+                                    keyspace.map(|keyspace| keyspace.to_string()),
+                                    parameters,
+                                    *addr,
+                                )
+                                .await
+                                .is_ok()
+                            {
+                                continue;
+                            }
+                        }
                     }
                 }
-            }
+                break result;
+            };
 
             let response = result
                 .as_ref()
@@ -483,50 +507,62 @@ impl<
 
             let envelope = Envelope::new_req_batch(batch.request.clone(), flags, self.version);
 
-            let mut result = self
-                .send_envelope(
-                    envelope,
-                    parameters.is_idempotent,
-                    parameters.keyspace.as_deref(),
-                    None,
-                    None,
-                    Some(consistency),
-                    parameters.speculative_execution_policy.as_ref(),
-                    parameters.retry_policy.as_ref(),
-                )
-                .await;
+            // Bounded retry loop, same rationale as exec_with_params: if the
+            // cluster keeps reporting Unprepared we want to give up cleanly
+            // rather than recurse without bound.
+            let mut attempts_remaining = MAX_REPREPARE_ATTEMPTS;
+            loop {
+                let result = self
+                    .send_envelope(
+                        envelope.clone(),
+                        parameters.is_idempotent,
+                        parameters.keyspace.as_deref(),
+                        None,
+                        None,
+                        Some(consistency),
+                        parameters.speculative_execution_policy.as_ref(),
+                        parameters.retry_policy.as_ref(),
+                    )
+                    .await;
 
-            if let Err(error::Error::Server { body: error, addr }) = &result {
-                // if the query is unprepared
-                if let ErrorType::Unprepared(UnpreparedError { id }) = &error.ty {
-                    let query = match batch.prepared_queries.get(id) {
-                        None => {
-                            warn!(
-                                ?id,
-                                "Cannot find prepared query for unprepared statement in a batch!"
-                            );
+                if let Err(error::Error::Server { body: error, addr }) = &result {
+                    if let ErrorType::Unprepared(UnpreparedError { id }) = &error.ty {
+                        if attempts_remaining == 0 {
+                            // out of retries - return the most recent error
                             return result;
                         }
-                        Some(query) => query,
-                    };
 
-                    let prepare_result = self
-                        .reprepare(
-                            id,
-                            query.query.clone(),
-                            query.keyspace.clone(),
-                            parameters,
-                            *addr,
-                        )
-                        .await;
+                        let query = match batch.prepared_queries.get(id) {
+                            None => {
+                                warn!(
+                                    ?id,
+                                    "Cannot find prepared query for unprepared statement in a batch!"
+                                );
+                                return result;
+                            }
+                            Some(query) => query,
+                        };
 
-                    if let Ok(()) = prepare_result {
-                        result = self.batch_with_params(batch, parameters).await
+                        attempts_remaining -= 1;
+                        let prepare_result = self
+                            .reprepare(
+                                id,
+                                query.query.clone(),
+                                query.keyspace.clone(),
+                                parameters,
+                                *addr,
+                            )
+                            .await;
+
+                        if prepare_result.is_ok() {
+                            // try the batch again with the freshly prepared statement
+                            continue;
+                        }
                     }
                 }
-            }
 
-            result
+                return result;
+            }
         }
         .boxed()
     }
