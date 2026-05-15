@@ -268,13 +268,27 @@ impl Default for GenericFrameDecoder {
 impl GenericFrameDecoder {
     fn extract_non_self_contained_envelopes(&mut self) -> Result<Vec<Envelope>> {
         if let Some(expected_payload_len) = self.expected_payload_len {
-            if self.payload_buffer.len() < expected_payload_len {
+            // The Cassandra wire format encodes the body length in bytes 5..9
+            // of the envelope header (after version/flags/stream/opcode). The
+            // FULL envelope on the wire is therefore ENVELOPE_HEADER_LEN bytes
+            // of header plus expected_payload_len bytes of body, so the buffer
+            // must contain at least that many bytes before we can decode it.
+            // Without this header offset we would attempt to decode while the
+            // body was still partial, lose the partial data on `clear()`, and
+            // mis-frame the next envelope.
+            let total_envelope_len = ENVELOPE_HEADER_LEN + expected_payload_len;
+            if self.payload_buffer.len() < total_envelope_len {
                 return Ok(vec![]);
             }
 
             let envelopes = try_decode_envelopes_without_spare_data(&self.payload_buffer)?;
 
+            // Reset state for the next envelope sequence. Failing to clear
+            // expected_payload_len here meant the previous envelope's size
+            // was used to gate the next one, causing wrong-sized reads or
+            // silent data loss when sizes differed.
             self.payload_buffer.clear();
+            self.expected_payload_len = None;
             return Ok(envelopes);
         }
 
@@ -346,5 +360,70 @@ impl GenericFrameDecoder {
         }
 
         Ok(envelopes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::frame_encoder::{FrameEncoder, UncompressedFrameEncoder};
+    use crate::frame::{Direction, Envelope, Flags, Opcode, Version};
+
+    // Build a body of `size` bytes filled with the supplied byte. We pick the
+    // body size to be larger than PAYLOAD_SIZE_LIMIT so the encoder is forced
+    // to emit non-self-contained frames.
+    fn make_envelope(stream_id: i16, fill: u8, body_size: usize) -> Vec<u8> {
+        Envelope {
+            version: Version::V5,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Query,
+            stream_id,
+            body: vec![fill; body_size],
+            tracing_id: None,
+            warnings: vec![],
+        }
+        .encode_with(Compression::None)
+        .unwrap()
+    }
+
+    // Encode one envelope (which is too large to fit in a single frame) as a
+    // sequence of non-self-contained frames. Each frame has its own header and
+    // CRC trailer so we can simply concatenate them on the wire.
+    fn encode_as_non_self_contained(envelope: &[u8]) -> Vec<u8> {
+        let mut encoder = UncompressedFrameEncoder::default();
+        let mut wire = vec![];
+        let mut start = 0;
+        while start < envelope.len() {
+            let (consumed, frame) = encoder.finalize_non_self_contained(&envelope[start..]);
+            wire.extend_from_slice(frame);
+            start += consumed;
+            encoder.reset();
+        }
+        wire
+    }
+
+    #[test]
+    fn decoder_recovers_two_consecutive_non_self_contained_envelopes() {
+        // Use a body just over PAYLOAD_SIZE_LIMIT so each envelope spans two
+        // frames; the second envelope is deliberately a different (smaller)
+        // size to expose any stale `expected_payload_len` carryover.
+        let envelope_a = make_envelope(1, 0xAA, PAYLOAD_SIZE_LIMIT + 100);
+        let envelope_b = make_envelope(2, 0xBB, PAYLOAD_SIZE_LIMIT + 50);
+
+        let mut wire = encode_as_non_self_contained(&envelope_a);
+        wire.extend_from_slice(&encode_as_non_self_contained(&envelope_b));
+
+        let mut decoder = UncompressedFrameDecoder::default();
+        let envelopes = decoder
+            .consume(&mut wire, Compression::None)
+            .expect("decoder must accept two consecutive non-self-contained envelopes");
+
+        // we expect to recover both envelopes intact, in order
+        assert_eq!(envelopes.len(), 2, "should decode both envelopes");
+        assert_eq!(envelopes[0].stream_id, 1);
+        assert_eq!(envelopes[0].body, vec![0xAA; PAYLOAD_SIZE_LIMIT + 100]);
+        assert_eq!(envelopes[1].stream_id, 2);
+        assert_eq!(envelopes[1].body, vec![0xBB; PAYLOAD_SIZE_LIMIT + 50]);
     }
 }
