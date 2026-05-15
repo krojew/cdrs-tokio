@@ -308,7 +308,11 @@ impl<
             let result = loop {
                 let result = self
                     .send_envelope(
-                        envelope.clone(),
+                        // Borrowed: the bounded reprepare loop may run this
+                        // multiple times; cloning the encoded body each
+                        // iteration would be wasteful for any non-trivial
+                        // EXECUTE payload.
+                        &envelope,
                         parameters.is_idempotent,
                         keyspace,
                         parameters.token,
@@ -433,7 +437,7 @@ impl<
 
         let response = match query_plan {
             None => {
-                self.send_envelope(envelope, true, None, None, None, None, None, None)
+                self.send_envelope(&envelope, true, None, None, None, None, None, None)
                     .await
             }
             Some(query_plan) => send_envelope(
@@ -523,7 +527,8 @@ impl<
             loop {
                 let result = self
                     .send_envelope(
-                        envelope.clone(),
+                        // See exec_with_params - same retry-loop hot path.
+                        &envelope,
                         parameters.is_idempotent,
                         parameters.keyspace.as_deref(),
                         None,
@@ -680,7 +685,7 @@ impl<
         let envelope = Envelope::new_query(query, flags, self.version);
 
         self.send_envelope(
-            envelope,
+            &envelope,
             is_idempotent,
             keyspace.as_deref(),
             token,
@@ -724,10 +729,15 @@ impl<
         self.retry_policy.as_ref()
     }
 
+    // Take envelope by reference: send_envelope dispatches it (potentially
+    // multiple times across speculative execution and per-node retry) but
+    // never needs ownership. Keeping it borrowed lets retry loops in callers
+    // (e.g. the bounded reprepare loop) avoid an unnecessary `Vec<u8>` clone
+    // of the encoded body on every iteration.
     #[allow(clippy::too_many_arguments)]
     async fn send_envelope(
         &self,
-        envelope: Envelope,
+        envelope: &Envelope,
         is_idempotent: bool,
         keyspace: Option<&str>,
         token: Option<Murmur3Token>,
@@ -794,7 +804,7 @@ impl<
                 let mut async_tasks = FuturesUnordered::new();
                 async_tasks.push(send_envelope(
                     &shared_query_plan,
-                    &envelope,
+                    envelope,
                     is_idempotent,
                     retry_policy.new_session(),
                 ));
@@ -819,7 +829,7 @@ impl<
                                 context.running_executions += 1;
                                 async_tasks.push(send_envelope(
                                     &shared_query_plan,
-                                    &envelope,
+                                    envelope,
                                     is_idempotent,
                                     retry_policy.new_session(),
                                 ));
@@ -852,7 +862,7 @@ impl<
             }
             _ => send_envelope(
                 query_plan.nodes.into_iter(),
-                &envelope,
+                envelope,
                 is_idempotent,
                 retry_policy.new_session(),
             )
