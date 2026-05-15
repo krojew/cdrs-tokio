@@ -900,8 +900,17 @@ impl<
         );
 
         let (init_complete_sender, init_complete_receiver) = tokio::sync::oneshot::channel();
-        let control_connection_handle = tokio::spawn(control_connection.run(init_complete_sender));
+        // Wrap the JoinHandle in a guard so that if any error path below
+        // returns early, the spawned control-connection task is aborted
+        // rather than left running for the lifetime of the runtime. tokio's
+        // JoinHandle does not abort on drop. Once we successfully reach the
+        // Ok(Session { ... }) below, into_inner() releases the guard and
+        // ownership passes to the Session struct (whose own Drop impl
+        // aborts the handle on session shutdown).
+        let control_connection_handle =
+            AbortOnDropHandle::new(tokio::spawn(control_connection.run(init_complete_sender)));
         if init_complete_receiver.await.is_err() {
+            // guard drops here -> task aborted, no leak
             return Err(SessionBuildError::SessionInitFailed);
         }
 
@@ -910,7 +919,7 @@ impl<
             keyspace_holder,
             retry_policy,
             speculative_execution_policy,
-            control_connection_handle,
+            control_connection_handle: control_connection_handle.into_inner(),
             event_sender,
             cluster_metadata_manager,
             _transport: Default::default(),
@@ -1435,10 +1444,43 @@ impl<
     }
 }
 
+/// RAII guard that aborts a spawned task if the guard is dropped without
+/// being explicitly released via [`Self::into_inner`].
+///
+/// Used during session construction so that if Session::new returns Err
+/// before reaching the final `Ok(Session { ... })` (which moves the
+/// JoinHandle into the struct), the spawned background task is cleaned up
+/// instead of being leaked. tokio's JoinHandle does not abort on drop by
+/// default, so the dropped handle would otherwise let the task keep
+/// running for the lifetime of the runtime.
+struct AbortOnDropHandle(Option<JoinHandle<()>>);
+
+impl AbortOnDropHandle {
+    fn new(handle: JoinHandle<()>) -> Self {
+        Self(Some(handle))
+    }
+
+    /// Releases ownership of the inner JoinHandle. The Drop impl becomes a
+    /// no-op for this guard, so the caller is now responsible for the task's
+    /// lifecycle.
+    fn into_inner(mut self) -> JoinHandle<()> {
+        self.0.take().expect("AbortOnDropHandle inner cannot be None")
+    }
+}
+
+impl Drop for AbortOnDropHandle {
+    fn drop(&mut self) {
+        if let Some(handle) = self.0.take() {
+            handle.abort();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::cluster::session::prepare_flags;
+    use crate::cluster::session::{prepare_flags, AbortOnDropHandle};
     use cassandra_protocol::frame::Flags;
+    use tokio::task::JoinHandle;
 
     #[test]
     fn prepare_flags_test() {
@@ -1450,5 +1492,60 @@ mod tests {
         assert!(all.contains(Flags::TRACING));
         assert!(all.contains(Flags::WARNING));
         assert!(all.contains(Flags::BETA));
+    }
+
+
+    // The drop guard wraps a JoinHandle so that if Session::new returns
+    // early (e.g. init never completes), the spawned control connection
+    // task is aborted instead of left running indefinitely.
+    #[tokio::test]
+    async fn abort_on_drop_handle_aborts_when_dropped() {
+        // Spawn a task that will run forever unless aborted. Hold an
+        // AbortHandle on the side so we can observe whether the inner
+        // JoinHandle was actually aborted after the guard drops.
+        let task: JoinHandle<()> = tokio::spawn(async {
+            std::future::pending::<()>().await;
+        });
+        let abort_observer = task.abort_handle();
+
+        // Wrap the JoinHandle in a guard, then immediately drop the guard
+        // without releasing it. The task should be aborted.
+        {
+            let _guard = AbortOnDropHandle::new(task);
+        }
+
+        // Give the runtime a chance to process the abort.
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+        assert!(
+            abort_observer.is_finished(),
+            "task must be aborted after AbortOnDropHandle drops"
+        );
+    }
+
+    // The "happy path" - if the caller releases the guard via into_inner,
+    // the task must NOT be aborted; it has been transferred to the caller's
+    // ownership (typically stored in the constructed Session).
+    #[tokio::test]
+    async fn abort_on_drop_handle_does_not_abort_when_released() {
+        let task: JoinHandle<()> = tokio::spawn(async {
+            std::future::pending::<()>().await;
+        });
+        let abort_observer = task.abort_handle();
+
+        let guard = AbortOnDropHandle::new(task);
+        // Release the inner handle - guard's Drop must become a no-op now.
+        let released = guard.into_inner();
+
+        // Task should still be running.
+        tokio::task::yield_now().await;
+        assert!(
+            !abort_observer.is_finished(),
+            "task must keep running after into_inner"
+        );
+
+        // Cleanup: now we abort it explicitly.
+        released.abort();
     }
 }
