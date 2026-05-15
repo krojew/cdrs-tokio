@@ -29,7 +29,7 @@ impl Udt {
         let mut data: HashMap<String, (ColTypeOption, CBytes)> =
             HashMap::with_capacity(metadata.descriptions.len());
 
-        for ((name, val_type), val_b) in metadata.descriptions.iter().zip(fields.into_iter()) {
+        for ((name, val_type), val_b) in metadata.descriptions.iter().zip(fields) {
             data.insert(name.clone(), (val_type.clone(), val_b));
         }
         Udt {
