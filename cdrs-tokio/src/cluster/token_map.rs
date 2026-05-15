@@ -51,29 +51,62 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
         }
     }
 
-    /// Returns local nodes starting at given token and going in the direction of replicas.
+    /// Returns up to `replica_count` distinct nodes starting at the given token
+    /// and walking the token ring in the direction of replicas.
+    ///
+    /// With vnodes, a single physical node owns many tokens, so a naive walk
+    /// can return the same node many times in a row. Cassandra's replication
+    /// algorithm picks DISTINCT endpoints, so we dedup on each node's
+    /// broadcast RPC address as we walk and stop once we've collected enough.
     pub fn nodes_for_token_capped(
         &self,
         token: Murmur3Token,
         replica_count: usize,
     ) -> impl Iterator<Item = Arc<Node<T, CM>>> + '_ {
+        // Iterate ring positions starting from `token` and wrap around. We
+        // can't use `Iterator::take(replica_count)` directly because
+        // `replica_count` counts unique nodes, not ring positions.
+        //
+        // The set tracks broadcast RPC addresses we've already yielded; this
+        // matches the identity used elsewhere in the load balancer
+        // (`unique_by(|node| node.broadcast_rpc_address())`).
+        let mut seen = std::collections::HashSet::with_capacity(replica_count);
         self.token_ring
             .range(token..)
             .chain(self.token_ring.iter())
-            .take(replica_count)
-            .map(|(_, node)| node.clone())
+            .filter_map(move |(_, node)| {
+                if seen.len() >= replica_count {
+                    // already collected the requested number of replicas
+                    return None;
+                }
+                if seen.insert(node.broadcast_rpc_address()) {
+                    Some(node.clone())
+                } else {
+                    None
+                }
+            })
     }
 
-    /// Returns local nodes starting at given token and going in the direction of replicas.
+    /// Returns all distinct nodes starting at the given token and walking the
+    /// token ring in the direction of replicas.
+    ///
+    /// As with `nodes_for_token_capped`, the dedup is on broadcast RPC
+    /// address so a node owning many vnode tokens still appears only once.
     pub fn nodes_for_token(
         &self,
         token: Murmur3Token,
     ) -> impl Iterator<Item = Arc<Node<T, CM>>> + '_ {
+        let mut seen = std::collections::HashSet::new();
         self.token_ring
             .range(token..)
             .chain(self.token_ring.iter())
-            .take(self.token_ring.len())
-            .map(|(_, node)| node.clone())
+            .filter_map(move |(_, node)| {
+                if seen.insert(node.broadcast_rpc_address()) {
+                    Some(node.clone())
+                } else {
+                    None
+                }
+            })
     }
 
     /// Creates a new map with a new node inserted.
@@ -139,12 +172,14 @@ mod tests {
             Arc::new(reconnection_policy),
         ));
 
+        // each node gets a distinct broadcast RPC address so that dedup by
+        // endpoint inside the token map can distinguish them
         let mut nodes = NodeMap::default();
         nodes.insert(
             *HOST_ID_1,
             Arc::new(Node::new(
                 connection_pool_factory.clone(),
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 8080),
                 None,
                 Some(*HOST_ID_1),
                 None,
@@ -174,7 +209,7 @@ mod tests {
             *HOST_ID_3,
             Arc::new(Node::new(
                 connection_pool_factory,
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 8080),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 3)), 8080),
                 None,
                 Some(*HOST_ID_3),
                 None,
@@ -205,8 +240,11 @@ mod tests {
 
     #[test]
     fn should_return_replicas_in_order() {
+        // ring walk from token 0 visits HOST_ID_1's primary token (0), then
+        // HOST_ID_3's tokens (1, 2, 10), then HOST_ID_2 (20). Replicas must be
+        // distinct so we expect each node exactly once.
         verify_tokens(
-            &[*HOST_ID_1, *HOST_ID_3, *HOST_ID_3, *HOST_ID_3, *HOST_ID_2],
+            &[*HOST_ID_1, *HOST_ID_3, *HOST_ID_2],
             Murmur3Token::new(0),
         );
     }
@@ -216,10 +254,44 @@ mod tests {
         verify_tokens(&[*HOST_ID_3, *HOST_ID_2], Murmur3Token::new(3));
     }
 
+    // Cassandra's replication algorithm picks replicas as DISTINCT endpoints
+    // walking the ring. With vnodes, a single physical node owns many tokens
+    // and the same node can appear multiple consecutive ring positions, so
+    // simply taking the first N tokens would return the same physical replica
+    // multiple times - which is wrong: a "replica" is a copy on a different
+    // node, not on the same one.
+    #[test]
+    fn should_return_distinct_nodes_as_replicas() {
+        let token_map = TokenMap::new(&prepare_nodes());
+
+        // there are only 3 distinct nodes in the ring - asking for 5 replicas
+        // must yield those 3 nodes once each, not the same node padded out.
+        let nodes = token_map
+            .nodes_for_token_capped(Murmur3Token::new(0), 5)
+            .collect_vec();
+        let host_ids: Vec<_> = nodes.iter().map(|n| n.host_id().unwrap()).collect();
+        assert_eq!(host_ids, vec![*HOST_ID_1, *HOST_ID_3, *HOST_ID_2]);
+    }
+
+    #[test]
+    fn should_cap_replica_count_when_smaller_than_distinct_nodes() {
+        let token_map = TokenMap::new(&prepare_nodes());
+
+        // when fewer replicas than distinct nodes are requested, the iterator
+        // should stop at exactly that count (no need to enumerate the rest).
+        let nodes = token_map
+            .nodes_for_token_capped(Murmur3Token::new(0), 2)
+            .collect_vec();
+        let host_ids: Vec<_> = nodes.iter().map(|n| n.host_id().unwrap()).collect();
+        assert_eq!(host_ids, vec![*HOST_ID_1, *HOST_ID_3]);
+    }
+
     #[test]
     fn should_return_replicas_in_a_ring() {
+        // starting at token 20 we hit HOST_ID_2 first, then wrap around to the
+        // smaller tokens which belong to HOST_ID_1, then to HOST_ID_3.
         verify_tokens(
-            &[*HOST_ID_2, *HOST_ID_1, *HOST_ID_1, *HOST_ID_1, *HOST_ID_3],
+            &[*HOST_ID_2, *HOST_ID_1, *HOST_ID_3],
             Murmur3Token::new(20),
         );
     }
