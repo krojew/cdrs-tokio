@@ -274,20 +274,28 @@ impl GenericFrameDecoder {
             // of header plus expected_payload_len bytes of body, so the buffer
             // must contain at least that many bytes before we can decode it.
             // Without this header offset we would attempt to decode while the
-            // body was still partial, lose the partial data on `clear()`, and
-            // mis-frame the next envelope.
+            // body was still partial, lose the partial data on the buffer
+            // truncation below, and mis-frame the next envelope.
             let total_envelope_len = ENVELOPE_HEADER_LEN + expected_payload_len;
             if self.payload_buffer.len() < total_envelope_len {
                 return Ok(vec![]);
             }
 
-            let envelopes = try_decode_envelopes_without_spare_data(&self.payload_buffer)?;
+            // Use extract_envelopes directly so we know exactly how many bytes
+            // got consumed. drain(..consumed) preserves any trailing bytes
+            // that may belong to the next envelope - they could legitimately
+            // be there if a producer packed bytes from envelope N+1 into the
+            // tail of the non-self-contained sequence for envelope N. The
+            // previous code simply called clear() and silently lost them.
+            let (consumed, envelopes) =
+                extract_envelopes(&self.payload_buffer, Compression::None)?;
+            self.payload_buffer.drain(..consumed);
 
-            // Reset state for the next envelope sequence. Failing to clear
-            // expected_payload_len here meant the previous envelope's size
-            // was used to gate the next one, causing wrong-sized reads or
-            // silent data loss when sizes differed.
-            self.payload_buffer.clear();
+            // Reset envelope-tracking state so the next call re-parses the
+            // body length from whatever envelope header remains at the start
+            // of the buffer (or waits for one if the buffer is empty / a
+            // partial header). Without this reset the next sequence would be
+            // gated against the previous envelope's length.
             self.expected_payload_len = None;
             return Ok(envelopes);
         }
@@ -425,5 +433,56 @@ mod tests {
         assert_eq!(envelopes[0].body, vec![0xAA; PAYLOAD_SIZE_LIMIT + 100]);
         assert_eq!(envelopes[1].stream_id, 2);
         assert_eq!(envelopes[1].body, vec![0xBB; PAYLOAD_SIZE_LIMIT + 50]);
+    }
+
+
+    // The reviewer pointed out a defensive gap: when payload_buffer holds a
+    // complete envelope plus the start of the next envelope (because a
+    // hypothetical producer packed bytes across envelope boundaries inside
+    // non-self-contained frames), the previous code called clear() on the
+    // buffer after decoding the first envelope, losing the trailing bytes
+    // that begin the next envelope.
+    //
+    // We construct that exact scenario by hand-packing one non-self-contained
+    // frame whose payload is `envelope_a + envelope_b[..partial]`, followed
+    // by another non-self-contained frame carrying `envelope_b[partial..]`.
+    // A correct decoder must reconstruct both envelopes; a buggy one drops
+    // envelope_b's prefix on `clear()` and then fails to parse the second
+    // envelope from a misaligned start.
+    #[test]
+    fn decoder_preserves_trailing_bytes_across_non_self_contained_frames() {
+        let envelope_a = make_envelope(1, 0xAA, 100);
+        let envelope_b = make_envelope(2, 0xBB, 200);
+
+        // Frame 1 carries envelope_a in full PLUS the first 100 bytes of
+        // envelope_b. Both fit comfortably under PAYLOAD_SIZE_LIMIT, so
+        // finalize_non_self_contained packs them into a single frame.
+        let half_b = 100usize;
+        let mut packed = envelope_a.clone();
+        packed.extend_from_slice(&envelope_b[..half_b]);
+
+        let mut encoder = UncompressedFrameEncoder::default();
+        let (consumed, frame1_slice) = encoder.finalize_non_self_contained(&packed);
+        assert_eq!(consumed, packed.len(), "test setup: whole packed slice must fit");
+        let frame1: Vec<u8> = frame1_slice.to_vec();
+        encoder.reset();
+
+        // Frame 2 carries the remaining bytes of envelope_b.
+        let (_, frame2_slice) = encoder.finalize_non_self_contained(&envelope_b[half_b..]);
+        let frame2: Vec<u8> = frame2_slice.to_vec();
+
+        let mut wire = frame1;
+        wire.extend_from_slice(&frame2);
+
+        let mut decoder = UncompressedFrameDecoder::default();
+        let envelopes = decoder
+            .consume(&mut wire, Compression::None)
+            .expect("decoder must accept the cross-boundary packed frames");
+
+        assert_eq!(envelopes.len(), 2, "both envelopes must be recovered");
+        assert_eq!(envelopes[0].stream_id, 1);
+        assert_eq!(envelopes[0].body, vec![0xAA; 100]);
+        assert_eq!(envelopes[1].stream_id, 2);
+        assert_eq!(envelopes[1].body, vec![0xBB; 200]);
     }
 }
