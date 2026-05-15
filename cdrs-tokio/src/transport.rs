@@ -722,6 +722,14 @@ impl ResponseHandlerMap {
         // computes both the value to return AND the next counter state keeps
         // every returned id strictly inside the allowed range and skips no
         // ids on wrap.
+        //
+        // Memory ordering: the caller publishes the freshly-allocated
+        // stream id by writing it into the request body and then registering
+        // a handler in the Mutex-protected stream_handlers map. The Mutex
+        // already provides the necessary happens-before for the reader, so
+        // Relaxed would be sufficient today; we use Release on the success
+        // leg as defence in depth so any future change to a lock-free
+        // handler map keeps the publish ordering intact.
         loop {
             let current = self.available_stream_id.load(Ordering::Relaxed);
             let (return_value, new_value) = if current < INITIAL_STREAM_ID {
@@ -742,7 +750,7 @@ impl ResponseHandlerMap {
                 .compare_exchange_weak(
                     current,
                     new_value,
-                    Ordering::Relaxed,
+                    Ordering::Release,
                     Ordering::Relaxed,
                 )
                 .is_ok()
