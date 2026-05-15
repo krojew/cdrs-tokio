@@ -261,10 +261,16 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         replica_count: usize,
         cluster: &ClusterMetadata<T, CM>,
     ) -> QueryPlan<T, CM> {
+        // Walk the ring filtering ignored nodes BEFORE taking replica_count.
+        // Filtering after a cap (the previous behaviour) silently shrinks the
+        // replica set whenever the natural ring positions for `token` happen
+        // to land on ignored nodes, leaving the query plan to fall back to
+        // unrelated round-robin nodes for the leading slots.
         let mut replicas = cluster
             .token_map()
-            .nodes_for_token_capped(token, replica_count)
+            .nodes_for_token(token)
             .filter(|node| !node.is_ignored())
+            .take(replica_count)
             .collect_vec();
 
         replicas.shuffle(&mut rng());
@@ -585,6 +591,61 @@ mod tests {
                 || query_plan.nodes[1].host_id().unwrap() == *HOST_ID_4
         );
         assert!(query_plan.nodes.iter().all(|node| !node.is_ignored()));
+    }
+
+
+    // Same bug shape that network_topology_strategy_replicas had, but in
+    // simple_strategy_replicas: when the natural ring walk starts on ignored
+    // nodes, capping the iteration at replica_count BEFORE the unignored
+    // filter strips the ignored ones away leaves us with fewer real replicas
+    // than the configured replication factor. The fix must take replicas
+    // among unignored nodes, so the query plan still leads with real
+    // candidates.
+    //
+    // The test cluster has two ignored nodes at tokens 8 and 9. Walking from
+    // token 8 with RF=2 (keyspace k1) hits those ignored nodes first; the
+    // pre-fix code would drop them and the query plan would start with
+    // round-robin unignored fallbacks instead of the actual ring replicas
+    // (HOST_ID_5 at token 0 and HOST_ID_1 at token 1).
+    #[test]
+    fn simple_strategy_uses_unignored_nodes_when_ring_starts_on_ignored() {
+        let cluster = create_cluster();
+        let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
+
+        let query_plan = lb.query_plan(
+            Some(Request::new(
+                Some("k1"), // SimpleStrategy with replication_factor: 2
+                Some(Murmur3Token::new(8)),
+                None,
+                None,
+            )),
+            &cluster,
+        );
+
+        // Every node returned must be unignored
+        assert!(query_plan.nodes.iter().all(|node| !node.is_ignored()));
+
+        // The first two slots are the natural replicas - HOST_ID_5 (the
+        // unignored node at the next ring position past 8) and HOST_ID_1
+        // (the unignored node after that). Neither should be displaced by
+        // a round-robin fallback just because two ignored nodes happened to
+        // sit in the way.
+        let leading_two: Vec<_> = query_plan
+            .nodes
+            .iter()
+            .take(2)
+            .map(|node| node.host_id().unwrap())
+            .collect();
+        assert!(
+            leading_two.contains(&*HOST_ID_5),
+            "expected HOST_ID_5 in the leading replicas, got {:?}",
+            leading_two
+        );
+        assert!(
+            leading_two.contains(&*HOST_ID_1),
+            "expected HOST_ID_1 in the leading replicas, got {:?}",
+            leading_two
+        );
     }
 
     #[test]
