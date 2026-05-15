@@ -80,7 +80,13 @@ async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
     // Use cursor to get tracing id, warnings and actual body
     let mut body_cursor = Cursor::new(full_body.as_slice());
 
-    let tracing_id = if flags.contains(Flags::TRACING) {
+    // The TRACING flag has different semantics in each direction: in a request
+    // it is the client asking the server to enable tracing; in a response it
+    // signals that the body starts with a 16-byte tracing UUID. Reading that
+    // UUID on the wrong direction (which the previous code did) would silently
+    // consume the first 16 bytes of a request body. Match the canonical
+    // Envelope::from_buffer parser by gating on direction too.
+    let tracing_id = if flags.contains(Flags::TRACING) && direction == Direction::Response {
         let mut tracing_bytes = [0; UUID_LEN];
         std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes)?;
 
@@ -178,5 +184,42 @@ mod tests {
 
         let mut reader = payload.as_slice();
         assert!(parse_raw_envelope(&mut reader, Compression::None).await.is_err());
+    }
+
+    // Per the Cassandra protocol spec, the TRACING flag in a REQUEST asks the
+    // server to enable tracing and carries no payload metadata. The
+    // tracing_id UUID only appears in RESPONSES. parse_raw_envelope used to
+    // attempt to read 16 bytes of tracing UUID whenever the TRACING flag was
+    // set regardless of direction, which is inconsistent with the canonical
+    // Envelope::from_buffer parser and would corrupt the body on a request.
+    #[tokio::test]
+    async fn parse_envelope_does_not_read_tracing_id_for_request_direction() {
+        // Build a request envelope (direction bit clear in byte 0) with
+        // TRACING set and exactly 16 bytes of body. After parsing, the body
+        // must come back intact - no bytes consumed as a tracing UUID.
+        let body: Vec<u8> = (0..16u8).collect();
+        let mut wire = vec![
+            // version 4, direction = Request (0x80 bit clear)
+            u8::from(Version::V4),
+            // TRACING flag (0x02)
+            Flags::TRACING.bits(),
+            // stream id
+            0, 0,
+            // opcode - any valid request opcode (Query)
+            u8::from(Opcode::Query),
+        ];
+        wire.extend_from_slice(&(body.len() as i32).to_be_bytes());
+        wire.extend_from_slice(&body);
+
+        let mut reader = wire.as_slice();
+        let envelope = parse_raw_envelope(&mut reader, Compression::None)
+            .await
+            .expect("a request envelope with TRACING flag must still parse");
+
+        assert_eq!(envelope.direction, Direction::Request);
+        assert!(envelope.tracing_id.is_none(),
+            "request envelopes must not carry a tracing UUID");
+        assert_eq!(envelope.body, body,
+            "request body should be preserved verbatim, got {:?}", envelope.body);
     }
 }
