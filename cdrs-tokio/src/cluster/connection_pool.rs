@@ -171,6 +171,14 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                 self.config.remote_size
             });
 
+        // Clone the keyspace receiver BEFORE opening any connections. The
+        // receiver remembers the watch's current value at clone time as
+        // "seen". If we cloned it after pool initialisation, an update that
+        // landed in between would be visible at clone time and changed()
+        // would never fire for it - leaving the freshly-opened connections
+        // stuck on the previous keyspace.
+        let mut keyspace_receiver = self.keyspace_receiver.clone();
+
         let pool = Arc::new(
             ConnectionPool::new(
                 &self.connection_manager,
@@ -198,8 +206,6 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
             self.version,
         );
 
-        // watch for keyspace changes
-        let mut keyspace_receiver = self.keyspace_receiver.clone();
         let weak_pool_for_keyspace = weak_pool.clone();
         let version = self.version;
 
