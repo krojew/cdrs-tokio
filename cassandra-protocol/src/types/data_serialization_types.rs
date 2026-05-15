@@ -19,22 +19,32 @@ use crate::types::{
 
 const FALSE_BYTE: u8 = 0;
 
-// Decodes Cassandra `ascii` data (bytes)
+// Decodes Cassandra `custom` data (bytes)
 #[inline]
 pub fn decode_custom(bytes: &[u8]) -> Result<String, FromUtf8Error> {
-    Ok(String::from_utf8_lossy(bytes).into_owned())
+    // Use from_utf8 (not from_utf8_lossy) so invalid input surfaces as an
+    // error matching the function's signature, instead of silently
+    // substituting replacement characters.
+    String::from_utf8(bytes.to_vec())
 }
 
 // Decodes Cassandra `ascii` data (bytes)
 #[inline]
 pub fn decode_ascii(bytes: &[u8]) -> Result<String, FromUtf8Error> {
-    Ok(String::from_utf8_lossy(bytes).into_owned())
+    // ASCII is a subset of UTF-8; from_utf8 will accept any valid 7-bit
+    // ASCII and reject anything outside it, instead of silently lossy-
+    // converting bytes the server should never have sent.
+    String::from_utf8(bytes.to_vec())
 }
 
 // Decodes Cassandra `varchar` data (bytes)
 #[inline]
 pub fn decode_varchar(bytes: &[u8]) -> Result<String, FromUtf8Error> {
-    Ok(String::from_utf8_lossy(bytes).into_owned())
+    // Use from_utf8 (not from_utf8_lossy): the function signature already
+    // promises FromUtf8Error, and lossy conversion would silently corrupt
+    // data instead of letting the caller decide how to handle invalid
+    // input from the server.
+    String::from_utf8(bytes.to_vec())
 }
 
 // Decodes Cassandra `bigint` data (bytes)
@@ -236,7 +246,9 @@ pub fn decode_tinyint(bytes: &[u8]) -> Result<i8, io::Error> {
 // Decodes Cassandra `text` data (bytes)
 #[inline]
 pub fn decode_text(bytes: &[u8]) -> Result<String, FromUtf8Error> {
-    Ok(String::from_utf8_lossy(bytes).into_owned())
+    // Same rationale as decode_varchar - actually return an error on
+    // invalid UTF-8 instead of pretending success with replacement chars.
+    String::from_utf8(bytes.to_vec())
 }
 
 // Decodes Cassandra `time` data (bytes)
@@ -500,6 +512,35 @@ mod tests {
     #[test]
     fn decode_text_test() {
         assert_eq!(decode_text(b"abcba").unwrap(), "abcba");
+    }
+
+
+    // The decode_* string functions advertise a Result<String, FromUtf8Error>
+    // signature but used String::from_utf8_lossy and could therefore never
+    // actually return Err - invalid UTF-8 was silently replaced with U+FFFD
+    // characters, swallowing data corruption. Promote invalid UTF-8 to a
+    // real error so callers can decide how to handle it.
+    #[test]
+    fn decode_string_returns_error_on_invalid_utf8() {
+        // 0xFF is not valid in any UTF-8 byte position
+        let bad: &[u8] = &[0xFF];
+
+        assert!(
+            decode_text(bad).is_err(),
+            "decode_text must surface invalid UTF-8 as an error"
+        );
+        assert!(
+            decode_varchar(bad).is_err(),
+            "decode_varchar must surface invalid UTF-8 as an error"
+        );
+        assert!(
+            decode_ascii(bad).is_err(),
+            "decode_ascii must surface invalid UTF-8 as an error"
+        );
+        assert!(
+            decode_custom(bad).is_err(),
+            "decode_custom must surface invalid UTF-8 as an error"
+        );
     }
 
     #[test]
