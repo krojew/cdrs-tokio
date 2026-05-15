@@ -151,11 +151,31 @@ impl Compression {
     }
 
     fn decode_lz4(bytes: Vec<u8>) -> Result<Vec<u8>> {
+        // lz4 wire format prepends a 4-byte big-endian uncompressed length so
+        // the decoder knows how much memory to allocate. Validate length before
+        // slicing to avoid panics on truncated input.
+        if bytes.len() < 4 {
+            return Err(CompressionError::Lz4(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "lz4 payload missing 4-byte uncompressed length header",
+            )));
+        }
+
         let uncompressed_size = i32::from_be_bytes(
             bytes[..4]
                 .try_into()
                 .map_err(|error| CompressionError::Lz4(io::Error::other(error)))?,
         );
+
+        // a negative size is impossible for a real payload; without this check
+        // the `as usize` cast would silently turn it into ~2 GB+ and ask
+        // lz4_flex to allocate a buffer that size before any decoding begins.
+        if uncompressed_size < 0 {
+            return Err(CompressionError::Lz4(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("negative uncompressed size {uncompressed_size}"),
+            )));
+        }
 
         lz4_flex::decompress(&bytes[4..], uncompressed_size as usize)
             .map_err(|error| CompressionError::Lz4(io::Error::other(error)))
@@ -324,6 +344,27 @@ mod tests {
         let lz4_compression = Compression::Lz4;
         let decode = lz4_compression.decode(vec![0, 0, 0, 0x7f]);
         assert!(decode.is_err());
+    }
+
+    #[test]
+    fn test_compression_decode_lz4_short_input_is_error_not_panic() {
+        // the lz4 wire format prepends a 4-byte big-endian uncompressed size;
+        // a payload shorter than that header must surface as an error rather
+        // than panicking on `bytes[..4]` slicing.
+        let lz4_compression = Compression::Lz4;
+        assert!(lz4_compression.decode(vec![]).is_err());
+        assert!(lz4_compression.decode(vec![1, 2, 3]).is_err());
+    }
+
+    #[test]
+    fn test_compression_decode_lz4_negative_size_is_error_not_oom() {
+        // a negative i32 uncompressed length cast through `as usize` becomes
+        // a huge value (~2 GB+) and would otherwise hand lz4_flex an absurd
+        // allocation request - guard against that.
+        let lz4_compression = Compression::Lz4;
+        // -1 in big-endian i32 followed by a dummy compressed byte
+        let bytes = vec![0xff, 0xff, 0xff, 0xff, 0];
+        assert!(lz4_compression.decode(bytes).is_err());
     }
 
     #[test]
