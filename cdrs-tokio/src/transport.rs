@@ -618,6 +618,14 @@ impl AsyncTransport {
         .await?;
 
         frame_encoder.reset();
+
+        // Drop the stream ids that just left over the wire. Their handlers
+        // are now waiting for actual server responses (or the connection
+        // tearing down), and must NOT be notified of write failures from a
+        // *subsequent* frame in the same batch. Without this clear we'd
+        // accumulate stream ids across every flushed frame and a single late
+        // write error would falsely fail every previously-sent envelope.
+        frame_stream_ids.clear();
         Ok(())
     }
 
@@ -627,8 +635,19 @@ impl AsyncTransport {
         frame_stream_ids: &mut Vec<StreamId>,
         frame: &[u8],
     ) -> Result<()> {
+        // If the underlying socket write fails, fan the error out to every
+        // handler whose envelope is in this frame, and then propagate the
+        // failure so the writer task can shut down cleanly. The previous
+        // implementation returned Ok(()) here, swallowing the original write
+        // error, so the writer would happily keep looping on a dead socket.
         if let Err(error) = write_half.write_all(frame).await {
-            Self::notify_error_handlers(response_handler_map, frame_stream_ids, error.into())?;
+            let propagated: Error = error.into();
+            Self::notify_error_handlers(
+                response_handler_map,
+                frame_stream_ids,
+                propagated.clone(),
+            )?;
+            return Err(propagated);
         }
 
         Ok(())
@@ -747,6 +766,51 @@ impl Request {
     #[inline]
     fn set_stream_id(&mut self, stream_d: StreamId) {
         self.data[2..4].copy_from_slice(&stream_d.to_be_bytes());
+    }
+}
+
+#[cfg(test)]
+mod write_buffer_tests {
+    use super::*;
+    use cassandra_protocol::frame::frame_encoder::UncompressedFrameEncoder;
+    use tokio::io::sink;
+
+    // Verifies that once a frame has been successfully written, the stream
+    // ids that were aggregated into that frame are dropped from the
+    // bookkeeping vector. Otherwise a later write failure would notify those
+    // handlers - whose envelopes have already been sent and may yet receive
+    // a real server response - with a spurious "Write channel failure".
+    #[tokio::test]
+    async fn write_self_contained_frame_clears_stream_ids_on_success() {
+        let map = ResponseHandlerMap::new();
+        let mut sink = sink();
+        let mut encoder: Box<dyn FrameEncoder + Send + Sync> =
+            Box::new(UncompressedFrameEncoder::default());
+
+        // Pretend two envelopes' worth of work has been added to the encoder.
+        // We don't actually need to register handlers on the map for this
+        // test - we're checking that the frame_stream_ids buffer is emptied
+        // once the frame goes out, regardless of map state.
+        encoder.add_envelope(vec![0; 16]);
+        let mut frame_stream_ids: Vec<StreamId> = vec![1, 2];
+
+        AsyncTransport::write_self_contained_frame(
+            &mut sink,
+            &map,
+            &mut frame_stream_ids,
+            encoder.as_mut(),
+        )
+        .await
+        .expect("sink writes always succeed");
+
+        // After a successful frame write the vector must be empty so the
+        // *next* frame's failure can't accidentally notify handlers from
+        // already-sent frames.
+        assert!(
+            frame_stream_ids.is_empty(),
+            "frame_stream_ids should be empty after successful write, was {:?}",
+            frame_stream_ids
+        );
     }
 }
 
