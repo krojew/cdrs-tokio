@@ -399,9 +399,13 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     async fn process_topology_event(&self, event: TopologyChange) {
-        let metadata = self.metadata.load().clone();
         match event.change_type {
             TopologyChangeType::NewNode => {
+                // For NewNode we need an async metadata fetch (system.peers
+                // lookup) before we can decide what to install, so we have to
+                // start by snapshotting the current cluster state. The
+                // subsequent add_new_node call performs its own atomic swap.
+                let metadata = self.metadata.load().clone();
                 if metadata.has_node_by_rpc_address(event.addr) {
                     debug!(
                         broadcast_rpc_address = %event.addr,
@@ -413,74 +417,96 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 }
             }
             TopologyChangeType::RemovedNode => {
-                if metadata.has_node_by_rpc_address(event.addr) {
-                    debug!(broadcast_rpc_address = %event.addr, "Removing node from cluster.");
-
-                    self.metadata
-                        .store(Arc::new(metadata.clone_without_node(event.addr)));
-                } else {
-                    debug!(
-                        broadcast_rpc_address = %event.addr,
-                        "Trying to remove a node outside the cluster."
-                    );
-                }
+                // RemovedNode is a pure transform - use rcu so a concurrent
+                // metadata update (e.g. another event landing at the same
+                // time) isn't lost between load() and store().
+                debug!(broadcast_rpc_address = %event.addr, "Removing node from cluster (if present).");
+                self.metadata
+                    .rcu(|metadata| Arc::new(metadata.clone_without_node(event.addr)));
             }
             _ => warn!(?event, "Unrecognized topology change type."),
         }
     }
 
     async fn process_status_event(&self, event: StatusChange) {
-        let metadata = self.metadata.load().clone();
-        let node = metadata.find_node_by_rpc_address(event.addr);
         match event.change_type {
             StatusChangeType::Up => {
-                if let Some(node) = node {
-                    if node.state() != NodeState::Up {
-                        debug!(?node, "Setting existing node state to up.");
-
-                        // node was down or in an unknown state
-                        let node = node.clone_with_node_state(NodeState::Up);
-                        self.metadata
-                            .store(Arc::new(metadata.clone_with_node(node)));
-                    } else {
-                        debug!(?node, "Ignoring up node event for already up node.");
-                    }
+                // We need an async fallback (add_new_node) when the node is
+                // unknown to us, so the existing-node update is split out and
+                // performed via rcu to avoid losing concurrent metadata
+                // changes between load and store.
+                let metadata_snapshot = self.metadata.load().clone();
+                if metadata_snapshot
+                    .find_node_by_rpc_address(event.addr)
+                    .is_some()
+                {
+                    self.metadata.rcu(|metadata| {
+                        // Re-check inside the closure: a concurrent update may
+                        // have already moved the node to Up, in which case
+                        // leave the metadata untouched and return the same
+                        // Arc so rcu skips the swap.
+                        match metadata.find_node_by_rpc_address(event.addr) {
+                            Some(node) if node.state() != NodeState::Up => {
+                                debug!(?node, "Setting existing node state to up.");
+                                let new_node = node.clone_with_node_state(NodeState::Up);
+                                Arc::new(metadata.clone_with_node(new_node))
+                            }
+                            _ => metadata.clone(),
+                        }
+                    });
                 } else {
-                    self.add_new_node(event.addr, NodeState::Up, metadata).await;
+                    self.add_new_node(event.addr, NodeState::Up, metadata_snapshot)
+                        .await;
                 }
             }
             StatusChangeType::Down => {
-                if let Some(node) = node {
+                // Capture the connection-state warning outside the rcu closure
+                // because is_any_connection_up is async and rcu's closure is
+                // synchronous (and may run multiple times under contention).
+                if let Some(node) = self.metadata.load().find_node_by_rpc_address(event.addr) {
                     let state = node.state();
-                    if state != NodeState::Down && state != NodeState::ForcedDown {
-                        if node.is_any_connection_up().await {
-                            warn!(
-                                ?node,
-                                "Marking node as down while there are established connections."
-                            );
-                        }
-
-                        debug!(?node, "Setting existing node state to down.");
-
-                        // node was up or in an unknown state
-                        let node = node.clone_with_node_state(NodeState::Down);
-                        self.metadata
-                            .store(Arc::new(metadata.clone_with_node(node)));
-                    } else {
-                        debug!(?node, "Ignoring down node event for already downed node.");
+                    if state != NodeState::Down
+                        && state != NodeState::ForcedDown
+                        && node.is_any_connection_up().await
+                    {
+                        warn!(
+                            ?node,
+                            "Marking node as down while there are established connections."
+                        );
                     }
                 } else {
                     debug!(broadcast_rpc_address = %event.addr, "Unknown node down.");
+                    return;
                 }
+
+                // Now atomically transition the node to Down via rcu. The
+                // closure re-checks the state because an interleaved update
+                // could have already moved it.
+                self.metadata.rcu(|metadata| {
+                    match metadata.find_node_by_rpc_address(event.addr) {
+                        Some(node)
+                            if node.state() != NodeState::Down
+                                && node.state() != NodeState::ForcedDown =>
+                        {
+                            debug!(?node, "Setting existing node state to down.");
+                            let new_node = node.clone_with_node_state(NodeState::Down);
+                            Arc::new(metadata.clone_with_node(new_node))
+                        }
+                        _ => metadata.clone(),
+                    }
+                });
             }
             _ => warn!(?event, "Unrecognized status event."),
         }
     }
 
     fn remove_keyspace(&self, keyspace: &str) {
-        let metadata = self.metadata.load().clone();
+        // Use rcu so that a concurrent metadata update (e.g. another schema
+        // event arriving in parallel) cannot be silently overwritten between
+        // load() and store(). The closure may run more than once if the
+        // ArcSwap loses a CAS race.
         self.metadata
-            .store(Arc::new(metadata.clone_without_keyspace(keyspace)));
+            .rcu(|metadata| Arc::new(metadata.clone_without_keyspace(keyspace)));
     }
 
     async fn refresh_keyspace(&self, keyspace: &str) {
