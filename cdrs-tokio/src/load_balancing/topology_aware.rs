@@ -593,7 +593,6 @@ mod tests {
         assert!(query_plan.nodes.iter().all(|node| !node.is_ignored()));
     }
 
-
     // Same bug shape that network_topology_strategy_replicas had, but in
     // simple_strategy_replicas: when the natural ring walk starts on ignored
     // nodes, capping the iteration at replica_count BEFORE the unignored

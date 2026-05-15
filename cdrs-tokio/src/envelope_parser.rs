@@ -59,9 +59,7 @@ async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
     if length > MAX_ENVELOPE_BODY_SIZE {
         return Err(error::Error::Io(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!(
-                "envelope body length {length} exceeds maximum {MAX_ENVELOPE_BODY_SIZE}"
-            ),
+            format!("envelope body length {length} exceeds maximum {MAX_ENVELOPE_BODY_SIZE}"),
         )));
     }
 
@@ -157,10 +155,11 @@ mod tests {
     //   1 byte version | 1 byte flags | 2 bytes stream | 1 byte opcode | 4 bytes length
     fn header_with_length(length_bytes: [u8; 4]) -> Vec<u8> {
         let mut buf = vec![
-            u8::from(Version::V4),  // version
-            0,                      // flags
-            0, 0,                   // stream id
-            u8::from(Opcode::Ready) // opcode (any valid one will do)
+            u8::from(Version::V4), // version
+            0,                     // flags
+            0,
+            0,                       // stream id
+            u8::from(Opcode::Ready), // opcode (any valid one will do)
         ];
         buf.extend_from_slice(&length_bytes);
         buf
@@ -178,7 +177,9 @@ mod tests {
             .unwrap();
 
         let mut reader = bytes.as_slice();
-        assert!(parse_raw_envelope(&mut reader, Compression::None).await.is_err());
+        assert!(parse_raw_envelope(&mut reader, Compression::None)
+            .await
+            .is_err());
     }
 
     #[tokio::test]
@@ -189,7 +190,9 @@ mod tests {
         let payload = header_with_length(i32::MAX.to_be_bytes());
 
         let mut reader = payload.as_slice();
-        assert!(parse_raw_envelope(&mut reader, Compression::None).await.is_err());
+        assert!(parse_raw_envelope(&mut reader, Compression::None)
+            .await
+            .is_err());
     }
 
     // Per the Cassandra protocol spec, the TRACING flag in a REQUEST asks the
@@ -210,7 +213,8 @@ mod tests {
             // TRACING flag (0x02)
             Flags::TRACING.bits(),
             // stream id
-            0, 0,
+            0,
+            0,
             // opcode - any valid request opcode (Query)
             u8::from(Opcode::Query),
         ];
@@ -223,9 +227,14 @@ mod tests {
             .expect("a request envelope with TRACING flag must still parse");
 
         assert_eq!(envelope.direction, Direction::Request);
-        assert!(envelope.tracing_id.is_none(),
-            "request envelopes must not carry a tracing UUID");
-        assert_eq!(envelope.body, body,
-            "request body should be preserved verbatim, got {:?}", envelope.body);
+        assert!(
+            envelope.tracing_id.is_none(),
+            "request envelopes must not carry a tracing UUID"
+        );
+        assert_eq!(
+            envelope.body, body,
+            "request body should be preserved verbatim, got {:?}",
+            envelope.body
+        );
     }
 }

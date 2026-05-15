@@ -1514,7 +1514,9 @@ impl AbortOnDropHandle {
     /// no-op for this guard, so the caller is now responsible for the task's
     /// lifecycle.
     fn into_inner(mut self) -> JoinHandle<()> {
-        self.0.take().expect("AbortOnDropHandle inner cannot be None")
+        self.0
+            .take()
+            .expect("AbortOnDropHandle inner cannot be None")
     }
 }
 
@@ -1543,7 +1545,6 @@ mod tests {
         assert!(all.contains(Flags::WARNING));
         assert!(all.contains(Flags::BETA));
     }
-
 
     // The drop guard wraps a JoinHandle so that if Session::new returns
     // early (e.g. init never completes), the spawned control connection

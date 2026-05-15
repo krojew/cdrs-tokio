@@ -183,7 +183,6 @@ mod test {
         );
     }
 
-
     // 0.1 is not exactly representable in IEEE-754 float, so the previous
     // implementation kept doubling `scale` looking for an exact match and
     // eventually panicked on `10i64.pow(scale)` overflow when scale exceeded

@@ -243,10 +243,7 @@ mod tests {
         // ring walk from token 0 visits HOST_ID_1's primary token (0), then
         // HOST_ID_3's tokens (1, 2, 10), then HOST_ID_2 (20). Replicas must be
         // distinct so we expect each node exactly once.
-        verify_tokens(
-            &[*HOST_ID_1, *HOST_ID_3, *HOST_ID_2],
-            Murmur3Token::new(0),
-        );
+        verify_tokens(&[*HOST_ID_1, *HOST_ID_3, *HOST_ID_2], Murmur3Token::new(0));
     }
 
     #[test]
@@ -290,9 +287,6 @@ mod tests {
     fn should_return_replicas_in_a_ring() {
         // starting at token 20 we hit HOST_ID_2 first, then wrap around to the
         // smaller tokens which belong to HOST_ID_1, then to HOST_ID_3.
-        verify_tokens(
-            &[*HOST_ID_2, *HOST_ID_1, *HOST_ID_3],
-            Murmur3Token::new(20),
-        );
+        verify_tokens(&[*HOST_ID_2, *HOST_ID_1, *HOST_ID_3], Murmur3Token::new(20));
     }
 }

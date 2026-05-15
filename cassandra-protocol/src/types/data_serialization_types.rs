@@ -432,8 +432,6 @@ mod tests {
         assert_eq!(results[0].as_slice().unwrap(), &[1, 2]);
     }
 
-
-
     #[test]
     fn decode_duration_test() {
         let result = decode_duration(&[200, 1, 144, 3, 216, 4]).unwrap();
@@ -524,7 +522,6 @@ mod tests {
     fn decode_text_test() {
         assert_eq!(decode_text(b"abcba").unwrap(), "abcba");
     }
-
 
     // The decode_* string functions advertise a Result<String, FromUtf8Error>
     // signature but used String::from_utf8_lossy and could therefore never

@@ -482,8 +482,8 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 // Now atomically transition the node to Down via rcu. The
                 // closure re-checks the state because an interleaved update
                 // could have already moved it.
-                self.metadata.rcu(|metadata| {
-                    match metadata.find_node_by_rpc_address(event.addr) {
+                self.metadata.rcu(
+                    |metadata| match metadata.find_node_by_rpc_address(event.addr) {
                         Some(node)
                             if node.state() != NodeState::Down
                                 && node.state() != NodeState::ForcedDown =>
@@ -493,8 +493,8 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                             Arc::new(metadata.clone_with_node(new_node))
                         }
                         _ => metadata.clone(),
-                    }
-                });
+                    },
+                );
             }
             _ => warn!(?event, "Unrecognized status event."),
         }

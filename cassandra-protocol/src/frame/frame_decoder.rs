@@ -287,8 +287,7 @@ impl GenericFrameDecoder {
             // be there if a producer packed bytes from envelope N+1 into the
             // tail of the non-self-contained sequence for envelope N. The
             // previous code simply called clear() and silently lost them.
-            let (consumed, envelopes) =
-                extract_envelopes(&self.payload_buffer, Compression::None)?;
+            let (consumed, envelopes) = extract_envelopes(&self.payload_buffer, Compression::None)?;
             self.payload_buffer.drain(..consumed);
 
             // Reset envelope-tracking state so the next call re-parses the
@@ -435,7 +434,6 @@ mod tests {
         assert_eq!(envelopes[1].body, vec![0xBB; PAYLOAD_SIZE_LIMIT + 50]);
     }
 
-
     // The reviewer pointed out a defensive gap: when payload_buffer holds a
     // complete envelope plus the start of the next envelope (because a
     // hypothetical producer packed bytes across envelope boundaries inside
@@ -463,7 +461,11 @@ mod tests {
 
         let mut encoder = UncompressedFrameEncoder::default();
         let (consumed, frame1_slice) = encoder.finalize_non_self_contained(&packed);
-        assert_eq!(consumed, packed.len(), "test setup: whole packed slice must fit");
+        assert_eq!(
+            consumed,
+            packed.len(),
+            "test setup: whole packed slice must fit"
+        );
         let frame1: Vec<u8> = frame1_slice.to_vec();
         encoder.reset();
 

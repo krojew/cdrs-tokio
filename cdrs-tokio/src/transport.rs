@@ -747,12 +747,7 @@ impl ResponseHandlerMap {
 
             if self
                 .available_stream_id
-                .compare_exchange_weak(
-                    current,
-                    new_value,
-                    Ordering::Release,
-                    Ordering::Relaxed,
-                )
+                .compare_exchange_weak(current, new_value, Ordering::Release, Ordering::Relaxed)
                 .is_ok()
             {
                 return return_value;
