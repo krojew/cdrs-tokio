@@ -139,7 +139,16 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         // 4. append round-robin unignored local non-replicas
         // 5. optionally, add shuffled remote unignored non-replicas
 
-        let replicas = cluster.token_map().nodes_for_token(token).collect_vec();
+        // Filter ignored nodes BEFORE the per-DC/per-rack counting loop. The
+        // previous code stripped them only at the end via `retain`, so an
+        // ignored node could legitimately consume one of the per-DC quota
+        // slots and then disappear, leaving us with fewer real replicas than
+        // the configured replication factor.
+        let replicas = cluster
+            .token_map()
+            .nodes_for_token(token)
+            .filter(|node| !node.is_ignored())
+            .collect_vec();
 
         let desired_replica_count = datacenter_replication_factor.values().sum();
         let mut same_rack_replicas: FxHashMap<String, usize> = datacenter_replication_factor
@@ -188,8 +197,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
             }
         }
 
-        // the result now contains mixed local/remote and ignored/unignored nodes - put local in
-        // front
+        // the result now contains only unignored mixed local/remote nodes -
+        // put local in front
         result.sort_unstable_by(|a, b| {
             let a_distance = a.distance();
             let b_distance = b.distance();
@@ -207,9 +216,6 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
 
             CmpOrdering::Equal
         });
-
-        // remove ignored
-        result.retain(|node| !node.is_ignored());
 
         let mut rng = rng();
 
