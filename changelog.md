@@ -1,3 +1,59 @@
+## cdrs-tokio 9.0.2
+
+### Fixed
+
+* Capped envelope body length before allocating, so a hostile or
+  malfunctioning server cannot trigger huge allocations from a single
+  4-byte length field.
+* Tracing UUID is now read only on response envelopes, matching the
+  protocol specification.
+* Replaced an `unreachable!()` in the envelope parser with a regular
+  error.
+* Stream id counter now wraps cleanly back to the initial value instead
+  of yielding negative or zero ids.
+* Transport write failures only notify handlers for the failed frame,
+  not previously sent frames in the same batch.
+* Heartbeat interval skips missed ticks instead of bursting after a
+  slow round.
+* Metadata updates use `rcu` so concurrent topology, status and schema
+  events are no longer silently overwritten.
+* Control-connection task is aborted when session initialization fails,
+  preventing background task leaks.
+* Bounded the reprepare retry loop in `exec_with_params` and
+  `batch_with_params` to avoid unbounded recursion on persistent
+  `Unprepared` responses.
+* `ExponentialReconnectionPolicy` saturation hardened with a `>=`
+  bounds check.
+* `TokenMap::nodes_for_token` and `nodes_for_token_capped` deduplicate
+  by endpoint, so vnode-owning nodes appear once per query plan instead
+  of filling consecutive replica slots.
+* Topology-aware load balancer filters ignored nodes before counting
+  per-DC quotas, and before capping the simple-strategy replica list.
+* `ConnectionPool` clones the keyspace receiver before opening
+  connections, so fresh connections cannot miss a keyspace change that
+  landed during pool initialization.
+* `serialize_routing_value` precondition is now asserted.
+
+## cassandra-protocol 4.0.1
+
+### Fixed
+
+* Validated lz4 uncompressed length before decoding, rejecting negative
+  and oversized values.
+* `decode_list` and `decode_map` no longer pre-allocate based on the
+  wire-stated count.
+* Replaced panics on truncated input with errors in `decode_decimal`,
+  `decode_tinyint` and `decode_float_vector`.
+* `decode_text`, `decode_varchar`, `decode_ascii` and `decode_custom`
+  now surface invalid UTF-8 as an error instead of silently substituting
+  replacement characters.
+* `Value::from_cursor` now accepts zero-length values.
+* `Decimal::as_plain` no longer panics on negative scale.
+* `From<f32>`/`From<f64>` for `Decimal` no longer loop indefinitely on
+  inexact floats.
+* Frame decoder correctly assembles multiple non-self-contained envelopes
+  in sequence, and preserves trailing bytes between extracts.
+
 ## 9.0.1
 
 ### Fixed
