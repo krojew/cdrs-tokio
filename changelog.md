@@ -4,6 +4,19 @@
 
 * Uses `cassandra-protocol` 5.0.0 and `cdrs-tokio-helpers-derive` 6.0.0.
   Their breaking changes apply to the re-exported modules as well.
+* Node connection pools are kept across cluster metadata refreshes and
+  status events, as long as the node's address, host id and distance stay
+  the same, instead of being recreated and reconnected on every refresh.
+  Node state changes made by a pool are visible on the node in the current
+  metadata, a node marked up by an event or a refresh makes its pool
+  reconnect right away, and contact points no longer share their pools
+  with metadata nodes.
+
+### Fixed
+
+* Background tasks of a connection pool stop as soon as the pool is
+  dropped, instead of lingering until the next keyspace change or
+  reconnection attempt.
 
 ### Removed
 
