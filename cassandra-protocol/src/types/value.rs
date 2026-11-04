@@ -289,6 +289,12 @@ impl From<Duration> for Bytes {
     }
 }
 
+/// Encodes the vector as a CQL collection (`list` or `set`): an element count followed by
+/// length-prefixed elements.
+///
+/// A `Vec<u8>` therefore becomes a `list<tinyint>`, not a blob. Wrap raw bytes in [`Blob`] to
+/// bind them to a blob column - a blob column accepts any bytes, so a `Vec<u8>` bound to it is
+/// stored together with the collection framing.
 impl<T: Into<Bytes>> From<Vec<T>> for Bytes {
     fn from(vec: Vec<T>) -> Bytes {
         let mut bytes = Vec::with_capacity(INT_LEN);
