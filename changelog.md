@@ -1,3 +1,185 @@
+## cdrs-tokio (unreleased)
+
+### Added
+
+* `StatementParamsBuilder::with_tracing` and `with_warnings`.
+* `SessionPager::exec_with_params` and `exec_with_pager_state_params` for
+  paging prepared statements with bound values and statement parameters.
+* `ConnectionPoolConfigBuilder::with_heartbeat_timeout` (10 s by default).
+* `NodeRustlsConfigBuilder::with_server_name_resolver` and
+  `RustlsConnectionManager::with_server_name_resolver` for resolving the
+  TLS server name separately for each node.
+* `with_beta_protocol` on `TcpConnectionManager`, `RustlsConnectionManager`,
+  `TransportTcp` and `TransportRustls`.
+* `CdrsTransport::write_internal_envelope` and `CdrsTransport::mark_broken`,
+  both with default implementations.
+
+### Changed
+
+* Topology-aware query plans are ordered local replicas, local
+  non-replicas, remote replicas, then remote nodes. Dc-local consistency
+  levels no longer use remote nodes unless DC failover for local
+  consistency is allowed.
+* `ClusterMetadata::unignored_remote_nodes_capped` caps nodes per
+  datacenter and picks them randomly.
+* Building a session returns `SessionBuildError::SessionInitFailed` when
+  no contact point can be connected, instead of retrying indefinitely.
+* Nodes discovered during a metadata refresh, and nodes whose address
+  changes, are considered up.
+* Read timeouts are retried when the data was not retrieved, matching the
+  Java driver.
+* With beta protocol enabled, every frame carries the beta flag, including
+  startup, authentication, heartbeats and `USE` statements.
+* `ConnectionPoolConfigBuilder` panics on zero pool sizes and zero
+  heartbeat interval or timeout, and `ExponentialReconnectionPolicy::new`
+  panics when the base delay exceeds the max delay, instead of failing
+  later in background tasks.
+
+### Fixed
+
+* Stream ids of requests in flight are never reused, so a response can no
+  longer be delivered to the wrong caller. When all ids are in use,
+  requests wait for a free one.
+* A connection whose processing task panics is marked broken and
+  reconnected.
+* Pool heartbeats time out without holding the pool lock, and requests in
+  flight on an unresponsive connection fail instead of hanging.
+* Broken pool connections are reconnected without holding the pool lock,
+  and connections breaking during a reconnection trigger another pass.
+* Internal `USE` statements no longer override a newer keyspace set by the
+  user.
+* The control connection sends heartbeats using the pool heartbeat
+  settings, ignores errors of connections it replaced, and retries
+  initialization when nodes are reachable but the metadata refresh fails.
+* Node connections enable TCP keepalive, including connections through an
+  HTTP proxy, and `connect_timeout` applies to control connections.
+* Reconnection delays are jittered on every attempt.
+* IPv6 node addresses are bracketed in HTTP proxy `CONNECT` requests.
+* Proxy passwords are redacted from `Debug` output.
+* Speculative execution no longer panics when the only running execution
+  fails, and no longer gives up while other executions are still running.
+* Reprepared statements are resent to the node which reported them
+  unprepared.
+* The last node error is returned when the query plan is exhausted.
+* Explicit routing keys are used for prepared statements regardless of how
+  values are bound, and routing hints are used for batches.
+* Pagers carry all statement parameters across pages.
+* The new result metadata id of a protocol v5 response is read without
+  decoding the rows.
+* Nodes added by events, contact points and nodes with a changed address
+  get a computed distance instead of being ignored.
+* A metadata refresh which is not full keeps the keyspaces it fetched.
+* Adding a node no longer overwrites concurrent metadata changes, and a
+  `NEW_NODE` event no longer demotes a node which is already up.
+* `MOVED_NODE` topology changes are handled, and missed events trigger a
+  full metadata refresh.
+* Replicas are placed on the full token ring before skipping ignored
+  nodes, local replicas are shuffled in single-datacenter clusters, and
+  replica lookup stops walking the ring once enough replicas are found.
+* Documentation examples match the current API, and the multi-threaded
+  example awaits its inserts.
+
+### Deprecated
+
+* `StatementParamsBuilder::with_flags`, which has no effect.
+* `StatementParamsBuilder::with_names`; the flag is derived from the
+  values.
+
+## cassandra-protocol (unreleased)
+
+### Added
+
+* `Envelope::message_body`, which returns the message part of the body,
+  skipping a custom payload.
+* `ErrorType::CdcWriteFailure`, `ErrorType::CasWriteUnknown` and
+  `ErrorType::Unknown`, which keeps the code and body of unknown errors.
+* `TopologyChangeType::MovedNode`.
+* `types::vector::FloatVector` for binding `vector<float, n>` values.
+* `MAX_ENVELOPE_BODY_SIZE`, `ParseEnvelopeError::InvalidBodyLength`,
+  `ParseEnvelopeError::InvalidTracingId` and
+  `CheckEnvelopeSizeError::InvalidBodyLength`.
+* List and map conversions into `PrimitiveDateTime`, `NaiveDateTime`,
+  `DateTime<Utc>` and the `NonZero` integers.
+
+### Changed
+
+* `From<f32>` and `From<f64>` for `Decimal` produce the shortest decimal
+  which round-trips to the same float, e.g. `19.99` has unscaled value
+  `1999` and scale `2`. NaN becomes zero, and infinities become `i64::MAX`
+  and `i64::MIN`.
+* Custom types other than float vectors decode as `CassandraType::Blob`.
+* The "with names for values" flag is derived from the query values.
+* The per-statement keyspace is sent on all protocol versions, while
+  `now_in_seconds` is sent only on protocol v5.
+* Envelopes whose body exceeds `MAX_ENVELOPE_BODY_SIZE` (256 MiB), before
+  or after decompression, are rejected.
+* Removed the unused `integer-encoding` dependency; `float_eq` is now a
+  dev dependency.
+
+### Fixed
+
+* `duration` values are encoded and decoded as CQL vints.
+* Malformed input no longer causes panics or unbounded allocations:
+  negative or oversized body lengths, truncated tracing ids, string and
+  collection lengths (now read as unsigned `[short]` values), reason map
+  and row counts, deeply nested column types, and lz4 or snappy bodies
+  declaring huge decompressed sizes.
+* Protocol v5 framing keeps the read buffer capacity, rejects
+  self-contained frames with an incomplete envelope, and verifies the
+  decompressed length.
+* Custom payloads no longer break request and response parsing. The
+  payload stays in the envelope body, so decoding and encoding an envelope
+  preserves it.
+* Reason maps of protocol v5 `READ_FAILURE` and `WRITE_FAILURE` errors are
+  decoded correctly. Endpoints carry no port, so every key's port is 0.
+* Protocol v4 CAS write timeouts no longer read the v5-only contentions
+  field.
+* The partition key count of prepared metadata is serialized only for
+  protocol v4 and later.
+* `NaiveDateTime` and `DateTime<Utc>` conversions handle timestamps before
+  1970 with milliseconds, and out-of-range timestamps return errors.
+* List conversions return errors instead of panicking on mismatched or
+  malformed elements.
+* `Decimal::as_plain` works for scales of 19 and above, and returns zero
+  right away for a zero value.
+* Typed vector reads work, and float vectors require an exact payload
+  length.
+* A UDT value truncated in the middle of a field is an error.
+* Murmur3 tokens follow Cassandra's partitioner for empty keys and the
+  `i64::MIN` hash.
+* Batches with named values are rejected.
+* `MAX_FRAME_SIZE` is the largest possible frame size.
+* Passwords are redacted from `StaticPasswordAuthenticator` and
+  `BodyReqAuthResponse` `Debug` output.
+
+### Deprecated
+
+* `QueryParams::with_names`, which is ignored when serializing.
+* `QueryParamsBuilder::with_flags` and `QueryParamsBuilder::with_names`.
+
+## cdrs-tokio-helpers-derive (unreleased)
+
+### Added
+
+* Support for generic structs.
+* Support for `NaiveDateTime`, `DateTime<Utc>` and `NonZero` integer
+  fields.
+
+### Fixed
+
+* A null collection decodes as an empty `Vec` or `HashMap` for fields
+  which are not `Option`, and other errors are reported as they are.
+* The value type of a `HashMap` is taken from its second generic
+  argument, so maps with a custom hasher work.
+* Field types are emitted as written, so types named by a path, like
+  `uuid::Uuid`, work without importing them.
+* Standard library items are referenced by absolute paths, so user types
+  named like `Option` or `Vec` no longer break generated code.
+* `DbMirror` strips the `r#` prefix from raw identifier column names.
+* `None` UDT fields are written as null.
+* Documented that `IntoCdrsValue` writes UDT fields in declaration order,
+  which has to match the order in the UDT definition.
+
 ## cdrs-tokio 9.0.2
 
 ### Fixed
