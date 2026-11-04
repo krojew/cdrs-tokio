@@ -8,6 +8,7 @@ use uuid::Uuid;
 use crate::error::Result as CdrsResult;
 use crate::types::blob::Blob;
 use crate::types::decimal::Decimal;
+use crate::types::duration::Duration;
 use crate::types::list::List;
 use crate::types::map::Map;
 use crate::types::tuple::Tuple;
@@ -55,6 +56,7 @@ impl FromCdrs for NonZeroI32 {}
 impl FromCdrs for NonZeroI64 {}
 impl FromCdrs for NaiveDateTime {}
 impl<Tz: TimeZone> FromCdrs for DateTime<Tz> {}
+impl FromCdrs for Duration {}
 
 pub trait FromCdrsByName {
     fn from_cdrs_by_name<T>(cdrs_type: &T, name: &str) -> CdrsResult<Option<Self>>
@@ -97,3 +99,4 @@ impl FromCdrsByName for NonZeroI32 {}
 impl FromCdrsByName for NonZeroI64 {}
 impl FromCdrsByName for NaiveDateTime {}
 impl<Tz: TimeZone> FromCdrsByName for DateTime<Tz> {}
+impl FromCdrsByName for Duration {}

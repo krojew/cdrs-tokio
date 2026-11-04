@@ -11,6 +11,7 @@ use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
+use crate::types::duration::Duration;
 use crate::types::list::List;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
@@ -66,6 +67,7 @@ map_as_rust!({ Blob }, { NonZeroI8 });
 map_as_rust!({ Blob }, { NonZeroI16 });
 map_as_rust!({ Blob }, { NonZeroI32 });
 map_as_rust!({ Blob }, { NonZeroI64 });
+map_as_rust!({ Blob }, { Duration });
 
 map_as_rust!({ String }, { Blob });
 map_as_rust!({ String }, { String });
@@ -91,6 +93,7 @@ map_as_rust!({ String }, { NonZeroI8 });
 map_as_rust!({ String }, { NonZeroI16 });
 map_as_rust!({ String }, { NonZeroI32 });
 map_as_rust!({ String }, { NonZeroI64 });
+map_as_rust!({ String }, { Duration });
 
 map_as_rust!({ bool }, { Blob });
 map_as_rust!({ bool }, { String });
@@ -116,6 +119,7 @@ map_as_rust!({ bool }, { NonZeroI8 });
 map_as_rust!({ bool }, { NonZeroI16 });
 map_as_rust!({ bool }, { NonZeroI32 });
 map_as_rust!({ bool }, { NonZeroI64 });
+map_as_rust!({ bool }, { Duration });
 
 map_as_rust!({ i64 }, { Blob });
 map_as_rust!({ i64 }, { String });
@@ -141,6 +145,7 @@ map_as_rust!({ i64 }, { NonZeroI8 });
 map_as_rust!({ i64 }, { NonZeroI16 });
 map_as_rust!({ i64 }, { NonZeroI32 });
 map_as_rust!({ i64 }, { NonZeroI64 });
+map_as_rust!({ i64 }, { Duration });
 
 map_as_rust!({ i32 }, { Blob });
 map_as_rust!({ i32 }, { String });
@@ -166,6 +171,7 @@ map_as_rust!({ i32 }, { NonZeroI8 });
 map_as_rust!({ i32 }, { NonZeroI16 });
 map_as_rust!({ i32 }, { NonZeroI32 });
 map_as_rust!({ i32 }, { NonZeroI64 });
+map_as_rust!({ i32 }, { Duration });
 
 map_as_rust!({ i16 }, { Blob });
 map_as_rust!({ i16 }, { String });
@@ -191,6 +197,7 @@ map_as_rust!({ i16 }, { NonZeroI8 });
 map_as_rust!({ i16 }, { NonZeroI16 });
 map_as_rust!({ i16 }, { NonZeroI32 });
 map_as_rust!({ i16 }, { NonZeroI64 });
+map_as_rust!({ i16 }, { Duration });
 
 map_as_rust!({ i8 }, { Blob });
 map_as_rust!({ i8 }, { String });
@@ -216,6 +223,7 @@ map_as_rust!({ i8 }, { NonZeroI8 });
 map_as_rust!({ i8 }, { NonZeroI16 });
 map_as_rust!({ i8 }, { NonZeroI32 });
 map_as_rust!({ i8 }, { NonZeroI64 });
+map_as_rust!({ i8 }, { Duration });
 
 map_as_rust!({ IpAddr }, { Blob });
 map_as_rust!({ IpAddr }, { String });
@@ -241,6 +249,7 @@ map_as_rust!({ IpAddr }, { NonZeroI8 });
 map_as_rust!({ IpAddr }, { NonZeroI16 });
 map_as_rust!({ IpAddr }, { NonZeroI32 });
 map_as_rust!({ IpAddr }, { NonZeroI64 });
+map_as_rust!({ IpAddr }, { Duration });
 
 map_as_rust!({ Uuid }, { Blob });
 map_as_rust!({ Uuid }, { String });
@@ -266,6 +275,7 @@ map_as_rust!({ Uuid }, { NonZeroI8 });
 map_as_rust!({ Uuid }, { NonZeroI16 });
 map_as_rust!({ Uuid }, { NonZeroI32 });
 map_as_rust!({ Uuid }, { NonZeroI64 });
+map_as_rust!({ Uuid }, { Duration });
 
 map_as_rust!({ PrimitiveDateTime }, { Blob });
 map_as_rust!({ PrimitiveDateTime }, { String });
@@ -291,6 +301,7 @@ map_as_rust!({ PrimitiveDateTime }, { NonZeroI8 });
 map_as_rust!({ PrimitiveDateTime }, { NonZeroI16 });
 map_as_rust!({ PrimitiveDateTime }, { NonZeroI32 });
 map_as_rust!({ PrimitiveDateTime }, { NonZeroI64 });
+map_as_rust!({ PrimitiveDateTime }, { Duration });
 
 map_as_rust!({ Tuple }, { Blob });
 map_as_rust!({ Tuple }, { String });
@@ -316,6 +327,7 @@ map_as_rust!({ Tuple }, { NonZeroI8 });
 map_as_rust!({ Tuple }, { NonZeroI16 });
 map_as_rust!({ Tuple }, { NonZeroI32 });
 map_as_rust!({ Tuple }, { NonZeroI64 });
+map_as_rust!({ Tuple }, { Duration });
 
 map_as_cassandra_type!();
 
@@ -376,6 +388,27 @@ mod tests {
                 "a".to_string(),
                 std::num::NonZeroI32::new(5).unwrap()
             )]))
+        );
+    }
+
+    #[test]
+    fn converts_duration_values() {
+        // (1, 2, 3) and (-1, -2, -3) as zig-zag encoded vints
+        let map = map_of(
+            ColType::Duration,
+            vec![
+                entry("a", vec![0x02, 0x04, 0x06]),
+                entry("b", vec![0x01, 0x03, 0x05]),
+            ],
+        );
+
+        let converted: Option<HashMap<String, Duration>> = map.as_rust_type().unwrap();
+        assert_eq!(
+            converted,
+            Some(HashMap::from([
+                ("a".to_string(), Duration::new(1, 2, 3).unwrap()),
+                ("b".to_string(), Duration::new(-1, -2, -3).unwrap()),
+            ]))
         );
     }
 }

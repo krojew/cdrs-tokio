@@ -13,6 +13,7 @@ use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
+use crate::types::duration::Duration;
 use crate::types::map::Map;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
@@ -63,6 +64,7 @@ list_as_rust!(NonZeroI8);
 list_as_rust!(NonZeroI16);
 list_as_rust!(NonZeroI32);
 list_as_rust!(NonZeroI64);
+list_as_rust!(Duration);
 
 list_as_cassandra_type!();
 
@@ -189,5 +191,39 @@ mod tests {
         let list = list_of(ColType::Bigint, vec![bigint_bytes(7)]);
         let converted: Option<Vec<std::num::NonZeroI64>> = list.as_rust_type().unwrap();
         assert_eq!(converted, Some(vec![std::num::NonZeroI64::new(7).unwrap()]));
+    }
+
+    #[test]
+    fn converts_duration_elements() {
+        // (1, 2, 3) and (-1, -2, -3) as zig-zag encoded vints
+        let data = vec![
+            CBytes::new(vec![0x02, 0x04, 0x06]),
+            CBytes::new(vec![0x01, 0x03, 0x05]),
+        ];
+        let expected = vec![
+            Duration::new(1, 2, 3).unwrap(),
+            Duration::new(-1, -2, -3).unwrap(),
+        ];
+
+        let native = list_of(ColType::Duration, data.clone());
+        let converted: Option<Vec<Duration>> = native.as_rust_type().unwrap();
+        assert_eq!(converted, Some(expected.clone()));
+
+        // protocol v4 has no native duration type and sends the marshal class instead
+        let custom = List::new(
+            ColTypeOption {
+                id: ColType::List,
+                value: Some(ColTypeOptionValue::CList(Box::new(ColTypeOption {
+                    id: ColType::Custom,
+                    value: Some(ColTypeOptionValue::CString(
+                        "org.apache.cassandra.db.marshal.DurationType".into(),
+                    )),
+                }))),
+            },
+            data,
+            Version::V4,
+        );
+        let converted: Option<Vec<Duration>> = custom.as_rust_type().unwrap();
+        assert_eq!(converted, Some(expected));
     }
 }

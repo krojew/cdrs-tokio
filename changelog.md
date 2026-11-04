@@ -78,6 +78,10 @@
   `PreparedQuery::set_result_metadata_id`.
 * `ParseEnvelopeError::InvalidCustomPayload`.
 * `types::decimal::NonFiniteFloatError`.
+* `Duration` accessors: by name and by index on `Row`, by name on `Udt`,
+  by index on `Tuple`, as `List` elements and as `Map` values, plus
+  `FromCdrs` and `FromCdrsByName` for `Duration`. They read both the native
+  `duration` type and the custom `DurationType` sent on protocol v4.
 
 ### Fixed
 

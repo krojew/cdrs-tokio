@@ -11,6 +11,7 @@ use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
+use crate::types::duration::Duration;
 use crate::types::list::List;
 use crate::types::map::Map;
 use crate::types::udt::Udt;
@@ -82,5 +83,52 @@ into_rust_by_index!(Tuple, Decimal);
 into_rust_by_index!(Tuple, NaiveDateTime);
 into_rust_by_index!(Tuple, DateTime<Utc>);
 into_rust_by_index!(Tuple, BigInt);
+into_rust_by_index!(Tuple, Duration);
 
 tuple_as_cassandra_type!();
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_duration_elements() {
+        let metadata = CTuple {
+            types: vec![
+                ColTypeOption {
+                    id: ColType::Duration,
+                    value: None,
+                },
+                ColTypeOption {
+                    id: ColType::Custom,
+                    value: Some(ColTypeOptionValue::CString(
+                        "org.apache.cassandra.db.marshal.DurationType".into(),
+                    )),
+                },
+                ColTypeOption {
+                    id: ColType::Duration,
+                    value: None,
+                },
+            ],
+        };
+        // (1, 2, 3) and (-1, -2, -3) as zig-zag encoded vints
+        let tuple = Tuple::new(
+            vec![
+                CBytes::new(vec![0x02, 0x04, 0x06]),
+                CBytes::new(vec![0x01, 0x03, 0x05]),
+                CBytes::new_null(),
+            ],
+            &metadata,
+            Version::V4,
+        );
+
+        let native: Duration = tuple.r_by_index(0).unwrap();
+        assert_eq!(native, Duration::new(1, 2, 3).unwrap());
+
+        let custom: Duration = tuple.r_by_index(1).unwrap();
+        assert_eq!(custom, Duration::new(-1, -2, -3).unwrap());
+
+        let missing: Option<Duration> = tuple.by_index(2).unwrap();
+        assert_eq!(missing, None);
+    }
+}

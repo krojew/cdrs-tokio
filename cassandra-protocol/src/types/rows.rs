@@ -14,6 +14,7 @@ use crate::frame::Version;
 use crate::types::blob::Blob;
 use crate::types::data_serialization_types::*;
 use crate::types::decimal::Decimal;
+use crate::types::duration::Duration;
 use crate::types::list::List;
 use crate::types::map::Map;
 use crate::types::tuple::Tuple;
@@ -115,6 +116,7 @@ into_rust_by_name!(Row, NonZeroI64);
 into_rust_by_name!(Row, NaiveDateTime);
 into_rust_by_name!(Row, DateTime<Utc>);
 into_rust_by_name!(Row, BigInt);
+into_rust_by_name!(Row, Duration);
 
 impl ByIndex for Row {}
 
@@ -143,14 +145,27 @@ into_rust_by_index!(Row, NonZeroI64);
 into_rust_by_index!(Row, NaiveDateTime);
 into_rust_by_index!(Row, DateTime<Utc>);
 into_rust_by_index!(Row, BigInt);
+into_rust_by_index!(Row, Duration);
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::frame::message_result::RowsMetadataFlags;
+    use crate::types::from_cdrs::FromCdrsByName;
     use crate::types::AsRustType;
 
     fn row_with_column(class_name: &str, value: CBytes) -> Row {
+        row_of("embedding", custom(class_name), value)
+    }
+
+    fn custom(class_name: &str) -> ColTypeOption {
+        ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(class_name.into())),
+        }
+    }
+
+    fn row_of(name: &str, col_type: ColTypeOption, value: CBytes) -> Row {
         let metadata = RowsMetadata {
             flags: RowsMetadataFlags::empty(),
             columns_count: 1,
@@ -159,11 +174,8 @@ mod tests {
             global_table_spec: None,
             col_specs: vec![ColSpec {
                 table_spec: None,
-                name: "embedding".into(),
-                col_type: ColTypeOption {
-                    id: ColType::Custom,
-                    value: Some(ColTypeOptionValue::CString(class_name.into())),
-                },
+                name: name.into(),
+                col_type,
             }],
         };
 
@@ -237,6 +249,78 @@ mod tests {
         );
 
         let by_name: Result<Option<Vector>> = row.by_name("embedding");
+        assert!(by_name.is_err());
+    }
+
+    // duration of 100 months, 200 days and 300 nanoseconds: three zig-zag encoded vints
+    const DURATION_BYTES: [u8; 6] = [0x80, 0xC8, 0x81, 0x90, 0x82, 0x58];
+
+    #[test]
+    fn reads_duration_column() {
+        let expected = Duration::new(100, 200, 300).unwrap();
+        let row = row_of(
+            "span",
+            ColTypeOption {
+                id: ColType::Duration,
+                value: None,
+            },
+            CBytes::new(DURATION_BYTES.to_vec()),
+        );
+
+        let by_name: Duration = row.r_by_name("span").unwrap();
+        assert_eq!(by_name, expected);
+
+        let by_index: Duration = row.r_by_index(0).unwrap();
+        assert_eq!(by_index, expected);
+
+        let from_cdrs = <Duration as FromCdrsByName>::from_cdrs_r(&row, "span").unwrap();
+        assert_eq!(from_cdrs, expected);
+    }
+
+    #[test]
+    fn reads_custom_duration_column() {
+        // protocol v4 has no native duration type and sends the marshal class instead
+        let expected = Duration::new(100, 200, 300).unwrap();
+        let row = row_of(
+            "span",
+            custom("org.apache.cassandra.db.marshal.DurationType"),
+            CBytes::new(DURATION_BYTES.to_vec()),
+        );
+
+        let by_name: Duration = row.r_by_name("span").unwrap();
+        assert_eq!(by_name, expected);
+
+        let by_index: Duration = row.r_by_index(0).unwrap();
+        assert_eq!(by_index, expected);
+    }
+
+    #[test]
+    fn reads_null_duration_column() {
+        let row = row_of(
+            "span",
+            ColTypeOption {
+                id: ColType::Duration,
+                value: None,
+            },
+            CBytes::new_null(),
+        );
+
+        let by_name: Option<Duration> = row.by_name("span").unwrap();
+        assert_eq!(by_name, None);
+
+        let by_index: Option<Duration> = row.by_index(0).unwrap();
+        assert_eq!(by_index, None);
+    }
+
+    #[test]
+    fn non_duration_column_is_not_a_duration() {
+        let row = row_of(
+            "span",
+            custom("org.apache.cassandra.db.marshal.Int32Type"),
+            CBytes::new(vec![0x00, 0x00, 0x00, 0x01]),
+        );
+
+        let by_name: Result<Option<Duration>> = row.by_name("span");
         assert!(by_name.is_err());
     }
 }
