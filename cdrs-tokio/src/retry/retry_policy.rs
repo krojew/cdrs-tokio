@@ -127,7 +127,7 @@ impl RetrySession for DefaultRetrySession {
             } => {
                 if !self.was_read_timeout_retry
                     && error.received >= error.block_for
-                    && error.replica_has_responded()
+                    && !error.replica_has_responded()
                 {
                     self.was_read_timeout_retry = true;
                     RetryDecision::RetrySameNode
@@ -163,5 +163,89 @@ impl RetrySession for DefaultRetrySession {
             } => RetryDecision::RetryNextNode,
             _ => RetryDecision::DontRetry,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+    use std::net::SocketAddr;
+
+    use cassandra_protocol::consistency::Consistency;
+    use cassandra_protocol::error::Error;
+    use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType, ReadTimeoutError};
+    use cassandra_protocol::frame::traits::FromCursor;
+    use cassandra_protocol::frame::{Serialize, Version};
+
+    use super::*;
+
+    fn read_timeout_error(received: i32, block_for: i32, data_present: bool) -> Error {
+        let mut bytes = Consistency::Quorum.serialize_to_vec(Version::V4);
+        bytes.extend_from_slice(&received.to_be_bytes());
+        bytes.extend_from_slice(&block_for.to_be_bytes());
+        bytes.push(data_present as u8);
+
+        let error = ReadTimeoutError::from_cursor(&mut Cursor::new(&bytes), Version::V4).unwrap();
+
+        Error::Server {
+            body: ErrorBody {
+                message: "read timeout".into(),
+                ty: ErrorType::ReadTimeout(error),
+            },
+            addr: SocketAddr::from(([127, 0, 0, 1], 9042)),
+        }
+    }
+
+    fn decide_once(error: &Error) -> RetryDecision {
+        DefaultRetrySession::default().decide(QueryInfo {
+            error,
+            is_idempotent: true,
+        })
+    }
+
+    #[test]
+    fn read_timeout_should_retry_same_node_when_enough_replicas_responded_without_data() {
+        assert_eq!(
+            decide_once(&read_timeout_error(2, 2, false)),
+            RetryDecision::RetrySameNode
+        );
+        assert_eq!(
+            decide_once(&read_timeout_error(3, 2, false)),
+            RetryDecision::RetrySameNode
+        );
+    }
+
+    #[test]
+    fn read_timeout_should_not_retry_when_data_was_retrieved() {
+        assert_eq!(
+            decide_once(&read_timeout_error(2, 2, true)),
+            RetryDecision::DontRetry
+        );
+    }
+
+    #[test]
+    fn read_timeout_should_not_retry_when_not_enough_replicas_responded() {
+        assert_eq!(
+            decide_once(&read_timeout_error(1, 2, false)),
+            RetryDecision::DontRetry
+        );
+        assert_eq!(
+            decide_once(&read_timeout_error(1, 2, true)),
+            RetryDecision::DontRetry
+        );
+    }
+
+    #[test]
+    fn read_timeout_should_retry_only_once() {
+        let error = read_timeout_error(2, 2, false);
+        let mut session = DefaultRetrySession::default();
+
+        let query_info = || QueryInfo {
+            error: &error,
+            is_idempotent: true,
+        };
+
+        assert_eq!(session.decide(query_info()), RetryDecision::RetrySameNode);
+        assert_eq!(session.decide(query_info()), RetryDecision::DontRetry);
     }
 }
