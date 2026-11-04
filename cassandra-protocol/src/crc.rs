@@ -26,3 +26,28 @@ pub fn crc32(bytes: &[u8]) -> u32 {
     hasher.update(bytes);
     hasher.finalize()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Reference values come from the frames in the Apache Cassandra Java driver test suite
+    // (BytesToSegmentDecoderTest), where both checksums are stored in little-endian order.
+
+    #[test]
+    fn crc24_matches_reference_values() {
+        assert_eq!(crc24(&[0x04, 0x00, 0x02]), 0xf2f901);
+        assert_eq!(crc24(&[0xff, 0xff, 0x03]), 0x474025);
+        assert_eq!(crc24(&[0x12, 0x00, 0x20, 0x00, 0x04]), 0x4fc991);
+    }
+
+    #[test]
+    fn crc32_matches_reference_values() {
+        assert_eq!(crc32(&[0, 0, 0, 1]), 0x2d02d61f);
+        assert_eq!(crc32(&[1; 131071]), 0x132f5ca0);
+        assert_eq!(
+            crc32(&[0xf0, 0x01, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]),
+            0x907fd62b
+        );
+    }
+}

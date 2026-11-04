@@ -286,3 +286,131 @@ impl Lz4FrameEncoder {
         self.buffer[..8].copy_from_slice(&header.to_le_bytes());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::compression::Compression;
+    use crate::frame::frame_decoder::{FrameDecoder, Lz4FrameDecoder, UncompressedFrameDecoder};
+    use crate::frame::{Direction, Envelope, Flags, Opcode, Version, MAX_FRAME_SIZE};
+    use std::convert::TryInto;
+
+    fn make_envelope(body: Vec<u8>) -> (Envelope, Vec<u8>) {
+        let envelope = Envelope {
+            version: Version::V5,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Query,
+            stream_id: 1,
+            body,
+            tracing_id: None,
+            warnings: vec![],
+        };
+        let encoded = envelope.encode_with(Compression::None).unwrap();
+
+        (envelope, encoded)
+    }
+
+    // xorshift output, which lz4 cannot compress
+    fn incompressible_bytes(len: usize) -> Vec<u8> {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        (0..len)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state as u8
+            })
+            .collect()
+    }
+
+    fn split_into_frames(encoder: &mut dyn FrameEncoder, envelope: &[u8]) -> Vec<Vec<u8>> {
+        let mut frames = vec![];
+        let mut start = 0;
+        while start < envelope.len() {
+            encoder.reset();
+
+            let (consumed, frame) = encoder.finalize_non_self_contained(&envelope[start..]);
+            assert!(consumed > 0);
+
+            frames.push(frame.to_vec());
+            start += consumed;
+        }
+
+        frames
+    }
+
+    // Frames from the Apache Cassandra Java driver test suite (BytesToSegmentDecoderTest). LZ4
+    // output is not canonical, so the compressed reference frame is only checked when decoding.
+    #[test]
+    fn uncompressed_encoder_produces_reference_frames() {
+        let mut encoder = UncompressedFrameEncoder::default();
+        encoder.add_envelope(vec![0, 0, 0, 1]);
+        assert_eq!(
+            encoder.finalize_self_contained(),
+            &[0x04, 0x00, 0x02, 0x01, 0xf9, 0xf2, 0, 0, 0, 1, 0x1f, 0xd6, 0x02, 0x2d]
+        );
+
+        let mut encoder = UncompressedFrameEncoder::default();
+        assert!(encoder.can_fit(PAYLOAD_SIZE_LIMIT - 1));
+        encoder.add_envelope(vec![1; PAYLOAD_SIZE_LIMIT - 1]);
+        let frame = encoder.finalize_self_contained();
+        assert_eq!(&frame[..6], &[0xff, 0xff, 0x03, 0x25, 0x40, 0x47]);
+        assert_eq!(&frame[frame.len() - 4..], &[0xa0, 0x5c, 0x2f, 0x13]);
+    }
+
+    #[test]
+    fn uncompressed_encoder_splits_large_envelope_into_frames() {
+        let (envelope, encoded) = make_envelope(vec![0xab; 3 * PAYLOAD_SIZE_LIMIT]);
+
+        let frames = split_into_frames(&mut UncompressedFrameEncoder::default(), &encoded);
+        assert_eq!(frames.len(), encoded.len().div_ceil(PAYLOAD_SIZE_LIMIT - 1));
+
+        for frame in &frames {
+            assert!(frame.len() <= MAX_FRAME_SIZE);
+
+            let header = u32::from_le_bytes([frame[0], frame[1], frame[2], 0]);
+            assert_eq!(header & (1 << 17), 0, "frame must not be self-contained");
+            assert_eq!(
+                (header & 0x1ffff) as usize,
+                frame.len() - UNCOMPRESSED_FRAME_HEADER_LENGTH - FRAME_TRAILER_LENGTH
+            );
+        }
+
+        let mut wire = frames.concat();
+        let envelopes = UncompressedFrameDecoder::default()
+            .consume(&mut wire, Compression::None)
+            .unwrap();
+        assert_eq!(envelopes, vec![envelope]);
+    }
+
+    #[test]
+    fn lz4_encoder_splits_large_envelope_into_frames() {
+        for body in [
+            vec![0xab; 3 * PAYLOAD_SIZE_LIMIT],
+            incompressible_bytes(3 * PAYLOAD_SIZE_LIMIT),
+        ] {
+            let (envelope, encoded) = make_envelope(body);
+
+            let frames = split_into_frames(&mut Lz4FrameEncoder::default(), &encoded);
+            assert_eq!(frames.len(), encoded.len().div_ceil(PAYLOAD_SIZE_LIMIT - 1));
+
+            for frame in &frames {
+                assert!(frame.len() <= MAX_FRAME_SIZE);
+
+                let header = u64::from_le_bytes(frame[..8].try_into().unwrap());
+                assert_eq!(header & (1 << 34), 0, "frame must not be self-contained");
+                assert_eq!(
+                    (header & 0x1ffff) as usize,
+                    frame.len() - COMPRESSED_FRAME_HEADER_LENGTH - FRAME_TRAILER_LENGTH
+                );
+            }
+
+            let mut wire = frames.concat();
+            let envelopes = Lz4FrameDecoder::default()
+                .consume(&mut wire, Compression::None)
+                .unwrap();
+            assert_eq!(envelopes, vec![envelope]);
+        }
+    }
+}

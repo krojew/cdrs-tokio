@@ -422,7 +422,13 @@ mod tests {
     // sequence of non-self-contained frames. Each frame has its own header and
     // CRC trailer so we can simply concatenate them on the wire.
     fn encode_as_non_self_contained(envelope: &[u8]) -> Vec<u8> {
-        let mut encoder = UncompressedFrameEncoder::default();
+        encode_as_non_self_contained_with(&mut UncompressedFrameEncoder::default(), envelope)
+    }
+
+    fn encode_as_non_self_contained_with(
+        encoder: &mut dyn FrameEncoder,
+        envelope: &[u8],
+    ) -> Vec<u8> {
         let mut wire = vec![];
         let mut start = 0;
         while start < envelope.len() {
@@ -623,6 +629,164 @@ mod tests {
                 assert_eq!(buffer.capacity(), capacity, "leftover: {}", leftover);
             }
         }
+    }
+
+    // Frames from the Apache Cassandra Java driver test suite (BytesToSegmentDecoderTest).
+    #[test]
+    fn decoders_accept_reference_frames() {
+        let mut frame = vec![
+            0x04, 0x00, 0x02, 0x01, 0xf9, 0xf2, 0, 0, 0, 1, 0x1f, 0xd6, 0x02, 0x2d,
+        ];
+        assert_eq!(
+            UncompressedFrameDecoder::try_decode_frame(&mut frame).unwrap(),
+            Some((true, vec![0, 0, 0, 1]))
+        );
+        assert!(frame.is_empty());
+
+        let mut frame = vec![0xff, 0xff, 0x03, 0x25, 0x40, 0x47];
+        frame.resize(UNCOMPRESSED_FRAME_HEADER_LENGTH + 0x1ffff, 1);
+        frame.extend_from_slice(&[0xa0, 0x5c, 0x2f, 0x13]);
+        assert_eq!(
+            UncompressedFrameDecoder::try_decode_frame(&mut frame).unwrap(),
+            Some((true, vec![1; 0x1ffff]))
+        );
+
+        let mut frame = vec![
+            0x12, 0x00, 0x20, 0x00, 0x04, 0x91, 0xc9, 0x4f, // header
+            0xf0, 0x01, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, // payload
+            0x2b, 0xd6, 0x7f, 0x90, // trailer
+        ];
+        assert_eq!(
+            Lz4FrameDecoder::try_decode_frame(&mut frame).unwrap(),
+            Some((true, vec![0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]))
+        );
+
+        let mut wrong_header = vec![
+            0x04, 0x00, 0x02, 0x02, 0xf9, 0xf2, 0, 0, 0, 1, 0x1f, 0xd6, 0x02, 0x2d,
+        ];
+        assert!(UncompressedFrameDecoder::try_decode_frame(&mut wrong_header).is_err());
+
+        let mut wrong_trailer = vec![
+            0x04, 0x00, 0x02, 0x01, 0xf9, 0xf2, 0, 0, 0, 1, 0x1f, 0xd6, 0x02, 0x2e,
+        ];
+        assert!(UncompressedFrameDecoder::try_decode_frame(&mut wrong_trailer).is_err());
+    }
+
+    #[test]
+    fn lz4_decoder_round_trips_frames_fed_in_chunks() {
+        let small_envelopes: Vec<Vec<u8>> = (0..3)
+            .map(|i| make_envelope(i, 0xa0 + i as u8, 1000))
+            .collect();
+
+        let mut encoder = Lz4FrameEncoder::default();
+        for envelope in &small_envelopes {
+            assert!(encoder.can_fit(envelope.len()));
+            encoder.add_envelope(envelope.clone());
+        }
+        let mut wire = encoder.finalize_self_contained().to_vec();
+
+        let header = u64::from_le_bytes(wire[..8].try_into().unwrap());
+        assert!(
+            header & 0x1ffff < (header >> 17) & 0x1ffff,
+            "test setup: payload must be compressed"
+        );
+
+        let large_envelope = make_envelope(3, 0xcc, 2 * PAYLOAD_SIZE_LIMIT);
+        wire.extend_from_slice(&encode_as_non_self_contained_with(
+            &mut Lz4FrameEncoder::default(),
+            &large_envelope,
+        ));
+
+        let mut decoder = Lz4FrameDecoder::default();
+        let mut envelopes = vec![];
+        for chunk in wire.chunks(1000) {
+            let mut data = chunk.to_vec();
+            envelopes.extend(decoder.consume(&mut data, Compression::None).unwrap());
+            assert!(data.is_empty());
+        }
+
+        assert_eq!(envelopes.len(), 4);
+        for (i, envelope) in envelopes.iter().take(3).enumerate() {
+            assert_eq!(envelope.stream_id, i as i16);
+            assert_eq!(envelope.body, vec![0xa0 + i as u8; 1000]);
+        }
+        assert_eq!(envelopes[3].stream_id, 3);
+        assert_eq!(envelopes[3].body, vec![0xcc; 2 * PAYLOAD_SIZE_LIMIT]);
+    }
+
+    fn self_contained_frames() -> (Vec<u8>, Vec<u8>) {
+        let envelope = make_envelope(1, 0xaa, 100);
+
+        let mut encoder = UncompressedFrameEncoder::default();
+        encoder.add_envelope(envelope.clone());
+        let uncompressed = encoder.finalize_self_contained().to_vec();
+
+        let mut encoder = Lz4FrameEncoder::default();
+        encoder.add_envelope(envelope);
+        let compressed = encoder.finalize_self_contained().to_vec();
+
+        (uncompressed, compressed)
+    }
+
+    fn assert_corruption_detected(
+        new_decoder: impl Fn() -> Box<dyn FrameDecoder>,
+        frame: &[u8],
+        positions: std::ops::Range<usize>,
+        expected_error: &str,
+    ) {
+        for position in positions {
+            for bit in 0..8 {
+                let mut wire = frame.to_vec();
+                wire[position] ^= 1 << bit;
+
+                let error = new_decoder()
+                    .consume(&mut wire, Compression::None)
+                    .unwrap_err();
+                assert!(
+                    error.to_string().contains(expected_error),
+                    "byte {} bit {}: {}",
+                    position,
+                    bit,
+                    error
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn decoders_reject_corrupted_header_crc() {
+        let (uncompressed, compressed) = self_contained_frames();
+
+        assert_corruption_detected(
+            || Box::<UncompressedFrameDecoder>::default(),
+            &uncompressed,
+            0..UNCOMPRESSED_FRAME_HEADER_LENGTH,
+            "Header CRC mismatch",
+        );
+        assert_corruption_detected(
+            || Box::<Lz4FrameDecoder>::default(),
+            &compressed,
+            0..COMPRESSED_FRAME_HEADER_LENGTH,
+            "Header CRC mismatch",
+        );
+    }
+
+    #[test]
+    fn decoders_reject_corrupted_payload_crc() {
+        let (uncompressed, compressed) = self_contained_frames();
+
+        assert_corruption_detected(
+            || Box::<UncompressedFrameDecoder>::default(),
+            &uncompressed,
+            UNCOMPRESSED_FRAME_HEADER_LENGTH..uncompressed.len(),
+            "Payload CRC mismatch",
+        );
+        assert_corruption_detected(
+            || Box::<Lz4FrameDecoder>::default(),
+            &compressed,
+            COMPRESSED_FRAME_HEADER_LENGTH..compressed.len(),
+            "Payload CRC mismatch",
+        );
     }
 
     #[test]
