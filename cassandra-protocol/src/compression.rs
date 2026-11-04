@@ -7,6 +7,7 @@
 /// must never be compressed.  However, once the STARTUP envelope has been received
 /// by the server, messages can be compressed (including the response to the STARTUP
 /// request).
+use crate::frame::MAX_ENVELOPE_BODY_SIZE;
 use derive_more::Display;
 use snap::raw::{Decoder, Encoder};
 use std::convert::{From, TryInto};
@@ -128,6 +129,15 @@ impl Compression {
     }
 
     fn decode_snappy(bytes: Vec<u8>) -> Result<Vec<u8>> {
+        let uncompressed_size =
+            snap::raw::decompress_len(&bytes).map_err(CompressionError::Snappy)?;
+        if uncompressed_size > MAX_ENVELOPE_BODY_SIZE {
+            return Err(CompressionError::Snappy(snap::Error::TooBig {
+                given: uncompressed_size as u64,
+                max: MAX_ENVELOPE_BODY_SIZE as u64,
+            }));
+        }
+
         let mut decoder = Decoder::new();
         decoder
             .decompress_vec(bytes.as_slice())
@@ -177,8 +187,30 @@ impl Compression {
             )));
         }
 
-        lz4_flex::decompress(&bytes[4..], uncompressed_size as usize)
-            .map_err(|error| CompressionError::Lz4(io::Error::other(error)))
+        let uncompressed_size = uncompressed_size as usize;
+        if uncompressed_size > MAX_ENVELOPE_BODY_SIZE {
+            return Err(CompressionError::Lz4(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "uncompressed size {uncompressed_size} exceeds maximum {MAX_ENVELOPE_BODY_SIZE}"
+                ),
+            )));
+        }
+
+        let decompressed = lz4_flex::decompress(&bytes[4..], uncompressed_size)
+            .map_err(|error| CompressionError::Lz4(io::Error::other(error)))?;
+
+        if decompressed.len() != uncompressed_size {
+            return Err(CompressionError::Lz4(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "decompressed {} bytes, expected {uncompressed_size}",
+                    decompressed.len()
+                ),
+            )));
+        }
+
+        Ok(decompressed)
     }
 }
 
@@ -365,6 +397,50 @@ mod tests {
         // -1 in big-endian i32 followed by a dummy compressed byte
         let bytes = vec![0xff, 0xff, 0xff, 0xff, 0];
         assert!(lz4_compression.decode(bytes).is_err());
+    }
+
+    #[test]
+    fn test_compression_decode_lz4_rejects_size_above_limit() {
+        let mut bytes = (MAX_ENVELOPE_BODY_SIZE as i32 + 1).to_be_bytes().to_vec();
+        bytes.extend_from_slice(&[0x10, b'a']); // a single literal "a"
+
+        assert!(Compression::Lz4.decode(bytes).is_err());
+    }
+
+    #[test]
+    fn test_compression_decode_lz4_rejects_size_mismatch() {
+        let mut bytes = 5i32.to_be_bytes().to_vec();
+        bytes.extend_from_slice(&[0x10, b'a']); // a single literal "a"
+
+        assert!(Compression::Lz4.decode(bytes).is_err());
+    }
+
+    #[test]
+    fn test_compression_decode_snappy_rejects_size_above_limit() {
+        // varint-encoded decompressed length followed by a single literal "a"
+        let mut bytes = vec![];
+        let mut len = MAX_ENVELOPE_BODY_SIZE as u64 + 1;
+        while len >= 0x80 {
+            bytes.push(len as u8 | 0x80);
+            len >>= 7;
+        }
+        bytes.push(len as u8);
+        bytes.extend_from_slice(&[0, b'a']);
+
+        assert_eq!(
+            snap::raw::decompress_len(&bytes).unwrap(),
+            MAX_ENVELOPE_BODY_SIZE + 1
+        );
+
+        let result = Compression::Snappy.decode(bytes);
+        assert!(
+            matches!(
+                result,
+                Err(CompressionError::Snappy(snap::Error::TooBig { .. }))
+            ),
+            "{:?}",
+            result
+        );
     }
 
     #[test]

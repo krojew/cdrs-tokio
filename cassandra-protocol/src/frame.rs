@@ -73,7 +73,7 @@ pub const MAX_FRAME_SIZE: usize = PAYLOAD_SIZE_LIMIT
     )
     + FRAME_TRAILER_LENGTH;
 
-/// Maximum size of an envelope body accepted from the wire.
+/// Maximum size of an envelope body accepted from the wire, both before and after decompression.
 pub const MAX_ENVELOPE_BODY_SIZE: usize = 256 * 1024 * 1024;
 
 /// Converts a body length read from an envelope header, rejecting negative values and values above
