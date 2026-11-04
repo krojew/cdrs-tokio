@@ -8,6 +8,7 @@ use crate::common::get_ident_string;
 
 pub fn impl_into_cdrs_value(ast: &DeriveInput) -> Result<TokenStream> {
     let name = &ast.ident;
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
     if let Data::Struct(DataStruct { ref fields, .. }) = ast.data {
         let convert_into_bytes: Vec<_> = fields.iter().map(|field| {
             let field_ident = field.ident.clone().ok_or_else(|| Error::new(field.span(), "IntoCdrsValue requires all fields be named!"))?;
@@ -39,8 +40,8 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> Result<TokenStream> {
         // which is used for making queries
         Ok(quote! {
             #[automatically_derived]
-            impl From<#name> for cdrs_tokio::types::value::Bytes {
-              fn from(value: #name) -> Self {
+            impl #impl_generics From<#name #ty_generics> for cdrs_tokio::types::value::Bytes #where_clause {
+              fn from(value: #name #ty_generics) -> Self {
                 use cdrs_tokio::frame::Serialize;
 
                 let mut bytes: Vec<u8> = Vec::new();

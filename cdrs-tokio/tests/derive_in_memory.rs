@@ -3,21 +3,23 @@
 //! Cassandra node.
 
 use cdrs_tokio::frame::message_result::{
-    BodyResResultRows, ColSpec, ColType, ColTypeOption, ColTypeOptionValue, RowsMetadata,
+    BodyResResultRows, CUdt, ColSpec, ColType, ColTypeOption, ColTypeOptionValue, RowsMetadata,
     RowsMetadataFlags,
 };
-use cdrs_tokio::frame::{TryFromRow, Version};
+use cdrs_tokio::frame::{Serialize, TryFromRow, TryFromUdt, Version};
+use cdrs_tokio::query::QueryValues;
 use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 use cdrs_tokio::types::list::List;
 use cdrs_tokio::types::map::Map;
 use cdrs_tokio::types::rows::Row;
-use cdrs_tokio::types::value::Bytes;
+use cdrs_tokio::types::value::{Bytes, Value};
 use cdrs_tokio::types::CBytes;
-use cdrs_tokio::TryFromRow;
+use cdrs_tokio::{DbMirror, IntoCdrsValue, TryFromRow, TryFromUdt};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
+use std::io::Cursor;
 use std::num::{NonZeroI32, NonZeroI64};
 
 fn native(id: ColType) -> ColTypeOption {
@@ -36,6 +38,31 @@ fn map_of(key: ColTypeOption, value: ColTypeOption) -> ColTypeOption {
         id: ColType::Map,
         value: Some(ColTypeOptionValue::CMap(Box::new(key), Box::new(value))),
     }
+}
+
+fn udt_of(fields: Vec<(&str, ColTypeOption)>) -> ColTypeOption {
+    ColTypeOption {
+        id: ColType::Udt,
+        value: Some(ColTypeOptionValue::UdtType(CUdt {
+            ks: "ks".to_string(),
+            udt_name: "udt".to_string(),
+            descriptions: fields
+                .into_iter()
+                .map(|(name, col_type)| (name.to_string(), col_type))
+                .collect(),
+        })),
+    }
+}
+
+/// Serializes UDT field values in the given order.
+fn udt(fields: Vec<Value>) -> Bytes {
+    let mut bytes = Vec::new();
+    let mut cursor = Cursor::new(&mut bytes);
+    for field in fields {
+        field.serialize(&mut cursor, Version::V4);
+    }
+
+    Bytes::new(bytes)
 }
 
 fn value<T: Into<Bytes>>(value: T) -> CBytes {
@@ -216,4 +243,126 @@ fn time_and_non_zero_types_decode() {
             optional_non_zero: NonZeroI64::new(8),
         }
     );
+}
+
+#[derive(Debug, PartialEq, TryFromUdt)]
+struct Leaf {
+    text: String,
+}
+
+#[derive(Debug, PartialEq, TryFromUdt)]
+struct Labeled<T: TryFromUdt> {
+    label: String,
+    inner: T,
+}
+
+#[derive(Debug, PartialEq, TryFromRow)]
+struct GenericRow<T>
+where
+    T: TryFromUdt,
+{
+    single: Labeled<T>,
+    list: Vec<Labeled<T>>,
+    optional: Option<Labeled<T>>,
+    map: HashMap<String, Labeled<T>>,
+}
+
+fn labeled_type() -> ColTypeOption {
+    udt_of(vec![
+        ("label", native(ColType::Varchar)),
+        ("inner", udt_of(vec![("text", native(ColType::Varchar))])),
+    ])
+}
+
+fn labeled_value(label: &str, text: &str) -> Bytes {
+    udt(vec![
+        Value::new(label),
+        Value::new(udt(vec![Value::new(text)])),
+    ])
+}
+
+fn labeled_leaf(label: &str, text: &str) -> Labeled<Leaf> {
+    Labeled {
+        label: label.to_string(),
+        inner: Leaf {
+            text: text.to_string(),
+        },
+    }
+}
+
+#[test]
+fn generic_structs_decode() {
+    let mut map = HashMap::new();
+    map.insert("key".to_string(), labeled_value("d", "w"));
+    let row = row(vec![
+        ("single", labeled_type(), value(labeled_value("a", "z"))),
+        (
+            "list",
+            list_of(labeled_type()),
+            value(vec![labeled_value("b", "y")]),
+        ),
+        ("optional", labeled_type(), value(labeled_value("c", "x"))),
+        (
+            "map",
+            map_of(native(ColType::Varchar), labeled_type()),
+            value(map),
+        ),
+    ]);
+
+    let decoded = GenericRow::<Leaf>::try_from_row(row).unwrap();
+
+    let mut expected_map = HashMap::new();
+    expected_map.insert("key".to_string(), labeled_leaf("d", "w"));
+    assert_eq!(
+        decoded,
+        GenericRow {
+            single: labeled_leaf("a", "z"),
+            list: vec![labeled_leaf("b", "y")],
+            optional: Some(labeled_leaf("c", "x")),
+            map: expected_map,
+        }
+    );
+}
+
+#[derive(IntoCdrsValue)]
+struct BorrowedUdt<'a, T: Into<Bytes>> {
+    name: &'a str,
+    inner: T,
+}
+
+#[test]
+fn generic_struct_converts_into_bytes() {
+    let bytes: Bytes = BorrowedUdt {
+        name: "x",
+        inner: 5,
+    }
+    .into();
+
+    assert_eq!(
+        bytes.into_inner(),
+        udt(vec![Value::new("x"), Value::new(5)]).into_inner()
+    );
+}
+
+#[derive(DbMirror)]
+struct Mirrored<'a> {
+    id: i32,
+    name: &'a str,
+}
+
+#[test]
+fn generic_struct_mirrors_db() {
+    assert_eq!(
+        Mirrored::insert_query(),
+        "insert into Mirrored(id, name) values (?, ?)"
+    );
+
+    match (Mirrored { id: 1, name: "x" }).into_query_values() {
+        QueryValues::NamedValues(values) => {
+            assert_eq!(values.len(), 2);
+            assert_eq!(values["id"], Value::new(1));
+            assert_eq!(values["name"], Value::new("x"));
+        }
+        other => panic!("unexpected query values: {:?}", other),
+    }
 }

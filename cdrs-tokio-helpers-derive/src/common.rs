@@ -167,7 +167,7 @@ fn into_rust_with_args(
             }
         }
         _ => quote! {
-          #field_type::try_from_udt(cdrs_tokio::types::udt::Udt::from_cdrs_r(#arguments)?)?
+          <#field_type as cdrs_tokio::frame::TryFromUdt>::try_from_udt(cdrs_tokio::types::udt::Udt::from_cdrs_r(#arguments)?)?
         },
     })
 }
@@ -292,7 +292,7 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
         }
         _ => {
             quote! {
-              #ty::try_from_udt(#val)?
+              <#ty as cdrs_tokio::frame::TryFromUdt>::try_from_udt(#val)?
             }
         }
     })

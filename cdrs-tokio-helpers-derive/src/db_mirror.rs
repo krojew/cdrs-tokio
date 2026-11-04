@@ -8,6 +8,7 @@ use crate::common::struct_fields;
 
 pub fn impl_db_mirror(ast: &DeriveInput) -> Result<TokenStream> {
     let name = &ast.ident;
+    let (impl_generics, ty_generics, where_clause) = ast.generics.split_for_impl();
     let idents: Vec<_> = struct_fields(ast)?
         .named
         .iter()
@@ -31,7 +32,7 @@ pub fn impl_db_mirror(ast: &DeriveInput) -> Result<TokenStream> {
         .join(", ");
 
     Ok(quote! {
-        impl #name {
+        impl #impl_generics #name #ty_generics #where_clause {
             pub fn insert_query() -> &'static str {
                 concat!("insert into ", stringify!(#name), "(",
                   #names,
