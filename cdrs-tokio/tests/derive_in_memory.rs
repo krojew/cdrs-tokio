@@ -367,6 +367,29 @@ fn generic_struct_mirrors_db() {
     }
 }
 
+#[derive(DbMirror)]
+struct r#RawNames {
+    id: i32,
+    r#type: i32,
+}
+
+#[test]
+fn raw_identifiers_are_unescaped_in_db_mirror() {
+    assert_eq!(
+        RawNames::insert_query(),
+        "insert into RawNames(id, type) values (?, ?)"
+    );
+
+    match (RawNames { id: 1, r#type: 2 }).into_query_values() {
+        QueryValues::NamedValues(values) => {
+            assert_eq!(values.len(), 2);
+            assert_eq!(values["id"], Value::new(1));
+            assert_eq!(values["type"], Value::new(2));
+        }
+        other => panic!("unexpected query values: {:?}", other),
+    }
+}
+
 /// Shadows the crate names and prelude items that generated code could otherwise resolve to.
 #[allow(dead_code)]
 mod shadowed_names {

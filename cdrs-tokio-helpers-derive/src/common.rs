@@ -76,7 +76,7 @@ pub fn get_map_params_string(ty: &Type, name: &str) -> Result<(Type, Type, Optio
     }
 }
 
-fn remove_r(s: String) -> String {
+pub fn remove_r(s: String) -> String {
     if let Some(s) = s.strip_prefix("r#") {
         s.to_string()
     } else {
