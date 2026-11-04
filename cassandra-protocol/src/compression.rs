@@ -24,12 +24,35 @@ pub const SNAPPY: &str = "snappy";
 /// Most bytes a single compressed byte can decode to in the LZ4 block format.
 const LZ4_MAX_EXPANSION: usize = 255;
 
+/// An error reported by the Snappy codec. Its `Debug` and `Display` output and its `source` are
+/// those of the underlying codec error.
+#[derive(Clone)]
+pub struct SnappyError(snap::Error);
+
+impl fmt::Debug for SnappyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.0, f)
+    }
+}
+
+impl fmt::Display for SnappyError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
+
+impl Error for SnappyError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        self.0.source()
+    }
+}
+
 /// An error which may occur during encoding or decoding frame body.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum CompressionError {
     /// Snappy error.
-    Snappy(snap::Error),
+    Snappy(SnappyError),
     /// Lz4 error.
     Lz4(io::Error),
     /// The decompressed size declared by a compressed payload exceeds the largest accepted size.
@@ -162,12 +185,12 @@ impl Compression {
         let mut encoder = Encoder::new();
         encoder
             .compress_vec(bytes)
-            .map_err(CompressionError::Snappy)
+            .map_err(|error| CompressionError::Snappy(SnappyError(error)))
     }
 
     fn decode_snappy(bytes: Vec<u8>) -> Result<Vec<u8>> {
-        let uncompressed_size =
-            snap::raw::decompress_len(&bytes).map_err(CompressionError::Snappy)?;
+        let uncompressed_size = snap::raw::decompress_len(&bytes)
+            .map_err(|error| CompressionError::Snappy(SnappyError(error)))?;
         if uncompressed_size > MAX_ENVELOPE_BODY_SIZE {
             return Err(CompressionError::DecompressedSizeExceedsLimit {
                 size: uncompressed_size,
@@ -178,7 +201,7 @@ impl Compression {
         let mut decoder = Decoder::new();
         decoder
             .decompress_vec(bytes.as_slice())
-            .map_err(CompressionError::Snappy)
+            .map_err(|error| CompressionError::Snappy(SnappyError(error)))
     }
 
     fn encode_lz4(bytes: &[u8]) -> Result<Vec<u8>> {
@@ -579,5 +602,17 @@ mod tests {
             .encode(&v)
             .expect("Should work without exceptions");
         assert_eq!(snappy_compression.decode(encoded).unwrap(), v);
+    }
+
+    #[test]
+    fn test_compression_decode_snappy_reports_codec_error() {
+        let error = Compression::Snappy.decode(vec![]).unwrap_err();
+        assert!(matches!(error, CompressionError::Snappy(_)), "{:?}", error);
+        assert_eq!(error.to_string(), "Snappy Error: Empty");
+        assert_eq!(error.clone().to_string(), error.to_string());
+
+        let source = error.source().expect("codec error");
+        assert_eq!(source.to_string(), "snappy: corrupt input (empty)");
+        assert!(source.source().is_none());
     }
 }
