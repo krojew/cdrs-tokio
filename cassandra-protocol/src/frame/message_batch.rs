@@ -48,14 +48,16 @@ impl Serialize for BodyReqBatch {
             flags.insert(QueryFlags::WITH_DEFAULT_TIMESTAMP)
         }
 
-        // keyspace and "now" in seconds were added in protocol v5 and have no earlier encoding
-        let with_v5_fields = version >= Version::V5;
+        // The keyspace flag is defined only in protocol v5, but Cassandra reads it on every protocol
+        // version, so it is sent regardless. "Now" in seconds does not fit into the single flags
+        // byte used before v5.
+        let with_now_in_seconds = version >= Version::V5 && self.now_in_seconds.is_some();
 
-        if with_v5_fields && self.keyspace.is_some() {
+        if self.keyspace.is_some() {
             flags.insert(QueryFlags::WITH_KEYSPACE)
         }
 
-        if with_v5_fields && self.now_in_seconds.is_some() {
+        if with_now_in_seconds {
             flags.insert(QueryFlags::WITH_NOW_IN_SECONDS)
         }
 
@@ -70,11 +72,11 @@ impl Serialize for BodyReqBatch {
             timestamp.serialize(cursor, version);
         }
 
-        if with_v5_fields {
-            if let Some(keyspace) = &self.keyspace {
-                serialize_str(cursor, keyspace.as_str(), version);
-            }
+        if let Some(keyspace) = &self.keyspace {
+            serialize_str(cursor, keyspace.as_str(), version);
+        }
 
+        if with_now_in_seconds {
             if let Some(now_in_seconds) = self.now_in_seconds {
                 now_in_seconds.serialize(cursor, version);
             }
@@ -346,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    fn should_omit_v5_fields_for_v4() {
+    fn should_send_keyspace_and_omit_now_in_seconds_for_v4() {
         let body = BodyReqBatch::new(
             BatchType::Logged,
             vec![],
@@ -363,8 +365,9 @@ mod tests {
             [
                 0, // batch type
                 0, 0, // number of queries
-                0, 0, // consistency any
-                0, // flags
+                0, 0,    // consistency any
+                0x80, // flags - with keyspace
+                0, 3, 97, 98, 99, // keyspace - abc
             ]
         );
     }
