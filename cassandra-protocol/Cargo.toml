@@ -24,7 +24,6 @@ crc32fast = "1.5.0"
 derivative.workspace = true
 derive_more.workspace = true
 float_eq = "1.0.1"
-integer-encoding = "4.1.0"
 itertools.workspace = true
 num-bigint = "0.5.0"
 lz4_flex = "0.14.0"
