@@ -652,30 +652,50 @@ impl Serialize for ColTypeOption {
     }
 }
 
+/// Deepest nesting of collection, UDT and tuple types accepted when decoding a column type. Real
+/// schemas stay far below it, while it keeps a crafted type from overflowing the stack.
+const MAX_COL_TYPE_DEPTH: usize = 64;
+
 impl FromCursor for ColTypeOption {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<ColTypeOption> {
+        ColTypeOption::from_cursor_with_depth(cursor, version, 0)
+    }
+}
+
+impl ColTypeOption {
+    fn from_cursor_with_depth(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+        depth: usize,
+    ) -> error::Result<ColTypeOption> {
+        if depth > MAX_COL_TYPE_DEPTH {
+            return Err(Error::General(format!(
+                "Column type nesting exceeds the maximum depth of {MAX_COL_TYPE_DEPTH}"
+            )));
+        }
+
         let id = ColType::from_cursor(cursor, version)?;
         let value = match id {
             ColType::Custom => Some(ColTypeOptionValue::CString(
                 from_cursor_str(cursor)?.to_string(),
             )),
             ColType::Set => {
-                let col_type = ColTypeOption::from_cursor(cursor, version)?;
+                let col_type = ColTypeOption::from_cursor_with_depth(cursor, version, depth + 1)?;
                 Some(ColTypeOptionValue::CSet(Box::new(col_type)))
             }
             ColType::List => {
-                let col_type = ColTypeOption::from_cursor(cursor, version)?;
+                let col_type = ColTypeOption::from_cursor_with_depth(cursor, version, depth + 1)?;
                 Some(ColTypeOptionValue::CList(Box::new(col_type)))
             }
-            ColType::Udt => Some(ColTypeOptionValue::UdtType(CUdt::from_cursor(
-                cursor, version,
+            ColType::Udt => Some(ColTypeOptionValue::UdtType(CUdt::from_cursor_with_depth(
+                cursor, version, depth,
             )?)),
-            ColType::Tuple => Some(ColTypeOptionValue::TupleType(CTuple::from_cursor(
-                cursor, version,
-            )?)),
+            ColType::Tuple => Some(ColTypeOptionValue::TupleType(
+                CTuple::from_cursor_with_depth(cursor, version, depth)?,
+            )),
             ColType::Map => {
-                let name_type = ColTypeOption::from_cursor(cursor, version)?;
-                let value_type = ColTypeOption::from_cursor(cursor, version)?;
+                let name_type = ColTypeOption::from_cursor_with_depth(cursor, version, depth + 1)?;
+                let value_type = ColTypeOption::from_cursor_with_depth(cursor, version, depth + 1)?;
                 Some(ColTypeOptionValue::CMap(
                     Box::new(name_type),
                     Box::new(value_type),
@@ -745,6 +765,17 @@ impl Serialize for CUdt {
 
 impl FromCursor for CUdt {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<CUdt> {
+        CUdt::from_cursor_with_depth(cursor, version, 0)
+    }
+}
+
+impl CUdt {
+    /// `depth` is the nesting depth of the UDT itself; its field types are one level deeper.
+    fn from_cursor_with_depth(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+        depth: usize,
+    ) -> error::Result<CUdt> {
         let ks = from_cursor_str(cursor)?.to_string();
         let udt_name = from_cursor_str(cursor)?.to_string();
 
@@ -757,7 +788,7 @@ impl FromCursor for CUdt {
             Vec::with_capacity(bounded_capacity(cursor, n as usize, 2 * SHORT_LEN));
         for _ in 0..n {
             let name = from_cursor_str(cursor)?.to_string();
-            let col_type = ColTypeOption::from_cursor(cursor, version)?;
+            let col_type = ColTypeOption::from_cursor_with_depth(cursor, version, depth + 1)?;
             descriptions.push((name, col_type));
         }
 
@@ -787,13 +818,24 @@ impl Serialize for CTuple {
 
 impl FromCursor for CTuple {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<CTuple> {
+        CTuple::from_cursor_with_depth(cursor, version, 0)
+    }
+}
+
+impl CTuple {
+    /// `depth` is the nesting depth of the tuple itself; its element types are one level deeper.
+    fn from_cursor_with_depth(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+        depth: usize,
+    ) -> error::Result<CTuple> {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
         let n = u16::from_be_bytes(buff);
         let mut types = Vec::with_capacity(bounded_capacity(cursor, n as usize, SHORT_LEN));
         for _ in 0..n {
-            let col_type = ColTypeOption::from_cursor(cursor, version)?;
+            let col_type = ColTypeOption::from_cursor_with_depth(cursor, version, depth + 1)?;
             types.push(col_type);
         }
 
@@ -1171,6 +1213,61 @@ mod col_spec {
 //noinspection DuplicatedCode
 mod col_type_option {
     use super::*;
+
+    fn nested_lists(depth: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(depth * 2 + 2);
+        for _ in 0..depth {
+            bytes.extend_from_slice(&[0, 0x20]); // list
+        }
+        bytes.extend_from_slice(&[0, 9]); // int
+        bytes
+    }
+
+    #[test]
+    fn col_type_options_too_deeply_nested() {
+        let bytes = nested_lists(10_000);
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        assert!(ColTypeOption::from_cursor(&mut cursor, Version::V4).is_err());
+    }
+
+    #[test]
+    fn col_type_options_nested_up_to_max_depth() {
+        let bytes = nested_lists(MAX_COL_TYPE_DEPTH);
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        assert!(ColTypeOption::from_cursor(&mut cursor, Version::V4).is_ok());
+
+        let bytes = nested_lists(MAX_COL_TYPE_DEPTH + 1);
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        assert!(ColTypeOption::from_cursor(&mut cursor, Version::V4).is_err());
+    }
+
+    /// Each pair adds two levels: a single element tuple holding a single field UDT.
+    fn nested_tuples_and_udts(pairs: usize) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for _ in 0..pairs {
+            bytes.extend_from_slice(&[0, 0x31, 0, 1]); // tuple with one element
+            bytes.extend_from_slice(&[
+                0, 0x30, // udt
+                0, 1, 107, // keyspace name - k
+                0, 1, 117, // udt name - u
+                0, 1, // one field
+                0, 1, 102, // field name - f
+            ]);
+        }
+        bytes.extend_from_slice(&[0, 9]); // int
+        bytes
+    }
+
+    #[test]
+    fn col_type_options_nested_tuples_and_udts() {
+        let bytes = nested_tuples_and_udts(MAX_COL_TYPE_DEPTH / 2);
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        assert!(ColTypeOption::from_cursor(&mut cursor, Version::V4).is_ok());
+
+        let bytes = nested_tuples_and_udts(5_000);
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        assert!(ColTypeOption::from_cursor(&mut cursor, Version::V4).is_err());
+    }
 
     #[test]
     fn col_type_options_int() {
