@@ -88,13 +88,18 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     #[must_use]
     pub fn clone_with_node(&self, node: Node<T, CM>) -> Self {
         let node = Arc::new(node);
-        let token_map = self.token_map.clone_with_node(node.clone());
 
         let mut nodes = self.nodes.clone();
-        nodes.insert(
+        let old_node = nodes.insert(
             node.host_id().expect("Adding a node without host id!"),
-            node,
+            node.clone(),
         );
+
+        // inserting only the new tokens would leave the replaced node's old tokens in the ring
+        let token_map = match old_node {
+            Some(old_node) if old_node.tokens() != node.tokens() => TokenMap::new(&nodes),
+            _ => self.token_map.clone_with_node(node),
+        };
 
         let datacenters = build_datacenter_info(&nodes);
 
@@ -258,6 +263,7 @@ mod tests {
     use crate::cluster::connection_pool::ConnectionPoolFactory;
     use crate::cluster::topology::cluster_metadata::build_datacenter_info;
     use crate::cluster::topology::Node;
+    use crate::cluster::{ClusterMetadata, Murmur3Token};
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
 
@@ -331,5 +337,45 @@ mod tests {
         let dc_info = build_datacenter_info(&nodes);
         assert_eq!(dc_info.get("dc1").unwrap().rack_count, 2);
         assert_eq!(dc_info.get("dc2").unwrap().rack_count, 1);
+    }
+
+    #[test]
+    fn should_drop_old_tokens_when_replacing_node() {
+        let (_, keyspace_receiver) = watch::channel(None);
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            MockConnectionManager::<MockCdrsTransport>::new(),
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        ));
+
+        let host_id = Uuid::new_v4();
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9042);
+        let create_node = |tokens| {
+            Node::new(
+                connection_pool_factory.clone(),
+                address,
+                None,
+                Some(host_id),
+                None,
+                tokens,
+                "".into(),
+                "".into(),
+            )
+        };
+
+        let mut nodes = FxHashMap::default();
+        nodes.insert(host_id, Arc::new(create_node(vec![Murmur3Token::new(1)])));
+        let metadata = ClusterMetadata::new(nodes, Default::default());
+
+        let metadata = metadata.clone_with_node(create_node(vec![Murmur3Token::new(50)]));
+
+        let ring_tokens: Vec<_> = metadata
+            .token_map()
+            .nodes_for_token(Murmur3Token::new(0))
+            .map(|node| node.tokens().to_vec())
+            .collect();
+        assert_eq!(ring_tokens, vec![vec![Murmur3Token::new(50)]]);
     }
 }

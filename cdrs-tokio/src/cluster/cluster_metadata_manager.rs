@@ -418,6 +418,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 self.metadata
                     .rcu(|metadata| Arc::new(metadata.clone_without_node(event.addr)));
             }
+            TopologyChangeType::MovedNode => self.refresh_moved_node(event.addr).await,
             _ => warn!(?event, "Unrecognized topology change type."),
         }
     }
@@ -572,6 +573,36 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             }
             Err(error) => {
                 error!(%error, %broadcast_rpc_address, "Error finding new node info!");
+            }
+        }
+    }
+
+    async fn refresh_moved_node(&self, broadcast_rpc_address: SocketAddr) {
+        debug!(%broadcast_rpc_address, "Refreshing moved node.");
+
+        let node_info = self.find_new_node_info(broadcast_rpc_address).await;
+        match node_info {
+            Ok(Some(node_info)) => {
+                self.metadata.rcu(|metadata| {
+                    match metadata.find_node_by_host_id(&node_info.host_id) {
+                        Some(node) => {
+                            Arc::new(metadata.clone_with_node(node.clone_with_node_info(
+                                node_info.clone(),
+                                self.node_distance_evaluator.as_ref(),
+                            )))
+                        }
+                        None => {
+                            debug!(%broadcast_rpc_address, "Unknown node moved - ignoring.");
+                            metadata.clone()
+                        }
+                    }
+                });
+            }
+            Ok(None) => {
+                warn!(%broadcast_rpc_address, "Cannot find moved node info. Ignoring moved node.");
+            }
+            Err(error) => {
+                error!(%error, %broadcast_rpc_address, "Error finding moved node info!");
             }
         }
     }
@@ -820,6 +851,7 @@ mod tests {
     use uuid::Uuid;
 
     use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::topology::NodeDistance;
     use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
@@ -1001,5 +1033,66 @@ mod tests {
         assert!(metadata
             .find_node_by_rpc_address(new_node_address)
             .is_some());
+    }
+
+    #[tokio::test]
+    async fn should_refresh_tokens_of_moved_node() {
+        let moved_node_address = address(2);
+        let moved_node_host_id = Uuid::new_v4();
+
+        let mut transport = MockCdrsTransport::new();
+        transport.expect_address().return_const(address(1));
+        transport
+            .expect_write_envelope()
+            .returning(move |envelope, _| {
+                assert_eq!(query_text(envelope), "SELECT * FROM system.peers_v2");
+
+                let response = rows_envelope(
+                    node_columns("peer"),
+                    vec![node_row(moved_node_address, moved_node_host_id, &[50])],
+                );
+
+                async move { Ok(response) }.boxed()
+            });
+
+        let metadata_manager = create_metadata_manager(transport);
+
+        let mut nodes = FxHashMap::default();
+        nodes.insert(
+            moved_node_host_id,
+            Arc::new(Node::new_with_state(
+                metadata_manager.connection_pool_factory.clone(),
+                moved_node_address,
+                None,
+                Some(moved_node_host_id),
+                Some(NodeDistance::Local),
+                NodeState::Up,
+                vec![Murmur3Token::new(1)],
+                "r1".into(),
+                "dc1".into(),
+            )),
+        );
+        metadata_manager
+            .metadata
+            .store(Arc::new(ClusterMetadata::new(nodes, Default::default())));
+
+        metadata_manager
+            .process_topology_event(TopologyChange {
+                change_type: TopologyChangeType::MovedNode,
+                addr: moved_node_address,
+            })
+            .await;
+
+        let metadata = metadata_manager.metadata();
+        let node = metadata.find_node_by_host_id(&moved_node_host_id).unwrap();
+        assert_eq!(node.tokens(), &[Murmur3Token::new(50)]);
+        assert_eq!(node.state(), NodeState::Up);
+
+        let first_ring_node = metadata
+            .token_map()
+            .nodes_for_token(Murmur3Token::new(0))
+            .next()
+            .unwrap();
+        assert_eq!(first_ring_node.tokens(), &[Murmur3Token::new(50)]);
     }
 }
