@@ -107,6 +107,9 @@
 * `IntoCdrsValue` moves `Option` field values instead of cloning them, so
   field types no longer need to implement `Clone`, but a struct
   implementing `Drop` can no longer derive it.
+* A field whose type is named `Duration` is read as a CQL `duration`, so a
+  user-defined UDT struct named `Duration` has to be renamed to be used as
+  a field type.
 
 ### Added
 
