@@ -21,6 +21,9 @@ type Result<T> = result::Result<T, CompressionError>;
 pub const LZ4: &str = "lz4";
 pub const SNAPPY: &str = "snappy";
 
+/// Most bytes a single compressed byte can decode to in the LZ4 block format.
+const LZ4_MAX_EXPANSION: usize = 255;
+
 /// An error which may occur during encoding or decoding frame body. As there are only two types
 /// of compressors it contains two related enum options.
 #[derive(Debug)]
@@ -197,7 +200,23 @@ impl Compression {
             )));
         }
 
-        let decompressed = lz4_flex::decompress(&bytes[4..], uncompressed_size)
+        // LZ4 block sequences copy literals 1:1 and spend at least 3 bytes (token and offset) on
+        // each match, whose length is at most 18 plus 255 for every extra length byte, so no
+        // compressed byte can decode to more than 255 bytes. Checking this before decoding keeps
+        // a tiny payload from forcing an allocation of the full declared size.
+        let compressed = &bytes[4..];
+        if uncompressed_size > compressed.len().saturating_mul(LZ4_MAX_EXPANSION) {
+            return Err(CompressionError::Lz4(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "uncompressed size {uncompressed_size} is more than lz4 can expand {} \
+                     compressed bytes into",
+                    compressed.len()
+                ),
+            )));
+        }
+
+        let decompressed = lz4_flex::decompress(compressed, uncompressed_size)
             .map_err(|error| CompressionError::Lz4(io::Error::other(error)))?;
 
         if decompressed.len() != uncompressed_size {
@@ -416,6 +435,45 @@ mod tests {
             ),
             "{:?}",
             result
+        );
+    }
+
+    #[test]
+    fn test_compression_decode_lz4_rejects_size_beyond_possible_expansion() {
+        let mut bytes = (MAX_ENVELOPE_BODY_SIZE as i32).to_be_bytes().to_vec();
+        bytes.extend_from_slice(&[0x10, b'a']); // a single literal "a"
+
+        let result = Compression::Lz4.decode(bytes);
+        assert!(
+            matches!(
+                result,
+                Err(CompressionError::Lz4(ref error))
+                    if error.kind() == io::ErrorKind::InvalidData
+                        && error.to_string().contains("more than lz4 can expand")
+            ),
+            "{:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_compression_decode_lz4_accepts_near_maximum_expansion() {
+        // one literal "a", then a match at offset 1 whose length is 4 + 15 + 255 per 0xFF byte
+        // + 254, then a final empty literal run
+        let extra_length_bytes = 2000;
+        let mut block = vec![0x1F, b'a', 0x01, 0x00];
+        block.resize(block.len() + extra_length_bytes, 0xFF);
+        block.extend_from_slice(&[0xFE, 0x00]);
+
+        let uncompressed_size = 1 + 4 + 15 + 255 * extra_length_bytes + 254;
+        assert!(uncompressed_size > 254 * block.len());
+
+        let mut bytes = (uncompressed_size as i32).to_be_bytes().to_vec();
+        bytes.extend_from_slice(&block);
+
+        assert_eq!(
+            Compression::Lz4.decode(bytes).unwrap(),
+            vec![b'a'; uncompressed_size]
         );
     }
 
