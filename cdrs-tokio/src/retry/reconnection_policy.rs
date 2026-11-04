@@ -150,9 +150,10 @@ impl ReconnectionSchedule for ExponentialReconnectionSchedule {
         };
 
         // Apply +/-15% jitter so a flock of clients reconnecting at the same
-        // time don't all retry in lockstep. The jitter is sampled within
-        // [base_delay, max_delay] rather than clamped afterward, so delays
-        // near a bound don't pile up on it.
+        // time don't all retry in lockstep. The jitter range is narrowed to
+        // [base_delay, max_delay] before sampling, so delays near a bound
+        // don't pile up on it. The final clamp only guards against
+        // floating-point rounding in the sampling.
         let spread = delay / 100 * 15;
         let low = delay.saturating_sub(spread).max(self.base_delay);
         let high = delay.saturating_add(spread).min(self.max_delay);
