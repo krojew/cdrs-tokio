@@ -13,32 +13,58 @@ pub(crate) fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>
     node_infos: Vec<NodeInfo>,
     keyspaces: FxHashMap<String, KeyspaceMetadata>,
     contact_points: &[Arc<Node<T, CM>>],
+    old_metadata: Option<&ClusterMetadata<T, CM>>,
     connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
     node_distance_evaluator: &(dyn NodeDistanceEvaluator + Send + Sync),
 ) -> ClusterMetadata<T, CM> {
     let mut nodes = FxHashMap::with_capacity_and_hasher(node_infos.len(), Default::default());
     for node_info in node_infos {
         if let Entry::Vacant(entry) = nodes.entry(node_info.host_id) {
-            let contact_point = contact_points.iter().find(|contact_point| {
-                contact_point.broadcast_rpc_address() == node_info.broadcast_rpc_address
-            });
+            let distance = node_distance_evaluator.compute_distance(&node_info);
 
-            let node = if let Some(contact_point) = contact_point {
-                debug!(?node_info, "Copying contact point.");
-                Arc::new(contact_point.clone_as_contact_point(node_info, node_distance_evaluator))
-            } else {
-                debug!(?node_info, "Adding new node.");
-                Arc::new(Node::new_with_state(
-                    connection_pool_factory.clone(),
-                    node_info.broadcast_rpc_address,
-                    node_info.broadcast_address,
-                    Some(node_info.host_id),
-                    node_distance_evaluator.compute_distance(&node_info),
-                    NodeState::Up,
-                    node_info.tokens.clone(),
-                    node_info.rack,
-                    node_info.datacenter,
-                ))
+            // A known node keeps its connectivity if its address and distance, which determines
+            // the pool size, are unchanged.
+            let old_node = old_metadata
+                .and_then(|old_metadata| old_metadata.nodes().get(&node_info.host_id))
+                .filter(|old_node| {
+                    old_node.broadcast_rpc_address() == node_info.broadcast_rpc_address
+                        && old_node.distance() == distance
+                });
+
+            let node = match old_node {
+                // Listed in the peers table, so assumed to be up. A forced down node cannot leave
+                // that state in place, so it gets fresh connectivity instead. The caller may retry
+                // building inside an rcu closure, and setting the state is idempotent.
+                Some(old_node) if old_node.try_set_state(NodeState::Up) => {
+                    debug!(?node_info, "Reusing old node.");
+                    Arc::new(old_node.clone_with_node_info(node_info, node_distance_evaluator))
+                }
+                _ => {
+                    let contact_point = contact_points.iter().find(|contact_point| {
+                        contact_point.broadcast_rpc_address() == node_info.broadcast_rpc_address
+                    });
+
+                    if let Some(contact_point) = contact_point {
+                        debug!(?node_info, "Copying contact point.");
+                        Arc::new(
+                            contact_point
+                                .clone_as_contact_point(node_info, node_distance_evaluator),
+                        )
+                    } else {
+                        debug!(?node_info, "Adding new node.");
+                        Arc::new(Node::new_with_state(
+                            connection_pool_factory.clone(),
+                            node_info.broadcast_rpc_address,
+                            node_info.broadcast_address,
+                            Some(node_info.host_id),
+                            distance,
+                            NodeState::Up,
+                            node_info.tokens,
+                            node_info.rack,
+                            node_info.datacenter,
+                        ))
+                    }
+                }
             };
 
             entry.insert(node);
@@ -234,6 +260,7 @@ mod tests {
             node_infos.clone(),
             Default::default(),
             &[],
+            None,
             &connection_pool_factory,
             &node_distance_evaluator,
         );
@@ -285,6 +312,7 @@ mod tests {
             node_infos.clone(),
             Default::default(),
             &contact_points,
+            None,
             &connection_pool_factory,
             &node_distance_evaluator,
         );
@@ -331,6 +359,7 @@ mod tests {
             node_infos.clone(),
             Default::default(),
             &contact_points,
+            None,
             &connection_pool_factory,
             &node_distance_evaluator,
         );
@@ -1012,5 +1041,114 @@ mod tests {
         node.persistent_connection().await.unwrap();
         assert_eq!(connect_count.load(Ordering::Relaxed), 1);
         assert!(node.shares_connectivity_with(&old_node));
+    }
+
+    fn distance_evaluator(distance: NodeDistance) -> MockNodeDistanceEvaluator {
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(distance));
+        node_distance_evaluator
+    }
+
+    #[tokio::test]
+    async fn should_reuse_connection_pool_on_full_refresh() {
+        let connect_count = Arc::new(AtomicUsize::new(0));
+        let connection_pool_factory = counting_connection_pool_factory(connect_count.clone());
+
+        let node_info = test_node_info(node_address(1));
+        let old_node = create_up_node(&connection_pool_factory, &node_info);
+        old_node.persistent_connection().await.unwrap();
+        old_node.shared().mark_down();
+        let old_metadata = metadata_with_node(old_node.clone());
+
+        let metadata = build_initial_metadata(
+            vec![node_info.clone()],
+            Default::default(),
+            &[],
+            Some(&old_metadata),
+            &connection_pool_factory,
+            &distance_evaluator(NodeDistance::Local),
+        );
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert_eq!(node.state(), NodeState::Up);
+
+        node.persistent_connection().await.unwrap();
+        assert_eq!(connect_count.load(Ordering::Relaxed), 1);
+        assert!(node.shares_connectivity_with(&old_node));
+    }
+
+    #[tokio::test]
+    async fn should_recreate_forced_down_node_on_full_refresh() {
+        let connect_count = Arc::new(AtomicUsize::new(0));
+        let connection_pool_factory = counting_connection_pool_factory(connect_count.clone());
+
+        let node_info = test_node_info(node_address(1));
+        let old_node = create_up_node(&connection_pool_factory, &node_info);
+        old_node.persistent_connection().await.unwrap();
+        old_node.force_down();
+        let old_metadata = metadata_with_node(old_node.clone());
+
+        let metadata = build_initial_metadata(
+            vec![node_info.clone()],
+            Default::default(),
+            &[],
+            Some(&old_metadata),
+            &connection_pool_factory,
+            &distance_evaluator(NodeDistance::Local),
+        );
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert_eq!(node.state(), NodeState::Up);
+        assert_eq!(old_node.state(), NodeState::ForcedDown);
+        assert!(!node.shares_connectivity_with(&old_node));
+
+        node.persistent_connection().await.unwrap();
+        assert_eq!(connect_count.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn should_recreate_node_with_changed_distance_on_full_refresh() {
+        let connection_pool_factory = counting_connection_pool_factory(Default::default());
+
+        let node_info = test_node_info(node_address(1));
+        let old_node = create_up_node(&connection_pool_factory, &node_info);
+        let old_metadata = metadata_with_node(old_node.clone());
+
+        let metadata = build_initial_metadata(
+            vec![node_info.clone()],
+            Default::default(),
+            &[],
+            Some(&old_metadata),
+            &connection_pool_factory,
+            &distance_evaluator(NodeDistance::Remote),
+        );
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert_eq!(node.distance(), Some(NodeDistance::Remote));
+        assert!(!node.shares_connectivity_with(&old_node));
+    }
+
+    #[test]
+    fn should_recreate_node_with_new_host_id_on_full_refresh() {
+        let connection_pool_factory = counting_connection_pool_factory(Default::default());
+
+        let old_node = create_up_node(&connection_pool_factory, &test_node_info(node_address(1)));
+        let old_metadata = metadata_with_node(old_node.clone());
+
+        let node_info = test_node_info(node_address(1));
+        let metadata = build_initial_metadata(
+            vec![node_info.clone()],
+            Default::default(),
+            &[],
+            Some(&old_metadata),
+            &connection_pool_factory,
+            &distance_evaluator(NodeDistance::Local),
+        );
+
+        assert_eq!(metadata.nodes().len(), 1);
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert!(!node.shares_connectivity_with(&old_node));
     }
 }

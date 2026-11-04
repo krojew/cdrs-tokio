@@ -1692,6 +1692,7 @@ mod tests {
     use itertools::Itertools;
     use std::collections::{HashMap, HashSet};
     use std::net::SocketAddr;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::sync::Notify;
@@ -1805,6 +1806,39 @@ mod tests {
             .await;
 
         assert!(result.is_ok(), "{:?}", result);
+    }
+
+    #[tokio::test]
+    async fn should_not_reconnect_after_metadata_refresh() {
+        let connect_count = Arc::new(AtomicUsize::new(0));
+        let session = create_session(
+            &[node_address(1), node_address(2)],
+            TestConnectionManager::new(|_, _| ready(Ok(void_response(Version::V4))).boxed())
+                .with_connect_handler({
+                    let connect_count = connect_count.clone();
+                    move |_| {
+                        connect_count.fetch_add(1, Ordering::Relaxed);
+                        Ok(())
+                    }
+                }),
+            TestRoundRobin::new(),
+            None,
+            Version::V4,
+        );
+        let metadata_manager = &session.cluster_metadata_manager;
+
+        metadata_manager.refresh_metadata(true).await.unwrap();
+        for _ in 0..2 {
+            session.query("SELECT 1").await.unwrap();
+        }
+
+        metadata_manager.refresh_metadata(false).await.unwrap();
+        metadata_manager.refresh_metadata(true).await.unwrap();
+        for _ in 0..2 {
+            session.query("SELECT 1").await.unwrap();
+        }
+
+        assert_eq!(connect_count.load(Ordering::Relaxed), 2);
     }
 
     #[tokio::test]

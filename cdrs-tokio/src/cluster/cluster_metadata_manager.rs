@@ -683,6 +683,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 node_infos,
                 keyspaces,
                 &self.contact_points,
+                None,
                 &self.connection_pool_factory,
                 self.node_distance_evaluator.as_ref(),
             )));
@@ -693,6 +694,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                         node_infos.clone(),
                         keyspaces.clone(),
                         &self.contact_points,
+                        Some(old_metadata.as_ref()),
                         &self.connection_pool_factory,
                         self.node_distance_evaluator.as_ref(),
                     )
