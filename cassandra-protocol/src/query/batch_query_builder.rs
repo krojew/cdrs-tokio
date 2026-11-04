@@ -120,16 +120,12 @@ impl BatchQueryBuilder {
     }
 
     pub fn build(self) -> CResult<QueryBatch> {
-        let with_names_for_values = self.queries.iter().all(|q| q.values.has_names());
-
-        if !with_names_for_values {
-            let some_names_for_values = self.queries.iter().any(|q| q.values.has_names());
-
-            if some_names_for_values {
-                return Err(CError::General(String::from(
-                    "Inconsistent query values - mixed with and without names values",
-                )));
-            }
+        // the BATCH message has no way to mark values as named, see
+        // https://issues.apache.org/jira/browse/CASSANDRA-10246
+        if self.queries.iter().any(|q| q.values.has_names()) {
+            return Err(CError::General(String::from(
+                "Named query values are not supported in batches",
+            )));
         }
 
         Ok(QueryBatch::new(
@@ -144,5 +140,46 @@ impl BatchQueryBuilder {
             },
             self.prepared_queries,
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn named_values() -> QueryValues {
+        let mut values = HashMap::new();
+        values.insert("a", 1);
+        values.into()
+    }
+
+    fn simple_values() -> QueryValues {
+        vec![1].into()
+    }
+
+    #[test]
+    fn should_reject_named_values() {
+        let result = BatchQueryBuilder::new()
+            .add_query("INSERT INTO t (a) VALUES (:a)", named_values())
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn should_reject_mixed_values() {
+        let result = BatchQueryBuilder::new()
+            .add_query("INSERT INTO t (a) VALUES (?)", simple_values())
+            .add_query("INSERT INTO t (a) VALUES (:a)", named_values())
+            .build();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn should_accept_simple_values() {
+        let result = BatchQueryBuilder::new()
+            .add_query("INSERT INTO t (a) VALUES (?)", simple_values())
+            .add_query("INSERT INTO t (a) VALUES (?)", simple_values())
+            .build();
+        assert!(result.is_ok());
     }
 }
