@@ -1530,9 +1530,119 @@ impl Drop for AbortOnDropHandle {
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::session::{prepare_flags, AbortOnDropHandle};
-    use cassandra_protocol::frame::Flags;
+    use crate::cluster::session::{prepare_flags, AbortOnDropHandle, Session};
+    use crate::cluster::test_support::*;
+    use crate::cluster::{ClusterMetadataManager, KeyspaceHolder, SessionContext};
+    use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
+    use crate::load_balancing::{
+        InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy,
+        RoundRobinLoadBalancingStrategy,
+    };
+    use crate::retry::DefaultRetryPolicy;
+    use crate::speculative_execution::SpeculativeExecutionPolicy;
+    use crate::statement::StatementParamsBuilder;
+    use cassandra_protocol::error::Error;
+    use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType};
+    use cassandra_protocol::frame::{Flags, Version};
+    use futures::future::ready;
+    use futures::FutureExt;
+    use itertools::Itertools;
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+    use tokio::sync::{broadcast, watch};
     use tokio::task::JoinHandle;
+
+    type TestRoundRobin = RoundRobinLoadBalancingStrategy<TestTransport, TestConnectionManager>;
+
+    // Builds a session over given nodes without running a control connection. Until
+    // `refresh_metadata` is called on its metadata manager, every query plan consists of all the
+    // nodes in the given order.
+    fn create_session<LB: LoadBalancingStrategy<TestTransport, TestConnectionManager>>(
+        addresses: &[SocketAddr],
+        connection_manager: TestConnectionManager,
+        load_balancing: LB,
+        speculative_execution_policy: Option<Box<dyn SpeculativeExecutionPolicy + Send + Sync>>,
+        version: Version,
+    ) -> Session<TestTransport, TestConnectionManager, LB>
+    where
+        LB: Send + Sync + 'static,
+    {
+        let connection_pool_factory = create_connection_pool_factory(connection_manager, version);
+        let contact_points = addresses
+            .iter()
+            .map(|addr| create_node(&connection_pool_factory, *addr))
+            .collect_vec();
+
+        let topology = addresses.to_vec();
+        let session_context = Arc::new(SessionContext::default());
+        session_context
+            .control_connection_transport
+            .store(Some(Arc::new(TestTransport::new(
+                addresses[0],
+                Arc::new(move |_, envelope| ready(topology_response(envelope, &topology)).boxed()),
+            ))));
+
+        let cluster_metadata_manager = Arc::new(ClusterMetadataManager::new(
+            contact_points.clone(),
+            connection_pool_factory,
+            session_context,
+            Box::<AllLocalNodeDistanceEvaluator>::default(),
+            version,
+            false,
+        ));
+
+        let (keyspace_sender, _) = watch::channel(None);
+        let (event_sender, _) = broadcast::channel(1);
+
+        Session {
+            load_balancing: Arc::new(InitializingWrapperLoadBalancingStrategy::new(
+                load_balancing,
+                contact_points,
+            )),
+            keyspace_holder: Arc::new(KeyspaceHolder::new(keyspace_sender)),
+            retry_policy: Box::<DefaultRetryPolicy>::default(),
+            speculative_execution_policy,
+            control_connection_handle: tokio::spawn(async {}),
+            event_sender,
+            cluster_metadata_manager,
+            _transport: Default::default(),
+            _connection_manager: Default::default(),
+            version,
+        }
+    }
+
+    #[tokio::test]
+    async fn should_return_last_server_error_when_all_nodes_ask_for_next_node() {
+        let addresses = [node_address(1), node_address(2)];
+        let session = create_session(
+            &addresses,
+            TestConnectionManager::new(|addr, _| {
+                ready(Err(server_error(addr, ErrorType::Overloaded))).boxed()
+            }),
+            TestRoundRobin::new(),
+            None,
+            Version::V4,
+        );
+
+        let result = session
+            .query_with_params(
+                "SELECT 1",
+                StatementParamsBuilder::new().idempotent(true).build(),
+            )
+            .await;
+
+        match result {
+            Err(Error::Server {
+                body:
+                    ErrorBody {
+                        ty: ErrorType::Overloaded,
+                        ..
+                    },
+                ..
+            }) => {}
+            other => panic!("Unexpected result: {:?}", other),
+        }
+    }
 
     #[test]
     fn prepare_flags_test() {

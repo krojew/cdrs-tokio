@@ -47,6 +47,8 @@ pub mod send_envelope;
 pub mod session;
 mod session_context;
 mod tcp_connection_manager;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod token_map;
 pub mod topology;
 

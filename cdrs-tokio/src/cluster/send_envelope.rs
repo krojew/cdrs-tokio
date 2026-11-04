@@ -32,7 +32,10 @@ pub async fn send_envelope<T: CdrsTransport + 'static, CM: ConnectionManager<T> 
 
                         match retry_session.decide(query_info) {
                             RetryDecision::RetrySameNode => continue,
-                            RetryDecision::RetryNextNode => continue 'next_node,
+                            RetryDecision::RetryNextNode => {
+                                result = Some(Err(error));
+                                continue 'next_node;
+                            }
                             RetryDecision::DontRetry => return Some(Err(error)),
                         }
                     }
@@ -47,4 +50,63 @@ pub async fn send_envelope<T: CdrsTransport + 'static, CM: ConnectionManager<T> 
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use cassandra_protocol::error::Error;
+    use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType};
+    use cassandra_protocol::frame::{Envelope, Version};
+    use futures::future::ready;
+    use futures::FutureExt;
+
+    use crate::cluster::send_envelope::send_envelope;
+    use crate::cluster::test_support::*;
+    use crate::retry::{DefaultRetryPolicy, RetryPolicy};
+
+    #[tokio::test]
+    async fn should_return_last_error_when_every_node_asks_for_next_node() {
+        let connection_manager = TestConnectionManager::new(|addr, _| {
+            ready(Err(server_error(addr, ErrorType::Overloaded))).boxed()
+        });
+        let connection_pool_factory =
+            create_connection_pool_factory(connection_manager, Version::V4);
+        let nodes = vec![
+            create_node(&connection_pool_factory, node_address(1)),
+            create_node(&connection_pool_factory, node_address(2)),
+        ];
+
+        let result = send_envelope(
+            nodes.into_iter(),
+            &Envelope::new_req_options(Version::V4),
+            true,
+            DefaultRetryPolicy.new_session(),
+        )
+        .await;
+
+        match result {
+            Some(Err(Error::Server {
+                body:
+                    ErrorBody {
+                        ty: ErrorType::Overloaded,
+                        ..
+                    },
+                addr,
+            })) => assert_eq!(addr, node_address(2)),
+            other => panic!("Unexpected result: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn should_return_none_for_empty_query_plan() {
+        let result = send_envelope(
+            Vec::<std::sync::Arc<TestNode>>::new().into_iter(),
+            &Envelope::new_req_options(Version::V4),
+            true,
+            DefaultRetryPolicy.new_session(),
+        )
+        .await;
+
+        assert!(result.is_none());
+    }
 }
