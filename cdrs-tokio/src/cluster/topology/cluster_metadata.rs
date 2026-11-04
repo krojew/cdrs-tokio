@@ -1,5 +1,7 @@
 use fxhash::FxHashMap;
 use itertools::Itertools;
+use rand::prelude::*;
+use rand::rng;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -189,19 +191,27 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
             .collect()
     }
 
-    /// Returns node that are not ignored for load balancing and are remote.
-    #[inline]
+    /// Returns node that are not ignored for load balancing and are remote, up to `max_count`
+    /// randomly chosen nodes per datacenter.
     pub fn unignored_remote_nodes_capped(&self, max_count: usize) -> Vec<Arc<Node<T, CM>>> {
-        self.nodes
-            .iter()
-            .filter_map(|(_, node)| {
-                if node.is_ignored() || !node.is_remote() {
-                    None
-                } else {
-                    Some(node.clone())
-                }
+        let mut nodes_by_dc: FxHashMap<&str, Vec<Arc<Node<T, CM>>>> = Default::default();
+        for node in self.nodes.values() {
+            if !node.is_ignored() && node.is_remote() {
+                nodes_by_dc
+                    .entry(node.datacenter())
+                    .or_default()
+                    .push(node.clone());
+            }
+        }
+
+        let mut rng = rng();
+        nodes_by_dc
+            .into_iter()
+            .flat_map(|(_, mut nodes)| {
+                nodes.shuffle(&mut rng);
+                nodes.truncate(max_count);
+                nodes
             })
-            .take(max_count)
             .collect()
     }
 
@@ -262,10 +272,11 @@ mod tests {
     use crate::cluster::connection_manager::MockConnectionManager;
     use crate::cluster::connection_pool::ConnectionPoolFactory;
     use crate::cluster::topology::cluster_metadata::build_datacenter_info;
-    use crate::cluster::topology::Node;
+    use crate::cluster::topology::{Node, NodeDistance, NodeState};
     use crate::cluster::{ClusterMetadata, Murmur3Token};
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
+    use fxhash::FxHashSet;
 
     #[test]
     fn should_build_datacenter_info() {
@@ -337,6 +348,72 @@ mod tests {
         let dc_info = build_datacenter_info(&nodes);
         assert_eq!(dc_info.get("dc1").unwrap().rack_count, 2);
         assert_eq!(dc_info.get("dc2").unwrap().rack_count, 1);
+    }
+
+    #[test]
+    fn should_cap_random_remote_nodes_per_datacenter() {
+        let (_, keyspace_receiver) = watch::channel(None);
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            MockConnectionManager::<MockCdrsTransport>::new(),
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        ));
+
+        let mut nodes = FxHashMap::default();
+        for (port, dc, distance) in [
+            (1, "dc1", NodeDistance::Local),
+            (2, "dc2", NodeDistance::Remote),
+            (3, "dc2", NodeDistance::Remote),
+            (4, "dc2", NodeDistance::Remote),
+            (5, "dc3", NodeDistance::Remote),
+            (6, "dc3", NodeDistance::Remote),
+            (7, "dc3", NodeDistance::Remote),
+        ]
+        .iter()
+        {
+            let host_id = Uuid::new_v4();
+            nodes.insert(
+                host_id,
+                Arc::new(Node::new_with_state(
+                    connection_pool_factory.clone(),
+                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), *port),
+                    None,
+                    Some(host_id),
+                    Some(*distance),
+                    NodeState::Up,
+                    Default::default(),
+                    "".into(),
+                    dc.to_string(),
+                )),
+            );
+        }
+
+        let metadata = ClusterMetadata::new(nodes, Default::default());
+
+        let mut seen_ports = FxHashSet::default();
+        for _ in 0..50 {
+            let remote_nodes = metadata.unignored_remote_nodes_capped(2);
+            assert_eq!(remote_nodes.len(), 4);
+            for dc in ["dc2", "dc3"].iter() {
+                assert_eq!(
+                    remote_nodes
+                        .iter()
+                        .filter(|node| node.datacenter() == *dc)
+                        .count(),
+                    2
+                );
+            }
+
+            seen_ports.extend(
+                remote_nodes
+                    .iter()
+                    .map(|node| node.broadcast_rpc_address().port()),
+            );
+        }
+
+        assert_eq!(seen_ports.len(), 6, "remote nodes were not chosen randomly");
     }
 
     #[test]
