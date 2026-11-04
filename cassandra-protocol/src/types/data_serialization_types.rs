@@ -171,8 +171,9 @@ pub fn decode_float_vector(
     let type_size = 4;
 
     // validate up front so we can produce a clean error rather than panicking
-    // on out-of-bounds slice indexing when the payload is truncated. We also
-    // use checked_mul to defend against `count * type_size` wrapping on
+    // on out-of-bounds slice indexing when the payload is truncated, or
+    // silently dropping the rest of a payload holding a different vector. We
+    // also use checked_mul to defend against `count * type_size` wrapping on
     // pathological inputs (e.g. count near usize::MAX).
     let needed = count.checked_mul(type_size).ok_or_else(|| {
         io::Error::new(
@@ -181,9 +182,15 @@ pub fn decode_float_vector(
         )
     })?;
 
-    if bytes.len() < needed {
+    if bytes.len() != needed {
+        let kind = if bytes.len() < needed {
+            io::ErrorKind::UnexpectedEof
+        } else {
+            io::ErrorKind::InvalidData
+        };
+
         return Err(io::Error::new(
-            io::ErrorKind::UnexpectedEof,
+            kind,
             format!(
                 "float vector of {count} elements needs {needed} bytes, got {}",
                 bytes.len()
@@ -472,6 +479,17 @@ mod tests {
         // instead of panicking on out-of-bounds slice indexing
         assert!(decode_float_vector(&[], Version::V5, 4).is_err());
         assert!(decode_float_vector(&[0; 8], Version::V5, 4).is_err());
+    }
+
+    #[test]
+    fn decode_float_vector_rejects_trailing_bytes() {
+        // 16 bytes are a vector of 4 floats, not of 2 with 8 bytes left over
+        assert!(decode_float_vector(&[0; 16], Version::V5, 2).is_err());
+        assert!(decode_float_vector(&[0; 9], Version::V5, 2).is_err());
+        assert_eq!(
+            decode_float_vector(&[0; 8], Version::V5, 2).unwrap().len(),
+            2
+        );
     }
 
     #[test]
