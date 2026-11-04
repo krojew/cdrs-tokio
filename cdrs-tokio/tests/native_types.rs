@@ -19,9 +19,13 @@ use cdrs_tokio::types::value::Bytes;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
+use chrono::NaiveDate;
+#[cfg(feature = "e2e-tests")]
 use common::*;
 #[cfg(feature = "e2e-tests")]
 use float_eq::*;
+#[cfg(feature = "e2e-tests")]
+use num_bigint::BigInt;
 #[cfg(feature = "e2e-tests")]
 use std::collections::HashMap;
 #[cfg(feature = "e2e-tests")]
@@ -140,7 +144,6 @@ async fn counter_test(session: CurrentSession) {
     }
 }
 
-// TODO varint
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn integer_v4() {
@@ -151,7 +154,6 @@ async fn integer_v4() {
     integer_test(session).await;
 }
 
-// TODO varint
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn integer_v5() {
@@ -197,7 +199,7 @@ async fn integer_test(session: CurrentSession) {
     }
 }
 
-// TODO counter, varint
+// TODO counter
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn integer_advanced_v4() {
@@ -209,7 +211,7 @@ async fn integer_advanced_v4() {
     integer_advanced_test(session).await;
 }
 
-// TODO counter, varint
+// TODO counter
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn integer_advanced_v5() {
@@ -260,6 +262,95 @@ async fn integer_advanced_test(session: CurrentSession) {
         assert_eq!(my_tinyint_row, my_tinyint);
         assert_eq!(my_boolean_row, my_boolean);
     }
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn varint_v4() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_varint \
+               (id int PRIMARY KEY, my_varint varint)";
+    let session = setup(cql, Version::V4).await.expect("setup");
+
+    varint_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn varint_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_varint \
+               (id int PRIMARY KEY, my_varint varint)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    varint_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn varint_test(session: CurrentSession) {
+    let large = BigInt::from(2).pow(200);
+    // values around the boundaries of the minimal two's complement byte length
+    let bound = vec![
+        BigInt::from(0),
+        BigInt::from(1),
+        BigInt::from(-1),
+        BigInt::from(127),
+        BigInt::from(128),
+        BigInt::from(-128),
+        BigInt::from(-129),
+        BigInt::from(i64::MAX),
+        BigInt::from(i64::MIN),
+        BigInt::from(u64::MAX),
+        large.clone(),
+        -large - 1,
+    ];
+    let literals = [
+        "123456789012345678901234567890123456789",
+        "-98765432109876543210987654321098765432109876543210",
+    ];
+
+    let mut expected = HashMap::new();
+
+    for (id, varint) in bound.into_iter().enumerate() {
+        let id = id as i32;
+        session
+            .query_with_values(
+                "INSERT INTO cdrs_test.test_varint (id, my_varint) VALUES (?, ?)",
+                query_values!(id, varint.clone()),
+            )
+            .await
+            .expect("insert bound varint");
+        expected.insert(id, varint);
+    }
+
+    for (index, literal) in literals.iter().enumerate() {
+        let id = 100 + index as i32;
+        session
+            .query(format!(
+                "INSERT INTO cdrs_test.test_varint (id, my_varint) VALUES ({id}, {literal})"
+            ))
+            .await
+            .expect("insert varint literal");
+        expected.insert(id, BigInt::from_str(literal).expect("varint literal"));
+    }
+
+    let rows = session
+        .query("SELECT id, my_varint FROM cdrs_test.test_varint")
+        .await
+        .expect("select varints")
+        .response_body()
+        .expect("body")
+        .into_rows()
+        .expect("rows");
+
+    let actual: HashMap<i32, BigInt> = rows
+        .into_iter()
+        .map(|row| {
+            let id: i32 = row.get_r_by_name("id").expect("id");
+            let varint: BigInt = row.get_r_by_name("my_varint").expect("my_varint");
+            (id, varint)
+        })
+        .collect();
+
+    assert_eq!(actual, expected);
 }
 
 #[tokio::test]
@@ -394,7 +485,6 @@ async fn blob_test(session: CurrentSession) {
     }
 }
 
-// TODO timeuuid
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn uuid_v4() {
@@ -405,7 +495,6 @@ async fn uuid_v4() {
     uuid_test(session).await;
 }
 
-// TODO timeuuid
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn uuid_v5() {
@@ -444,7 +533,65 @@ async fn uuid_test(session: CurrentSession) {
     }
 }
 
-// TODO date, time
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn timeuuid_v4() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_timeuuid \
+               (id int PRIMARY KEY, my_timeuuid timeuuid)";
+    let session = setup(cql, Version::V4).await.expect("setup");
+
+    timeuuid_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn timeuuid_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_timeuuid \
+               (id int PRIMARY KEY, my_timeuuid timeuuid)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    timeuuid_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn timeuuid_test(session: CurrentSession) {
+    let my_timeuuid = Uuid::from_str("e0e1a5a0-6e2a-11ee-b962-0242ac120002").unwrap();
+
+    session
+        .query_with_values(
+            "INSERT INTO cdrs_test.test_timeuuid (id, my_timeuuid) VALUES (?, ?)",
+            query_values!(1, my_timeuuid),
+        )
+        .await
+        .expect("insert timeuuid");
+    session
+        .query("INSERT INTO cdrs_test.test_timeuuid (id, my_timeuuid) VALUES (2, now())")
+        .await
+        .expect("insert generated timeuuid");
+
+    let rows = session
+        .query("SELECT id, my_timeuuid FROM cdrs_test.test_timeuuid")
+        .await
+        .expect("select timeuuids")
+        .response_body()
+        .expect("body")
+        .into_rows()
+        .expect("rows");
+
+    let timeuuids: HashMap<i32, Uuid> = rows
+        .into_iter()
+        .map(|row| {
+            let id: i32 = row.get_r_by_name("id").expect("id");
+            let timeuuid: Uuid = row.get_r_by_name("my_timeuuid").expect("my_timeuuid");
+            (id, timeuuid)
+        })
+        .collect();
+
+    assert_eq!(timeuuids.len(), 2);
+    assert_eq!(timeuuids[&1], my_timeuuid);
+    assert_eq!(timeuuids[&2].get_version_num(), 1);
+}
+
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn time_v4() {
@@ -455,7 +602,6 @@ async fn time_v4() {
     time_test(session).await;
 }
 
-// TODO date, time
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn time_v5() {
@@ -600,6 +746,115 @@ async fn duration_test(session: CurrentSession) {
         .map(|values| match values {
             (CassandraType::Int(id), CassandraType::Duration(duration)) => (id, duration),
             other => panic!("unexpected values {:?}", other),
+        })
+        .collect();
+
+    assert_eq!(actual, expected);
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn date_time_v4() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_date_time \
+               (id int PRIMARY KEY, my_date date, my_time time)";
+    let session = setup(cql, Version::V4).await.expect("setup");
+
+    date_time_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn date_time_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_date_time \
+               (id int PRIMARY KEY, my_date date, my_time time)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    date_time_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn date_time_test(session: CurrentSession) {
+    const NANOS_PER_SECOND: i64 = 1_000_000_000;
+
+    // `date` is an unsigned day count with the Unix epoch at 2^31; the driver exposes its raw bits
+    // as an i32, which is the day offset from the epoch with the sign bit flipped
+    fn raw_date(year: i32, month: u32, day: u32) -> i32 {
+        let epoch = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+        let days = NaiveDate::from_ymd_opt(year, month, day)
+            .unwrap()
+            .signed_duration_since(epoch)
+            .num_days() as i32;
+        days ^ i32::MIN
+    }
+
+    let bound = [
+        (raw_date(1970, 1, 1), 0),
+        (
+            raw_date(1969, 7, 20),
+            (20 * 3600 + 17 * 60 + 40) * NANOS_PER_SECOND,
+        ),
+        (raw_date(2024, 2, 29), 86_400 * NANOS_PER_SECOND - 1),
+        (0, 1),
+        (-1, 123_456_789),
+    ];
+    let literals = [
+        (
+            "'1969-07-20'",
+            "'20:17:40.123456789'",
+            raw_date(1969, 7, 20),
+            (20 * 3600 + 17 * 60 + 40) * NANOS_PER_SECOND + 123_456_789,
+        ),
+        ("'2024-02-29'", "'00:00:00'", raw_date(2024, 2, 29), 0),
+        (
+            "'0001-01-01'",
+            "'23:59:59.999999999'",
+            raw_date(1, 1, 1),
+            86_400 * NANOS_PER_SECOND - 1,
+        ),
+    ];
+
+    let mut expected = HashMap::new();
+
+    for (id, (date, time)) in bound.iter().enumerate() {
+        let id = id as i32;
+        session
+            .query_with_values(
+                "INSERT INTO cdrs_test.test_date_time (id, my_date, my_time) VALUES (?, ?, ?)",
+                query_values!(id, *date, *time),
+            )
+            .await
+            .expect("insert bound date and time");
+        expected.insert(id, (*date, *time));
+    }
+
+    for (index, (date_literal, time_literal, date, time)) in literals.iter().enumerate() {
+        let id = 100 + index as i32;
+        session
+            .query(format!(
+                "INSERT INTO cdrs_test.test_date_time (id, my_date, my_time) \
+                 VALUES ({id}, {date_literal}, {time_literal})"
+            ))
+            .await
+            .expect("insert date and time literals");
+        expected.insert(id, (*date, *time));
+    }
+
+    let rows = session
+        .query("SELECT id, my_date, my_time FROM cdrs_test.test_date_time")
+        .await
+        .expect("select dates and times")
+        .response_body()
+        .expect("body")
+        .into_rows()
+        .expect("rows");
+
+    let actual: HashMap<i32, (i32, i64)> = rows
+        .into_iter()
+        .map(|row| {
+            let id: i32 = row.get_r_by_name("id").expect("id");
+            let date: i32 = row.get_r_by_name("my_date").expect("my_date");
+            let time: i64 = row.get_r_by_name("my_time").expect("my_time");
+            (id, (date, time))
         })
         .collect();
 

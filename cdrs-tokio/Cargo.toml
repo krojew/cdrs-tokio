@@ -51,6 +51,7 @@ chrono = { version = "0.4.31", default-features = false, features = ["std"] }
 float_eq = "1.0.1"
 maplit = "1.0.2"
 mockall = "0.15.0"
+num-bigint = "0.5.0"
 regex = "1.11.1"
 uuid = { version = "1.19.0", features = ["v4"] }
 time = { version = "0.3.41", features = ["std", "macros"] }
