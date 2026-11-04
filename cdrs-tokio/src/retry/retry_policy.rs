@@ -5,7 +5,11 @@ use cassandra_protocol::frame::message_error::{
     ErrorBody, ErrorType, ReadTimeoutError, WriteTimeoutError, WriteType,
 };
 
+/// What to do with a failed query, as decided by a [`RetrySession`].
+///
+/// New variants may be added in future releases.
 #[derive(Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy, Clone, Display)]
+#[non_exhaustive]
 pub enum RetryDecision {
     RetrySameNode,
     RetryNextNode,

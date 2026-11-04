@@ -19,6 +19,9 @@
   `StatementParams` with `StatementParamsBuilder` or from
   `StatementParams::default()`; the others have `new` constructors, which
   give default values to fields added later.
+* `RetryDecision`, `SessionBuildError`, `ReplicationStrategy`,
+  `NodeDistance` and `NodeState` are `#[non_exhaustive]`, so matching on
+  them outside the crate needs a wildcard arm.
 
 ### Fixed
 

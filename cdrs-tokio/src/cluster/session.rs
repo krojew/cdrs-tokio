@@ -1163,7 +1163,10 @@ impl<
 }
 
 /// `Session` build error.
+///
+/// New variants may be added in future releases.
 #[derive(Error, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Copy, Clone)]
+#[non_exhaustive]
 pub enum SessionBuildError {
     #[error("Given compression type is not supported for selected protocol!")]
     CompressionTypeNotSupported,
