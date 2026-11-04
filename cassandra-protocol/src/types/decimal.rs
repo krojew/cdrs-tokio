@@ -194,9 +194,9 @@ mod test {
         decimal.unscaled.to_string().parse::<f64>().unwrap() / 10f64.powi(decimal.scale)
     }
 
-    // 0.1 is not exactly representable in IEEE-754 float, so an exact match
-    // between the scaled value and its truncation may never occur. The
-    // conversion must terminate and produce a close approximation.
+    // 0.1 and 1/3 are not exactly representable in IEEE-754 floats; they must
+    // convert to the shortest digits that round-trip to the same float rather
+    // than to the exact binary value.
     #[test]
     fn from_f32_tolerates_inexact_floats() {
         assert_eq!(Decimal::from(0.1f32), Decimal::new(1.into(), 1));
