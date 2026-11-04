@@ -7,7 +7,6 @@ use std::string::FromUtf8Error;
 use super::blob::Blob;
 use super::decimal::Decimal;
 use super::duration::{read_vint, Duration};
-use crate::error;
 use crate::frame::{FromCursor, Version};
 use crate::types::{
     try_f32_from_bytes, try_f64_from_bytes, try_i16_from_bytes, try_i32_from_bytes,
@@ -285,32 +284,19 @@ pub fn decode_duration(bytes: &[u8]) -> Result<Duration, io::Error> {
 
 // Decodes Cassandra `Udt` data (bytes)
 ///
-/// Note: when the input is shorter than `l` would require, fields beyond the
-/// available bytes are filled with `CBytes::new_null()`. This matches the
-/// "older driver, newer schema" tolerance described by the protocol spec
-/// (a server that has added fields can still serve clients that don't know
-/// about them). Callers that care about strict decoding should validate the
-/// returned UDT length matches the expected schema field count, since the
-/// crate cannot distinguish a truncated payload from an intentional schema
-/// mismatch here.
+/// Note: the protocol allows a UDT value to carry fewer values than the type
+/// has fields, so fields missing after the end of the input are filled with
+/// `CBytes::new_null()`. A field that is only partially present is an error.
 pub fn decode_udt(bytes: &[u8], l: usize, version: Version) -> Result<Vec<CBytes>, io::Error> {
     let mut cursor = io::Cursor::new(bytes);
     let mut udt = Vec::with_capacity(l);
     for _ in 0..l {
-        let v = CBytes::from_cursor(&mut cursor, version)
-            .or_else(|err| match err {
-                error::Error::Io(io_err) => {
-                    if io_err.kind() == io::ErrorKind::UnexpectedEof {
-                        // intentional - see the function-level doc for the
-                        // rationale (forward-compat with newer-schema servers)
-                        Ok(CBytes::new_null())
-                    } else {
-                        Err(io_err.into())
-                    }
-                }
-                _ => Err(err),
-            })
-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+        let v = if cursor.position() >= bytes.len() as u64 {
+            CBytes::new_null()
+        } else {
+            CBytes::from_cursor(&mut cursor, version)
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?
+        };
         udt.push(v);
     }
     Ok(udt)
@@ -581,6 +567,36 @@ mod tests {
         let udt = decode_udt(&[0, 0, 0, 2, 1, 2], 1, Version::V4).unwrap();
         assert_eq!(udt.len(), 1);
         assert_eq!(udt[0].as_slice().unwrap(), &[1, 2]);
+    }
+
+    #[test]
+    fn decode_udt_missing_trailing_fields_are_null_test() {
+        let udt = decode_udt(&[0, 0, 0, 2, 1, 2], 3, Version::V4).unwrap();
+        assert_eq!(udt.len(), 3);
+        assert_eq!(udt[0].as_slice().unwrap(), &[1, 2]);
+        assert!(udt[1].as_slice().is_none());
+        assert!(udt[2].as_slice().is_none());
+
+        let udt = decode_udt(&[], 2, Version::V4).unwrap();
+        assert_eq!(udt.len(), 2);
+        assert!(udt.iter().all(|field| field.as_slice().is_none()));
+    }
+
+    #[test]
+    fn decode_udt_explicit_null_field_test() {
+        let udt = decode_udt(&[0xFF, 0xFF, 0xFF, 0xFF, 0, 0, 0, 1, 7], 2, Version::V4).unwrap();
+        assert!(udt[0].as_slice().is_none());
+        assert_eq!(udt[1].as_slice().unwrap(), &[7]);
+    }
+
+    #[test]
+    fn decode_udt_truncated_field_is_error_test() {
+        // truncated in the middle of the first field's value
+        assert!(decode_udt(&[0, 0, 0, 2, 1], 1, Version::V4).is_err());
+        // truncated in the middle of the second field's length
+        assert!(decode_udt(&[0, 0, 0, 2, 1, 2, 0, 0], 2, Version::V4).is_err());
+        // truncated in the middle of the second field's value
+        assert!(decode_udt(&[0, 0, 0, 2, 1, 2, 0, 0, 0, 3, 1], 3, Version::V4).is_err());
     }
 
     #[test]
