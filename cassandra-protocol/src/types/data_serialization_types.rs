@@ -926,6 +926,79 @@ mod tests {
     }
 
     #[test]
+    fn as_rust_timestamp_before_epoch_test() {
+        use crate::error::Error;
+        use chrono::{DateTime, NaiveDate};
+
+        let type_timestamp = ColTypeOption {
+            id: ColType::Timestamp,
+            value: None,
+        };
+
+        for (millis, expected) in [
+            (
+                -1500_i64,
+                NaiveDate::from_ymd_opt(1969, 12, 31)
+                    .unwrap()
+                    .and_hms_milli_opt(23, 59, 58, 500)
+                    .unwrap(),
+            ),
+            (
+                -1,
+                NaiveDate::from_ymd_opt(1969, 12, 31)
+                    .unwrap()
+                    .and_hms_milli_opt(23, 59, 59, 999)
+                    .unwrap(),
+            ),
+            (
+                1500,
+                NaiveDate::from_ymd_opt(1970, 1, 1)
+                    .unwrap()
+                    .and_hms_milli_opt(0, 0, 1, 500)
+                    .unwrap(),
+            ),
+        ] {
+            let data = CBytes::new(millis.to_be_bytes().to_vec());
+
+            assert_eq!(
+                as_rust_type!(type_timestamp, data, NaiveDateTime).unwrap(),
+                Some(expected),
+                "{millis}"
+            );
+            assert_eq!(
+                as_rust_type!(type_timestamp, data, DateTime<Utc>).unwrap(),
+                Some(expected.and_utc()),
+                "{millis}"
+            );
+        }
+
+        let data = CBytes::new((-1500_i64).to_be_bytes().to_vec());
+        assert_eq!(
+            as_rust_type!(type_timestamp, data, PrimitiveDateTime).unwrap(),
+            Some(time::macros::datetime!(1969-12-31 23:59:58.5))
+        );
+    }
+
+    #[test]
+    fn as_rust_timestamp_out_of_range_is_error_test() {
+        use crate::error::Error;
+        use chrono::DateTime;
+
+        let type_timestamp = ColTypeOption {
+            id: ColType::Timestamp,
+            value: None,
+        };
+
+        for millis in [i64::MIN, i64::MAX] {
+            let data = CBytes::new(millis.to_be_bytes().to_vec());
+
+            assert!(as_rust_type!(type_timestamp, data, NaiveDateTime).is_err());
+            assert!(as_rust_type!(type_timestamp, data, DateTime<Utc>).is_err());
+            assert!(as_rust_type!(type_timestamp, data, PrimitiveDateTime).is_err());
+        }
+    }
+
+    #[test]
     fn as_rust_inet_test() {
         let type_inet = ColTypeOption {
             id: ColType::Inet,

@@ -1437,13 +1437,14 @@ macro_rules! as_rust_type {
         match $data_type_option.id {
             ColType::Timestamp => match $data_value.as_slice() {
                 Some(ref bytes) => decode_timestamp(bytes)
-                    .map(|ts| {
+                    .map_err(Into::into)
+                    .and_then(|ts| {
                         let unix_epoch = time::macros::date!(1970 - 01 - 01).midnight();
-                        let tm = unix_epoch
-                            + time::Duration::new(ts / 1_000, (ts % 1_000 * 1_000_000) as i32);
-                        Some(tm)
-                    })
-                    .map_err(Into::into),
+                        unix_epoch
+                            .checked_add(time::Duration::new(ts / 1_000, (ts % 1_000 * 1_000_000) as i32))
+                            .map(Some)
+                            .ok_or_else(|| Error::General(format!("Timestamp {} ms is out of range", ts)))
+                    }),
                 None => Ok(None),
             },
             _ => Err(Error::General(format!(
@@ -1470,11 +1471,12 @@ macro_rules! as_rust_type {
         match $data_type_option.id {
             ColType::Timestamp => match $data_value.as_slice() {
                 Some(ref bytes) => decode_timestamp(bytes)
-                    .map(|ts| {
-                        DateTime::from_timestamp(ts / 1000, (ts % 1000 * 1_000_000) as u32)
-                            .map(|dt| dt.naive_utc())
-                    })
-                    .map_err(Into::into),
+                    .map_err(Into::into)
+                    .and_then(|ts| {
+                        DateTime::from_timestamp(ts.div_euclid(1000), (ts.rem_euclid(1000) * 1_000_000) as u32)
+                            .map(|dt| Some(dt.naive_utc()))
+                            .ok_or_else(|| Error::General(format!("Timestamp {} ms is out of range", ts)))
+                    }),
                 None => Ok(None),
             },
             _ => Err(Error::General(format!(
@@ -1488,13 +1490,12 @@ macro_rules! as_rust_type {
         match $data_type_option.id {
             ColType::Timestamp => match $data_value.as_slice() {
                 Some(ref bytes) => decode_timestamp(bytes)
-                    .map(|ts| {
-                        DateTime::from_timestamp(
-                            ts / 1000,
-                            (ts % 1000 * 1_000_000) as u32,
-                        )
-                    })
-                    .map_err(Into::into),
+                    .map_err(Into::into)
+                    .and_then(|ts| {
+                        DateTime::from_timestamp(ts.div_euclid(1000), (ts.rem_euclid(1000) * 1_000_000) as u32)
+                            .map(Some)
+                            .ok_or_else(|| Error::General(format!("Timestamp {} ms is out of range", ts)))
+                    }),
                 None => Ok(None),
             },
             _ => Err(Error::General(format!(
