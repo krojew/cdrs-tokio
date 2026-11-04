@@ -126,6 +126,8 @@ impl<
                         full_refresh = true;
                     }
 
+                    let mut any_connected = false;
+
                     for node in &plan.nodes {
                         if let Ok(connection) = node
                             .new_connection(
@@ -135,6 +137,7 @@ impl<
                             .await
                         {
                             debug!("Established new control connection.");
+                            any_connected = true;
 
                             self.session_context
                                 .control_connection_transport
@@ -145,7 +148,7 @@ impl<
                                 .refresh_metadata(full_refresh)
                                 .await
                             {
-                                error!(%error, "Error refreshing nodes! Trying to refresh control connection.");
+                                error!(%error, "Error refreshing metadata using new control connection!");
                                 continue;
                             }
 
@@ -153,8 +156,11 @@ impl<
                         }
                     }
 
-                    // all nodes failed
-                    if init_complete_sender.is_some() {
+                    if any_connected {
+                        // reachable nodes can fail a refresh while e.g. still starting up, so
+                        // retrying is worthwhile even during initialization
+                        warn!("Cannot refresh metadata using any node! Retrying.");
+                    } else if init_complete_sender.is_some() {
                         // dropping the sender makes session initialization fail
                         error!("Cannot establish control connection to any contact point!");
                         return;
@@ -245,10 +251,12 @@ mod tests {
     use crate::retry::ConstantReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
     use cassandra_protocol::error::Error;
+    use cassandra_protocol::frame::message_error::ErrorType;
     use cassandra_protocol::frame::Opcode;
     use futures::future::{pending, ready};
     use futures::FutureExt;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::{broadcast, mpsc, oneshot, watch};
     use tokio::time::timeout;
 
@@ -500,5 +508,35 @@ mod tests {
             reconnected.is_ok(),
             "unanswered heartbeat was not detected with configured settings"
         );
+    }
+
+    #[tokio::test]
+    async fn run_retries_failed_metadata_refresh_during_initialization() {
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9042);
+        let peers_queries = Arc::new(AtomicUsize::new(0));
+
+        // a reachable node which fails the first query for peers
+        let connection_manager = test_support::TestConnectionManager::new(move |addr, envelope| {
+            let query = test_support::request_query(envelope).unwrap_or_default();
+            if query.starts_with("SELECT * FROM system.peers")
+                && peers_queries.fetch_add(1, Ordering::Relaxed) == 0
+            {
+                return ready(Err(test_support::server_error(
+                    addr,
+                    ErrorType::IsBootstrapping,
+                )))
+                .boxed();
+            }
+
+            ready(test_support::topology_response(envelope, &[address])).boxed()
+        });
+
+        let handle = assert_initialization_succeeds(create_control_connection_with_config(
+            vec![address],
+            connection_manager,
+            Default::default(),
+        ))
+        .await;
+        handle.abort();
     }
 }
