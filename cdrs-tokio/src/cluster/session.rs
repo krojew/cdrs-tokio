@@ -1373,7 +1373,8 @@ impl<LB: LoadBalancingStrategy<TransportTcp, TcpConnectionManager> + Send + Sync
                         self.node_config.version,
                         #[cfg(feature = "http-proxy")]
                         self.node_config.http_proxy,
-                    );
+                    )
+                    .with_beta_protocol(self.node_config.beta_protocol);
 
                     self.config
                         .into_session(
@@ -1520,7 +1521,8 @@ impl<
                         self.node_config.version,
                         #[cfg(feature = "http-proxy")]
                         self.node_config.http_proxy,
-                    );
+                    )
+                    .with_beta_protocol(self.node_config.beta_protocol);
 
                     self.config
                         .into_session(

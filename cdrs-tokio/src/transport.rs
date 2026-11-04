@@ -14,7 +14,7 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::frame::frame_decoder::FrameDecoder;
 use cassandra_protocol::frame::frame_encoder::FrameEncoder;
 use cassandra_protocol::frame::message_result::ResultKind;
-use cassandra_protocol::frame::{Envelope, StreamId, MAX_FRAME_SIZE};
+use cassandra_protocol::frame::{Envelope, Flags, StreamId, MAX_FRAME_SIZE};
 use cassandra_protocol::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
 use cassandra_protocol::types::INT_LEN;
 use futures::FutureExt;
@@ -182,6 +182,14 @@ impl TransportTcp {
             ),
         })
     }
+
+    /// Marks every envelope sent over this transport with the beta protocol flag. Cassandra
+    /// rejects frames without it when a beta protocol version is in use.
+    #[must_use]
+    pub fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.inner.beta_protocol = beta_protocol;
+        self
+    }
 }
 
 impl CdrsTransport for TransportTcp {
@@ -290,6 +298,14 @@ impl TransportRustls {
             ),
         })
     }
+
+    /// Marks every envelope sent over this transport with the beta protocol flag. Cassandra
+    /// rejects frames without it when a beta protocol version is in use.
+    #[must_use]
+    pub fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.inner.beta_protocol = beta_protocol;
+        self
+    }
 }
 
 #[cfg(feature = "rust-tls")]
@@ -330,6 +346,7 @@ impl CdrsTransport for TransportRustls {
 struct AsyncTransport {
     addr: SocketAddr,
     compression: Compression,
+    beta_protocol: bool,
     write_sender: mpsc::Sender<Request>,
     is_broken: Arc<AtomicBool>,
     processing_handle: JoinHandle<()>,
@@ -375,6 +392,7 @@ impl AsyncTransport {
         AsyncTransport {
             addr,
             compression,
+            beta_protocol: false,
             write_sender,
             is_broken,
             processing_handle,
@@ -402,11 +420,16 @@ impl AsyncTransport {
         // leave stream id empty for now and generate it later
 
         // handshake messages are never compressed
-        let data = if handshake {
+        let mut data = if handshake {
             envelope.encode_with(Compression::None)?
         } else {
             envelope.encode_with(self.compression)?
         };
+
+        if self.beta_protocol {
+            // the second byte of an encoded envelope holds its flags
+            data[1] |= Flags::BETA.bits();
+        }
 
         self.write_sender
             .send(Request {
@@ -1187,6 +1210,40 @@ mod transport_tests {
             connection.keyspace_holder.current_keyspace().as_deref(),
             Some(&"b".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn beta_protocol_marks_every_envelope() {
+        let TestConnection {
+            transport,
+            mut server,
+            ..
+        } = connect();
+        let transport = transport.with_beta_protocol(true);
+
+        let startup = Envelope::new_req_startup(None, Version::V4);
+        let (response, startup_request) =
+            tokio::join!(transport.write_envelope(&startup, true), async {
+                let request = server.read_request().await;
+                server
+                    .respond(request.stream_id, Opcode::Ready, vec![])
+                    .await;
+                request
+            });
+        response.unwrap();
+        assert!(startup_request.flags.contains(Flags::BETA));
+
+        let query = use_query("a");
+        let (response, query_request) =
+            tokio::join!(transport.write_envelope(&query, false), async {
+                let request = server.read_request().await;
+                server
+                    .respond(request.stream_id, Opcode::Result, set_keyspace_result("a"))
+                    .await;
+                request
+            });
+        response.unwrap();
+        assert!(query_request.flags.contains(Flags::BETA));
     }
 
     fn numbered_request(number: u32) -> Envelope {

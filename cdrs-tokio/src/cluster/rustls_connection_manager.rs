@@ -49,6 +49,7 @@ pub struct RustlsConnectionManager {
     buffer_size: usize,
     tcp_nodelay: bool,
     version: Version,
+    beta_protocol: bool,
     #[cfg(feature = "http-proxy")]
     http_proxy: Option<HttpProxyConfig>,
 }
@@ -91,9 +92,18 @@ impl RustlsConnectionManager {
             buffer_size,
             tcp_nodelay,
             version,
+            beta_protocol: false,
             #[cfg(feature = "http-proxy")]
             http_proxy,
         }
+    }
+
+    /// Marks every envelope sent over created connections with the beta protocol flag, which
+    /// Cassandra requires on all frames when a beta protocol version is in use.
+    #[must_use]
+    pub fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.beta_protocol = beta_protocol;
+        self
     }
 
     /// Resolves the server name used for SNI and certificate verification separately for each
@@ -210,7 +220,8 @@ impl RustlsConnectionManager {
     ) -> Result<TransportRustls> {
         let transport = self
             .create_transport(event_handler, error_handler, addr)
-            .await?;
+            .await?
+            .with_beta_protocol(self.beta_protocol);
 
         startup(
             &transport,

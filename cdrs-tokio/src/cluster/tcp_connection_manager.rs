@@ -32,6 +32,7 @@ pub struct TcpConnectionManager {
     buffer_size: usize,
     tcp_nodelay: bool,
     version: Version,
+    beta_protocol: bool,
     #[cfg(feature = "http-proxy")]
     http_proxy: Option<HttpProxyConfig>,
 }
@@ -69,9 +70,18 @@ impl TcpConnectionManager {
             buffer_size,
             tcp_nodelay,
             version,
+            beta_protocol: false,
             #[cfg(feature = "http-proxy")]
             http_proxy,
         }
+    }
+
+    /// Marks every envelope sent over created connections with the beta protocol flag, which
+    /// Cassandra requires on all frames when a beta protocol version is in use.
+    #[must_use]
+    pub fn with_beta_protocol(mut self, beta_protocol: bool) -> Self {
+        self.beta_protocol = beta_protocol;
+        self
     }
 
     //noinspection DuplicatedCode
@@ -165,7 +175,8 @@ impl TcpConnectionManager {
     ) -> Result<TransportTcp> {
         let transport = self
             .create_transport(event_handler, error_handler, addr)
-            .await?;
+            .await?
+            .with_beta_protocol(self.beta_protocol);
 
         startup(
             &transport,
@@ -241,5 +252,72 @@ mod tests {
             .unwrap();
 
         assert_eq!(proxy.await.unwrap(), "CONNECT [::1]:9042 HTTP/1.1\r\n");
+    }
+}
+
+#[cfg(test)]
+mod beta_protocol_tests {
+    use super::*;
+    use crate::frame_encoding::ProtocolFrameEncodingFactory;
+    use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
+    use cassandra_protocol::frame::{Direction, Flags, Opcode, ParseEnvelopeError};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+    use tokio::sync::watch;
+
+    #[tokio::test]
+    async fn beta_protocol_marks_startup() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buffer = vec![];
+            let startup = loop {
+                match Envelope::from_buffer(&buffer, Compression::None) {
+                    Ok(parsed) => break parsed.envelope,
+                    Err(ParseEnvelopeError::NotEnoughBytes) => {
+                        let read = stream.read_buf(&mut buffer).await.unwrap();
+                        assert_ne!(read, 0, "client closed the connection");
+                    }
+                    Err(error) => panic!("invalid request: {}", error),
+                }
+            };
+
+            let ready = Envelope::new(
+                Version::V4,
+                Direction::Response,
+                Flags::empty(),
+                Opcode::Ready,
+                startup.stream_id,
+                vec![],
+                None,
+                vec![],
+            );
+            stream
+                .write_all(&ready.encode_with(Compression::None).unwrap())
+                .await
+                .unwrap();
+
+            startup.flags
+        });
+
+        let (keyspace_sender, _) = watch::channel(None);
+        let manager = TcpConnectionManager::new(
+            Arc::new(NoneAuthenticatorProvider),
+            Arc::new(KeyspaceHolder::new(keyspace_sender)),
+            Box::new(ProtocolFrameEncodingFactory),
+            Compression::None,
+            32,
+            true,
+            Version::V4,
+            #[cfg(feature = "http-proxy")]
+            None,
+        )
+        .with_beta_protocol(true);
+
+        manager.connection(None, None, address).await.unwrap();
+
+        assert!(server.await.unwrap().contains(Flags::BETA));
     }
 }
