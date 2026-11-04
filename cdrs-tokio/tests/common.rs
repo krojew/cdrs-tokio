@@ -2,7 +2,11 @@
 use std::sync::Arc;
 
 #[cfg(feature = "e2e-tests")]
+use cassandra_protocol::frame::message_response::ResponseBody;
+#[cfg(feature = "e2e-tests")]
 use cassandra_protocol::frame::Version;
+#[cfg(feature = "e2e-tests")]
+use cassandra_protocol::types::cassandra_type::{wrapper_fn, CassandraType};
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::cluster::session::Session;
 #[cfg(feature = "e2e-tests")]
@@ -84,4 +88,25 @@ pub async fn setup_multiple(
     }
 
     Ok(session)
+}
+
+/// Decodes the given column of every row in a rows response through the generic `CassandraType`
+/// conversion, which also covers types without a dedicated row accessor.
+#[cfg(feature = "e2e-tests")]
+#[allow(dead_code)]
+pub fn column_values(body: &ResponseBody, column: &str) -> Vec<CassandraType> {
+    let rows = body.as_cols().expect("rows response");
+    let index = rows
+        .metadata
+        .col_specs
+        .iter()
+        .position(|spec| spec.name == column)
+        .expect("column in response");
+    let col_type = &rows.metadata.col_specs[index].col_type;
+    let convert = wrapper_fn(&col_type.id);
+
+    rows.rows_content
+        .iter()
+        .map(|row| convert(&row[index], col_type, rows.protocol_version).expect("decode column"))
+        .collect()
 }

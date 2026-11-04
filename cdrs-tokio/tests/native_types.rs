@@ -7,7 +7,11 @@ use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::types::cassandra_type::CassandraType;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::decimal::Decimal;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::types::duration::Duration;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::map::Map;
 #[cfg(feature = "e2e-tests")]
@@ -440,7 +444,7 @@ async fn uuid_test(session: CurrentSession) {
     }
 }
 
-// TODO date, time, duration
+// TODO date, time
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn time_v4() {
@@ -451,7 +455,7 @@ async fn time_v4() {
     time_test(session).await;
 }
 
-// TODO date, time, duration
+// TODO date, time
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
 async fn time_v5() {
@@ -493,6 +497,113 @@ async fn time_test(session: CurrentSession) {
             my_timestamp.nanosecond() / 1_000_000
         ); // C* `timestamp` has millisecond precision
     }
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn duration_v4() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_duration \
+               (id int PRIMARY KEY, my_duration duration)";
+    let session = setup(cql, Version::V4).await.expect("setup");
+
+    duration_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn duration_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_duration \
+               (id int PRIMARY KEY, my_duration duration)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    duration_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn duration_test(session: CurrentSession) {
+    const NANOS_PER_SECOND: i64 = 1_000_000_000;
+
+    let bound = [
+        Duration::new(0, 0, 0),
+        Duration::new(1, 2, 3),
+        // vint components of 64 and above take more than one byte
+        Duration::new(64, 64, 64),
+        Duration::new(100, 1000, 0),
+        Duration::new(-100, -1000, -5 * NANOS_PER_SECOND),
+        Duration::new(0, 0, (25 * 3600 + 30 * 60 + 15) * NANOS_PER_SECOND + 123),
+        Duration::new(i32::MAX, i32::MAX, i64::MAX),
+        Duration::new(i32::MIN, i32::MIN, i64::MIN),
+    ];
+    let literals = [
+        (
+            "1y2mo3w4d5h6m7s8ms9us10ns",
+            Duration::new(
+                14,
+                25,
+                (5 * 3600 + 6 * 60 + 7) * NANOS_PER_SECOND + 8_009_010,
+            ),
+        ),
+        ("-2mo10d", Duration::new(-2, -10, 0)),
+        ("100mo1000d", Duration::new(100, 1000, 0)),
+        (
+            "89h4m48s",
+            Duration::new(0, 0, (89 * 3600 + 4 * 60 + 48) * NANOS_PER_SECOND),
+        ),
+        (
+            "P1Y2M3DT4H5M6S",
+            Duration::new(14, 3, (4 * 3600 + 5 * 60 + 6) * NANOS_PER_SECOND),
+        ),
+        ("P2W", Duration::new(0, 14, 0)),
+        (
+            "P0001-02-03T04:05:06",
+            Duration::new(14, 3, (4 * 3600 + 5 * 60 + 6) * NANOS_PER_SECOND),
+        ),
+        ("-PT1S", Duration::new(0, 0, -NANOS_PER_SECOND)),
+    ];
+
+    let mut expected = HashMap::new();
+
+    for (id, duration) in bound.iter().enumerate() {
+        let id = id as i32;
+        let duration = duration.expect("valid duration");
+        session
+            .query_with_values(
+                "INSERT INTO cdrs_test.test_duration (id, my_duration) VALUES (?, ?)",
+                query_values!(id, duration),
+            )
+            .await
+            .expect("insert bound duration");
+        expected.insert(id, duration);
+    }
+
+    for (index, (literal, duration)) in literals.iter().enumerate() {
+        let id = 100 + index as i32;
+        session
+            .query(format!(
+                "INSERT INTO cdrs_test.test_duration (id, my_duration) VALUES ({id}, {literal})"
+            ))
+            .await
+            .expect("insert duration literal");
+        expected.insert(id, duration.expect("valid duration"));
+    }
+
+    let body = session
+        .query("SELECT id, my_duration FROM cdrs_test.test_duration")
+        .await
+        .expect("select durations")
+        .response_body()
+        .expect("body");
+
+    let actual: HashMap<i32, Duration> = column_values(&body, "id")
+        .into_iter()
+        .zip(column_values(&body, "my_duration"))
+        .map(|values| match values {
+            (CassandraType::Int(id), CassandraType::Duration(duration)) => (id, duration),
+            other => panic!("unexpected values {:?}", other),
+        })
+        .collect();
+
+    assert_eq!(actual, expected);
 }
 
 #[tokio::test]
