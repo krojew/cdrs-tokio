@@ -1,13 +1,12 @@
-use integer_encoding::VarInt;
 use num_bigint::BigInt;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::io;
 use std::net;
 use std::string::FromUtf8Error;
 
 use super::blob::Blob;
 use super::decimal::Decimal;
-use super::duration::Duration;
+use super::duration::{read_vint, Duration};
 use crate::error;
 use crate::frame::{FromCursor, Version};
 use crate::types::{
@@ -272,16 +271,15 @@ pub fn decode_varint(bytes: &[u8]) -> Result<BigInt, io::Error> {
 // Decodes Cassandra `duration` data (bytes)
 #[inline]
 pub fn decode_duration(bytes: &[u8]) -> Result<Duration, io::Error> {
-    let (months, month_bytes_read) =
-        i32::decode_var(bytes).ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
+    let to_i32 = |value: i64| {
+        i32::try_from(value).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    };
 
-    let (days, day_bytes_read) = i32::decode_var(&bytes[month_bytes_read..])
-        .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
+    let (months, month_bytes_read) = read_vint(bytes)?;
+    let (days, day_bytes_read) = read_vint(&bytes[month_bytes_read..])?;
+    let (nanoseconds, _) = read_vint(&bytes[(month_bytes_read + day_bytes_read)..])?;
 
-    let (nanoseconds, _) = i64::decode_var(&bytes[(month_bytes_read + day_bytes_read)..])
-        .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidData))?;
-
-    Duration::new(months, days, nanoseconds)
+    Duration::new(to_i32(months)?, to_i32(days)?, nanoseconds)
         .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
 }
 
@@ -434,7 +432,7 @@ mod tests {
 
     #[test]
     fn decode_duration_test() {
-        let result = decode_duration(&[200, 1, 144, 3, 216, 4]).unwrap();
+        let result = decode_duration(&[0x80, 0xC8, 0x81, 0x90, 0x82, 0x58]).unwrap();
         assert_eq!(result, Duration::new(100, 200, 300).unwrap());
     }
 

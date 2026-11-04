@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(Value::new(true), Value::Some(vec!(1)));
         assert_eq!(
             Value::new(Duration::new(100, 200, 300).unwrap()),
-            Value::Some(vec!(200, 1, 144, 3, 216, 4))
+            Value::Some(vec!(0x80, 0xC8, 0x81, 0x90, 0x82, 0x58))
         );
     }
 }
