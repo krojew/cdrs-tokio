@@ -1,9 +1,9 @@
 use super::Serialize;
 use crate::consistency::Consistency;
+use crate::error;
 use crate::frame::traits::FromCursor;
 use crate::frame::Version;
 use crate::types::*;
-use crate::{error, Error};
 /// This modules contains [Cassandra's errors](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 /// which server could respond to client.
 use derive_more::Display;
@@ -118,12 +118,20 @@ pub enum ErrorType {
     ReadFailure(ReadFailureError),
     FunctionFailure(FunctionFailureError),
     WriteFailure(WriteFailureError),
+    CdcWriteFailure,
+    CasWriteUnknown(CasWriteUnknownError),
     Syntax,
     Unauthorized,
     Invalid,
     Config,
     AlreadyExists(AlreadyExistsError),
     Unprepared(UnpreparedError),
+    /// An error code not defined by the supported protocol versions. Any type specific
+    /// information following the message is kept undecoded in `body`.
+    Unknown {
+        code: CInt,
+        body: Vec<u8>,
+    },
 }
 
 impl Serialize for ErrorType {
@@ -137,8 +145,12 @@ impl Serialize for ErrorType {
                 function_failure.serialize(cursor, version)
             }
             ErrorType::WriteFailure(write_failure) => write_failure.serialize(cursor, version),
+            ErrorType::CasWriteUnknown(cas_write_unknown) => {
+                cas_write_unknown.serialize(cursor, version)
+            }
             ErrorType::AlreadyExists(already_exists) => already_exists.serialize(cursor, version),
             ErrorType::Unprepared(unprepared) => unprepared.serialize(cursor, version),
+            ErrorType::Unknown { body, .. } => body.serialize(cursor, version),
             _ => {}
         }
     }
@@ -165,6 +177,10 @@ impl ErrorType {
                 FunctionFailureError::from_cursor(cursor, version).map(ErrorType::FunctionFailure)
             }
             0x1500 => WriteFailureError::from_cursor(cursor, version).map(ErrorType::WriteFailure),
+            0x1600 => Ok(ErrorType::CdcWriteFailure),
+            0x1700 => {
+                CasWriteUnknownError::from_cursor(cursor, version).map(ErrorType::CasWriteUnknown)
+            }
             0x2000 => Ok(ErrorType::Syntax),
             0x2100 => Ok(ErrorType::Unauthorized),
             0x2200 => Ok(ErrorType::Invalid),
@@ -173,7 +189,14 @@ impl ErrorType {
                 AlreadyExistsError::from_cursor(cursor, version).map(ErrorType::AlreadyExists)
             }
             0x2500 => UnpreparedError::from_cursor(cursor, version).map(ErrorType::Unprepared),
-            _ => Err(Error::UnexpectedErrorCode(error_code)),
+            _ => {
+                let mut body = Vec::new();
+                cursor.read_to_end(&mut body)?;
+                Ok(ErrorType::Unknown {
+                    code: error_code,
+                    body,
+                })
+            }
         }
     }
 
@@ -191,12 +214,15 @@ impl ErrorType {
             ErrorType::ReadFailure(_) => 0x1300,
             ErrorType::FunctionFailure(_) => 0x1400,
             ErrorType::WriteFailure(_) => 0x1500,
+            ErrorType::CdcWriteFailure => 0x1600,
+            ErrorType::CasWriteUnknown(_) => 0x1700,
             ErrorType::Syntax => 0x2000,
             ErrorType::Unauthorized => 0x2100,
             ErrorType::Invalid => 0x2200,
             ErrorType::Config => 0x2300,
             ErrorType::AlreadyExists(_) => 0x2400,
             ErrorType::Unprepared(_) => 0x2500,
+            ErrorType::Unknown { code, .. } => *code,
         }
     }
 }
@@ -481,6 +507,43 @@ impl FromCursor for WriteFailureError {
             block_for,
             failure_info,
             write_type,
+        })
+    }
+}
+
+/// A contended Compare And Set write/update was only partially completed. The operation may or may
+/// not get completed by the contending CAS write or SERIAL/LOCAL_SERIAL read.
+#[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Copy, Clone, Hash)]
+pub struct CasWriteUnknownError {
+    /// Consistency level of the query having triggered the exception.
+    pub cl: Consistency,
+    /// The number of nodes having acknowledged the request.
+    pub received: CInt,
+    /// The number of replicas whose acknowledgement is required to achieve `cl`.
+    pub block_for: CInt,
+}
+
+impl Serialize for CasWriteUnknownError {
+    fn serialize(&self, cursor: &mut Cursor<&mut Vec<u8>>, version: Version) {
+        self.cl.serialize(cursor, version);
+        self.received.serialize(cursor, version);
+        self.block_for.serialize(cursor, version);
+    }
+}
+
+impl FromCursor for CasWriteUnknownError {
+    fn from_cursor(
+        cursor: &mut Cursor<&[u8]>,
+        version: Version,
+    ) -> error::Result<CasWriteUnknownError> {
+        let cl = Consistency::from_cursor(cursor, version)?;
+        let received = CInt::from_cursor(cursor, version)?;
+        let block_for = CInt::from_cursor(cursor, version)?;
+
+        Ok(CasWriteUnknownError {
+            cl,
+            received,
+            block_for,
         })
     }
 }
@@ -871,6 +934,71 @@ mod error_tests {
             }),
         };
         test_encode_decode(bytes, expected);
+    }
+
+    fn decode_and_reencode(bytes: &[u8], version: Version) -> ErrorBody {
+        let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+        let body = ErrorBody::from_cursor(&mut cursor, version).unwrap();
+
+        let mut buffer = Vec::new();
+        body.serialize(&mut Cursor::new(&mut buffer), version);
+        assert_eq!(buffer, bytes);
+
+        body
+    }
+
+    #[test]
+    fn cdc_write_failure() {
+        let bytes = &[
+            0, 0, 22, 0, // cdc write failure
+            0, 3, 102, 111, 111, // message - foo
+        ];
+        let body = decode_and_reencode(bytes, Version::V4);
+        assert_eq!(body.message, "foo");
+        assert_eq!(body.ty, ErrorType::CdcWriteFailure);
+        assert_eq!(body.ty.to_error_code(), 0x1600);
+    }
+
+    #[test]
+    fn cas_write_unknown() {
+        let bytes = &[
+            0, 0, 23, 0, // cas write unknown
+            0, 3, 102, 111, 111, // message - foo
+            //
+            0, 8, // consistency serial
+            0, 0, 0, 1, // received
+            0, 0, 0, 2, // block_for
+        ];
+        let body = decode_and_reencode(bytes, Version::V5);
+        assert_eq!(body.message, "foo");
+        assert_eq!(
+            body.ty,
+            ErrorType::CasWriteUnknown(CasWriteUnknownError {
+                cl: Consistency::Serial,
+                received: 1,
+                block_for: 2,
+            })
+        );
+        assert_eq!(body.ty.to_error_code(), 0x1700);
+    }
+
+    #[test]
+    fn unknown_error_code() {
+        let bytes = &[
+            0, 0, 48, 0, // code not defined by the protocol
+            0, 3, 102, 111, 111, // message - foo
+            1, 2, 3, // unrecognized additional info
+        ];
+        let body = decode_and_reencode(bytes, Version::V5);
+        assert_eq!(body.message, "foo");
+        assert_eq!(
+            body.ty,
+            ErrorType::Unknown {
+                code: 0x3000,
+                body: vec![1, 2, 3],
+            }
+        );
+        assert_eq!(body.ty.to_error_code(), 0x3000);
     }
 
     #[test]
