@@ -291,6 +291,28 @@ pub fn get_ident_string(ty: &Type, name: &str) -> Result<String> {
     get_ident(ty, name).map(|ident| ident.to_string())
 }
 
+pub fn get_ident_params_string(ty: &Type, name: &str) -> Result<Type> {
+    match ty {
+        Type::Path(TypePath {
+            path: Path { segments, .. },
+            ..
+        }) => match segments.last() {
+            Some(&PathSegment {
+                arguments: PathArguments::AngleBracketed(ref angle_bracketed_data),
+                ..
+            }) => match angle_bracketed_data.args.last() {
+                Some(GenericArgument::Type(ty)) => Ok(ty.clone()),
+                _ => Err(Error::new(ty.span(), "Cannot infer field type")),
+            },
+            _ => Err(Error::new(ty.span(), "Cannot infer field type")),
+        },
+        _ => Err(Error::new(
+            ty.span(),
+            format!("Cannot infer field type {}", get_ident_string(ty, name)?),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::get_struct_fields;
@@ -334,27 +356,5 @@ mod tests {
             assert!(error.contains("Unsupported type"), "{}", error);
             assert!(error.contains("`field`"), "{}", error);
         }
-    }
-}
-
-pub fn get_ident_params_string(ty: &Type, name: &str) -> Result<Type> {
-    match ty {
-        Type::Path(TypePath {
-            path: Path { segments, .. },
-            ..
-        }) => match segments.last() {
-            Some(&PathSegment {
-                arguments: PathArguments::AngleBracketed(ref angle_bracketed_data),
-                ..
-            }) => match angle_bracketed_data.args.last() {
-                Some(GenericArgument::Type(ty)) => Ok(ty.clone()),
-                _ => Err(Error::new(ty.span(), "Cannot infer field type")),
-            },
-            _ => Err(Error::new(ty.span(), "Cannot infer field type")),
-        },
-        _ => Err(Error::new(
-            ty.span(),
-            format!("Cannot infer field type {}", get_ident_string(ty, name)?),
-        )),
     }
 }
