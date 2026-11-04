@@ -11,12 +11,16 @@ const COMPRESSION: &str = "COMPRESSION";
 const DRIVER_NAME: &str = "DRIVER_NAME";
 const DRIVER_VERSION: &str = "DRIVER_VERSION";
 
+/// Body of an envelope of type `startup`. The default value holds no options.
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[non_exhaustive]
 pub struct BodyReqStartup {
     pub map: HashMap<String, String>,
 }
 
 impl BodyReqStartup {
+    /// Creates startup options announcing the CQL version, the optional compression and, since
+    /// protocol v5, the driver name and version.
     pub fn new(compression: Option<String>, version: Version) -> BodyReqStartup {
         let mut map = HashMap::new();
         map.insert(CQL_VERSION.into(), CQL_VERSION_VAL.into());

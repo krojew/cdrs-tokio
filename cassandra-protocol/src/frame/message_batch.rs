@@ -14,6 +14,7 @@ use std::convert::{TryFrom, TryInto};
 use std::io::{Cursor, Read};
 
 #[derive(Debug, Clone, Constructor, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BodyReqBatch {
     pub batch_type: BatchType,
     pub queries: Vec<BatchQuery>,
@@ -187,6 +188,7 @@ pub enum BatchQuerySubj {
 
 /// The structure that represents a query to be batched.
 #[derive(Debug, Clone, Constructor, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct BatchQuery {
     /// Contains either id of a prepared query or a query itself.
     pub subject: BatchQuerySubj,

@@ -220,6 +220,7 @@ impl FromCursor for BodyResResultSetKeyspace {
 /// Structure that represents result of type
 /// [rows](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L533).
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[non_exhaustive]
 pub struct BodyResResultRows {
     /// Rows metadata
     pub metadata: RowsMetadata,
@@ -244,6 +245,22 @@ impl Serialize for BodyResResultRows {
 }
 
 impl BodyResResultRows {
+    /// Creates a rows result from its metadata, row count, row content and protocol version.
+    /// Fields added to the struct later are initialized to their defaults.
+    pub fn new(
+        metadata: RowsMetadata,
+        rows_count: CInt,
+        rows_content: Vec<Vec<CBytes>>,
+        protocol_version: Version,
+    ) -> Self {
+        BodyResResultRows {
+            metadata,
+            rows_count,
+            rows_content,
+            protocol_version,
+        }
+    }
+
     fn rows_content(
         cursor: &mut Cursor<&[u8]>,
         rows_count: i32,
@@ -288,6 +305,7 @@ impl FromCursor for BodyResResultRows {
 
 /// Rows metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub struct RowsMetadata {
     /// Flags.
     pub flags: RowsMetadataFlags,
@@ -304,6 +322,29 @@ pub struct RowsMetadata {
     pub global_table_spec: Option<TableSpec>,
     /// List of column specifications.
     pub col_specs: Vec<ColSpec>,
+}
+
+impl RowsMetadata {
+    /// Creates rows metadata from its flags, column count, paging state, new metadata id, global
+    /// table spec and column specs. Fields added to the struct later are initialized to their
+    /// defaults.
+    pub fn new(
+        flags: RowsMetadataFlags,
+        columns_count: i32,
+        paging_state: Option<CBytes>,
+        new_metadata_id: Option<CBytesShort>,
+        global_table_spec: Option<TableSpec>,
+        col_specs: Vec<ColSpec>,
+    ) -> Self {
+        RowsMetadata {
+            flags,
+            columns_count,
+            paging_state,
+            new_metadata_id,
+            global_table_spec,
+            col_specs,
+        }
+    }
 }
 
 impl Serialize for RowsMetadata {
@@ -435,9 +476,21 @@ impl FromBytes for RowsMetadataFlags {
 
 /// Table specification.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[non_exhaustive]
 pub struct TableSpec {
     pub ks_name: String,
     pub table_name: String,
+}
+
+impl TableSpec {
+    /// Creates a table spec from a keyspace name and a table name. Fields added to the struct
+    /// later are initialized to their defaults.
+    pub fn new(ks_name: impl Into<String>, table_name: impl Into<String>) -> Self {
+        TableSpec {
+            ks_name: ks_name.into(),
+            table_name: table_name.into(),
+        }
+    }
 }
 
 impl Serialize for TableSpec {
@@ -461,6 +514,7 @@ impl FromCursor for TableSpec {
 
 /// Single column specification.
 #[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+#[non_exhaustive]
 pub struct ColSpec {
     /// The initial <ks_name> and <table_name> are strings and only present
     /// if the Global_tables_spec flag is NOT set
@@ -484,6 +538,20 @@ impl Serialize for ColSpec {
 }
 
 impl ColSpec {
+    /// Creates a column spec from an optional table spec, a column name and a column type.
+    /// Fields added to the struct later are initialized to their defaults.
+    pub fn new(
+        table_spec: Option<TableSpec>,
+        name: impl Into<String>,
+        col_type: ColTypeOption,
+    ) -> Self {
+        ColSpec {
+            table_spec,
+            name: name.into(),
+            col_type,
+        }
+    }
+
     pub fn parse_colspecs(
         cursor: &mut Cursor<&[u8]>,
         column_count: i32,
@@ -845,6 +913,7 @@ impl CTuple {
 
 /// The structure represents a body of a response envelope of type `prepared`
 #[derive(Debug, PartialEq, Eq, Clone, Hash)]
+#[non_exhaustive]
 pub struct BodyResResultPrepared {
     /// id of prepared request
     pub id: CBytesShort,
@@ -872,6 +941,23 @@ impl Serialize for BodyResResultPrepared {
 }
 
 impl BodyResResultPrepared {
+    /// Creates a prepared result from the statement id, result metadata id, bind marker
+    /// metadata and result metadata. Fields added to the struct later are initialized to their
+    /// defaults.
+    pub fn new(
+        id: CBytesShort,
+        result_metadata_id: Option<CBytesShort>,
+        metadata: PreparedMetadata,
+        result_metadata: RowsMetadata,
+    ) -> Self {
+        BodyResResultPrepared {
+            id,
+            result_metadata_id,
+            metadata,
+            result_metadata,
+        }
+    }
+
     fn from_cursor(
         cursor: &mut Cursor<&[u8]>,
         version: Version,
@@ -909,8 +995,10 @@ impl Serialize for PreparedMetadataFlags {
     }
 }
 
-/// The structure that represents metadata of prepared response.
-#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash)]
+/// The structure that represents metadata of prepared response. The default value describes a
+/// statement without bind markers.
+#[derive(Debug, Clone, PartialEq, Ord, PartialOrd, Eq, Hash, Default)]
+#[non_exhaustive]
 pub struct PreparedMetadata {
     pub pk_indexes: Vec<i16>,
     pub global_table_spec: Option<TableSpec>,

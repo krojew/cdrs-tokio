@@ -77,27 +77,23 @@ fn row(columns: Vec<(&str, ColTypeOption, CBytes)>) -> Row {
     let mut col_specs = Vec::with_capacity(columns.len());
     let mut content = Vec::with_capacity(columns.len());
     for (name, col_type, data) in columns {
-        col_specs.push(ColSpec {
-            table_spec: None,
-            name: name.to_string(),
-            col_type,
-        });
+        col_specs.push(ColSpec::new(None, name, col_type));
         content.push(data);
     }
 
-    let body = BodyResResultRows {
-        metadata: RowsMetadata {
-            flags: RowsMetadataFlags::empty(),
-            columns_count: col_specs.len() as i32,
-            paging_state: None,
-            new_metadata_id: None,
-            global_table_spec: None,
+    let body = BodyResResultRows::new(
+        RowsMetadata::new(
+            RowsMetadataFlags::empty(),
+            col_specs.len() as i32,
+            None,
+            None,
+            None,
             col_specs,
-        },
-        rows_count: 1,
-        rows_content: vec![content],
-        protocol_version: Version::V4,
-    };
+        ),
+        1,
+        vec![content],
+        Version::V4,
+    );
 
     Row::from_body(body).pop().expect("one row")
 }

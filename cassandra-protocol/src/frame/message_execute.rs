@@ -7,6 +7,7 @@ use std::io::Cursor;
 
 /// The structure that represents a body of a envelope of type `execute`.
 #[derive(Debug, Constructor, Eq, PartialEq, Clone)]
+#[non_exhaustive]
 pub struct BodyReqExecute<'a> {
     pub id: &'a CBytesShort,
     pub result_metadata_id: Option<&'a CBytesShort>,
@@ -41,6 +42,7 @@ impl<'a> Serialize for BodyReqExecute<'a> {
 
 /// The structure that represents an owned body of a envelope of type `execute`.
 #[derive(Debug, Constructor, Clone, Eq, PartialEq, Default)]
+#[non_exhaustive]
 pub struct BodyReqExecuteOwned {
     pub id: CBytesShort,
     pub result_metadata_id: Option<CBytesShort>,

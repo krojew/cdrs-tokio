@@ -290,27 +290,16 @@ pub(crate) fn void_response(version: Version) -> Envelope {
 
 pub(crate) fn prepared_response(id: &CBytesShort, version: Version) -> Envelope {
     result_response(
-        ResResultBody::Prepared(BodyResResultPrepared {
-            id: id.clone(),
-            result_metadata_id: if version >= Version::V5 {
+        ResResultBody::Prepared(BodyResResultPrepared::new(
+            id.clone(),
+            if version >= Version::V5 {
                 Some(CBytesShort::new(vec![0]))
             } else {
                 None
             },
-            metadata: PreparedMetadata {
-                pk_indexes: vec![],
-                global_table_spec: None,
-                col_specs: vec![],
-            },
-            result_metadata: RowsMetadata {
-                flags: RowsMetadataFlags::NO_METADATA,
-                columns_count: 0,
-                paging_state: None,
-                new_metadata_id: None,
-                global_table_spec: None,
-                col_specs: vec![],
-            },
-        }),
+            PreparedMetadata::default(),
+            RowsMetadata::new(RowsMetadataFlags::NO_METADATA, 0, None, None, None, vec![]),
+        )),
         version,
     )
 }
@@ -320,29 +309,22 @@ pub(crate) fn rows_body(
     rows: Vec<Vec<CBytes>>,
     version: Version,
 ) -> BodyResResultRows {
-    BodyResResultRows {
-        metadata: RowsMetadata {
-            flags: RowsMetadataFlags::GLOBAL_TABLE_SPACE,
-            columns_count: columns.len() as i32,
-            paging_state: None,
-            new_metadata_id: None,
-            global_table_spec: Some(TableSpec {
-                ks_name: "test_ks".into(),
-                table_name: "test_table".into(),
-            }),
-            col_specs: columns
+    BodyResResultRows::new(
+        RowsMetadata::new(
+            RowsMetadataFlags::GLOBAL_TABLE_SPACE,
+            columns.len() as i32,
+            None,
+            None,
+            Some(TableSpec::new("test_ks", "test_table")),
+            columns
                 .into_iter()
-                .map(|(name, col_type)| ColSpec {
-                    table_spec: None,
-                    name: name.into(),
-                    col_type,
-                })
+                .map(|(name, col_type)| ColSpec::new(None, name, col_type))
                 .collect(),
-        },
-        rows_count: rows.len() as i32,
-        rows_content: rows,
-        protocol_version: version,
-    }
+        ),
+        rows.len() as i32,
+        rows,
+        version,
+    )
 }
 
 pub(crate) fn simple_type(id: ColType) -> ColTypeOption {

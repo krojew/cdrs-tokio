@@ -869,11 +869,7 @@ mod tests {
     }
 
     fn column(name: &str, col_type: ColTypeOption) -> ColSpec {
-        ColSpec {
-            table_spec: None,
-            name: name.into(),
-            col_type,
-        }
+        ColSpec::new(None, name, col_type)
     }
 
     // system.local identifies the node by broadcast_address, system.peers_v2 by peer
@@ -935,22 +931,19 @@ mod tests {
     }
 
     fn rows_envelope(col_specs: Vec<ColSpec>, rows: Vec<Vec<CBytes>>) -> Envelope {
-        result_envelope(ResResultBody::Rows(BodyResResultRows {
-            metadata: RowsMetadata {
-                flags: RowsMetadataFlags::GLOBAL_TABLE_SPACE,
-                columns_count: col_specs.len() as i32,
-                paging_state: None,
-                new_metadata_id: None,
-                global_table_spec: Some(TableSpec {
-                    ks_name: "system".into(),
-                    table_name: "test".into(),
-                }),
+        result_envelope(ResResultBody::Rows(BodyResResultRows::new(
+            RowsMetadata::new(
+                RowsMetadataFlags::GLOBAL_TABLE_SPACE,
+                col_specs.len() as i32,
+                None,
+                None,
+                Some(TableSpec::new("system", "test")),
                 col_specs,
-            },
-            rows_count: rows.len() as i32,
-            rows_content: rows,
-            protocol_version: Version::V4,
-        }))
+            ),
+            rows.len() as i32,
+            rows,
+            Version::V4,
+        )))
     }
 
     fn query_text(envelope: &Envelope) -> String {
@@ -1061,10 +1054,8 @@ mod tests {
         let metadata_manager = Arc::new(create_metadata_manager(transport));
 
         let (event_sender, event_receiver) = tokio::sync::broadcast::channel(1);
-        let event = ServerEvent::StatusChange(StatusChange {
-            change_type: StatusChangeType::Down,
-            addr: address(3),
-        });
+        let event =
+            ServerEvent::StatusChange(StatusChange::new(StatusChangeType::Down, address(3)));
 
         // the second event overwrites the first one, so the receiver lags behind
         event_sender.send(event.clone()).unwrap();
@@ -1128,10 +1119,10 @@ mod tests {
             .store(Arc::new(ClusterMetadata::new(nodes, Default::default())));
 
         metadata_manager
-            .process_topology_event(TopologyChange {
-                change_type: TopologyChangeType::MovedNode,
-                addr: moved_node_address,
-            })
+            .process_topology_event(TopologyChange::new(
+                TopologyChangeType::MovedNode,
+                moved_node_address,
+            ))
             .await;
 
         let metadata = metadata_manager.metadata();
@@ -1208,10 +1199,10 @@ mod tests {
         node.persistent_connection().await.unwrap();
 
         metadata_manager
-            .process_status_event(StatusChange {
-                change_type: StatusChangeType::Down,
-                addr: node.broadcast_rpc_address(),
-            })
+            .process_status_event(StatusChange::new(
+                StatusChangeType::Down,
+                node.broadcast_rpc_address(),
+            ))
             .await;
 
         let current_node = metadata_manager
@@ -1222,10 +1213,10 @@ mod tests {
         assert_eq!(node.state(), NodeState::Down);
 
         metadata_manager
-            .process_status_event(StatusChange {
-                change_type: StatusChangeType::Up,
-                addr: node.broadcast_rpc_address(),
-            })
+            .process_status_event(StatusChange::new(
+                StatusChangeType::Up,
+                node.broadcast_rpc_address(),
+            ))
             .await;
 
         let current_node = metadata_manager
@@ -1248,10 +1239,10 @@ mod tests {
         node.force_down();
 
         metadata_manager
-            .process_status_event(StatusChange {
-                change_type: StatusChangeType::Up,
-                addr: node.broadcast_rpc_address(),
-            })
+            .process_status_event(StatusChange::new(
+                StatusChangeType::Up,
+                node.broadcast_rpc_address(),
+            ))
             .await;
 
         let current_node = metadata_manager
@@ -1276,10 +1267,10 @@ mod tests {
         break_connections(&node, &tracker).await;
 
         metadata_manager
-            .process_status_event(StatusChange {
-                change_type: StatusChangeType::Up,
-                addr: node.broadcast_rpc_address(),
-            })
+            .process_status_event(StatusChange::new(
+                StatusChangeType::Up,
+                node.broadcast_rpc_address(),
+            ))
             .await;
 
         wait_for_connection(&node).await;

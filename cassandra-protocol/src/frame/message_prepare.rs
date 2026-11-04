@@ -8,6 +8,7 @@ use std::io::Cursor;
 
 /// Struct that represents a body of a envelope of type `prepare`
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Clone, Default)]
+#[non_exhaustive]
 pub struct BodyReqPrepare {
     pub query: String,
     pub keyspace: Option<String>,

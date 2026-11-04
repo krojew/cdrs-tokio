@@ -151,9 +151,18 @@ impl FromCursor for ServerEvent {
 
 /// Events related to change in the cluster topology
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
 pub struct TopologyChange {
     pub change_type: TopologyChangeType,
     pub addr: SocketAddr,
+}
+
+impl TopologyChange {
+    /// Creates a topology change event of the given type for the node at `addr`. Fields added to
+    /// the struct later are initialized to their defaults.
+    pub fn new(change_type: TopologyChangeType, addr: SocketAddr) -> Self {
+        TopologyChange { change_type, addr }
+    }
 }
 
 impl Serialize for TopologyChange {
@@ -207,9 +216,18 @@ impl FromCursor for TopologyChangeType {
 
 /// Events related to change of node status.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
 pub struct StatusChange {
     pub change_type: StatusChangeType,
     pub addr: SocketAddr,
+}
+
+impl StatusChange {
+    /// Creates a status change event of the given type for the node at `addr`. Fields added to
+    /// the struct later are initialized to their defaults.
+    pub fn new(change_type: StatusChangeType, addr: SocketAddr) -> Self {
+        StatusChange { change_type, addr }
+    }
 }
 
 impl Serialize for StatusChange {
@@ -260,10 +278,27 @@ impl FromCursor for StatusChangeType {
 
 /// Events related to schema change.
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[non_exhaustive]
 pub struct SchemaChange {
     pub change_type: SchemaChangeType,
     pub target: SchemaChangeTarget,
     pub options: SchemaChangeOptions,
+}
+
+impl SchemaChange {
+    /// Creates a schema change event of the given type for `target`, identified by `options`.
+    /// Fields added to the struct later are initialized to their defaults.
+    pub fn new(
+        change_type: SchemaChangeType,
+        target: SchemaChangeTarget,
+        options: SchemaChangeOptions,
+    ) -> Self {
+        SchemaChange {
+            change_type,
+            target,
+            options,
+        }
+    }
 }
 
 impl Serialize for SchemaChange {
