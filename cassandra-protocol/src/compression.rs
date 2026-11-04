@@ -24,14 +24,28 @@ pub const SNAPPY: &str = "snappy";
 /// Most bytes a single compressed byte can decode to in the LZ4 block format.
 const LZ4_MAX_EXPANSION: usize = 255;
 
-/// An error which may occur during encoding or decoding frame body. As there are only two types
-/// of compressors it contains two related enum options.
+/// An error which may occur during encoding or decoding frame body.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum CompressionError {
     /// Snappy error.
     Snappy(snap::Error),
     /// Lz4 error.
     Lz4(io::Error),
+    /// The decompressed size declared by a compressed payload exceeds the largest accepted size.
+    DecompressedSizeExceedsLimit {
+        /// Declared decompressed size in bytes.
+        size: usize,
+        /// Largest accepted decompressed size in bytes.
+        limit: usize,
+    },
+    /// Decompressing a payload produced a different number of bytes than it declared.
+    DecompressedLengthMismatch {
+        /// Declared decompressed length in bytes.
+        expected: usize,
+        /// Number of bytes actually produced.
+        actual: usize,
+    },
 }
 
 impl fmt::Display for CompressionError {
@@ -39,6 +53,12 @@ impl fmt::Display for CompressionError {
         match *self {
             CompressionError::Snappy(ref err) => write!(f, "Snappy Error: {err:?}"),
             CompressionError::Lz4(ref err) => write!(f, "Lz4 Error: {err:?}"),
+            CompressionError::DecompressedSizeExceedsLimit { size, limit } => {
+                write!(f, "Decompressed size {size} exceeds limit {limit}")
+            }
+            CompressionError::DecompressedLengthMismatch { expected, actual } => {
+                write!(f, "Decompressed {actual} bytes, expected {expected}")
+            }
         }
     }
 }
@@ -48,6 +68,8 @@ impl Error for CompressionError {
         match *self {
             CompressionError::Snappy(ref err) => Some(err),
             CompressionError::Lz4(ref err) => Some(err),
+            CompressionError::DecompressedSizeExceedsLimit { .. }
+            | CompressionError::DecompressedLengthMismatch { .. } => None,
         }
     }
 }
@@ -63,6 +85,18 @@ impl Clone for CompressionError {
                     .map(|error| error.to_string())
                     .unwrap_or_default(),
             )),
+            CompressionError::DecompressedSizeExceedsLimit { size, limit } => {
+                CompressionError::DecompressedSizeExceedsLimit {
+                    size: *size,
+                    limit: *limit,
+                }
+            }
+            CompressionError::DecompressedLengthMismatch { expected, actual } => {
+                CompressionError::DecompressedLengthMismatch {
+                    expected: *expected,
+                    actual: *actual,
+                }
+            }
         }
     }
 }
@@ -135,10 +169,10 @@ impl Compression {
         let uncompressed_size =
             snap::raw::decompress_len(&bytes).map_err(CompressionError::Snappy)?;
         if uncompressed_size > MAX_ENVELOPE_BODY_SIZE {
-            return Err(CompressionError::Snappy(snap::Error::TooBig {
-                given: uncompressed_size as u64,
-                max: MAX_ENVELOPE_BODY_SIZE as u64,
-            }));
+            return Err(CompressionError::DecompressedSizeExceedsLimit {
+                size: uncompressed_size,
+                limit: MAX_ENVELOPE_BODY_SIZE,
+            });
         }
 
         let mut decoder = Decoder::new();
@@ -192,12 +226,10 @@ impl Compression {
 
         let uncompressed_size = uncompressed_size as usize;
         if uncompressed_size > MAX_ENVELOPE_BODY_SIZE {
-            return Err(CompressionError::Lz4(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "uncompressed size {uncompressed_size} exceeds maximum {MAX_ENVELOPE_BODY_SIZE}"
-                ),
-            )));
+            return Err(CompressionError::DecompressedSizeExceedsLimit {
+                size: uncompressed_size,
+                limit: MAX_ENVELOPE_BODY_SIZE,
+            });
         }
 
         // LZ4 block sequences copy literals 1:1 and spend at least 3 bytes (token and offset) on
@@ -220,13 +252,10 @@ impl Compression {
             .map_err(|error| CompressionError::Lz4(io::Error::other(error)))?;
 
         if decompressed.len() != uncompressed_size {
-            return Err(CompressionError::Lz4(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "decompressed {} bytes, expected {uncompressed_size}",
-                    decompressed.len()
-                ),
-            )));
+            return Err(CompressionError::DecompressedLengthMismatch {
+                expected: uncompressed_size,
+                actual: decompressed.len(),
+            });
         }
 
         Ok(decompressed)
@@ -427,11 +456,8 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(CompressionError::Lz4(ref error))
-                    if error.kind() == io::ErrorKind::InvalidData
-                        && error
-                            .to_string()
-                            .contains(&format!("exceeds maximum {}", MAX_ENVELOPE_BODY_SIZE))
+                Err(CompressionError::DecompressedSizeExceedsLimit { size, limit })
+                    if size == MAX_ENVELOPE_BODY_SIZE + 1 && limit == MAX_ENVELOPE_BODY_SIZE
             ),
             "{:?}",
             result
@@ -482,7 +508,18 @@ mod tests {
         let mut bytes = 5i32.to_be_bytes().to_vec();
         bytes.extend_from_slice(&[0x10, b'a']); // a single literal "a"
 
-        assert!(Compression::Lz4.decode(bytes).is_err());
+        let result = Compression::Lz4.decode(bytes);
+        assert!(
+            matches!(
+                result,
+                Err(CompressionError::DecompressedLengthMismatch {
+                    expected: 5,
+                    actual: 1
+                })
+            ),
+            "{:?}",
+            result
+        );
     }
 
     #[test]
@@ -506,10 +543,31 @@ mod tests {
         assert!(
             matches!(
                 result,
-                Err(CompressionError::Snappy(snap::Error::TooBig { .. }))
+                Err(CompressionError::DecompressedSizeExceedsLimit { size, limit })
+                    if size == MAX_ENVELOPE_BODY_SIZE + 1 && limit == MAX_ENVELOPE_BODY_SIZE
             ),
             "{:?}",
             result
+        );
+    }
+
+    #[test]
+    fn test_compression_error_display_includes_sizes() {
+        assert_eq!(
+            CompressionError::DecompressedSizeExceedsLimit {
+                size: 300,
+                limit: 200
+            }
+            .to_string(),
+            "Decompressed size 300 exceeds limit 200"
+        );
+        assert_eq!(
+            CompressionError::DecompressedLengthMismatch {
+                expected: 5,
+                actual: 1
+            }
+            .to_string(),
+            "Decompressed 1 bytes, expected 5"
         );
     }
 

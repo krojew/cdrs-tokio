@@ -63,9 +63,6 @@ pub enum Error {
     /// Unexpected schema change event target.
     #[error("Unexpected schema change target: {0}")]
     UnexpectedSchemaChangeTarget(String),
-    /// Unexpected additional error info.
-    #[error("Unexpected error code: {0}")]
-    UnexpectedErrorCode(CInt),
     /// Unexpected write type.
     #[error("Unexpected write type: {0}")]
     UnexpectedWriteType(String),
@@ -147,7 +144,6 @@ impl Clone for Error {
             Error::UnexpectedSchemaChangeTarget(value) => {
                 Error::UnexpectedSchemaChangeTarget(value.clone())
             }
-            Error::UnexpectedErrorCode(value) => Error::UnexpectedErrorCode(*value),
             Error::UnexpectedWriteType(value) => Error::UnexpectedWriteType(value.clone()),
             Error::NonRequestOpcode(value) => Error::NonRequestOpcode(*value),
             Error::NonResponseOpcode(value) => Error::NonResponseOpcode(*value),

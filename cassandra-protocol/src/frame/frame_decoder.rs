@@ -183,13 +183,10 @@ impl Lz4FrameDecoder {
         .map_err(|error| CompressionError::Lz4(io::Error::other(error)))?;
 
         if payload.len() != uncompressed_length {
-            return Err(CompressionError::Lz4(io::Error::new(
-                io::ErrorKind::InvalidData,
-                format!(
-                    "decompressed {} bytes, expected {uncompressed_length}",
-                    payload.len()
-                ),
-            ))
+            return Err(CompressionError::DecompressedLengthMismatch {
+                expected: uncompressed_length,
+                actual: payload.len(),
+            }
             .into());
         }
 
@@ -566,17 +563,25 @@ mod tests {
         let envelope = make_envelope(1, 0xAA, 100);
         let compressed = lz4_flex::compress(&envelope);
 
-        for uncompressed_length in [envelope.len() + 50, envelope.len() - 50] {
-            let mut wire = make_lz4_frame(&compressed, uncompressed_length, true);
+        let declared_length = envelope.len() + 50;
+        let mut wire = make_lz4_frame(&compressed, declared_length, true);
+        let result = Lz4FrameDecoder::default().consume(&mut wire, Compression::None);
+        assert!(
+            matches!(
+                result,
+                Err(Error::Compression(CompressionError::DecompressedLengthMismatch {
+                    expected,
+                    actual,
+                })) if expected == declared_length && actual == envelope.len()
+            ),
+            "{:?}",
+            result
+        );
 
-            let result = Lz4FrameDecoder::default().consume(&mut wire, Compression::None);
-            assert!(
-                result.is_err(),
-                "uncompressed length {}: {:?}",
-                uncompressed_length,
-                result
-            );
-        }
+        // a declared length below the real one leaves lz4 without room for the output
+        let mut wire = make_lz4_frame(&compressed, envelope.len() - 50, true);
+        let result = Lz4FrameDecoder::default().consume(&mut wire, Compression::None);
+        assert!(result.is_err(), "{:?}", result);
 
         let mut wire = make_lz4_frame(&compressed, envelope.len(), true);
         let envelopes = Lz4FrameDecoder::default()
