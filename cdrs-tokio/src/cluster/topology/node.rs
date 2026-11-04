@@ -211,8 +211,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     ) -> Result<T> {
         debug!("Establishing new connection to node...");
         self.connection_pool_factory
-            .connection_manager()
-            .connection(event_handler, error_handler, self.broadcast_rpc_address)
+            .new_connection(event_handler, error_handler, self.broadcast_rpc_address)
             .await
     }
 

@@ -34,24 +34,23 @@ async fn new_connection<T: CdrsTransport, CM: ConnectionManager<T>>(
     connection_manager: &CM,
     broadcast_rpc_address: SocketAddr,
     timeout: Option<Duration>,
-    error_handler: mpsc::Sender<Error>,
+    event_handler: Option<mpsc::Sender<Envelope>>,
+    error_handler: Option<mpsc::Sender<Error>>,
 ) -> CdrsResult<T> {
+    let connection =
+        connection_manager.connection(event_handler, error_handler, broadcast_rpc_address);
+
     if let Some(timeout) = timeout {
-        tokio::time::timeout(
-            timeout,
-            connection_manager.connection(None, Some(error_handler), broadcast_rpc_address),
-        )
-        .await
-        .map_err(|_| {
-            Error::Timeout(format!(
-                "Timeout waiting for connection to: {broadcast_rpc_address}"
-            ))
-        })
-        .and_then(|result| result)
-    } else {
-        connection_manager
-            .connection(None, Some(error_handler), broadcast_rpc_address)
+        tokio::time::timeout(timeout, connection)
             .await
+            .map_err(|_| {
+                Error::Timeout(format!(
+                    "Timeout waiting for connection to: {broadcast_rpc_address}"
+                ))
+            })
+            .and_then(|result| result)
+    } else {
+        connection.await
     }
 }
 
@@ -153,9 +152,21 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         }
     }
 
-    #[inline]
-    pub(crate) fn connection_manager(&self) -> &CM {
-        self.connection_manager.as_ref()
+    /// Establishes a connection outside any pool, applying the configured connect timeout.
+    pub(crate) async fn new_connection(
+        &self,
+        event_handler: Option<mpsc::Sender<Envelope>>,
+        error_handler: Option<mpsc::Sender<Error>>,
+        broadcast_rpc_address: SocketAddr,
+    ) -> CdrsResult<T> {
+        new_connection(
+            self.connection_manager.as_ref(),
+            broadcast_rpc_address,
+            self.config.connect_timeout,
+            event_handler,
+            error_handler,
+        )
+        .await
     }
 
     pub(crate) async fn create(
@@ -484,7 +495,8 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
                 connection_manager.as_ref(),
                 broadcast_rpc_address,
                 config.connect_timeout,
-                error_sender.clone(),
+                None,
+                Some(error_sender.clone()),
             )
         }))
         .await
@@ -576,7 +588,8 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
                             connection_manager.as_ref(),
                             self.broadcast_rpc_address,
                             self.config.connect_timeout,
-                            self.error_sender.clone(),
+                            None,
+                            Some(self.error_sender.clone()),
                         )
                         .await?,
                     );
@@ -590,7 +603,8 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
                         connection_manager.as_ref(),
                         self.broadcast_rpc_address,
                         self.config.connect_timeout,
-                        self.error_sender.clone(),
+                        None,
+                        Some(self.error_sender.clone()),
                     )
                     .await?,
                 ));
@@ -628,5 +642,75 @@ mod heartbeat_interval_tests {
     async fn create_heartbeat_interval_skips_missed_ticks() {
         let interval = create_heartbeat_interval(Instant::now(), Duration::from_secs(30));
         assert_eq!(interval.missed_tick_behavior(), MissedTickBehavior::Skip);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::retry::MockReconnectionPolicy;
+    use crate::transport::MockCdrsTransport;
+    use futures::future::pending;
+    use std::net::{IpAddr, Ipv4Addr};
+    use tokio::sync::watch;
+    use tokio::time::timeout;
+
+    type TestConnectionManager = MockConnectionManager<MockCdrsTransport>;
+
+    // upper bound for awaiting outcomes which are expected to happen right away
+    const TEST_GUARD_TIMEOUT: Duration = Duration::from_secs(5);
+
+    fn test_address() -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9042)
+    }
+
+    fn create_factory(
+        config: ConnectionPoolConfig,
+        connection_manager: TestConnectionManager,
+    ) -> Arc<ConnectionPoolFactory<MockCdrsTransport, TestConnectionManager>> {
+        let (_, keyspace_receiver) = watch::channel(None);
+        Arc::new(ConnectionPoolFactory::new(
+            config,
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        ))
+    }
+
+    fn create_node(
+        factory: Arc<ConnectionPoolFactory<MockCdrsTransport, TestConnectionManager>>,
+    ) -> Arc<Node<MockCdrsTransport, TestConnectionManager>> {
+        Arc::new(Node::new_with_state(
+            factory,
+            test_address(),
+            None,
+            None,
+            Some(NodeDistance::Local),
+            NodeState::Up,
+            Default::default(),
+            "".into(),
+            "".into(),
+        ))
+    }
+
+    #[tokio::test]
+    async fn node_new_connection_applies_connect_timeout() {
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager
+            .expect_connection()
+            .returning(|_, _, _| Box::pin(pending()));
+
+        let config = ConnectionPoolConfigBuilder::new()
+            .with_connect_timeout(Some(Duration::from_millis(10)))
+            .build();
+        let node = create_node(create_factory(config, connection_manager));
+
+        let result = timeout(TEST_GUARD_TIMEOUT, node.new_connection(None, None))
+            .await
+            .expect("connect timeout was not applied");
+
+        assert!(matches!(result, Err(Error::Timeout(_))));
     }
 }
