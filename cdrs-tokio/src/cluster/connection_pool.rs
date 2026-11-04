@@ -1,5 +1,3 @@
-use atomic::Atomic;
-use bytemuck::NoUninit;
 use cassandra_protocol::frame::{Envelope, Version};
 use cassandra_protocol::query::utils::quote;
 use derive_more::Display;
@@ -9,7 +7,7 @@ use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use tokio::sync::watch::Receiver;
 use tokio::sync::{mpsc, RwLock};
@@ -25,12 +23,17 @@ use crate::transport::CdrsTransport;
 pub(crate) const DEFAULT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 pub(crate) const DEFAULT_HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(10);
 
-#[derive(Copy, Clone, PartialEq, Eq, Display, NoUninit)]
-#[repr(u8)]
+#[derive(Copy, Clone, PartialEq, Eq, Display)]
 enum ReconnectionState {
     NotRunning,
     InProgress,
     Disabled,
+}
+
+struct ReconnectionTracker {
+    state: ReconnectionState,
+    // set when a connection breaks while a reconnection is in progress
+    repeat: bool,
 }
 
 async fn new_connection<T: CdrsTransport, CM: ConnectionManager<T>>(
@@ -354,7 +357,10 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     ) {
         tokio::spawn(async move {
-            let reconnection_state = Arc::new(Atomic::new(ReconnectionState::NotRunning));
+            let reconnection_state = Arc::new(Mutex::new(ReconnectionTracker {
+                state: ReconnectionState::NotRunning,
+                repeat: false,
+            }));
             while receiver.recv().await.is_some() {
                 if let Some(node) = node.upgrade() {
                     let broadcast_rpc_address = node.broadcast_address();
@@ -385,32 +391,62 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
 
                     // when one connection goes down, all of them will most likely go down, so we need
                     // to protect against many reconnection attempts
-                    let state = reconnection_state.load(Ordering::Relaxed);
-                    if state != ReconnectionState::NotRunning {
-                        if state == ReconnectionState::Disabled {
-                            break;
+                    {
+                        let mut tracker = reconnection_state.lock().unwrap();
+                        match tracker.state {
+                            ReconnectionState::Disabled => break,
+                            ReconnectionState::InProgress => {
+                                // the connection might have broken after the running
+                                // reconnection checked it
+                                tracker.repeat = true;
+                                continue;
+                            }
+                            ReconnectionState::NotRunning => {
+                                tracker.state = ReconnectionState::InProgress;
+                            }
                         }
-
-                        continue;
                     }
-
-                    reconnection_state.store(ReconnectionState::InProgress, Ordering::Relaxed);
 
                     warn!(
                         ?broadcast_rpc_address,
                         "Connection down. Starting reconnection."
                     );
 
-                    let reconnection_schedule = reconnection_policy.new_node_schedule();
+                    let reconnection_policy = reconnection_policy.clone();
                     let reconnecting = reconnection_state.clone();
                     let pool = pool.clone();
                     let node = Arc::downgrade(&node);
 
                     tokio::spawn(async move {
-                        let new_state =
-                            Self::run_reconnection_loop(reconnection_schedule, pool.clone()).await;
+                        let new_state = loop {
+                            let new_state = Self::run_reconnection_loop(
+                                reconnection_policy.new_node_schedule(),
+                                pool.clone(),
+                            )
+                            .await;
 
-                        reconnecting.store(new_state, Ordering::Relaxed);
+                            let repeat = {
+                                let mut tracker = reconnecting.lock().unwrap();
+                                if new_state == ReconnectionState::NotRunning && tracker.repeat {
+                                    tracker.repeat = false;
+                                    true
+                                } else {
+                                    tracker.state = new_state;
+                                    tracker.repeat = false;
+                                    false
+                                }
+                            };
+
+                            if !repeat {
+                                break new_state;
+                            }
+
+                            debug!(
+                                ?broadcast_rpc_address,
+                                "Connections broke during reconnection. Repeating reconnection."
+                            );
+                        };
+
                         debug!(?broadcast_rpc_address, %new_state, "Reconnection loop stopped.");
 
                         if new_state == ReconnectionState::Disabled {
@@ -737,7 +773,7 @@ mod heartbeat_interval_tests {
 mod tests {
     use super::*;
     use crate::cluster::connection_manager::MockConnectionManager;
-    use crate::retry::MockReconnectionPolicy;
+    use crate::retry::{ConstantReconnectionPolicy, MockReconnectionPolicy};
     use crate::transport::MockCdrsTransport;
     use futures::future::pending;
     use futures::FutureExt;
@@ -1050,6 +1086,85 @@ mod tests {
             pool.pool.try_write().is_ok(),
             "pool is locked while waiting for keyspace propagation"
         );
+    }
+
+    #[tokio::test]
+    async fn connection_broken_during_reconnection_gets_reconnected() {
+        let broken: [Arc<AtomicBool>; 2] = Default::default();
+        let (reconnecting_sender, mut reconnecting_receiver) = mpsc::channel(4);
+        let release = Arc::new(Notify::new());
+        let calls = AtomicUsize::new(0);
+
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager.expect_connection().returning({
+            let broken = broken.clone();
+            let release = release.clone();
+            move |_, _, _| {
+                let call = calls.fetch_add(1, Ordering::Relaxed);
+                if call < broken.len() {
+                    let transport = transport_with_broken_flag(broken[call].clone());
+                    return Box::pin(async move { Ok(transport) });
+                }
+
+                let _ = reconnecting_sender.try_send(());
+                let release = release.clone();
+                let transport = transport_with_broken_flag(Default::default());
+                Box::pin(async move {
+                    release.notified().await;
+                    Ok(transport)
+                })
+            }
+        });
+
+        let (pool, _connection_manager, error_receiver) = create_pool(
+            connection_manager,
+            ConnectionPoolConfigBuilder::new()
+                .with_local_size(2)
+                .build(),
+        )
+        .await;
+        let node = create_node(create_factory(
+            Default::default(),
+            TestConnectionManager::new(),
+        ));
+
+        ConnectionPoolFactory::<MockCdrsTransport, TestConnectionManager>::monitor_connections(
+            error_receiver,
+            Arc::downgrade(&pool),
+            Arc::downgrade(&node),
+            Arc::new(ConstantReconnectionPolicy::new(Duration::from_millis(1))),
+        );
+
+        broken[0].store(true, Ordering::Relaxed);
+        pool.error_sender
+            .try_send(Error::General("first connection broken".into()))
+            .unwrap();
+
+        timeout(TEST_GUARD_TIMEOUT, reconnecting_receiver.recv())
+            .await
+            .expect("reconnection did not start");
+
+        broken[1].store(true, Ordering::Relaxed);
+        pool.error_sender
+            .try_send(Error::General("second connection broken".into()))
+            .unwrap();
+
+        // the monitor marks the node down once it sees the second error
+        timeout(TEST_GUARD_TIMEOUT, async {
+            while node.state() != NodeState::Down {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("second error was not processed");
+
+        release.notify_one();
+
+        timeout(TEST_GUARD_TIMEOUT, reconnecting_receiver.recv())
+            .await
+            .expect("connection broken during reconnection was not reconnected");
+
+        release.notify_one();
     }
 
     #[tokio::test]
