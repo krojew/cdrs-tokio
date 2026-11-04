@@ -42,7 +42,9 @@ impl<
 {
     pub(crate) async fn run(self, init_complete_sender: tokio::sync::oneshot::Sender<()>) {
         let (event_envelope_sender, event_envelope_receiver) = channel(EVENT_CHANNEL_CAPACITY);
-        let (error_sender, mut error_receiver) = channel(1);
+        // replaced by a channel of every newly established connection; the sender is kept alive so
+        // the receiver never reports a closed channel
+        let (_initial_error_sender, mut error_receiver) = channel(1);
 
         Self::process_events(event_envelope_receiver, self.event_sender.clone());
         let mut init_complete_sender = Some(init_complete_sender);
@@ -129,10 +131,14 @@ impl<
                     let mut any_connected = false;
 
                     for node in &plan.nodes {
+                        // a channel per connection keeps late errors of replaced connections from
+                        // tearing down the current one
+                        let (connection_error_sender, connection_error_receiver) = channel(1);
+
                         if let Ok(connection) = node
                             .new_connection(
                                 Some(event_envelope_sender.clone()),
-                                Some(error_sender.clone()),
+                                Some(connection_error_sender),
                             )
                             .await
                         {
@@ -152,6 +158,7 @@ impl<
                                 continue;
                             }
 
+                            error_receiver = connection_error_receiver;
                             continue 'listen;
                         }
                     }
@@ -538,5 +545,80 @@ mod tests {
         ))
         .await;
         handle.abort();
+    }
+
+    // Keeps the error handler of every connection, so a test can report errors on behalf of
+    // connections which were already replaced.
+    struct ErrorHandlerRecordingConnectionManager {
+        inner: test_support::TestConnectionManager,
+        error_handlers: Arc<std::sync::Mutex<Vec<tokio::sync::mpsc::Sender<Error>>>>,
+    }
+
+    impl ConnectionManager<test_support::TestTransport> for ErrorHandlerRecordingConnectionManager {
+        fn connection(
+            &self,
+            event_handler: Option<tokio::sync::mpsc::Sender<Envelope>>,
+            error_handler: Option<tokio::sync::mpsc::Sender<Error>>,
+            addr: SocketAddr,
+        ) -> crate::future::BoxFuture<
+            '_,
+            cassandra_protocol::error::Result<test_support::TestTransport>,
+        > {
+            if let Some(error_handler) = &error_handler {
+                self.error_handlers
+                    .lock()
+                    .unwrap()
+                    .push(error_handler.clone());
+            }
+
+            self.inner.connection(event_handler, error_handler, addr)
+        }
+    }
+
+    #[tokio::test]
+    async fn run_ignores_errors_of_replaced_connections() {
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9042);
+        let (connected_sender, mut connected_receiver) = mpsc::unbounded_channel();
+        let error_handlers = Arc::new(std::sync::Mutex::new(vec![]));
+
+        let connection_manager = ErrorHandlerRecordingConnectionManager {
+            inner: test_support::TestConnectionManager::new(move |_, envelope| {
+                ready(test_support::topology_response(envelope, &[address])).boxed()
+            })
+            .with_connect_handler(move |_| {
+                let _ = connected_sender.send(());
+                Ok(())
+            }),
+            error_handlers: error_handlers.clone(),
+        };
+
+        let handle = assert_initialization_succeeds(create_control_connection_with_config(
+            vec![address],
+            connection_manager,
+            Default::default(),
+        ))
+        .await;
+        connected_receiver.recv().await.unwrap();
+
+        let first_error_handler = error_handlers.lock().unwrap()[0].clone();
+        first_error_handler
+            .send(Error::General("connection broken".into()))
+            .await
+            .unwrap();
+        timeout(TEST_GUARD_TIMEOUT, connected_receiver.recv())
+            .await
+            .expect("broken control connection was not replaced")
+            .unwrap();
+
+        // the replaced connection reports another error, e.g. while shutting down
+        let _ = first_error_handler.try_send(Error::General("late error".into()));
+
+        let reconnected = timeout(Duration::from_millis(200), connected_receiver.recv()).await;
+        handle.abort();
+
+        assert!(
+            reconnected.is_err(),
+            "an error of a replaced connection tore down the current one"
+        );
     }
 }
