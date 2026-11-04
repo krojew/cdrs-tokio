@@ -105,7 +105,7 @@ fn peek_new_metadata_id(envelope: &Envelope) -> Option<CBytesShort> {
     }
 
     let version = envelope.version;
-    let mut cursor = Cursor::new(envelope.body.as_slice());
+    let mut cursor = Cursor::new(envelope.message_body().ok()?);
 
     if ResultKind::from_cursor(&mut cursor, version).ok()? != ResultKind::Rows {
         return None;
@@ -2118,6 +2118,23 @@ mod tests {
                 Some(&new_metadata_id)
             );
         }
+    }
+
+    #[test]
+    fn should_peek_new_metadata_id_after_custom_payload() {
+        let new_metadata_id = CBytesShort::new(vec![9, 9]);
+        let body = changed_metadata_rows_body(&new_metadata_id, false, Version::V5);
+        let mut response = result_response(ResResultBody::Rows(body), Version::V5);
+
+        let mut body_with_payload = vec![0, 1, 0, 1, b'k', 0, 0, 0, 1, 42]; // {"k": [42]}
+        body_with_payload.extend_from_slice(&response.body);
+        response.body = body_with_payload;
+        response.flags.insert(Flags::CUSTOM_PAYLOAD);
+
+        assert_eq!(
+            peek_new_metadata_id(&response).as_ref(),
+            Some(&new_metadata_id)
+        );
     }
 
     #[test]

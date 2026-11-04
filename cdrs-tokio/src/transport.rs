@@ -563,7 +563,7 @@ impl AsyncTransport {
                     // to one must not override a newer keyspace set by the user
                     if envelope.opcode == Opcode::Result {
                         let result_kind = envelope
-                            .body
+                            .message_body()?
                             .get(..INT_LEN)
                             .ok_or_else(|| {
                                 Error::General("Result body without result kind!".into())
@@ -1244,6 +1244,53 @@ mod transport_tests {
             });
         response.unwrap();
         assert!(query_request.flags.contains(Flags::BETA));
+    }
+
+    #[tokio::test]
+    async fn set_keyspace_result_with_custom_payload_updates_current_keyspace() {
+        let TestConnection {
+            transport,
+            mut server,
+            keyspace_holder,
+            ..
+        } = connect();
+
+        let startup = Envelope::new_req_startup(None, Version::V4);
+        let (response, _) = tokio::join!(
+            transport.write_envelope(&startup, true),
+            server.respond_to_next(Opcode::Ready, vec![]),
+        );
+        response.unwrap();
+
+        let use_b = use_query("b");
+        let (response, _) = tokio::join!(transport.write_envelope(&use_b, false), async {
+            let request = server.read_request().await;
+
+            let mut body = vec![0, 1, 0, 1, b'k', 0, 0, 0, 1, 42]; // custom payload {"k": [42]}
+            body.extend_from_slice(&set_keyspace_result("b"));
+            let envelope = Envelope::new(
+                Version::V4,
+                Direction::Response,
+                Flags::CUSTOM_PAYLOAD,
+                Opcode::Result,
+                request.stream_id,
+                body,
+                None,
+                vec![],
+            );
+
+            server
+                .stream
+                .write_all(&envelope.encode_with(Compression::None).unwrap())
+                .await
+                .unwrap();
+        });
+        response.unwrap();
+
+        assert_eq!(
+            keyspace_holder.current_keyspace().as_deref(),
+            Some(&"b".to_string())
+        );
     }
 
     fn numbered_request(number: u32) -> Envelope {
