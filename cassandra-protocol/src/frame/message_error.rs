@@ -3,14 +3,15 @@ use crate::consistency::Consistency;
 use crate::frame::traits::FromCursor;
 use crate::frame::Version;
 use crate::query::utils::bounded_capacity;
+use crate::types::data_serialization_types::decode_inet;
 use crate::types::*;
 use crate::{error, Error};
 /// This modules contains [Cassandra's errors](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 /// which server could respond to client.
 use derive_more::Display;
 use std::collections::HashMap;
-use std::io::{Cursor, Read};
-use std::net::SocketAddr;
+use std::io::{Cursor, Read, Write};
+use std::net::IpAddr;
 
 /// CDRS error which could be returned by Cassandra server as a response. As in the specification,
 /// it contains an error code and an error message. Apart of those depending of type of error,
@@ -62,7 +63,7 @@ pub enum FailureInfo {
     /// Represents the number of nodes that experience a failure while executing the request.
     NumFailures(CInt),
     /// Error code map for affected nodes.
-    ReasonMap(HashMap<SocketAddr, CIntShort>),
+    ReasonMap(HashMap<IpAddr, CIntShort>),
 }
 
 impl Serialize for FailureInfo {
@@ -74,7 +75,13 @@ impl Serialize for FailureInfo {
                 num_failures.serialize(cursor, version);
 
                 for (endpoint, error_code) in map {
-                    endpoint.serialize(cursor, version);
+                    let address = match endpoint {
+                        IpAddr::V4(address) => address.octets().to_vec(),
+                        IpAddr::V6(address) => address.octets().to_vec(),
+                    };
+
+                    let _ = cursor.write_all(&[address.len() as u8]);
+                    let _ = cursor.write_all(&address);
                     error_code.serialize(cursor, version);
                 }
             }
@@ -102,7 +109,11 @@ impl FromCursor for FailureInfo {
                 ));
 
                 for _ in 0..num_failures {
-                    let endpoint = SocketAddr::from_cursor(cursor, version)?;
+                    let mut address_len = [0];
+                    cursor.read_exact(&mut address_len)?;
+
+                    let endpoint =
+                        decode_inet(cursor_next_value_ref(cursor, address_len[0] as usize)?)?;
                     let error_code = CIntShort::from_cursor(cursor, version)?;
                     map.insert(endpoint, error_code);
                 }
@@ -698,6 +709,7 @@ fn test_encode_decode_with_version(bytes: &[u8], expected: ErrorBody, version: V
 #[cfg(test)]
 mod error_tests {
     use super::*;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
     #[test]
     fn server() {
@@ -1025,6 +1037,68 @@ mod error_tests {
         let bytes = [0x7f, 0xff, 0xff, 0xff];
         let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
         assert!(FailureInfo::from_cursor(&mut cursor, Version::V5).is_err());
+    }
+
+    #[test]
+    fn read_failure_v5() {
+        let bytes = &[
+            0, 0, 19, 0, // read failure
+            0, 3, 102, 111, 111, // message - foo
+            //
+            // read failure
+            0, 0, // consistency any
+            0, 0, 0, 1, // received
+            0, 0, 0, 1, // block_for
+            0, 0, 0, 1, // reason map size
+            4, 127, 0, 0, 1, // [inetaddr] 127.0.0.1
+            0, 1, // failure code
+            1, // data present
+        ];
+        let expected = ErrorBody {
+            message: "foo".into(),
+            ty: ErrorType::ReadFailure(ReadFailureError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 1,
+                failure_info: FailureInfo::ReasonMap(HashMap::from([(
+                    IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    1,
+                )])),
+                data_present: 1,
+            }),
+        };
+        test_encode_decode_with_version(bytes, expected, Version::V5);
+    }
+
+    #[test]
+    fn write_failure_v5() {
+        let bytes = &[
+            0, 0, 21, 0, // write failure
+            0, 3, 102, 111, 111, // message - foo
+            //
+            // write failure
+            0, 0, // consistency any
+            0, 0, 0, 1, // received
+            0, 0, 0, 2, // block_for
+            0, 0, 0, 1, // reason map size
+            16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, // [inetaddr] ::1
+            0, 0, // failure code
+            0, 6, 83, 73, 77, 80, 76, 69, // write type - SIMPLE
+        ];
+        let expected = ErrorBody {
+            message: "foo".into(),
+            ty: ErrorType::WriteFailure(WriteFailureError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 2,
+                failure_info: FailureInfo::ReasonMap(HashMap::from([(
+                    IpAddr::V6(Ipv6Addr::LOCALHOST),
+                    0,
+                )])),
+                write_type: WriteType::Simple,
+            }),
+        };
+        test_encode_decode_with_version(bytes, expected, Version::V5);
     }
 
     #[test]
