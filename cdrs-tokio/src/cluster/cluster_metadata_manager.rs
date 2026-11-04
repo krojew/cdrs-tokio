@@ -25,7 +25,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Receiver;
 use tracing::*;
 
-use crate::cluster::connection_pool::ConnectionPoolFactory;
+use crate::cluster::connection_pool::{ConnectionPoolConfig, ConnectionPoolFactory};
 use crate::cluster::metadata_builder::{add_new_node, build_initial_metadata, refresh_metadata};
 use crate::cluster::topology::{KeyspaceMetadata, Node, NodeState, ReplicationStrategy};
 use crate::cluster::Murmur3Token;
@@ -675,6 +675,11 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     #[inline]
     pub(crate) fn metadata(&self) -> Arc<ClusterMetadata<T, CM>> {
         self.metadata.load().clone()
+    }
+
+    #[inline]
+    pub(crate) fn connection_pool_config(&self) -> &ConnectionPoolConfig {
+        self.connection_pool_factory.config()
     }
 
     #[inline]

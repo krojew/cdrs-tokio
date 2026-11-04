@@ -72,6 +72,18 @@ pub struct ConnectionPoolConfig {
     heartbeat_timeout: Duration,
 }
 
+impl ConnectionPoolConfig {
+    #[inline]
+    pub(crate) fn heartbeat_interval(&self) -> Duration {
+        self.heartbeat_interval
+    }
+
+    #[inline]
+    pub(crate) fn heartbeat_timeout(&self) -> Duration {
+        self.heartbeat_timeout
+    }
+}
+
 impl Default for ConnectionPoolConfig {
     fn default() -> Self {
         ConnectionPoolConfig {
@@ -192,6 +204,11 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
             reconnection_policy,
             _transport: Default::default(),
         }
+    }
+
+    #[inline]
+    pub(crate) fn config(&self) -> &ConnectionPoolConfig {
+        &self.config
     }
 
     /// Establishes a connection outside any pool, applying the configured connect timeout.

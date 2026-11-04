@@ -6,9 +6,7 @@ use tokio::sync::mpsc::{channel, Receiver};
 use tokio::time::{sleep, timeout, Instant};
 use tracing::*;
 
-use crate::cluster::connection_pool::{
-    create_heartbeat_interval, DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_TIMEOUT,
-};
+use crate::cluster::connection_pool::create_heartbeat_interval;
 use crate::cluster::topology::Node;
 use crate::cluster::{ClusterMetadataManager, ConnectionManager, SessionContext};
 use crate::load_balancing::LoadBalancingStrategy;
@@ -74,11 +72,13 @@ impl<
                 }
                 match result {
                     Ok(_) => {
+                        let connection_pool_config =
+                            self.cluster_metadata_manager.connection_pool_config();
                         let error = Self::wait_for_failure(
                             current_connection.as_ref(),
                             &mut error_receiver,
-                            DEFAULT_HEARTBEAT_INTERVAL,
-                            DEFAULT_HEARTBEAT_TIMEOUT,
+                            connection_pool_config.heartbeat_interval(),
+                            connection_pool_config.heartbeat_timeout(),
                             self.version,
                         )
                         .await;
@@ -233,25 +233,29 @@ impl<
 mod tests {
     use super::*;
     use crate::cluster::connection_manager::MockConnectionManager;
-    use crate::cluster::connection_pool::ConnectionPoolFactory;
+    use crate::cluster::connection_pool::{
+        ConnectionPoolConfig, ConnectionPoolConfigBuilder, ConnectionPoolFactory,
+    };
+    use crate::cluster::test_support;
     use crate::cluster::topology::{NodeDistance, NodeState};
-    use crate::load_balancing::node_distance_evaluator::MockNodeDistanceEvaluator;
+    use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
     use crate::load_balancing::{
         InitializingWrapperLoadBalancingStrategy, RoundRobinLoadBalancingStrategy,
     };
     use crate::retry::ConstantReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
     use cassandra_protocol::error::Error;
+    use cassandra_protocol::frame::Opcode;
+    use futures::future::{pending, ready};
+    use futures::FutureExt;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    use tokio::sync::{broadcast, oneshot, watch};
+    use tokio::sync::{broadcast, mpsc, oneshot, watch};
     use tokio::time::timeout;
 
     type TestConnectionManager = MockConnectionManager<MockCdrsTransport>;
-    type TestLoadBalancing = InitializingWrapperLoadBalancingStrategy<
-        MockCdrsTransport,
-        TestConnectionManager,
-        RoundRobinLoadBalancingStrategy<MockCdrsTransport, TestConnectionManager>,
-    >;
+    type RoundRobin<T, CM> =
+        InitializingWrapperLoadBalancingStrategy<T, CM, RoundRobinLoadBalancingStrategy<T, CM>>;
+    type TestLoadBalancing = RoundRobin<MockCdrsTransport, TestConnectionManager>;
 
     // upper bound for awaiting outcomes which are expected to happen right away
     const TEST_GUARD_TIMEOUT: Duration = Duration::from_secs(5);
@@ -260,12 +264,28 @@ mod tests {
         contact_points: Vec<SocketAddr>,
         connection_manager: TestConnectionManager,
     ) -> ControlConnection<MockCdrsTransport, TestConnectionManager, TestLoadBalancing> {
+        create_control_connection_with_config(
+            contact_points,
+            connection_manager,
+            Default::default(),
+        )
+    }
+
+    fn create_control_connection_with_config<T, CM>(
+        contact_points: Vec<SocketAddr>,
+        connection_manager: CM,
+        connection_pool_config: ConnectionPoolConfig,
+    ) -> ControlConnection<T, CM, RoundRobin<T, CM>>
+    where
+        T: CdrsTransport + 'static,
+        CM: ConnectionManager<T> + 'static,
+    {
         let (_, keyspace_receiver) = watch::channel(None);
         let reconnection_policy =
             Arc::new(ConstantReconnectionPolicy::new(Duration::from_millis(1)));
 
         let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
-            Default::default(),
+            connection_pool_config,
             Version::V4,
             connection_manager,
             keyspace_receiver,
@@ -294,7 +314,7 @@ mod tests {
             contact_points.clone(),
             connection_pool_factory,
             session_context.clone(),
-            Box::new(MockNodeDistanceEvaluator::new()),
+            Box::<AllLocalNodeDistanceEvaluator>::default(),
             Version::V4,
             false,
         ));
@@ -421,5 +441,64 @@ mod tests {
             TestConnectionManager::new(),
         ))
         .await;
+    }
+
+    async fn assert_initialization_succeeds<T, CM>(
+        control_connection: ControlConnection<T, CM, RoundRobin<T, CM>>,
+    ) -> tokio::task::JoinHandle<()>
+    where
+        T: CdrsTransport + 'static,
+        CM: ConnectionManager<T> + 'static,
+    {
+        let (init_complete_sender, init_complete_receiver) = oneshot::channel();
+        let handle = tokio::spawn(control_connection.run(init_complete_sender));
+
+        let result = timeout(TEST_GUARD_TIMEOUT, init_complete_receiver)
+            .await
+            .expect("initialization did not finish");
+        if result.is_err() {
+            handle.abort();
+            panic!("initialization failed");
+        }
+
+        handle
+    }
+
+    #[tokio::test]
+    async fn run_uses_heartbeat_settings_of_connection_pools() {
+        let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9042);
+        let (connected_sender, mut connected_receiver) = mpsc::unbounded_channel();
+
+        // a node which never answers heartbeats
+        let connection_manager = test_support::TestConnectionManager::new(move |_, envelope| {
+            if envelope.opcode == Opcode::Options {
+                pending().boxed()
+            } else {
+                ready(test_support::topology_response(envelope, &[address])).boxed()
+            }
+        })
+        .with_connect_handler(move |_| {
+            let _ = connected_sender.send(());
+            Ok(())
+        });
+
+        let handle = assert_initialization_succeeds(create_control_connection_with_config(
+            vec![address],
+            connection_manager,
+            ConnectionPoolConfigBuilder::new()
+                .with_heartbeat_interval(Duration::from_millis(1))
+                .with_heartbeat_timeout(Duration::from_millis(10))
+                .build(),
+        ))
+        .await;
+        connected_receiver.recv().await.unwrap();
+
+        let reconnected = timeout(TEST_GUARD_TIMEOUT, connected_receiver.recv()).await;
+        handle.abort();
+
+        assert!(
+            reconnected.is_ok(),
+            "unanswered heartbeat was not detected with configured settings"
+        );
     }
 }
