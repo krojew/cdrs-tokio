@@ -297,14 +297,18 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     }
 
     #[inline]
-    pub(crate) fn clone_as_contact_point(&self, node_info: NodeInfo) -> Self {
+    pub(crate) fn clone_as_contact_point(
+        &self,
+        node_info: NodeInfo,
+        node_distance_evaluator: &dyn NodeDistanceEvaluator,
+    ) -> Self {
         // control points might have valid state already, so no need to reset
         Self {
             connection_pool_factory: self.connection_pool_factory.clone(),
             connection_pool: self.connection_pool.clone(),
             broadcast_rpc_address: self.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
-            distance: self.distance,
+            distance: node_distance_evaluator.compute_distance(&node_info),
             state: Atomic::new(self.state.load(Ordering::Relaxed)),
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,

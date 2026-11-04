@@ -25,7 +25,7 @@ pub(crate) fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>
 
             let node = if let Some(contact_point) = contact_point {
                 debug!(?node_info, "Copying contact point.");
-                Arc::new(contact_point.clone_as_contact_point(node_info))
+                Arc::new(contact_point.clone_as_contact_point(node_info, node_distance_evaluator))
             } else {
                 debug!(?node_info, "Adding new node.");
                 Arc::new(Node::new_with_state(
@@ -223,7 +223,10 @@ mod tests {
     fn should_copy_old_node() {
         let connection_pool_factory = create_connection_pool_factory();
 
-        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(NodeDistance::Local));
 
         let node_infos = vec![NodeInfo::new(
             Uuid::new_v4(),
@@ -262,6 +265,53 @@ mod tests {
             nodes.get(&node_infos[0].host_id).unwrap().state(),
             NodeState::Up
         );
+    }
+
+    #[test]
+    fn should_compute_contact_point_distance() {
+        let connection_pool_factory = create_connection_pool_factory();
+
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(NodeDistance::Remote));
+
+        let node_infos = vec![NodeInfo::new(
+            Uuid::new_v4(),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9042),
+            None,
+            "dc2".into(),
+            Default::default(),
+            "".into(),
+        )];
+
+        let contact_points = [Arc::new(Node::new_with_state(
+            connection_pool_factory.clone(),
+            node_infos[0].broadcast_rpc_address,
+            None,
+            None,
+            Some(NodeDistance::Local),
+            NodeState::Up,
+            Default::default(),
+            "".into(),
+            "".into(),
+        ))];
+
+        let metadata = build_initial_metadata(
+            node_infos.clone(),
+            Default::default(),
+            &contact_points,
+            &connection_pool_factory,
+            &node_distance_evaluator,
+        );
+
+        let node = metadata
+            .nodes()
+            .get(&node_infos[0].host_id)
+            .unwrap()
+            .clone();
+        assert_eq!(node.distance(), Some(NodeDistance::Remote));
+        assert_eq!(node.state(), NodeState::Up);
     }
 
     #[test]
