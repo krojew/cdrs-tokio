@@ -24,17 +24,17 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> Result<TokenStream> {
                           match value.#field_ident {
                             ::core::option::Option::Some(val) => {
                               let field_bytes: Self = ::core::convert::Into::into(val);
-                              ::cdrs_tokio::frame::Serialize::serialize(
-                                &::cdrs_tokio::types::value::Value::new(field_bytes),
+                              cdrs_tokio::frame::Serialize::serialize(
+                                &cdrs_tokio::types::value::Value::new(field_bytes),
                                 &mut cursor,
-                                ::cdrs_tokio::frame::Version::V4,
+                                cdrs_tokio::frame::Version::V4,
                               );
                             },
                             ::core::option::Option::None => {
-                              ::cdrs_tokio::frame::Serialize::serialize(
-                                &::cdrs_tokio::types::value::Value::Null,
+                              cdrs_tokio::frame::Serialize::serialize(
+                                &cdrs_tokio::types::value::Value::Null,
                                 &mut cursor,
-                                ::cdrs_tokio::frame::Version::V4,
+                                cdrs_tokio::frame::Version::V4,
                               );
                             }
                           }
@@ -42,10 +42,10 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> Result<TokenStream> {
                     } else {
                         quote! {
                           let field_bytes: Self = ::core::convert::Into::into(value.#field_ident);
-                          ::cdrs_tokio::frame::Serialize::serialize(
-                            &::cdrs_tokio::types::value::Value::new(field_bytes),
+                          cdrs_tokio::frame::Serialize::serialize(
+                            &cdrs_tokio::types::value::Value::new(field_bytes),
                             &mut cursor,
-                            ::cdrs_tokio::frame::Version::V4,
+                            cdrs_tokio::frame::Version::V4,
                           );
                         }
                     }
@@ -57,7 +57,7 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> Result<TokenStream> {
         // which is used for making queries
         Ok(quote! {
             #[automatically_derived]
-            impl #impl_generics ::core::convert::From<#name #ty_generics> for ::cdrs_tokio::types::value::Bytes #where_clause {
+            impl #impl_generics ::core::convert::From<#name #ty_generics> for cdrs_tokio::types::value::Bytes #where_clause {
               fn from(value: #name #ty_generics) -> Self {
                 let mut bytes: ::std::vec::Vec<u8> = ::std::vec::Vec::new();
                 let mut cursor = ::std::io::Cursor::new(&mut bytes);

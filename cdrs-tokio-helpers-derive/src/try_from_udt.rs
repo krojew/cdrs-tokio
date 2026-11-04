@@ -11,8 +11,8 @@ pub fn impl_try_from_udt(ast: &DeriveInput) -> Result<TokenStream> {
 
     Ok(quote! {
         #[automatically_derived]
-        impl #impl_generics ::cdrs_tokio::frame::TryFromUdt for #name #ty_generics #where_clause {
-            fn try_from_udt(cdrs: ::cdrs_tokio::types::udt::Udt) -> ::cdrs_tokio::Result<Self> {
+        impl #impl_generics cdrs_tokio::frame::TryFromUdt for #name #ty_generics #where_clause {
+            fn try_from_udt(cdrs: cdrs_tokio::types::udt::Udt) -> cdrs_tokio::Result<Self> {
                 ::core::result::Result::Ok(#name {
                   #(#fields),*
                 })
