@@ -945,7 +945,7 @@ mod tests {
         let old_metadata = metadata_with_node(old_node.clone());
 
         let metadata = refresh_metadata(
-            &[node_info.clone()],
+            std::slice::from_ref(&node_info),
             Default::default(),
             &old_metadata,
             &connection_pool_factory,
@@ -1207,7 +1207,7 @@ mod tests {
         let metadata = build_initial_metadata(
             vec![node_info.clone()],
             Default::default(),
-            &[contact_point.clone()],
+            std::slice::from_ref(&contact_point),
             None,
             &connection_pool_factory,
             &distance_evaluator(NodeDistance::Local),
