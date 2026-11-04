@@ -52,7 +52,15 @@ fn try_decode_envelopes_with_spare_data(
 }
 
 fn try_decode_envelopes_without_spare_data(buffer: &[u8]) -> Result<Vec<Envelope>> {
-    let (_, envelopes) = extract_envelopes(buffer, Compression::None)?;
+    let (current_pos, envelopes) = extract_envelopes(buffer, Compression::None)?;
+    if current_pos != buffer.len() {
+        return Err(format!(
+            "Self-contained frame ends with an incomplete envelope ({} trailing bytes).",
+            buffer.len() - current_pos
+        )
+        .into());
+    }
+
     Ok(envelopes)
 }
 
@@ -614,6 +622,40 @@ mod tests {
                 assert!(buffer.is_empty());
                 assert_eq!(buffer.capacity(), capacity, "leftover: {}", leftover);
             }
+        }
+    }
+
+    #[test]
+    fn decoders_reject_truncated_envelope_in_self_contained_frame() {
+        let envelope = make_envelope(1, 0xAA, 100);
+
+        for truncated_len in [5, 50] {
+            let mut payload = envelope.clone();
+            payload.extend_from_slice(&envelope[..truncated_len]);
+
+            let mut encoder = UncompressedFrameEncoder::default();
+            encoder.add_envelope(payload.clone());
+            let mut wire = encoder.finalize_self_contained().to_vec();
+
+            let result = UncompressedFrameDecoder::default().consume(&mut wire, Compression::None);
+            assert!(
+                result.is_err(),
+                "truncated to {}: {:?}",
+                truncated_len,
+                result
+            );
+
+            let mut encoder = Lz4FrameEncoder::default();
+            encoder.add_envelope(payload);
+            let mut wire = encoder.finalize_self_contained().to_vec();
+
+            let result = Lz4FrameDecoder::default().consume(&mut wire, Compression::None);
+            assert!(
+                result.is_err(),
+                "truncated to {}: {:?}",
+                truncated_len,
+                result
+            );
         }
     }
 
