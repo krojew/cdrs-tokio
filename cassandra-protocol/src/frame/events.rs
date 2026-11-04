@@ -16,6 +16,7 @@ const SCHEMA_CHANGE: &str = "SCHEMA_CHANGE";
 // Topology changes
 const NEW_NODE: &str = "NEW_NODE";
 const REMOVED_NODE: &str = "REMOVED_NODE";
+const MOVED_NODE: &str = "MOVED_NODE";
 
 // Status changes
 const UP: &str = "UP";
@@ -177,6 +178,7 @@ impl FromCursor for TopologyChange {
 pub enum TopologyChangeType {
     NewNode,
     RemovedNode,
+    MovedNode,
 }
 
 impl Serialize for TopologyChangeType {
@@ -184,6 +186,7 @@ impl Serialize for TopologyChangeType {
         match &self {
             TopologyChangeType::NewNode => serialize_str(cursor, NEW_NODE, version),
             TopologyChangeType::RemovedNode => serialize_str(cursor, REMOVED_NODE, version),
+            TopologyChangeType::MovedNode => serialize_str(cursor, MOVED_NODE, version),
         }
     }
 }
@@ -196,6 +199,7 @@ impl FromCursor for TopologyChangeType {
         from_cursor_str(cursor).and_then(|tc| match tc {
             NEW_NODE => Ok(TopologyChangeType::NewNode),
             REMOVED_NODE => Ok(TopologyChangeType::RemovedNode),
+            MOVED_NODE => Ok(TopologyChangeType::MovedNode),
             _ => Err(Error::UnexpectedTopologyChangeType(tc.into())),
         })
     }
@@ -466,6 +470,13 @@ mod topology_change_type_test {
             TopologyChangeType::from_cursor(&mut removed_node, Version::V4).unwrap(),
             TopologyChangeType::RemovedNode
         );
+
+        let c = &[0, 10, 77, 79, 86, 69, 68, 95, 78, 79, 68, 69];
+        let mut moved_node: Cursor<&[u8]> = Cursor::new(c);
+        assert_eq!(
+            TopologyChangeType::from_cursor(&mut moved_node, Version::V4).unwrap(),
+            TopologyChangeType::MovedNode
+        );
     }
 
     #[test]
@@ -486,6 +497,15 @@ mod topology_change_type_test {
             let removed_node = TopologyChangeType::RemovedNode;
             removed_node.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, b);
+        }
+
+        {
+            let c = &[0, 10, 77, 79, 86, 69, 68, 95, 78, 79, 68, 69];
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            let moved_node = TopologyChangeType::MovedNode;
+            moved_node.serialize(&mut cursor, Version::V4);
+            assert_eq!(buffer, c);
         }
     }
 
@@ -757,6 +777,23 @@ mod server_event {
 
         let expected = ServerEvent::TopologyChange(TopologyChange {
             change_type: TopologyChangeType::RemovedNode,
+            addr: "127.0.0.1:1".parse().unwrap(),
+        });
+
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn topology_change_moved_node() {
+        let bytes = &[
+            // topology change
+            0, 15, 84, 79, 80, 79, 76, 79, 71, 89, 95, 67, 72, 65, 78, 71, 69, // moved node
+            0, 10, 77, 79, 86, 69, 68, 95, 78, 79, 68, 69, //
+            4, 127, 0, 0, 1, 0, 0, 0, 1, // 127.0.0.1:1
+        ];
+
+        let expected = ServerEvent::TopologyChange(TopologyChange {
+            change_type: TopologyChangeType::MovedNode,
             addr: "127.0.0.1:1".parse().unwrap(),
         });
 
