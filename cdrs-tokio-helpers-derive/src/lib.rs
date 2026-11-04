@@ -42,7 +42,7 @@ pub fn db_mirror(input: TokenStream) -> TokenStream {
 ///
 /// `TryFromUdt` reads fields by name, so the order does not matter when decoding.
 ///
-/// `Option` fields are written from a clone of their `Some` value, or as null when they are `None`.
+/// `None` fields are written as null.
 #[proc_macro_derive(IntoCdrsValue)]
 pub fn into_cdrs_value(input: TokenStream) -> TokenStream {
     // Parse the string representation
