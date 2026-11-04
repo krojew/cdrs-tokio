@@ -14,16 +14,39 @@ pub async fn send_envelope<T: CdrsTransport + 'static, CM: ConnectionManager<T> 
     query_plan: impl Iterator<Item = Arc<Node<T, CM>>>,
     envelope: &Envelope,
     is_idempotent: bool,
-    mut retry_session: Box<dyn RetrySession + Send + Sync>,
+    retry_session: Box<dyn RetrySession + Send + Sync>,
 ) -> Option<error::Result<Envelope>> {
-    let mut result = None;
+    match send_envelope_with_outcome(query_plan, envelope, is_idempotent, retry_session).await {
+        SendOutcome::Completed(result) => Some(result),
+        SendOutcome::PlanExhausted(error) => error.map(Err),
+    }
+}
+
+pub(crate) enum SendOutcome {
+    /// A node responded, or the retry policy decided not to retry its error.
+    Completed(error::Result<Envelope>),
+    /// No node in the query plan produced a final result. Contains the last error encountered, or
+    /// `None` if there were no nodes to try.
+    PlanExhausted(Option<error::Error>),
+}
+
+pub(crate) async fn send_envelope_with_outcome<
+    T: CdrsTransport + 'static,
+    CM: ConnectionManager<T> + 'static,
+>(
+    query_plan: impl Iterator<Item = Arc<Node<T, CM>>>,
+    envelope: &Envelope,
+    is_idempotent: bool,
+    mut retry_session: Box<dyn RetrySession + Send + Sync>,
+) -> SendOutcome {
+    let mut last_error = None;
 
     'next_node: for node in query_plan {
         loop {
             let transport = node.persistent_connection().await;
             match transport {
                 Ok(transport) => match transport.write_envelope(envelope, false).await {
-                    Ok(envelope) => return Some(Ok(envelope)),
+                    Ok(envelope) => return SendOutcome::Completed(Ok(envelope)),
                     Err(error) => {
                         let query_info = QueryInfo {
                             error: &error,
@@ -33,23 +56,23 @@ pub async fn send_envelope<T: CdrsTransport + 'static, CM: ConnectionManager<T> 
                         match retry_session.decide(query_info) {
                             RetryDecision::RetrySameNode => continue,
                             RetryDecision::RetryNextNode => {
-                                result = Some(Err(error));
+                                last_error = Some(error);
                                 continue 'next_node;
                             }
-                            RetryDecision::DontRetry => return Some(Err(error)),
+                            RetryDecision::DontRetry => return SendOutcome::Completed(Err(error)),
                         }
                     }
                 },
                 // save the error, but keep trying, since another node might be up
                 Err(error) => {
-                    result = Some(Err(error));
+                    last_error = Some(error);
                     continue 'next_node;
                 }
             }
         }
     }
 
-    result
+    SendOutcome::PlanExhausted(last_error)
 }
 
 #[cfg(test)]

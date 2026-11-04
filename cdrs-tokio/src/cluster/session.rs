@@ -32,7 +32,7 @@ use crate::cluster::connection_pool::{ConnectionPoolConfig, ConnectionPoolFactor
 use crate::cluster::control_connection::ControlConnection;
 #[cfg(feature = "rust-tls")]
 use crate::cluster::rustls_connection_manager::RustlsConnectionManager;
-use crate::cluster::send_envelope::send_envelope;
+use crate::cluster::send_envelope::{send_envelope, send_envelope_with_outcome, SendOutcome};
 use crate::cluster::tcp_connection_manager::TcpConnectionManager;
 use crate::cluster::topology::{Node, NodeDistance, NodeState};
 use crate::cluster::Murmur3Token;
@@ -797,7 +797,7 @@ impl<
 
                 let mut context = Context::new(1);
                 let mut async_tasks = FuturesUnordered::new();
-                async_tasks.push(send_envelope(
+                async_tasks.push(send_envelope_with_outcome(
                     &shared_query_plan,
                     envelope,
                     is_idempotent,
@@ -822,7 +822,7 @@ impl<
                                 speculative_execution_policy.execution_interval(&context)
                             {
                                 context.running_executions += 1;
-                                async_tasks.push(send_envelope(
+                                async_tasks.push(send_envelope_with_outcome(
                                     &shared_query_plan,
                                     envelope,
                                     is_idempotent,
@@ -832,24 +832,27 @@ impl<
                                 sleep_fut.set(sleep(interval).fuse());
                             }
                         }
-                        result = async_tasks.select_next_some() => {
-                            match result {
-                                Some(result) => {
-                                    match result {
-                                        Err(error::Error::Io(_)) | Err(error::Error::Timeout(_)) => {
-                                            last_error = Some(result);
-                                        },
-                                        _ => return result,
+                        Some(outcome) = async_tasks.next() => {
+                            match outcome {
+                                SendOutcome::Completed(Err(
+                                    error @ (error::Error::Io(_) | error::Error::Timeout(_)),
+                                )) => last_error = Some(error),
+                                SendOutcome::Completed(result) => return result,
+                                // other executions may still be waiting for their nodes
+                                SendOutcome::PlanExhausted(error) => {
+                                    if error.is_some() {
+                                        last_error = error;
                                     }
                                 }
-                                None => {
-                                    if async_tasks.is_empty() {
-                                        // at this point, we exhausted all available nodes and
-                                        // there's no request in flight, which can potentially
-                                        // reach a node
-                                        return last_error.unwrap_or_else(|| Err("No nodes available in query plan!".into()));
-                                    }
-                                }
+                            }
+
+                            if async_tasks.is_empty() {
+                                // Nothing is in flight anymore, so no execution can reach a node.
+                                // Returning here also guarantees an empty set of executions is
+                                // never polled.
+                                return Err(last_error.unwrap_or_else(|| {
+                                    "No nodes available in query plan!".into()
+                                }));
                             }
                         }
                     }
@@ -1538,8 +1541,10 @@ mod tests {
         InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy,
         RoundRobinLoadBalancingStrategy,
     };
-    use crate::retry::DefaultRetryPolicy;
-    use crate::speculative_execution::SpeculativeExecutionPolicy;
+    use crate::retry::{DefaultRetryPolicy, FallthroughRetryPolicy};
+    use crate::speculative_execution::{
+        ConstantSpeculativeExecutionPolicy, SpeculativeExecutionPolicy,
+    };
     use crate::statement::StatementParamsBuilder;
     use cassandra_protocol::error::Error;
     use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType};
@@ -1549,7 +1554,8 @@ mod tests {
     use itertools::Itertools;
     use std::net::SocketAddr;
     use std::sync::Arc;
-    use tokio::sync::{broadcast, watch};
+    use std::time::Duration;
+    use tokio::sync::{broadcast, watch, Notify};
     use tokio::task::JoinHandle;
 
     type TestRoundRobin = RoundRobinLoadBalancingStrategy<TestTransport, TestConnectionManager>;
@@ -1642,6 +1648,105 @@ mod tests {
             }) => {}
             other => panic!("Unexpected result: {:?}", other),
         }
+    }
+
+    fn speculative_execution_policy(
+        max_executions: usize,
+        delay: Duration,
+    ) -> Option<Box<dyn SpeculativeExecutionPolicy + Send + Sync>> {
+        Some(Box::new(ConstantSpeculativeExecutionPolicy::new(
+            max_executions,
+            delay,
+        )))
+    }
+
+    #[tokio::test]
+    async fn should_return_error_of_last_speculative_execution_without_waiting_for_next_one() {
+        let session = create_session(
+            &[node_address(1)],
+            TestConnectionManager::new(|_, _| ready(Err(connection_refused())).boxed()),
+            TestRoundRobin::new(),
+            speculative_execution_policy(3, Duration::from_secs(3600)),
+            Version::V4,
+        );
+
+        let result = session
+            .query_with_params(
+                "SELECT 1",
+                StatementParamsBuilder::new()
+                    .idempotent(true)
+                    .with_retry_policy(Arc::new(FallthroughRetryPolicy))
+                    .build(),
+            )
+            .await;
+
+        assert!(matches!(result, Err(Error::Io(_))), "{:?}", result);
+    }
+
+    #[tokio::test]
+    async fn should_wait_for_running_speculative_execution_when_plan_is_exhausted() {
+        let slow_node = node_address(1);
+        let unreachable_node = node_address(2);
+
+        // the slow node responds only after the speculative execution has tried the other one
+        let unreachable_node_tried = Arc::new(Notify::new());
+        let notify_slow_node = unreachable_node_tried.clone();
+
+        let connection_manager = TestConnectionManager::new(move |_, _| {
+            let unreachable_node_tried = unreachable_node_tried.clone();
+            async move {
+                unreachable_node_tried.notified().await;
+                Ok(void_response(Version::V4))
+            }
+            .boxed()
+        })
+        .with_connect_handler(move |addr| {
+            if addr == unreachable_node {
+                notify_slow_node.notify_one();
+                Err(connection_refused())
+            } else {
+                Ok(())
+            }
+        });
+
+        let session = create_session(
+            &[slow_node, unreachable_node],
+            connection_manager,
+            TestRoundRobin::new(),
+            speculative_execution_policy(2, Duration::ZERO),
+            Version::V4,
+        );
+
+        let result = session
+            .query_with_params(
+                "SELECT 1",
+                StatementParamsBuilder::new().idempotent(true).build(),
+            )
+            .await;
+
+        assert!(result.is_ok(), "{:?}", result);
+    }
+
+    #[tokio::test]
+    async fn should_return_last_error_when_all_speculative_executions_fail() {
+        let addresses = [node_address(1), node_address(2)];
+        let session = create_session(
+            &addresses,
+            TestConnectionManager::new(|_, _| ready(Ok(void_response(Version::V4))).boxed())
+                .with_unreachable_nodes(addresses.to_vec()),
+            TestRoundRobin::new(),
+            speculative_execution_policy(3, Duration::ZERO),
+            Version::V4,
+        );
+
+        let result = session
+            .query_with_params(
+                "SELECT 1",
+                StatementParamsBuilder::new().idempotent(true).build(),
+            )
+            .await;
+
+        assert!(matches!(result, Err(Error::General(_))), "{:?}", result);
     }
 
     #[test]

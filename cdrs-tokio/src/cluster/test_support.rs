@@ -11,6 +11,7 @@ use cassandra_protocol::frame::{Direction, Envelope, Flags, Opcode, Serialize, V
 use cassandra_protocol::types::CBytes;
 use futures::future::ready;
 use futures::FutureExt;
+use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
@@ -57,9 +58,12 @@ impl CdrsTransport for TestTransport {
     }
 }
 
-/// Connection manager creating [`TestTransport`]s.
+type ConnectHandler = Arc<dyn Fn(SocketAddr) -> Result<()> + Send + Sync>;
+
+/// Connection manager creating [`TestTransport`]s. Connecting to a node can be made to fail.
 pub(crate) struct TestConnectionManager {
     handler: RequestHandler,
+    connect_handler: ConnectHandler,
 }
 
 impl TestConnectionManager {
@@ -71,7 +75,30 @@ impl TestConnectionManager {
     ) -> Self {
         TestConnectionManager {
             handler: Arc::new(handler),
+            connect_handler: Arc::new(|_| Ok(())),
         }
+    }
+
+    /// Sets a handler called on every connection attempt; returning an error fails the attempt.
+    #[must_use]
+    pub(crate) fn with_connect_handler(
+        mut self,
+        connect_handler: impl Fn(SocketAddr) -> Result<()> + Send + Sync + 'static,
+    ) -> Self {
+        self.connect_handler = Arc::new(connect_handler);
+        self
+    }
+
+    /// Makes connection attempts to given nodes fail.
+    #[must_use]
+    pub(crate) fn with_unreachable_nodes(self, unreachable: Vec<SocketAddr>) -> Self {
+        self.with_connect_handler(move |addr| {
+            if unreachable.contains(&addr) {
+                Err(connection_refused())
+            } else {
+                Ok(())
+            }
+        })
     }
 }
 
@@ -82,7 +109,9 @@ impl ConnectionManager<TestTransport> for TestConnectionManager {
         _error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, Result<TestTransport>> {
-        ready(Ok(TestTransport::new(addr, self.handler.clone()))).boxed()
+        let result =
+            (self.connect_handler)(addr).map(|_| TestTransport::new(addr, self.handler.clone()));
+        ready(result).boxed()
     }
 }
 
@@ -90,6 +119,13 @@ pub(crate) type TestNode = Node<TestTransport, TestConnectionManager>;
 
 pub(crate) fn node_address(index: u8) -> SocketAddr {
     SocketAddr::from(([127, 0, 0, index], 9042))
+}
+
+pub(crate) fn connection_refused() -> Error {
+    Error::Io(io::Error::new(
+        io::ErrorKind::ConnectionRefused,
+        "connection refused",
+    ))
 }
 
 pub(crate) fn create_connection_pool_factory(
@@ -144,6 +180,10 @@ pub(crate) fn result_response(body: ResResultBody, version: Version) -> Envelope
         None,
         vec![],
     )
+}
+
+pub(crate) fn void_response(version: Version) -> Envelope {
+    result_response(ResResultBody::Void, version)
 }
 
 pub(crate) fn rows_body(
