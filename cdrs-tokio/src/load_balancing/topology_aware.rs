@@ -139,16 +139,10 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         // 4. append round-robin unignored local non-replicas
         // 5. optionally, add shuffled remote unignored non-replicas
 
-        // Filter ignored nodes BEFORE the per-DC/per-rack counting loop. The
-        // previous code stripped them only at the end via `retain`, so an
-        // ignored node could legitimately consume one of the per-DC quota
-        // slots and then disappear, leaving us with fewer real replicas than
-        // the configured replication factor.
-        let replicas = cluster
-            .token_map()
-            .nodes_for_token(token)
-            .filter(|node| !node.is_ignored())
-            .collect_vec();
+        // Replica placement doesn't depend on node state, so ignored nodes are
+        // removed only after placement - otherwise a non-replica would take
+        // the place of an ignored replica.
+        let replicas = cluster.token_map().nodes_for_token(token).collect_vec();
 
         let desired_replica_count = datacenter_replication_factor.values().sum();
         let mut same_rack_replicas: FxHashMap<String, usize> = datacenter_replication_factor
@@ -196,6 +190,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
                 }
             }
         }
+
+        result.retain(|node| !node.is_ignored());
 
         // the result now contains only unignored mixed local/remote nodes -
         // put local in front
@@ -264,16 +260,12 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         replica_count: usize,
         cluster: &ClusterMetadata<T, CM>,
     ) -> QueryPlan<T, CM> {
-        // Walk the ring filtering ignored nodes BEFORE taking replica_count.
-        // Filtering after a cap (the previous behaviour) silently shrinks the
-        // replica set whenever the natural ring positions for `token` happen
-        // to land on ignored nodes, leaving the query plan to fall back to
-        // unrelated round-robin nodes for the leading slots.
+        // ignored replicas are skipped, not replaced by the next nodes on the ring, which aren't
+        // replicas
         let mut replicas = cluster
             .token_map()
-            .nodes_for_token(token)
+            .nodes_for_token_capped(token, replica_count)
             .filter(|node| !node.is_ignored())
-            .take(replica_count)
             .collect_vec();
 
         replicas.shuffle(&mut rng());
@@ -538,16 +530,23 @@ mod tests {
         nodes: &[TestNode],
         datacenter_replication_factor: &[(&str, usize)],
     ) -> ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
-        let mut keyspaces = FxHashMap::default();
-        keyspaces.insert(
-            "ks".into(),
-            KeyspaceMetadata::new(ReplicationStrategy::NetworkTopologyStrategy {
+        create_test_cluster(
+            nodes,
+            ReplicationStrategy::NetworkTopologyStrategy {
                 datacenter_replication_factor: datacenter_replication_factor
                     .iter()
                     .map(|(dc, replication_factor)| (dc.to_string(), *replication_factor))
                     .collect(),
-            }),
-        );
+            },
+        )
+    }
+
+    fn create_test_cluster(
+        nodes: &[TestNode],
+        replication_strategy: ReplicationStrategy,
+    ) -> ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
+        let mut keyspaces = FxHashMap::default();
+        keyspaces.insert("ks".into(), KeyspaceMetadata::new(replication_strategy));
 
         ClusterMetadata::new(
             nodes
@@ -597,6 +596,46 @@ mod tests {
             .collect();
 
         assert!(first_nodes.len() > 1, "replicas were not shuffled");
+    }
+
+    // nodes 2 and 3 are the remaining replicas, node 4 is not a replica
+    fn create_cluster_with_down_replica(
+        replication_strategy: ReplicationStrategy,
+    ) -> ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
+        create_test_cluster(
+            &[
+                create_node(1, NodeState::Down, &[0], "r1", "dc1"),
+                create_node(2, NodeState::Up, &[10], "r2", "dc1"),
+                create_node(3, NodeState::Up, &[20], "r3", "dc1"),
+                create_node(4, NodeState::Up, &[30], "r4", "dc1"),
+            ],
+            replication_strategy,
+        )
+    }
+
+    #[test]
+    fn should_not_promote_non_replica_in_place_of_down_nts_replica() {
+        let cluster =
+            create_cluster_with_down_replica(ReplicationStrategy::NetworkTopologyStrategy {
+                datacenter_replication_factor: std::iter::once(("dc1".to_string(), 3)).collect(),
+            });
+        let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
+
+        for _ in 0..30 {
+            assert_eq!(query_plan_ports(&lb, &cluster, 0, None)[2], 4);
+        }
+    }
+
+    #[test]
+    fn should_not_promote_non_replica_in_place_of_down_simple_strategy_replica() {
+        let cluster = create_cluster_with_down_replica(ReplicationStrategy::SimpleStrategy {
+            replication_factor: 3,
+        });
+        let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
+
+        for _ in 0..30 {
+            assert_eq!(query_plan_ports(&lb, &cluster, 0, None)[2], 4);
+        }
     }
 
     #[test]
@@ -699,21 +738,12 @@ mod tests {
         assert!(query_plan.nodes.iter().all(|node| !node.is_ignored()));
     }
 
-    // Same bug shape that network_topology_strategy_replicas had, but in
-    // simple_strategy_replicas: when the natural ring walk starts on ignored
-    // nodes, capping the iteration at replica_count BEFORE the unignored
-    // filter strips the ignored ones away leaves us with fewer real replicas
-    // than the configured replication factor. The fix must take replicas
-    // among unignored nodes, so the query plan still leads with real
-    // candidates.
-    //
-    // The test cluster has two ignored nodes at tokens 8 and 9. Walking from
-    // token 8 with RF=2 (keyspace k1) hits those ignored nodes first; the
-    // pre-fix code would drop them and the query plan would start with
-    // round-robin unignored fallbacks instead of the actual ring replicas
-    // (HOST_ID_5 at token 0 and HOST_ID_1 at token 1).
+    // The test cluster has two ignored nodes at tokens 8 and 9, which are the
+    // only replicas for token 8 with RF=2 (keyspace k1). The next nodes on the
+    // ring aren't replicas, so the plan falls back to round-robin unignored
+    // nodes.
     #[test]
-    fn simple_strategy_uses_unignored_nodes_when_ring_starts_on_ignored() {
+    fn simple_strategy_skips_ignored_replicas() {
         let cluster = create_cluster();
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
@@ -727,30 +757,8 @@ mod tests {
             &cluster,
         );
 
-        // Every node returned must be unignored
+        assert_eq!(query_plan.nodes.len(), 5);
         assert!(query_plan.nodes.iter().all(|node| !node.is_ignored()));
-
-        // The first two slots are the natural replicas - HOST_ID_5 (the
-        // unignored node at the next ring position past 8) and HOST_ID_1
-        // (the unignored node after that). Neither should be displaced by
-        // a round-robin fallback just because two ignored nodes happened to
-        // sit in the way.
-        let leading_two: Vec<_> = query_plan
-            .nodes
-            .iter()
-            .take(2)
-            .map(|node| node.host_id().unwrap())
-            .collect();
-        assert!(
-            leading_two.contains(&*HOST_ID_5),
-            "expected HOST_ID_5 in the leading replicas, got {:?}",
-            leading_two
-        );
-        assert!(
-            leading_two.contains(&*HOST_ID_1),
-            "expected HOST_ID_1 in the leading replicas, got {:?}",
-            leading_two
-        );
     }
 
     #[test]
