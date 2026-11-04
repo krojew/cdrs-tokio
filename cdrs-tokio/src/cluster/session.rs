@@ -274,25 +274,24 @@ impl<
                 .as_deref()
                 .or(parameters.keyspace.as_deref());
 
-            let routing_key =
-                parameters
-                    .query_params
-                    .values
-                    .as_ref()
-                    .and_then(|values| match values {
-                        QueryValues::SimpleValues(values) => serialize_routing_key_with_indexes(
-                            values,
-                            &prepared.pk_indexes,
-                            self.version,
-                        )
-                        .or_else(|| {
-                            parameters
-                                .routing_key
-                                .as_ref()
-                                .map(|values| serialize_routing_key(values, self.version))
-                        }),
-                        QueryValues::NamedValues(_) => None,
-                    });
+            let routing_key = parameters
+                .query_params
+                .values
+                .as_ref()
+                .and_then(|values| match values {
+                    QueryValues::SimpleValues(values) => serialize_routing_key_with_indexes(
+                        values,
+                        &prepared.pk_indexes,
+                        self.version,
+                    ),
+                    QueryValues::NamedValues(_) => None,
+                })
+                .or_else(|| {
+                    parameters
+                        .routing_key
+                        .as_ref()
+                        .map(|values| serialize_routing_key(values, self.version))
+                });
 
             // Bounded retry loop. Previously this was an unbounded recursive
             // self-call: if the cluster kept returning Unprepared even after
@@ -515,6 +514,10 @@ impl<
             );
 
             let consistency = batch.request.consistency;
+            let routing_key = parameters
+                .routing_key
+                .as_ref()
+                .map(|values| serialize_routing_key(values, self.version));
 
             let envelope = Envelope::new_req_batch(batch.request.clone(), flags, self.version);
 
@@ -530,8 +533,8 @@ impl<
                         &envelope,
                         parameters.is_idempotent,
                         parameters.keyspace.as_deref(),
-                        None,
-                        None,
+                        parameters.token,
+                        routing_key.as_deref(),
                         Some(consistency),
                         parameters.speculative_execution_policy.as_ref(),
                         parameters.retry_policy.as_ref(),
@@ -1549,13 +1552,15 @@ impl Drop for AbortOnDropHandle {
 #[cfg(test)]
 mod tests {
     use crate::cluster::session::{
-        prepare_flags, AbortOnDropHandle, Session, MAX_REPREPARE_ATTEMPTS,
+        prepare_flags, serialize_routing_key, AbortOnDropHandle, Session, MAX_REPREPARE_ATTEMPTS,
     };
     use crate::cluster::test_support::*;
-    use crate::cluster::{ClusterMetadataManager, KeyspaceHolder, SessionContext};
+    use crate::cluster::{
+        ClusterMetadata, ClusterMetadataManager, KeyspaceHolder, Murmur3Token, SessionContext,
+    };
     use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
     use crate::load_balancing::{
-        InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy,
+        InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, QueryPlan, Request,
         RoundRobinLoadBalancingStrategy,
     };
     use crate::retry::{DefaultRetryPolicy, FallthroughRetryPolicy};
@@ -1568,11 +1573,12 @@ mod tests {
     use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType, UnpreparedError};
     use cassandra_protocol::frame::{Flags, Opcode, Version};
     use cassandra_protocol::query::{BatchQueryBuilder, PreparedQuery, QueryValues};
+    use cassandra_protocol::types::value::Value;
     use cassandra_protocol::types::CBytesShort;
     use futures::future::ready;
     use futures::FutureExt;
     use itertools::Itertools;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::net::SocketAddr;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
@@ -1875,6 +1881,149 @@ mod tests {
 
         assert!(result.is_ok(), "{:?}", result);
         assert_reprepared_on_single_node(&requests, Opcode::Batch);
+    }
+
+    type RoutingLog = Arc<Mutex<Vec<(Option<Murmur3Token>, Option<Vec<u8>>)>>>;
+
+    // Records routing information of every request.
+    struct RoutingRecorder {
+        inner: TestRoundRobin,
+        routing: RoutingLog,
+    }
+
+    impl LoadBalancingStrategy<TestTransport, TestConnectionManager> for RoutingRecorder {
+        fn query_plan(
+            &self,
+            request: Option<Request>,
+            cluster: &ClusterMetadata<TestTransport, TestConnectionManager>,
+        ) -> QueryPlan<TestTransport, TestConnectionManager> {
+            if let Some(request) = &request {
+                self.routing.lock().unwrap().push((
+                    request.token,
+                    request.routing_key.map(|routing_key| routing_key.to_vec()),
+                ));
+            }
+
+            self.inner.query_plan(request, cluster)
+        }
+    }
+
+    async fn create_routing_session(
+        routing: &RoutingLog,
+    ) -> Session<TestTransport, TestConnectionManager, RoutingRecorder> {
+        let session = create_session(
+            &[node_address(1), node_address(2)],
+            TestConnectionManager::new(|_, _| ready(Ok(void_response(Version::V4))).boxed()),
+            RoutingRecorder {
+                inner: TestRoundRobin::new(),
+                routing: routing.clone(),
+            },
+            None,
+            Version::V4,
+        );
+
+        session
+            .cluster_metadata_manager
+            .refresh_metadata(true)
+            .await
+            .unwrap();
+
+        session
+    }
+
+    fn explicit_routing_key() -> Vec<Value> {
+        vec![Value::Some(vec![1, 2]), Value::Some(vec![3])]
+    }
+
+    #[tokio::test]
+    async fn should_use_explicit_routing_key_for_prepared_statement_without_values() {
+        let routing = RoutingLog::default();
+        let session = create_routing_session(&routing).await;
+
+        let mut prepared = prepared_query(CBytesShort::new(vec![1]));
+        prepared.pk_indexes = vec![0];
+
+        session
+            .exec_with_params(
+                &prepared,
+                &StatementParamsBuilder::new()
+                    .with_routing_key(explicit_routing_key())
+                    .build(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            *routing.lock().unwrap(),
+            vec![(
+                None,
+                Some(serialize_routing_key(&explicit_routing_key(), Version::V4))
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn should_use_explicit_routing_key_for_prepared_statement_with_named_values() {
+        let routing = RoutingLog::default();
+        let session = create_routing_session(&routing).await;
+
+        let mut prepared = prepared_query(CBytesShort::new(vec![1]));
+        prepared.pk_indexes = vec![0];
+
+        let mut values = HashMap::new();
+        values.insert("id".to_string(), Value::Some(vec![9]));
+
+        session
+            .exec_with_params(
+                &prepared,
+                &StatementParamsBuilder::new()
+                    .with_values(QueryValues::NamedValues(values))
+                    .with_routing_key(explicit_routing_key())
+                    .build(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            *routing.lock().unwrap(),
+            vec![(
+                None,
+                Some(serialize_routing_key(&explicit_routing_key(), Version::V4))
+            )]
+        );
+    }
+
+    #[tokio::test]
+    async fn should_route_batch_using_token_and_routing_key() {
+        let routing = RoutingLog::default();
+        let session = create_routing_session(&routing).await;
+
+        let batch = BatchQueryBuilder::new()
+            .add_query(
+                "INSERT INTO ks.table (id) VALUES (1)",
+                QueryValues::SimpleValues(vec![]),
+            )
+            .build()
+            .unwrap();
+
+        session
+            .batch_with_params(
+                batch,
+                &StatementParamsBuilder::new()
+                    .with_token(Murmur3Token::new(42))
+                    .with_routing_key(explicit_routing_key())
+                    .build(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            *routing.lock().unwrap(),
+            vec![(
+                Some(Murmur3Token::new(42)),
+                Some(serialize_routing_key(&explicit_routing_key(), Version::V4))
+            )]
+        );
     }
 
     #[test]
