@@ -372,6 +372,10 @@ impl AsyncTransport {
         frame_decoder: Box<dyn FrameDecoder + Send + Sync>,
     ) {
         let response_handler_map = ResponseHandlerMap::new();
+        let mut failure_handler = ProcessingFailureHandler {
+            is_broken,
+            error_handler,
+        };
 
         let writer = Self::start_writing(
             write_receiver,
@@ -394,15 +398,8 @@ impl AsyncTransport {
         if let Err(error) = result {
             error!(%error, "Transport error!");
 
-            is_broken.store(true, Ordering::Relaxed);
+            failure_handler.fail(error.clone());
             response_handler_map.signal_general_error(&error);
-
-            if let Some(error_handler) = error_handler {
-                match error_handler.try_send(error) {
-                    Ok(_) => debug!("Error handler notified!"),
-                    Err(e) => warn!("Error handler failed to notify: {e}"),
-                }
-            }
         }
     }
 
@@ -474,7 +471,13 @@ impl AsyncTransport {
                     // in case we get a SetKeyspace result, we need to store current keyspace
                     // checks are done manually for speed
                     if envelope.opcode == Opcode::Result {
-                        let result_kind = ResultKind::from_bytes(&envelope.body[..INT_LEN])?;
+                        let result_kind = envelope
+                            .body
+                            .get(..INT_LEN)
+                            .ok_or_else(|| {
+                                Error::General("Result body without result kind!".into())
+                            })
+                            .and_then(ResultKind::from_bytes)?;
                         if result_kind == ResultKind::SetKeyspace {
                             let response_body = envelope.response_body()?;
                             let set_keyspace =
@@ -665,6 +668,36 @@ impl AsyncTransport {
     }
 }
 
+/// Marks the transport as broken and notifies the error handler once processing fails, including
+/// when the processing task panics.
+struct ProcessingFailureHandler {
+    is_broken: Arc<AtomicBool>,
+    error_handler: Option<mpsc::Sender<Error>>,
+}
+
+impl ProcessingFailureHandler {
+    fn fail(&mut self, error: Error) {
+        self.is_broken.store(true, Ordering::Relaxed);
+
+        if let Some(error_handler) = self.error_handler.take() {
+            match error_handler.try_send(error) {
+                Ok(_) => debug!("Error handler notified!"),
+                Err(e) => warn!("Error handler failed to notify: {e}"),
+            }
+        }
+    }
+}
+
+impl Drop for ProcessingFailureHandler {
+    fn drop(&mut self) {
+        // A panicking task is dropped while unwinding. An aborted task is dropped normally and
+        // must not report an error, since that only happens when its transport is dropped.
+        if std::thread::panicking() {
+            self.fail(Error::General("Transport processing task panicked!".into()));
+        }
+    }
+}
+
 type ResponseHandler = oneshot::Sender<Result<Envelope>>;
 
 struct ResponseHandlerMap {
@@ -844,5 +877,185 @@ mod stream_id_tests {
         assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID);
         assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID + 1);
         assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID + 2);
+    }
+}
+
+#[cfg(test)]
+mod transport_tests {
+    use super::*;
+    use cassandra_protocol::frame::frame_decoder::LegacyFrameDecoder;
+    use cassandra_protocol::frame::frame_encoder::LegacyFrameEncoder;
+    use cassandra_protocol::frame::{Direction, Flags, ParseEnvelopeError, Version};
+    use std::time::Duration;
+    use tokio::io::{duplex, DuplexStream};
+    use tokio::sync::watch;
+    use tokio::time::timeout;
+
+    // upper bound for awaiting outcomes which are expected to happen right away
+    const TEST_GUARD_TIMEOUT: Duration = Duration::from_secs(5);
+
+    struct TestConnection {
+        transport: TransportTcp,
+        server: FakeServer,
+        error_receiver: mpsc::Receiver<Error>,
+    }
+
+    fn connect() -> TestConnection {
+        let (client_stream, server_stream) = duplex(1 << 20);
+        let (keyspace_sender, _) = watch::channel(None);
+        let keyspace_holder = Arc::new(KeyspaceHolder::new(keyspace_sender));
+        let (error_sender, error_receiver) = mpsc::channel(1);
+
+        let transport = TransportTcp::with_stream(
+            client_stream,
+            "127.0.0.1:9042".parse().unwrap(),
+            keyspace_holder,
+            None,
+            Some(error_sender),
+            Compression::None,
+            Box::<LegacyFrameEncoder>::default(),
+            Box::<LegacyFrameDecoder>::default(),
+            64,
+        )
+        .unwrap();
+
+        TestConnection {
+            transport,
+            server: FakeServer {
+                stream: server_stream,
+                buffer: vec![],
+            },
+            error_receiver,
+        }
+    }
+
+    struct FakeServer {
+        stream: DuplexStream,
+        buffer: Vec<u8>,
+    }
+
+    impl FakeServer {
+        async fn read_request(&mut self) -> Envelope {
+            loop {
+                match Envelope::from_buffer(&self.buffer, Compression::None) {
+                    Ok(parsed) => {
+                        self.buffer.drain(..parsed.envelope_len);
+                        return parsed.envelope;
+                    }
+                    Err(ParseEnvelopeError::NotEnoughBytes) => {
+                        let read = self.stream.read_buf(&mut self.buffer).await.unwrap();
+                        assert_ne!(read, 0, "client closed the connection");
+                    }
+                    Err(error) => panic!("invalid request: {}", error),
+                }
+            }
+        }
+
+        async fn respond(&mut self, stream_id: StreamId, opcode: Opcode, body: Vec<u8>) {
+            let envelope = Envelope::new(
+                Version::V4,
+                Direction::Response,
+                Flags::empty(),
+                opcode,
+                stream_id,
+                body,
+                None,
+                vec![],
+            );
+
+            self.stream
+                .write_all(&envelope.encode_with(Compression::None).unwrap())
+                .await
+                .unwrap();
+        }
+
+        async fn respond_to_next(&mut self, opcode: Opcode, body: Vec<u8>) {
+            let request = self.read_request().await;
+            self.respond(request.stream_id, opcode, body).await;
+        }
+    }
+
+    // Completes the handshake, after which responses are processed as regular frames.
+    async fn handshake(connection: &mut TestConnection) {
+        let startup = Envelope::new_req_startup(None, Version::V4);
+        let (response, _) = tokio::join!(
+            connection.transport.write_envelope(&startup, true),
+            connection.server.respond_to_next(Opcode::Ready, vec![]),
+        );
+
+        assert_eq!(response.unwrap().opcode, Opcode::Ready);
+    }
+
+    #[tokio::test]
+    async fn malformed_result_breaks_transport_and_notifies_error_handler() {
+        let mut connection = connect();
+        handshake(&mut connection).await;
+
+        let options = Envelope::new_req_options(Version::V4);
+        let (response, _) = tokio::join!(
+            connection.transport.write_envelope(&options, false),
+            connection
+                .server
+                .respond_to_next(Opcode::Result, vec![0, 0]),
+        );
+
+        assert!(response.is_err());
+        assert!(connection.transport.is_broken());
+
+        let error = timeout(TEST_GUARD_TIMEOUT, connection.error_receiver.recv())
+            .await
+            .expect("error handler was not notified");
+        assert!(
+            error.is_some(),
+            "error handler was dropped without a notification"
+        );
+    }
+
+    fn create_failure_handler() -> (
+        ProcessingFailureHandler,
+        Arc<AtomicBool>,
+        mpsc::Receiver<Error>,
+    ) {
+        let is_broken = Arc::new(AtomicBool::new(false));
+        let (error_sender, error_receiver) = mpsc::channel(1);
+
+        (
+            ProcessingFailureHandler {
+                is_broken: is_broken.clone(),
+                error_handler: Some(error_sender),
+            },
+            is_broken,
+            error_receiver,
+        )
+    }
+
+    #[tokio::test]
+    async fn failure_handler_reports_panicking_task() {
+        let (failure_handler, is_broken, mut error_receiver) = create_failure_handler();
+
+        let result = tokio::spawn(async move {
+            let _failure_handler = failure_handler;
+            tokio::task::yield_now().await;
+            panic!("simulated processing panic");
+        })
+        .await;
+
+        assert!(result.unwrap_err().is_panic());
+        assert!(is_broken.load(Ordering::Relaxed));
+        assert!(error_receiver.recv().await.is_some());
+    }
+
+    #[tokio::test]
+    async fn failure_handler_ignores_aborted_task() {
+        let (failure_handler, _, mut error_receiver) = create_failure_handler();
+
+        let handle = tokio::spawn(async move {
+            let _failure_handler = failure_handler;
+            futures::future::pending::<()>().await;
+        });
+        handle.abort();
+
+        assert!(handle.await.unwrap_err().is_cancelled());
+        assert!(error_receiver.recv().await.is_none());
     }
 }
