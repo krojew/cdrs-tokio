@@ -367,6 +367,99 @@ fn generic_struct_mirrors_db() {
     }
 }
 
+/// Shadows the crate names and prelude items that generated code could otherwise resolve to.
+#[allow(dead_code)]
+mod shadowed_names {
+    mod cdrs_tokio {}
+    mod core {}
+    mod std {}
+
+    struct Option;
+    struct Some;
+    struct None;
+    struct Result;
+    struct Ok;
+    struct Err;
+    struct Vec;
+    struct String;
+    struct HashMap;
+    struct Default;
+    struct ToString;
+    trait From {}
+    trait Into {}
+
+    #[derive(Debug, PartialEq, ::cdrs_tokio::TryFromUdt, ::cdrs_tokio::IntoCdrsValue)]
+    pub struct ShadowedUdt {
+        pub text: ::std::string::String,
+        pub number: ::std::option::Option<i32>,
+    }
+
+    #[derive(Debug, PartialEq, ::cdrs_tokio::TryFromRow, ::cdrs_tokio::DbMirror)]
+    pub struct ShadowedRow {
+        pub id: i32,
+        pub text: ::std::option::Option<::std::string::String>,
+        pub list: ::std::vec::Vec<i32>,
+        pub map: ::std::collections::HashMap<::std::string::String, i32>,
+        pub udt: ShadowedUdt,
+        pub udts: ::std::vec::Vec<ShadowedUdt>,
+        pub optional_udt: ::std::option::Option<ShadowedUdt>,
+    }
+}
+
+#[test]
+fn shadowed_names_do_not_affect_generated_code() {
+    use shadowed_names::{ShadowedRow, ShadowedUdt};
+
+    let udt_type = udt_of(vec![
+        ("text", native(ColType::Varchar)),
+        ("number", native(ColType::Int)),
+    ]);
+    let udt_value = || ShadowedUdt {
+        text: "u".to_string(),
+        number: Some(2),
+    };
+    let mut map = HashMap::new();
+    map.insert("a".to_string(), 1);
+    let row = row(vec![
+        ("id", native(ColType::Int), value(1)),
+        ("text", native(ColType::Varchar), value("t")),
+        ("list", list_of(native(ColType::Int)), value(vec![1])),
+        (
+            "map",
+            map_of(native(ColType::Varchar), native(ColType::Int)),
+            value(map.clone()),
+        ),
+        ("udt", udt_type.clone(), value(udt_value())),
+        ("udts", list_of(udt_type.clone()), value(vec![udt_value()])),
+        ("optional_udt", udt_type, null()),
+    ]);
+
+    let decoded = ShadowedRow::try_from_row(row).unwrap();
+
+    let expected = ShadowedRow {
+        id: 1,
+        text: Some("t".to_string()),
+        list: vec![1],
+        map,
+        udt: udt_value(),
+        udts: vec![udt_value()],
+        optional_udt: None,
+    };
+    assert_eq!(decoded, expected);
+    assert_eq!(
+        ShadowedRow::insert_query(),
+        "insert into ShadowedRow(id, text, list, map, udt, udts, optional_udt) \
+         values (?, ?, ?, ?, ?, ?, ?)"
+    );
+    match expected.into_query_values() {
+        QueryValues::NamedValues(values) => {
+            assert_eq!(values.len(), 7);
+            assert_eq!(values["udt"], Value::new(udt_value()));
+        }
+        other => panic!("unexpected query values: {:?}", other),
+    }
+}
+
 /// Field types are only reachable through their paths here, since nothing is imported.
 mod qualified_paths {
     pub mod udts {

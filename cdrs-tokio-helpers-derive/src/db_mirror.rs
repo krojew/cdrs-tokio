@@ -41,15 +41,18 @@ pub fn impl_db_mirror(ast: &DeriveInput) -> Result<TokenStream> {
                  ")")
             }
 
-            pub fn into_query_values(self) -> cdrs_tokio::query::QueryValues {
-                use std::collections::HashMap;
-                let mut values: HashMap<String, cdrs_tokio::types::value::Value> = HashMap::new();
+            pub fn into_query_values(self) -> ::cdrs_tokio::query::QueryValues {
+                let mut values: ::std::collections::HashMap<::std::string::String, ::cdrs_tokio::types::value::Value> =
+                    ::std::collections::HashMap::new();
 
                 #(
-                    values.insert(stringify!(#idents).to_string(), self.#idents_copy.into());
+                    values.insert(
+                        ::std::string::String::from(stringify!(#idents)),
+                        ::core::convert::Into::into(self.#idents_copy),
+                    );
                 )*
 
-                cdrs_tokio::query::QueryValues::NamedValues(values)
+                ::cdrs_tokio::query::QueryValues::NamedValues(values)
             }
         }
     })
