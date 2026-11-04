@@ -24,6 +24,8 @@ use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::transport::TransportTcp;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::types::IntoRustByName;
+#[cfg(feature = "e2e-tests")]
 use regex::Regex;
 
 #[cfg(feature = "e2e-tests")]
@@ -109,4 +111,32 @@ pub fn column_values(body: &ResponseBody, column: &str) -> Vec<CassandraType> {
         .iter()
         .map(|row| convert(&row[index], col_type, rows.protocol_version).expect("decode column"))
         .collect()
+}
+
+/// Returns the major and minor release version of the connected node.
+#[cfg(feature = "e2e-tests")]
+#[allow(dead_code)]
+pub async fn server_version(session: &CurrentSession) -> (u32, u32) {
+    let rows = session
+        .query("SELECT release_version FROM system.local")
+        .await
+        .expect("query release version")
+        .response_body()
+        .expect("release version body")
+        .into_rows()
+        .expect("release version rows");
+    let release_version: String = rows
+        .first()
+        .expect("local node row")
+        .get_r_by_name("release_version")
+        .expect("release version");
+
+    let mut parts = release_version.split('.').map(|part| {
+        part.chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>()
+            .parse()
+            .unwrap_or(0)
+    });
+    (parts.next().unwrap_or(0), parts.next().unwrap_or(0))
 }
