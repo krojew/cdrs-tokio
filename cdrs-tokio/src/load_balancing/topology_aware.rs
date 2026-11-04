@@ -1,4 +1,4 @@
-use crate::cluster::topology::{KeyspaceMetadata, Node, NodeDistance, ReplicationStrategy};
+use crate::cluster::topology::{KeyspaceMetadata, Node, ReplicationStrategy};
 use crate::cluster::Murmur3Token;
 use crate::cluster::{ClusterMetadata, ConnectionManager};
 use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
@@ -9,7 +9,6 @@ use fxhash::{FxHashMap, FxHashSet};
 use itertools::Itertools;
 use rand::prelude::*;
 use rand::rng;
-use std::cmp::Ordering as CmpOrdering;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -22,8 +21,8 @@ use std::sync::Arc;
 ///
 /// This implementation prioritizes replica nodes over non-replica ones; if more than one replica
 /// is available, the replicas will be shuffled. Non-replica nodes will be included in a round-robin
-/// fashion. If local nodes are present in the cluster, only those will be used, unless a remote
-/// failover dc is allowed.
+/// fashion. Local nodes are always placed before remote ones. If local nodes are present in the
+/// cluster, only those will be used, unless a remote failover dc is allowed.
 ///
 /// Note: if a referenced keyspace doesn't use `NetworkTopologyStrategy`, replica nodes will be
 /// chosen ignoring distance information.
@@ -58,8 +57,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
 impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrategy<T, CM> {
     /// Creates new strategy. The parameters determine if remote non-replica nodes should be
     /// considered in addition to replica ones, if `NetworkTopologyStrategy` is used for queried
-    /// keyspace. `allow_dc_failover_for_local_cl` determines if remote non-replicas should be
-    /// used to local-only consistency.
+    /// keyspace. `allow_dc_failover_for_local_cl` determines if remote nodes should be used for
+    /// local-only consistency.
     pub fn new(
         max_nodes_per_remote_dc: Option<usize>,
         allow_dc_failover_for_local_cl: bool,
@@ -137,7 +136,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         // 2. extract unignored local
         // 3. shuffle replicas
         // 4. append round-robin unignored local non-replicas
-        // 5. optionally, add shuffled remote unignored non-replicas
+        // 5. unless dc-local consistency is used without failover, append unignored remote
+        //    replicas and, optionally, shuffled remote unignored non-replicas
 
         // Replica placement doesn't depend on node state, so ignored nodes are
         // removed only after placement - otherwise a non-replica would take
@@ -191,67 +191,45 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
             }
         }
 
-        result.retain(|node| !node.is_ignored());
-
-        // the result now contains only unignored mixed local/remote nodes -
-        // put local in front
-        result.sort_unstable_by(|a, b| {
-            let a_distance = a.distance();
-            let b_distance = b.distance();
-
-            if a_distance == b_distance {
-                return CmpOrdering::Equal;
-            }
-
-            if a_distance == Some(NodeDistance::Local) {
-                return CmpOrdering::Less;
-            }
-            if b_distance == Some(NodeDistance::Local) {
-                return CmpOrdering::Greater;
-            }
-
-            CmpOrdering::Equal
-        });
+        // unignored nodes always have a distance
+        let (mut local_replicas, remote_replicas): (Vec<_>, Vec<_>) = result
+            .into_iter()
+            .filter(|node| !node.is_ignored())
+            .partition(|node| node.is_local());
 
         let mut rng = rng();
+        local_replicas.shuffle(&mut rng);
 
-        // find now many local nodes we have
-        let local_count = result
-            .iter()
-            .position(|node| node.is_remote())
-            .unwrap_or(result.len());
-        if local_count > 0 {
-            result[..local_count].shuffle(&mut rng);
-        }
+        let local_nodes = local_replicas
+            .into_iter()
+            .chain(self.round_robin_unignored_local_nodes(cluster));
 
-        // add unignored non-replicas
-        let unignored_nodes = self.round_robin_unignored_local_nodes(cluster);
-        let replicas = result.into_iter().chain(unignored_nodes);
-
-        // now the result contains (in order): local replicas, remote replicas, local non-replicas
-        if let Some(max_nodes_per_remote_dc) = self.max_nodes_per_remote_dc {
-            if let Some(consistency) = consistency {
-                if !self.allow_dc_failover_for_local_cl && consistency.is_dc_local() {
-                    return QueryPlan::new(replicas.collect());
-                }
-            }
-
-            let mut remote_nodes = cluster.unignored_remote_nodes_capped(max_nodes_per_remote_dc);
-            remote_nodes.shuffle(&mut rng);
-
-            QueryPlan::new(
-                replicas
-                    .chain(remote_nodes)
+        let is_dc_local = consistency
+            .map(|consistency| consistency.is_dc_local())
+            .unwrap_or(false);
+        if is_dc_local && !self.allow_dc_failover_for_local_cl {
+            return QueryPlan::new(
+                local_nodes
                     .unique_by(|node| node.broadcast_rpc_address())
                     .collect(),
-            )
-        } else {
-            QueryPlan::new(
-                replicas
-                    .unique_by(|node| node.broadcast_rpc_address())
-                    .collect(),
-            )
+            );
         }
+
+        let mut remote_nodes = self
+            .max_nodes_per_remote_dc
+            .map(|max_nodes_per_remote_dc| {
+                cluster.unignored_remote_nodes_capped(max_nodes_per_remote_dc)
+            })
+            .unwrap_or_default();
+        remote_nodes.shuffle(&mut rng);
+
+        QueryPlan::new(
+            local_nodes
+                .chain(remote_replicas)
+                .chain(remote_nodes)
+                .unique_by(|node| node.broadcast_rpc_address())
+                .collect(),
+        )
     }
 
     fn simple_strategy_replicas(
@@ -613,6 +591,76 @@ mod tests {
         )
     }
 
+    // node 1 is the dc1 replica, node 3 is the dc2 replica
+    fn create_cluster_with_down_local_replica(
+    ) -> ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
+        create_nts_cluster(
+            &[
+                create_node(1, NodeState::Down, &[0], "r1", "dc1"),
+                create_node(2, NodeState::Up, &[10], "r1", "dc1"),
+                create_node(3, NodeState::Up, &[5], "r1", "dc2"),
+                create_node(4, NodeState::Up, &[15], "r1", "dc2"),
+            ],
+            &[("dc1", 1), ("dc2", 1)],
+        )
+    }
+
+    #[test]
+    fn should_not_use_remote_nodes_for_dc_local_consistency() {
+        let cluster = create_cluster_with_down_local_replica();
+
+        for consistency in [Consistency::LocalOne, Consistency::LocalQuorum].iter() {
+            let lb = TopologyAwareLoadBalancingStrategy::new(Some(2), false);
+            assert_eq!(
+                query_plan_ports(&lb, &cluster, 0, Some(*consistency)),
+                vec![2]
+            );
+
+            let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
+            assert_eq!(
+                query_plan_ports(&lb, &cluster, 0, Some(*consistency)),
+                vec![2]
+            );
+        }
+    }
+
+    #[test]
+    fn should_prefer_local_non_replicas_over_remote_replicas() {
+        let cluster = create_cluster_with_down_local_replica();
+
+        let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
+        assert_eq!(query_plan_ports(&lb, &cluster, 0, None), vec![2, 3]);
+
+        let lb = TopologyAwareLoadBalancingStrategy::new(Some(2), true);
+        assert_eq!(
+            query_plan_ports(&lb, &cluster, 0, Some(Consistency::LocalOne)),
+            vec![2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn should_not_return_duplicates_for_dc_local_consistency() {
+        let cluster = create_cluster();
+        let lb = TopologyAwareLoadBalancingStrategy::new(Some(5), false);
+
+        let query_plan = lb.query_plan(
+            Some(Request::new(
+                Some("k4"),
+                Some(Murmur3Token::new(2)),
+                None,
+                Some(Consistency::LocalQuorum),
+            )),
+            &cluster,
+        );
+
+        let unique_addresses: FxHashSet<_> = query_plan
+            .nodes
+            .iter()
+            .map(|node| node.broadcast_rpc_address())
+            .collect();
+        assert_eq!(unique_addresses.len(), query_plan.nodes.len());
+    }
+
     #[test]
     fn should_not_promote_non_replica_in_place_of_down_nts_replica() {
         let cluster =
@@ -818,8 +866,8 @@ mod tests {
             query_plan.nodes[1].host_id().unwrap() == *HOST_ID_1
                 || query_plan.nodes[1].host_id().unwrap() == *HOST_ID_3
         );
-        assert_eq!(query_plan.nodes[2].host_id().unwrap(), *HOST_ID_4);
-        assert_eq!(query_plan.nodes[3].host_id().unwrap(), *HOST_ID_2);
+        assert_eq!(query_plan.nodes[2].host_id().unwrap(), *HOST_ID_2);
+        assert_eq!(query_plan.nodes[3].host_id().unwrap(), *HOST_ID_4);
     }
 
     #[test]
@@ -846,8 +894,8 @@ mod tests {
             query_plan.nodes[1].host_id().unwrap() == *HOST_ID_1
                 || query_plan.nodes[1].host_id().unwrap() == *HOST_ID_3
         );
-        assert_eq!(query_plan.nodes[2].host_id().unwrap(), *HOST_ID_4);
-        assert_eq!(query_plan.nodes[3].host_id().unwrap(), *HOST_ID_2);
+        assert_eq!(query_plan.nodes[2].host_id().unwrap(), *HOST_ID_2);
+        assert_eq!(query_plan.nodes[3].host_id().unwrap(), *HOST_ID_4);
         assert_eq!(query_plan.nodes[4].host_id().unwrap(), *HOST_ID_5);
     }
 }
