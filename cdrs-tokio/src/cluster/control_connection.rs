@@ -3,14 +3,18 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::mpsc::{channel, Receiver};
-use tokio::time::sleep;
+use tokio::time::{sleep, timeout, Instant};
 use tracing::*;
 
+use crate::cluster::connection_pool::{
+    create_heartbeat_interval, DEFAULT_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_TIMEOUT,
+};
 use crate::cluster::topology::Node;
 use crate::cluster::{ClusterMetadataManager, ConnectionManager, SessionContext};
 use crate::load_balancing::LoadBalancingStrategy;
 use crate::retry::{ReconnectionPolicy, ReconnectionSchedule};
 use crate::transport::CdrsTransport;
+use cassandra_protocol::error::Error;
 use cassandra_protocol::events::{ServerEvent, SimpleServerEvent};
 use cassandra_protocol::frame::{Envelope, Version};
 
@@ -70,7 +74,14 @@ impl<
                 }
                 match result {
                     Ok(_) => {
-                        let error = error_receiver.recv().await;
+                        let error = Self::wait_for_failure(
+                            current_connection.as_ref(),
+                            &mut error_receiver,
+                            DEFAULT_HEARTBEAT_INTERVAL,
+                            DEFAULT_HEARTBEAT_TIMEOUT,
+                            self.version,
+                        )
+                        .await;
                         match error {
                             Some(error) => {
                                 // show info and try to reconnect
@@ -150,6 +161,43 @@ impl<
                     }
 
                     Self::wait_for_reconnection(&mut schedule).await;
+                }
+            }
+        }
+    }
+
+    /// Waits until the connection reports an error or stops answering heartbeats, which also
+    /// keep otherwise idle connections from being dropped by NATs and load balancers. Returns
+    /// `None` if the error channel gets closed.
+    async fn wait_for_failure(
+        connection: &T,
+        error_receiver: &mut Receiver<Error>,
+        heartbeat_interval: Duration,
+        heartbeat_timeout: Duration,
+        version: Version,
+    ) -> Option<Error> {
+        let heartbeat_envelope = Envelope::new_req_options(version);
+        let mut interval = create_heartbeat_interval(Instant::now(), heartbeat_interval);
+
+        loop {
+            tokio::select! {
+                error = error_receiver.recv() => return error,
+                _ = interval.tick() => {
+                    match timeout(
+                        heartbeat_timeout,
+                        connection.write_envelope(&heartbeat_envelope, false),
+                    )
+                    .await
+                    {
+                        Ok(Ok(_)) => {}
+                        Ok(Err(error)) => return Some(error),
+                        Err(_) => {
+                            return Some(Error::Timeout(
+                                "Timeout waiting for control connection heartbeat response!"
+                                    .into(),
+                            ))
+                        }
+                    }
                 }
             }
         }
@@ -296,6 +344,68 @@ mod tests {
             connection_manager,
         ))
         .await;
+    }
+
+    type TestControlConnection =
+        ControlConnection<MockCdrsTransport, TestConnectionManager, TestLoadBalancing>;
+
+    #[tokio::test]
+    async fn wait_for_failure_detects_unanswered_heartbeat() {
+        let mut connection = MockCdrsTransport::new();
+        connection
+            .expect_write_envelope()
+            .returning(|_, _| Box::pin(futures::future::pending()));
+
+        let (_error_sender, mut error_receiver) = channel(1);
+
+        let error = timeout(
+            TEST_GUARD_TIMEOUT,
+            TestControlConnection::wait_for_failure(
+                &connection,
+                &mut error_receiver,
+                Duration::from_millis(1),
+                Duration::from_millis(10),
+                Version::V4,
+            ),
+        )
+        .await
+        .expect("unanswered heartbeat was not detected");
+
+        assert!(matches!(error, Some(Error::Timeout(_))), "{:?}", error);
+    }
+
+    #[tokio::test]
+    async fn wait_for_failure_keeps_waiting_while_heartbeats_are_answered() {
+        let (error_sender, mut error_receiver) = channel(1);
+        let heartbeats = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
+        let mut connection = MockCdrsTransport::new();
+        let counted_heartbeats = heartbeats.clone();
+        connection.expect_write_envelope().returning(move |_, _| {
+            if counted_heartbeats.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 2 {
+                error_sender
+                    .try_send(Error::General("connection reset".into()))
+                    .unwrap();
+            }
+
+            Box::pin(async { Ok(Envelope::new_req_options(Version::V4)) })
+        });
+
+        let error = timeout(
+            TEST_GUARD_TIMEOUT,
+            TestControlConnection::wait_for_failure(
+                &connection,
+                &mut error_receiver,
+                Duration::from_millis(1),
+                Duration::from_secs(60),
+                Version::V4,
+            ),
+        )
+        .await
+        .expect("connection error was not reported");
+
+        assert!(matches!(error, Some(Error::General(_))), "{:?}", error);
+        assert!(heartbeats.load(std::sync::atomic::Ordering::Relaxed) >= 3);
     }
 
     #[tokio::test]

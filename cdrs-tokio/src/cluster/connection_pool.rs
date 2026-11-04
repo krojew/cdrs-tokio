@@ -22,6 +22,9 @@ use crate::error::{Error, Result as CdrsResult};
 use crate::retry::{ReconnectionPolicy, ReconnectionSchedule};
 use crate::transport::CdrsTransport;
 
+pub(crate) const DEFAULT_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+pub(crate) const DEFAULT_HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(10);
+
 #[derive(Copy, Clone, PartialEq, Eq, Display, NoUninit)]
 #[repr(u8)]
 enum ReconnectionState {
@@ -71,7 +74,7 @@ impl Default for ConnectionPoolConfig {
             local_size: 1,
             remote_size: 1,
             connect_timeout: None,
-            heartbeat_interval: Duration::from_secs(30),
+            heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL,
         }
     }
 }
@@ -628,7 +631,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
 /// to `tick().await`. Without this, tokio's default behavior would keep
 /// firing immediately until it had "caught up", which on a healthy cluster
 /// just means a thundering herd of OPTIONS messages.
-fn create_heartbeat_interval(now: Instant, period: Duration) -> Interval {
+pub(crate) fn create_heartbeat_interval(now: Instant, period: Duration) -> Interval {
     let mut interval = interval_at(now + period, period);
     interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
     interval
