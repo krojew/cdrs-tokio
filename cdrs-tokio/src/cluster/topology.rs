@@ -14,6 +14,7 @@ mod replication_strategy;
 pub use self::datacenter_metadata::DatacenterMetadata;
 pub use self::keyspace_metadata::KeyspaceMetadata;
 pub use self::node::Node;
+pub(crate) use self::node::NodeShared;
 pub use self::node_distance::NodeDistance;
 pub use self::node_state::NodeState;
 pub use self::replication_strategy::ReplicationStrategy;

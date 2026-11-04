@@ -17,14 +17,61 @@ use crate::cluster::{ConnectionManager, NodeInfo};
 use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::transport::CdrsTransport;
 
-/// Metadata about a Cassandra node in the cluster, along with a connection.
-pub struct Node<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
+/// Connectivity and state of a node, shared by every [`Node`] value representing the same
+/// connection endpoint. Connection pool tasks refer to it rather than to a particular [`Node`], so
+/// their state changes are visible on every clone, including the one in current metadata.
+pub(crate) struct NodeShared<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
     connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
     connection_pool: OnceCell<Arc<ConnectionPool<T, CM>>>,
     broadcast_rpc_address: SocketAddr,
-    broadcast_address: Option<SocketAddr>,
+    // determines the pool size
     distance: Option<NodeDistance>,
     state: Atomic<NodeState>,
+}
+
+impl<T: CdrsTransport, CM: ConnectionManager<T>> NodeShared<T, CM> {
+    fn new(
+        connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
+        broadcast_rpc_address: SocketAddr,
+        distance: Option<NodeDistance>,
+        state: NodeState,
+    ) -> Self {
+        NodeShared {
+            connection_pool_factory,
+            connection_pool: Default::default(),
+            broadcast_rpc_address,
+            distance,
+            state: Atomic::new(state),
+        }
+    }
+
+    #[inline]
+    pub(crate) fn broadcast_rpc_address(&self) -> SocketAddr {
+        self.broadcast_rpc_address
+    }
+
+    #[inline]
+    pub(crate) fn state(&self) -> NodeState {
+        self.state.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn force_down(&self) {
+        self.state.store(NodeState::ForcedDown, Ordering::Relaxed);
+    }
+
+    pub(crate) fn mark_down(&self) {
+        self.state.store(NodeState::Down, Ordering::Relaxed);
+    }
+
+    pub(crate) fn mark_up(&self) {
+        self.state.store(NodeState::Up, Ordering::Relaxed);
+    }
+}
+
+/// Metadata about a Cassandra node in the cluster, along with a connection.
+pub struct Node<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
+    shared: Arc<NodeShared<T, CM>>,
+    broadcast_address: Option<SocketAddr>,
     host_id: Option<Uuid>,
     tokens: Vec<Murmur3Token>,
     rack: String,
@@ -34,10 +81,10 @@ pub struct Node<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Node")
-            .field("broadcast_rpc_address", &self.broadcast_rpc_address)
+            .field("broadcast_rpc_address", &self.shared.broadcast_rpc_address)
             .field("broadcast_address", &self.broadcast_address)
-            .field("distance", &self.distance)
-            .field("state", &self.state)
+            .field("distance", &self.shared.distance)
+            .field("state", &self.shared.state)
             .field("host_id", &self.host_id)
             .field("tokens", &self.tokens)
             .field("rack", &self.rack)
@@ -59,18 +106,17 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         rack: String,
         datacenter: String,
     ) -> Self {
-        Self {
+        Self::new_with_state(
             connection_pool_factory,
-            connection_pool: Default::default(),
             broadcast_rpc_address,
             broadcast_address,
-            distance,
-            state: Atomic::new(NodeState::Unknown),
             host_id,
+            distance,
+            NodeState::Unknown,
             tokens,
             rack,
             datacenter,
-        }
+        )
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -86,12 +132,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         datacenter: String,
     ) -> Self {
         Self {
-            connection_pool_factory,
-            connection_pool: Default::default(),
-            broadcast_rpc_address,
+            shared: Arc::new(NodeShared::new(
+                connection_pool_factory,
+                broadcast_rpc_address,
+                distance,
+                state,
+            )),
             broadcast_address,
-            distance,
-            state: Atomic::new(state),
             host_id,
             tokens,
             rack,
@@ -107,23 +154,26 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         host_id: Option<Uuid>,
         distance: NodeDistance,
     ) -> Self {
-        Self {
+        Self::new(
             connection_pool_factory,
-            connection_pool: Default::default(),
             broadcast_rpc_address,
             broadcast_address,
-            distance: Some(distance),
-            state: Atomic::new(NodeState::Unknown),
             host_id,
-            tokens: Default::default(),
-            rack: Default::default(),
-            datacenter: Default::default(),
-        }
+            Some(distance),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn shared(&self) -> &Arc<NodeShared<T, CM>> {
+        &self.shared
     }
 
     #[inline]
     pub fn state(&self) -> NodeState {
-        self.state.load(Ordering::Relaxed)
+        self.shared.state()
     }
 
     /// The host ID that is assigned to this node by Cassandra. This value can be used to uniquely
@@ -137,7 +187,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// connect to.
     #[inline]
     pub fn broadcast_rpc_address(&self) -> SocketAddr {
-        self.broadcast_rpc_address
+        self.shared.broadcast_rpc_address
     }
 
     /// The node's broadcast address. That is, the address that other nodes use to communicate with
@@ -168,15 +218,16 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     /// Returns a connection to given node.
     #[inline]
     pub async fn persistent_connection(self: &Arc<Self>) -> Result<Arc<T>> {
-        let pool = self
+        let shared = &self.shared;
+        let pool = shared
             .connection_pool
             .get_or_try_init(|| {
                 debug!(?self.host_id, "Creating connection pool");
 
-                self.connection_pool_factory.create(
-                    self.distance.unwrap_or(NodeDistance::Remote),
-                    self.broadcast_rpc_address,
-                    Arc::downgrade(self),
+                shared.connection_pool_factory.create(
+                    shared.distance.unwrap_or(NodeDistance::Remote),
+                    shared.broadcast_rpc_address,
+                    Arc::downgrade(shared),
                 )
             })
             .await;
@@ -196,7 +247,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
 
     /// Checks if any connection is still available.
     pub async fn is_any_connection_up(&self) -> bool {
-        if let Some(pool) = self.connection_pool.get() {
+        if let Some(pool) = self.shared.connection_pool.get() {
             pool.is_any_connection_up().await
         } else {
             false
@@ -210,45 +261,42 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         error_handler: Option<Sender<Error>>,
     ) -> Result<T> {
         debug!("Establishing new connection to node...");
-        self.connection_pool_factory
-            .new_connection(event_handler, error_handler, self.broadcast_rpc_address)
+        self.shared
+            .connection_pool_factory
+            .new_connection(
+                event_handler,
+                error_handler,
+                self.shared.broadcast_rpc_address,
+            )
             .await
     }
 
     /// Returns node distance in relation to the driver, if available.
     #[inline]
     pub fn distance(&self) -> Option<NodeDistance> {
-        self.distance
+        self.shared.distance
     }
 
     /// Checks if the node is local in relation to the driver.
     #[inline]
     pub fn is_local(&self) -> bool {
-        self.distance == Some(NodeDistance::Local)
+        self.shared.distance == Some(NodeDistance::Local)
     }
 
     /// Checks if the node is remote in relation to the driver.
     #[inline]
     pub fn is_remote(&self) -> bool {
-        self.distance == Some(NodeDistance::Remote)
+        self.shared.distance == Some(NodeDistance::Remote)
     }
 
     /// Should this node be ignored from establishing connections.
     #[inline]
     pub fn is_ignored(&self) -> bool {
-        self.distance.is_none() || self.state.load(Ordering::Relaxed) != NodeState::Up
+        self.shared.distance.is_none() || self.state() != NodeState::Up
     }
 
     pub(crate) fn force_down(&self) {
-        self.state.store(NodeState::ForcedDown, Ordering::Relaxed);
-    }
-
-    pub(crate) fn mark_down(&self) {
-        self.state.store(NodeState::Down, Ordering::Relaxed);
-    }
-
-    pub(crate) fn mark_up(&self) {
-        self.state.store(NodeState::Up, Ordering::Relaxed);
+        self.shared.force_down();
     }
 
     #[inline]
@@ -257,10 +305,10 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         node_info: NodeInfo,
         node_distance_evaluator: &dyn NodeDistanceEvaluator,
     ) -> Self {
-        let address_changed = self.broadcast_rpc_address != node_info.broadcast_rpc_address;
+        let address_changed = self.broadcast_rpc_address() != node_info.broadcast_rpc_address;
 
-        let mut new_node_state = self.state.load(Ordering::Relaxed);
-        let mut distance = self.distance;
+        let mut new_node_state = self.state();
+        let mut distance = self.distance();
         if address_changed {
             // A node listed in the peers table under a new address is treated as up, like a newly
             // discovered node. Only an UP status event promotes an unknown node, and that event may
@@ -287,12 +335,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         }
 
         Self {
-            connection_pool_factory: self.connection_pool_factory.clone(),
-            connection_pool: Default::default(),
-            broadcast_rpc_address: node_info.broadcast_rpc_address,
+            shared: Arc::new(NodeShared::new(
+                self.shared.connection_pool_factory.clone(),
+                node_info.broadcast_rpc_address,
+                distance,
+                new_node_state,
+            )),
             broadcast_address: node_info.broadcast_address,
-            distance,
-            state: Atomic::new(new_node_state),
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,
             rack: node_info.rack,
@@ -308,12 +357,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     ) -> Self {
         // control points might have valid state already, so no need to reset
         Self {
-            connection_pool_factory: self.connection_pool_factory.clone(),
-            connection_pool: self.connection_pool.clone(),
-            broadcast_rpc_address: self.broadcast_rpc_address,
+            shared: Arc::new(NodeShared {
+                connection_pool_factory: self.shared.connection_pool_factory.clone(),
+                connection_pool: self.shared.connection_pool.clone(),
+                broadcast_rpc_address: self.broadcast_rpc_address(),
+                distance: node_distance_evaluator.compute_distance(&node_info),
+                state: Atomic::new(self.state()),
+            }),
             broadcast_address: node_info.broadcast_address,
-            distance: node_distance_evaluator.compute_distance(&node_info),
-            state: Atomic::new(self.state.load(Ordering::Relaxed)),
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,
             rack: node_info.rack,
@@ -329,12 +380,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         state: NodeState,
     ) -> Self {
         Self {
-            connection_pool_factory: self.connection_pool_factory.clone(),
-            connection_pool: Default::default(),
-            broadcast_rpc_address: node_info.broadcast_rpc_address,
+            shared: Arc::new(NodeShared::new(
+                self.shared.connection_pool_factory.clone(),
+                node_info.broadcast_rpc_address,
+                node_distance_evaluator.compute_distance(&node_info),
+                state,
+            )),
             broadcast_address: node_info.broadcast_address,
-            distance: node_distance_evaluator.compute_distance(&node_info),
-            state: Atomic::new(state),
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,
             rack: node_info.rack,
@@ -345,12 +397,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     #[inline]
     pub(crate) fn clone_with_node_state(&self, state: NodeState) -> Self {
         Self {
-            connection_pool_factory: self.connection_pool_factory.clone(),
-            connection_pool: Default::default(),
-            broadcast_rpc_address: self.broadcast_rpc_address,
+            shared: Arc::new(NodeShared::new(
+                self.shared.connection_pool_factory.clone(),
+                self.broadcast_rpc_address(),
+                self.distance(),
+                state,
+            )),
             broadcast_address: self.broadcast_address,
-            distance: self.distance,
-            state: Atomic::new(state),
             host_id: self.host_id,
             tokens: self.tokens.clone(),
             rack: self.rack.clone(),

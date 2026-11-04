@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, RwLock};
 use tokio::time::{interval_at, sleep, timeout, Instant, Interval, MissedTickBehavior};
 use tracing::*;
 
-use crate::cluster::topology::{Node, NodeDistance, NodeState};
+use crate::cluster::topology::{NodeDistance, NodeShared, NodeState};
 use crate::cluster::ConnectionManager;
 use crate::error::{Error, Result as CdrsResult};
 use crate::retry::{ReconnectionPolicy, ReconnectionSchedule};
@@ -241,7 +241,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         &self,
         node_distance: NodeDistance,
         broadcast_rpc_address: SocketAddr,
-        node: Weak<Node<T, CM>>,
+        node: Weak<NodeShared<T, CM>>,
     ) -> CdrsResult<Arc<ConnectionPool<T, CM>>> {
         let (error_sender, error_receiver) =
             mpsc::channel(if node_distance == NodeDistance::Local {
@@ -344,7 +344,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
 
     fn start_heartbeat(
         pool: Weak<ConnectionPool<T, CM>>,
-        node: Weak<Node<T, CM>>,
+        node: Weak<NodeShared<T, CM>>,
         heartbeat_interval: Duration,
         version: Version,
     ) {
@@ -354,7 +354,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                 interval.tick().await;
 
                 if let Some(node) = node.upgrade() {
-                    let broadcast_rpc_address = node.broadcast_address();
+                    let broadcast_rpc_address = node.broadcast_rpc_address();
                     let state = node.state();
                     if state == NodeState::ForcedDown {
                         debug!(
@@ -387,7 +387,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
     fn monitor_connections(
         mut receiver: mpsc::Receiver<Error>,
         pool: Weak<ConnectionPool<T, CM>>,
-        node: Weak<Node<T, CM>>,
+        node: Weak<NodeShared<T, CM>>,
         reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
     ) {
         tokio::spawn(async move {
@@ -397,7 +397,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
             }));
             while receiver.recv().await.is_some() {
                 if let Some(node) = node.upgrade() {
-                    let broadcast_rpc_address = node.broadcast_address();
+                    let broadcast_rpc_address = node.broadcast_rpc_address();
 
                     if node.state() == NodeState::ForcedDown {
                         debug!(
@@ -809,6 +809,7 @@ mod heartbeat_interval_tests {
 mod tests {
     use super::*;
     use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::topology::Node;
     use crate::cluster::KeyspaceHolder;
     use crate::retry::{ConstantReconnectionPolicy, MockReconnectionPolicy};
     use crate::transport::{MockCdrsTransport, TransportTcp};
@@ -1100,7 +1101,7 @@ mod tests {
         ConnectionPoolFactory::<TransportTcp, MockConnectionManager<TransportTcp>>::monitor_connections(
             error_receiver,
             Arc::downgrade(&pool),
-            Arc::downgrade(&node),
+            Arc::downgrade(node.shared()),
             Arc::new(ConstantReconnectionPolicy::new(Duration::from_millis(1))),
         );
 
@@ -1273,7 +1274,7 @@ mod tests {
         ConnectionPoolFactory::<MockCdrsTransport, TestConnectionManager>::monitor_connections(
             error_receiver,
             Arc::downgrade(&pool),
-            Arc::downgrade(&node),
+            Arc::downgrade(node.shared()),
             Arc::new(ConstantReconnectionPolicy::new(Duration::from_millis(1))),
         );
 
