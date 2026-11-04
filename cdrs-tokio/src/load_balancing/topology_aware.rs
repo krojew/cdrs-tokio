@@ -220,7 +220,10 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         let mut rng = rng();
 
         // find now many local nodes we have
-        let local_count = result.iter().position(|node| node.is_remote()).unwrap_or(0);
+        let local_count = result
+            .iter()
+            .position(|node| node.is_remote())
+            .unwrap_or(result.len());
         if local_count > 0 {
             result[..local_count].shuffle(&mut rng);
         }
@@ -319,8 +322,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
 //noinspection DuplicatedCode
 #[cfg(test)]
 mod tests {
+    use cassandra_protocol::consistency::Consistency;
     use cassandra_protocol::frame::Version;
-    use fxhash::FxHashMap;
+    use fxhash::{FxHashMap, FxHashSet};
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::{Arc, LazyLock};
     use tokio::sync::watch;
@@ -491,6 +495,108 @@ mod tests {
         );
 
         ClusterMetadata::new(nodes, keyspaces)
+    }
+
+    type TestNode = Arc<Node<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>>;
+
+    fn create_connection_pool_factory(
+    ) -> Arc<ConnectionPoolFactory<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>>
+    {
+        let (_, keyspace_receiver) = watch::channel(None);
+        Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            MockConnectionManager::<MockCdrsTransport>::new(),
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        ))
+    }
+
+    // the node is local if it's in dc1
+    fn create_node(port: u16, state: NodeState, tokens: &[i64], rack: &str, dc: &str) -> TestNode {
+        Arc::new(Node::new_with_state(
+            create_connection_pool_factory(),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port),
+            None,
+            Some(Uuid::new_v4()),
+            Some(if dc == "dc1" {
+                NodeDistance::Local
+            } else {
+                NodeDistance::Remote
+            }),
+            state,
+            tokens
+                .iter()
+                .map(|token| Murmur3Token::new(*token))
+                .collect(),
+            rack.into(),
+            dc.into(),
+        ))
+    }
+
+    fn create_nts_cluster(
+        nodes: &[TestNode],
+        datacenter_replication_factor: &[(&str, usize)],
+    ) -> ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
+        let mut keyspaces = FxHashMap::default();
+        keyspaces.insert(
+            "ks".into(),
+            KeyspaceMetadata::new(ReplicationStrategy::NetworkTopologyStrategy {
+                datacenter_replication_factor: datacenter_replication_factor
+                    .iter()
+                    .map(|(dc, replication_factor)| (dc.to_string(), *replication_factor))
+                    .collect(),
+            }),
+        );
+
+        ClusterMetadata::new(
+            nodes
+                .iter()
+                .map(|node| (node.host_id().unwrap(), node.clone()))
+                .collect(),
+            keyspaces,
+        )
+    }
+
+    fn query_plan_ports(
+        lb: &TopologyAwareLoadBalancingStrategy<
+            MockCdrsTransport,
+            MockConnectionManager<MockCdrsTransport>,
+        >,
+        cluster: &ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>,
+        token: i64,
+        consistency: Option<Consistency>,
+    ) -> Vec<u16> {
+        lb.query_plan(
+            Some(Request::new(
+                Some("ks"),
+                Some(Murmur3Token::new(token)),
+                None,
+                consistency,
+            )),
+            cluster,
+        )
+        .nodes
+        .iter()
+        .map(|node| node.broadcast_rpc_address().port())
+        .collect()
+    }
+
+    #[test]
+    fn should_shuffle_local_replicas_without_remote_ones() {
+        let nodes = [
+            create_node(1, NodeState::Up, &[0], "r1", "dc1"),
+            create_node(2, NodeState::Up, &[10], "r2", "dc1"),
+            create_node(3, NodeState::Up, &[20], "r3", "dc1"),
+        ];
+        let cluster = create_nts_cluster(&nodes, &[("dc1", 3)]);
+        let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
+
+        let first_nodes: FxHashSet<_> = (0..50)
+            .map(|_| query_plan_ports(&lb, &cluster, 5, None)[0])
+            .collect();
+
+        assert!(first_nodes.len() > 1, "replicas were not shuffled");
     }
 
     #[test]
