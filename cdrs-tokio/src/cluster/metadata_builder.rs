@@ -194,13 +194,16 @@ pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
 //noinspection DuplicatedCode
 #[cfg(test)]
 mod tests {
+    use cassandra_protocol::error::Error;
     use cassandra_protocol::frame::Version;
     use futures::future::ready;
     use futures::FutureExt;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
-    use tokio::sync::watch;
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use tokio::sync::{mpsc, watch};
+    use tokio::time::timeout;
     use uuid::Uuid;
 
     use crate::cluster::connection_manager::MockConnectionManager;
@@ -217,9 +220,12 @@ mod tests {
     };
     use crate::cluster::{ClusterMetadata, NodeInfo};
     use crate::load_balancing::node_distance_evaluator::MockNodeDistanceEvaluator;
-    use crate::retry::MockReconnectionPolicy;
+    use crate::retry::{ConstantReconnectionPolicy, MockReconnectionPolicy};
     use crate::transport::MockCdrsTransport;
     use fxhash::FxHashMap;
+
+    // upper bound for awaiting outcomes which are expected to happen right away
+    const TEST_GUARD_TIMEOUT: Duration = Duration::from_secs(5);
 
     fn create_connection_pool_factory(
     ) -> Arc<ConnectionPoolFactory<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>>
@@ -1150,5 +1156,85 @@ mod tests {
         assert_eq!(metadata.nodes().len(), 1);
         let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
         assert!(!node.shares_connectivity_with(&old_node));
+    }
+
+    #[tokio::test]
+    async fn contact_point_clone_gets_own_connection_pool() {
+        let broken: Arc<Mutex<Vec<Arc<AtomicBool>>>> = Default::default();
+        let error_handlers: Arc<Mutex<Vec<mpsc::Sender<Error>>>> = Default::default();
+
+        let mut connection_manager = MockConnectionManager::<MockCdrsTransport>::new();
+        connection_manager.expect_connection().returning({
+            let broken = broken.clone();
+            let error_handlers = error_handlers.clone();
+            move |_, error_handler, _| {
+                let connection_broken = Arc::new(AtomicBool::new(false));
+                broken.lock().unwrap().push(connection_broken.clone());
+                error_handlers.lock().unwrap().push(error_handler.unwrap());
+
+                let mut transport = MockCdrsTransport::new();
+                transport
+                    .expect_is_broken()
+                    .returning(move || connection_broken.load(Ordering::Relaxed));
+                Box::pin(async move { Ok(transport) })
+            }
+        });
+
+        let (_, keyspace_receiver) = watch::channel(None);
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+            // keeps the node down for the duration of the test
+            Arc::new(ConstantReconnectionPolicy::new(Duration::from_secs(3600))),
+        ));
+
+        let node_info = test_node_info(node_address(1));
+        let contact_point = Arc::new(Node::new_with_state(
+            connection_pool_factory.clone(),
+            node_info.broadcast_rpc_address,
+            None,
+            None,
+            Some(NodeDistance::Local),
+            NodeState::Up,
+            Default::default(),
+            "".into(),
+            "".into(),
+        ));
+        contact_point.persistent_connection().await.unwrap();
+
+        let metadata = build_initial_metadata(
+            vec![node_info.clone()],
+            Default::default(),
+            &[contact_point.clone()],
+            None,
+            &connection_pool_factory,
+            &distance_evaluator(NodeDistance::Local),
+        );
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        node.persistent_connection().await.unwrap();
+
+        assert_eq!(broken.lock().unwrap().len(), 2);
+        assert!(!node.shares_connectivity_with(&contact_point));
+        assert!(!Arc::ptr_eq(
+            &node.connection_pool().unwrap(),
+            &contact_point.connection_pool().unwrap()
+        ));
+
+        broken.lock().unwrap()[1].store(true, Ordering::Relaxed);
+        error_handlers.lock().unwrap()[1]
+            .try_send(Error::General("connection broken".into()))
+            .unwrap();
+
+        timeout(TEST_GUARD_TIMEOUT, async {
+            while node.state() != NodeState::Down {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("monitor did not mark the metadata node down");
+        assert_eq!(contact_point.state(), NodeState::Up);
     }
 }

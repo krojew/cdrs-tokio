@@ -391,15 +391,16 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         node_info: NodeInfo,
         node_distance_evaluator: &dyn NodeDistanceEvaluator,
     ) -> Self {
-        // control points might have valid state already, so no need to reset
+        // Contact points live as long as the session, so sharing their connectivity would keep
+        // pools open after the node leaves the cluster. Their state might be valid already, so it
+        // is copied rather than reset.
         Self {
-            shared: Arc::new(NodeShared {
-                connection_pool_factory: self.shared.connection_pool_factory.clone(),
-                connection_pool: self.shared.connection_pool.clone(),
-                broadcast_rpc_address: self.broadcast_rpc_address(),
-                distance: node_distance_evaluator.compute_distance(&node_info),
-                state: Atomic::new(self.state()),
-            }),
+            shared: Arc::new(NodeShared::new(
+                self.shared.connection_pool_factory.clone(),
+                self.broadcast_rpc_address(),
+                node_distance_evaluator.compute_distance(&node_info),
+                self.state(),
+            )),
             broadcast_address: node_info.broadcast_address,
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,
