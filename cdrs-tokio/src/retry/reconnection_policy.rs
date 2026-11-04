@@ -76,13 +76,34 @@ impl ReconnectionSchedule for NeverReconnectionSchedule {
 /// field controls only when the delay saturates - it is the number of doublings before
 /// `base_delay` reaches `max_delay`, NOT a hard cap on the number of reconnection attempts.
 /// Use [`NeverReconnectionPolicy`] if you want to avoid reconnections entirely.
-#[derive(Copy, Clone, Constructor, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ExponentialReconnectionPolicy {
     base_delay: Duration,
     max_delay: Duration,
     /// Attempts after which the delay has saturated at [`Self::max_delay`]. Subsequent
     /// reconnection attempts continue to be scheduled near `max_delay` indefinitely.
     max_attempts: usize,
+}
+
+impl ExponentialReconnectionPolicy {
+    /// Creates a new policy.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `base_delay` is greater than `max_delay`.
+    #[inline]
+    pub const fn new(base_delay: Duration, max_delay: Duration, max_attempts: usize) -> Self {
+        assert!(
+            base_delay.as_nanos() <= max_delay.as_nanos(),
+            "ExponentialReconnectionPolicy base_delay must not be greater than max_delay!"
+        );
+
+        ExponentialReconnectionPolicy {
+            base_delay,
+            max_delay,
+            max_attempts,
+        }
+    }
 }
 
 impl ReconnectionPolicy for ExponentialReconnectionPolicy {
@@ -158,7 +179,20 @@ impl ExponentialReconnectionSchedule {
 #[cfg(test)]
 mod tests {
     use crate::retry::reconnection_policy::ExponentialReconnectionSchedule;
-    use crate::retry::ReconnectionSchedule;
+    use crate::retry::{ExponentialReconnectionPolicy, ReconnectionSchedule};
+
+    #[test]
+    #[should_panic(expected = "base_delay must not be greater than max_delay")]
+    fn exponential_policy_rejects_base_delay_above_max_delay() {
+        use std::time::Duration;
+        ExponentialReconnectionPolicy::new(Duration::from_secs(2), Duration::from_secs(1), 1);
+    }
+
+    #[test]
+    fn exponential_policy_accepts_equal_base_and_max_delay() {
+        use std::time::Duration;
+        ExponentialReconnectionPolicy::new(Duration::from_secs(1), Duration::from_secs(1), 1);
+    }
 
     #[test]
     fn should_reach_max_exponential_delay_without_panic() {
