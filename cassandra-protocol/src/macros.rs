@@ -54,14 +54,12 @@ macro_rules! list_as_rust {
                     Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.as_ref();
                         let protocol_version = self.protocol_version;
-                        let convert = self
-                            .map(|bytes| {
-                                as_rust_type!(type_option_ref, bytes, protocol_version, List)
-                                    .unwrap()
-                                    // item in a list supposed to be a non-null value.
-                                    // TODO: check if it's true
-                                    .unwrap()
-                            });
+                        let mut convert = Vec::with_capacity(self.data.len());
+                        for bytes in self.data.iter() {
+                            if let Some(value) = as_rust_type!(type_option_ref, bytes, protocol_version, List)? {
+                                convert.push(value);
+                            }
+                        }
 
                         Ok(Some(convert))
                     },
@@ -80,14 +78,12 @@ macro_rules! list_as_rust {
                     Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.as_ref();
                         let protocol_version = self.protocol_version;
-                        let convert = self
-                            .map(|bytes| {
-                                as_rust_type!(type_option_ref, bytes, protocol_version, Map)
-                                    .unwrap()
-                                    // item in a list supposed to be a non-null value.
-                                    // TODO: check if it's true
-                                    .unwrap()
-                            });
+                        let mut convert = Vec::with_capacity(self.data.len());
+                        for bytes in self.data.iter() {
+                            if let Some(value) = as_rust_type!(type_option_ref, bytes, protocol_version, Map)? {
+                                convert.push(value);
+                            }
+                        }
 
                         Ok(Some(convert))
                     },
@@ -106,14 +102,12 @@ macro_rules! list_as_rust {
                     Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.as_ref();
                         let protocol_version = self.protocol_version;
-                        let convert = self
-                            .map(|bytes| {
-                                as_rust_type!(type_option_ref, bytes, protocol_version, Udt)
-                                    .unwrap()
-                                    // item in a list supposed to be a non-null value.
-                                    // TODO: check if it's true
-                                    .unwrap()
-                            });
+                        let mut convert = Vec::with_capacity(self.data.len());
+                        for bytes in self.data.iter() {
+                            if let Some(value) = as_rust_type!(type_option_ref, bytes, protocol_version, Udt)? {
+                                convert.push(value);
+                            }
+                        }
 
                         Ok(Some(convert))
                     },
@@ -132,14 +126,12 @@ macro_rules! list_as_rust {
                     Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.as_ref();
                         let protocol_version = self.protocol_version;
-                        let convert = self
-                            .map(|bytes| {
-                                as_rust_type!(type_option_ref, bytes, protocol_version, Tuple)
-                                    .unwrap()
-                                    // item in a list supposed to be a non-null value.
-                                    // TODO: check if it's true
-                                    .unwrap()
-                            });
+                        let mut convert = Vec::with_capacity(self.data.len());
+                        for bytes in self.data.iter() {
+                            if let Some(value) = as_rust_type!(type_option_ref, bytes, protocol_version, Tuple)? {
+                                convert.push(value);
+                            }
+                        }
 
                         Ok(Some(convert))
                     },
@@ -157,14 +149,12 @@ macro_rules! list_as_rust {
                     Some(ColTypeOptionValue::CList(ref type_option)) |
                     Some(ColTypeOptionValue::CSet(ref type_option)) => {
                         let type_option_ref = type_option.as_ref();
-                        let convert = self
-                            .map(|bytes| {
-                                as_rust_type!(type_option_ref, bytes, $($into_type)+)
-                                    .unwrap()
-                                    // item in a list supposed to be a non-null value.
-                                    // TODO: check if it's true
-                                    .unwrap()
-                            });
+                        let mut convert = Vec::with_capacity(self.data.len());
+                        for bytes in self.data.iter() {
+                            if let Some(value) = as_rust_type!(type_option_ref, bytes, $($into_type)+)? {
+                                convert.push(value);
+                            }
+                        }
 
                         Ok(Some(convert))
                     },
