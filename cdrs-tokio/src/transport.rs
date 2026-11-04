@@ -21,16 +21,17 @@ use derive_more::Constructor;
 use futures::FutureExt;
 use fxhash::FxHashMap;
 use itertools::Itertools;
+use std::collections::VecDeque;
 use std::io;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicI16, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tokio::io::{
     split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, BufWriter, ReadHalf,
     WriteHalf,
 };
 use tokio::net::TcpStream;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Semaphore};
 use tokio::task::JoinHandle;
 #[cfg(feature = "rust-tls")]
 use tokio_rustls::rustls::{pki_types::ServerName, ClientConfig};
@@ -518,7 +519,22 @@ impl AsyncTransport {
             frame_stream_ids.clear();
 
             loop {
-                let stream_id = response_handler_map.next_stream_id();
+                let stream_id = match response_handler_map.try_next_stream_id() {
+                    Some(stream_id) => stream_id,
+                    None => {
+                        // all stream ids are in flight - send everything pending, so that
+                        // responses can free some
+                        Self::flush_pending(
+                            &mut write_half,
+                            response_handler_map,
+                            &mut frame_stream_ids,
+                            frame_encoder.as_mut(),
+                        )
+                        .await?;
+
+                        response_handler_map.next_stream_id().await?
+                    }
+                };
                 frame_stream_ids.push(stream_id);
 
                 request.set_stream_id(stream_id);
@@ -578,29 +594,42 @@ impl AsyncTransport {
                 request = match write_receiver.try_recv() {
                     Ok(request) => request,
                     Err(_) => {
-                        if frame_encoder.has_envelopes() {
-                            Self::write_self_contained_frame(
-                                &mut write_half,
-                                response_handler_map,
-                                &mut frame_stream_ids,
-                                frame_encoder.as_mut(),
-                            )
-                            .await?;
-                        }
-
-                        if let Err(error) = write_half.flush().await {
-                            Self::notify_error_handlers(
-                                response_handler_map,
-                                &mut frame_stream_ids,
-                                error.into(),
-                            )?;
-                            return Err(Error::General("Write channel failure!".into()));
-                        }
+                        Self::flush_pending(
+                            &mut write_half,
+                            response_handler_map,
+                            &mut frame_stream_ids,
+                            frame_encoder.as_mut(),
+                        )
+                        .await?;
 
                         break;
                     }
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    async fn flush_pending(
+        write_half: &mut (impl AsyncWrite + Unpin),
+        response_handler_map: &ResponseHandlerMap,
+        frame_stream_ids: &mut Vec<StreamId>,
+        frame_encoder: &mut (dyn FrameEncoder + Send + Sync),
+    ) -> Result<()> {
+        if frame_encoder.has_envelopes() {
+            Self::write_self_contained_frame(
+                write_half,
+                response_handler_map,
+                frame_stream_ids,
+                frame_encoder,
+            )
+            .await?;
+        }
+
+        if let Err(error) = write_half.flush().await {
+            Self::notify_error_handlers(response_handler_map, frame_stream_ids, error.into())?;
+            return Err(Error::General("Write channel failure!".into()));
         }
 
         Ok(())
@@ -702,15 +731,22 @@ type ResponseHandler = oneshot::Sender<Result<Envelope>>;
 
 struct ResponseHandlerMap {
     stream_handlers: Mutex<FxHashMap<StreamId, ResponseHandler>>,
-    available_stream_id: AtomicI16,
+    // Responses are matched with requests by stream id, so an id can be handed out again only
+    // after a response (or an error) has been sent to the handler of its previous request.
+    free_stream_ids: Mutex<VecDeque<StreamId>>,
+    // one permit per free stream id
+    free_stream_id_permits: Semaphore,
 }
 
 impl ResponseHandlerMap {
     #[inline]
     pub fn new() -> Self {
+        let free_stream_ids: VecDeque<_> = (INITIAL_STREAM_ID..=StreamId::MAX).collect();
+
         ResponseHandlerMap {
             stream_handlers: Default::default(),
-            available_stream_id: AtomicI16::new(INITIAL_STREAM_ID),
+            free_stream_id_permits: Semaphore::new(free_stream_ids.len()),
+            free_stream_ids: Mutex::new(free_stream_ids),
         }
     }
 
@@ -723,8 +759,10 @@ impl ResponseHandlerMap {
     }
 
     pub fn send_response(&self, stream_id: StreamId, response: Result<Envelope>) -> Result<()> {
-        match self.stream_handlers.lock().unwrap().remove(&stream_id) {
+        let handler = self.stream_handlers.lock().unwrap().remove(&stream_id);
+        match handler {
             Some(handler) => {
+                self.release_stream_id(stream_id);
                 let _ = handler.send(response);
                 Ok(())
             }
@@ -734,60 +772,38 @@ impl ResponseHandlerMap {
     }
 
     pub fn signal_general_error(&self, error: &Error) {
-        for (_, handler) in self.stream_handlers.lock().unwrap().drain() {
+        let handlers: Vec<_> = self.stream_handlers.lock().unwrap().drain().collect();
+        for (stream_id, handler) in handlers {
+            self.release_stream_id(stream_id);
             let _ = handler.send(Err(error.clone()));
         }
     }
 
-    pub fn next_stream_id(&self) -> StreamId {
-        // We allocate stream ids in [INITIAL_STREAM_ID, i16::MAX] inclusive,
-        // wrapping back to INITIAL_STREAM_ID once the maximum has been used.
-        //
-        // The previous implementation called `fetch_add` and then tried to
-        // compare-and-swap the *pre-increment* value back to INITIAL when it
-        // saw a negative result. By construction the post-increment value is
-        // already on the counter at that point, so the CAS expected the wrong
-        // value and almost never succeeded under contention - the counter
-        // would walk through ~32K negative values before yielding usable ids
-        // again, and could yield stream id 0 (which we never want).
-        //
-        // Using a CAS loop that observes the current value and atomically
-        // computes both the value to return AND the next counter state keeps
-        // every returned id strictly inside the allowed range and skips no
-        // ids on wrap.
-        //
-        // Memory ordering: the caller publishes the freshly-allocated
-        // stream id by writing it into the request body and then registering
-        // a handler in the Mutex-protected stream_handlers map. The Mutex
-        // already provides the necessary happens-before for the reader, so
-        // Relaxed would be sufficient today; we use Release on the success
-        // leg as defence in depth so any future change to a lock-free
-        // handler map keeps the publish ordering intact.
-        loop {
-            let current = self.available_stream_id.load(Ordering::Relaxed);
-            let (return_value, new_value) = if current < INITIAL_STREAM_ID {
-                // defensive: counter somehow ended up below INITIAL (e.g. a
-                // future caller stored a bad value). Recover by snapping back
-                // to the start of the range.
-                (INITIAL_STREAM_ID, INITIAL_STREAM_ID + 1)
-            } else if current == i16::MAX {
-                // last id in the range - return it and wrap the counter
-                // straight back to INITIAL_STREAM_ID for the next caller.
-                (i16::MAX, INITIAL_STREAM_ID)
-            } else {
-                (current, current + 1)
-            };
+    /// Takes a free stream id, if one is available.
+    pub fn try_next_stream_id(&self) -> Option<StreamId> {
+        self.free_stream_id_permits.try_acquire().ok()?.forget();
+        self.take_free_stream_id()
+    }
 
-            if self
-                .available_stream_id
-                .compare_exchange_weak(current, new_value, Ordering::Release, Ordering::Relaxed)
-                .is_ok()
-            {
-                return return_value;
-            }
-            // CAS lost the race; another thread updated the counter. Reload
-            // and try again - we'll get the next id in sequence.
-        }
+    /// Takes a free stream id, waiting for one to be released if all are in flight.
+    pub async fn next_stream_id(&self) -> Result<StreamId> {
+        self.free_stream_id_permits
+            .acquire()
+            .await
+            .map_err(|_| Error::General("Stream ids are no longer available!".into()))?
+            .forget();
+
+        self.take_free_stream_id()
+            .ok_or_else(|| Error::General("No free stream id despite a permit!".into()))
+    }
+
+    fn take_free_stream_id(&self) -> Option<StreamId> {
+        self.free_stream_ids.lock().unwrap().pop_front()
+    }
+
+    fn release_stream_id(&self, stream_id: StreamId) {
+        self.free_stream_ids.lock().unwrap().push_back(stream_id);
+        self.free_stream_id_permits.add_permits(1);
     }
 }
 
@@ -857,26 +873,33 @@ mod stream_id_tests {
     #[test]
     fn next_stream_id_starts_at_initial_value() {
         let map = ResponseHandlerMap::new();
-        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID);
-        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID + 1);
+        assert_eq!(map.try_next_stream_id(), Some(INITIAL_STREAM_ID));
+        assert_eq!(map.try_next_stream_id(), Some(INITIAL_STREAM_ID + 1));
     }
 
-    #[test]
-    fn next_stream_id_wraps_to_initial_after_overflow() {
+    #[tokio::test]
+    async fn stream_ids_are_handed_out_again_only_after_release() {
         let map = ResponseHandlerMap::new();
-        // arrange the counter so the very next fetch_add overflows i16
-        map.available_stream_id.store(i16::MAX, Ordering::Relaxed);
 
-        // the call right at the boundary still returns the last positive id
-        assert_eq!(map.next_stream_id(), i16::MAX);
+        // every positive id is handed out exactly once
+        let stream_ids: Vec<_> = std::iter::from_fn(|| map.try_next_stream_id()).collect();
+        assert_eq!(
+            stream_ids,
+            (INITIAL_STREAM_ID..=StreamId::MAX).collect::<Vec<_>>()
+        );
 
-        // after the wrap, all returned ids must remain valid (positive) and
-        // the sequence must restart at INITIAL_STREAM_ID. Without the fix the
-        // function would either burn ~32K negative ids before yielding 0, or
-        // return 0 itself, neither of which is correct for our protocol.
-        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID);
-        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID + 1);
-        assert_eq!(map.next_stream_id(), INITIAL_STREAM_ID + 2);
+        let (handler, _receiver) = oneshot::channel();
+        map.add_handler(5, handler);
+
+        let next_stream_id = map.next_stream_id();
+        tokio::pin!(next_stream_id);
+        assert!(next_stream_id.as_mut().now_or_never().is_none());
+
+        map.send_response(5, Err(Error::General("test".into())))
+            .unwrap();
+
+        assert_eq!(next_stream_id.await.unwrap(), 5);
+        assert_eq!(map.try_next_stream_id(), None);
     }
 }
 
@@ -1009,6 +1032,139 @@ mod transport_tests {
             error.is_some(),
             "error handler was dropped without a notification"
         );
+    }
+
+    fn numbered_request(number: u32) -> Envelope {
+        Envelope::new(
+            Version::V4,
+            Direction::Request,
+            Flags::empty(),
+            Opcode::Options,
+            0,
+            number.to_be_bytes().to_vec(),
+            None,
+            vec![],
+        )
+    }
+
+    #[tokio::test]
+    async fn stream_ids_of_requests_in_flight_are_not_reused() {
+        const OTHER_REQUESTS: u32 = i16::MAX as u32 + 100;
+
+        let mut connection = connect();
+        handshake(&mut connection).await;
+
+        let TestConnection {
+            transport,
+            mut server,
+            ..
+        } = connection;
+        let transport = Arc::new(transport);
+
+        let held_response = tokio::spawn({
+            let transport = transport.clone();
+            async move { transport.write_envelope(&numbered_request(0), false).await }
+        });
+        let held_request = server.read_request().await;
+
+        // the server answers every other request right away and the held one last
+        let server = tokio::spawn(async move {
+            for _ in 0..OTHER_REQUESTS {
+                let request = server.read_request().await;
+                assert_ne!(
+                    request.stream_id, held_request.stream_id,
+                    "stream id of a request in flight was reused"
+                );
+
+                server
+                    .respond(request.stream_id, Opcode::Supported, request.body)
+                    .await;
+            }
+
+            server
+                .respond(held_request.stream_id, Opcode::Supported, held_request.body)
+                .await;
+
+            server
+        });
+
+        let mut client_result = Ok(());
+        for number in 1..=OTHER_REQUESTS {
+            match transport
+                .write_envelope(&numbered_request(number), false)
+                .await
+            {
+                Ok(response) => assert_eq!(response.body, number.to_be_bytes()),
+                Err(error) => {
+                    client_result = Err(error);
+                    break;
+                }
+            }
+        }
+
+        let _server = match server.await {
+            Ok(server) => server,
+            Err(error) => std::panic::resume_unwind(error.into_panic()),
+        };
+        client_result.unwrap();
+
+        let held_response = held_response.await.unwrap().unwrap();
+        assert_eq!(held_response.body, 0u32.to_be_bytes());
+    }
+
+    #[tokio::test]
+    async fn request_waits_for_free_stream_id_when_all_are_in_flight() {
+        const STREAM_IDS: u32 = StreamId::MAX as u32;
+
+        let mut connection = connect();
+        handshake(&mut connection).await;
+
+        let TestConnection {
+            transport,
+            mut server,
+            ..
+        } = connection;
+        let transport = Arc::new(transport);
+
+        // one request more than there are stream ids
+        let responses = tokio::spawn(futures::future::join_all((0..=STREAM_IDS).map(
+            move |number| {
+                let transport = transport.clone();
+                async move {
+                    transport
+                        .write_envelope(&numbered_request(number), false)
+                        .await
+                }
+            },
+        )));
+
+        let mut requests = Vec::with_capacity(STREAM_IDS as usize + 1);
+        for _ in 0..STREAM_IDS {
+            requests.push(server.read_request().await);
+        }
+
+        let answered = requests.remove(0);
+        server
+            .respond(answered.stream_id, Opcode::Supported, answered.body)
+            .await;
+
+        let waiting = server.read_request().await;
+        assert_eq!(waiting.stream_id, answered.stream_id);
+        requests.push(waiting);
+
+        for request in requests {
+            server
+                .respond(request.stream_id, Opcode::Supported, request.body)
+                .await;
+        }
+
+        let responses = timeout(TEST_GUARD_TIMEOUT, responses)
+            .await
+            .expect("not all responses arrived")
+            .unwrap();
+        for (number, response) in responses.into_iter().enumerate() {
+            assert_eq!(response.unwrap().body, (number as u32).to_be_bytes());
+        }
     }
 
     fn create_failure_handler() -> (
