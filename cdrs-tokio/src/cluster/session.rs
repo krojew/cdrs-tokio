@@ -6,11 +6,13 @@ use cassandra_protocol::events::ServerEvent;
 use cassandra_protocol::frame::message_error::{ErrorType, UnpreparedError};
 use cassandra_protocol::frame::message_query::BodyReqQuery;
 use cassandra_protocol::frame::message_response::ResponseBody;
-use cassandra_protocol::frame::message_result::{BodyResResultPrepared, TableSpec};
-use cassandra_protocol::frame::{Envelope, Flags, Serialize, Version};
+use cassandra_protocol::frame::message_result::{
+    BodyResResultPrepared, ResultKind, RowsMetadataFlags, TableSpec,
+};
+use cassandra_protocol::frame::{Envelope, Flags, FromCursor, Opcode, Serialize, Version};
 use cassandra_protocol::query::{PreparedQuery, QueryBatch, QueryValues};
 use cassandra_protocol::types::value::Value;
-use cassandra_protocol::types::{CBytesShort, CIntShort, SHORT_LEN};
+use cassandra_protocol::types::{CBytes, CBytesShort, CInt, CIntShort, SHORT_LEN};
 use derivative::Derivative;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
@@ -93,6 +95,38 @@ fn prepare_flags(with_tracing: bool, with_warnings: bool, beta_protocol: bool) -
     }
 
     flags
+}
+
+/// Reads the new result metadata id announced by a rows response (protocol v5), decoding only the
+/// beginning of the rows metadata.
+fn peek_new_metadata_id(envelope: &Envelope) -> Option<CBytesShort> {
+    if envelope.opcode != Opcode::Result {
+        return None;
+    }
+
+    let version = envelope.version;
+    let mut cursor = Cursor::new(envelope.body.as_slice());
+
+    if ResultKind::from_cursor(&mut cursor, version).ok()? != ResultKind::Rows {
+        return None;
+    }
+
+    let flags =
+        RowsMetadataFlags::from_bits_truncate(CInt::from_cursor(&mut cursor, version).ok()?);
+    if !flags.contains(RowsMetadataFlags::METADATA_CHANGED)
+        || flags.contains(RowsMetadataFlags::NO_METADATA)
+    {
+        return None;
+    }
+
+    // columns count
+    CInt::from_cursor(&mut cursor, version).ok()?;
+
+    if flags.contains(RowsMetadataFlags::HAS_MORE_PAGES) {
+        CBytes::from_cursor(&mut cursor, version).ok()?;
+    }
+
+    CBytesShort::from_cursor(&mut cursor, version).ok()
 }
 
 fn create_keyspace_holder() -> (Arc<KeyspaceHolder>, watch::Receiver<Option<String>>) {
@@ -347,21 +381,12 @@ impl<
                 break result;
             };
 
-            let response = result
-                .as_ref()
-                .map_err(|error| error.clone())
-                .and_then(|result| result.response_body());
-
-            let new_metadata_id = response.as_ref().map(|result| {
-                result
-                    .as_rows_metadata()
-                    .and_then(|metadata| metadata.new_metadata_id.as_ref())
-            });
-
-            if let Ok(Some(new_metadata_id)) = new_metadata_id {
-                prepared
-                    .result_metadata_id
-                    .swap(Some(Arc::new(new_metadata_id.clone())));
+            if self.version >= Version::V5 {
+                if let Some(new_metadata_id) = result.as_ref().ok().and_then(peek_new_metadata_id) {
+                    prepared
+                        .result_metadata_id
+                        .swap(Some(Arc::new(new_metadata_id)));
+                }
             }
 
             result
@@ -1634,7 +1659,8 @@ pub(crate) mod test_session {
 mod tests {
     use crate::cluster::session::test_session::*;
     use crate::cluster::session::{
-        prepare_flags, serialize_routing_key, AbortOnDropHandle, Session, MAX_REPREPARE_ATTEMPTS,
+        peek_new_metadata_id, prepare_flags, serialize_routing_key, AbortOnDropHandle, Session,
+        MAX_REPREPARE_ATTEMPTS,
     };
     use crate::cluster::test_support::*;
     use crate::cluster::{ClusterMetadata, Murmur3Token};
@@ -1647,10 +1673,13 @@ mod tests {
     use arc_swap::ArcSwapOption;
     use cassandra_protocol::error::Error;
     use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType, UnpreparedError};
+    use cassandra_protocol::frame::message_result::{
+        BodyResResultRows, ColType, ResResultBody, RowsMetadataFlags,
+    };
     use cassandra_protocol::frame::{Flags, Opcode, Version};
     use cassandra_protocol::query::{BatchQueryBuilder, PreparedQuery, QueryValues};
     use cassandra_protocol::types::value::Value;
-    use cassandra_protocol::types::CBytesShort;
+    use cassandra_protocol::types::{CBytes, CBytesShort};
     use futures::future::ready;
     use futures::FutureExt;
     use itertools::Itertools;
@@ -2040,6 +2069,92 @@ mod tests {
                 Some(Murmur3Token::new(42)),
                 Some(serialize_routing_key(&explicit_routing_key(), Version::V4))
             )]
+        );
+    }
+
+    fn changed_metadata_rows_body(
+        new_metadata_id: &CBytesShort,
+        has_more_pages: bool,
+        version: Version,
+    ) -> BodyResResultRows {
+        let mut body = rows_body(
+            vec![("id", simple_type(ColType::Int))],
+            vec![vec![CBytes::new(vec![0, 0, 0, 1])]],
+            version,
+        );
+
+        body.metadata
+            .flags
+            .insert(RowsMetadataFlags::METADATA_CHANGED);
+        body.metadata.new_metadata_id = Some(new_metadata_id.clone());
+
+        if has_more_pages {
+            body.metadata
+                .flags
+                .insert(RowsMetadataFlags::HAS_MORE_PAGES);
+            body.metadata.paging_state = Some(CBytes::new(vec![1, 2, 3]));
+        }
+
+        body
+    }
+
+    #[test]
+    fn should_peek_new_metadata_id() {
+        let new_metadata_id = CBytesShort::new(vec![9, 9]);
+
+        for has_more_pages in [false, true] {
+            let body = changed_metadata_rows_body(&new_metadata_id, has_more_pages, Version::V5);
+            let response = result_response(ResResultBody::Rows(body), Version::V5);
+
+            assert_eq!(
+                peek_new_metadata_id(&response).as_ref(),
+                Some(&new_metadata_id)
+            );
+        }
+    }
+
+    #[test]
+    fn should_not_peek_new_metadata_id_when_metadata_is_unchanged() {
+        let body = rows_body(
+            vec![("id", simple_type(ColType::Int))],
+            vec![vec![CBytes::new(vec![0, 0, 0, 1])]],
+            Version::V5,
+        );
+
+        assert!(
+            peek_new_metadata_id(&result_response(ResResultBody::Rows(body), Version::V5))
+                .is_none()
+        );
+        assert!(peek_new_metadata_id(&void_response(Version::V5)).is_none());
+        assert!(
+            peek_new_metadata_id(&prepared_response(&CBytesShort::new(vec![1]), Version::V5))
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn should_update_result_metadata_id_without_decoding_rows() {
+        let new_metadata_id = CBytesShort::new(vec![9, 9]);
+
+        // rows count promises a row which is not there, so decoding the rows fails
+        let mut body = changed_metadata_rows_body(&new_metadata_id, true, Version::V5);
+        body.rows_count = 2;
+
+        let response = result_response(ResResultBody::Rows(body), Version::V5);
+        let session = create_session(
+            &[node_address(1)],
+            TestConnectionManager::new(move |_, _| ready(Ok(response.clone())).boxed()),
+            TestRoundRobin::new(),
+            None,
+            Version::V5,
+        );
+
+        let prepared = prepared_query(CBytesShort::new(vec![1]));
+        session.exec(&prepared).await.unwrap();
+
+        assert_eq!(
+            prepared.result_metadata_id.load().as_deref(),
+            Some(&new_metadata_id)
         );
     }
 
