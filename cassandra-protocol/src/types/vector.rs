@@ -2,6 +2,7 @@ use crate::error::{Error, Result};
 use crate::frame::message_result::{ColType, ColTypeOption, ColTypeOptionValue};
 use crate::frame::Version;
 use crate::types::data_serialization_types::*;
+use crate::types::value::Bytes;
 use crate::types::{AsRust, AsRustType, CBytes};
 use derive_more::Constructor;
 use itertools::Itertools;
@@ -28,6 +29,30 @@ impl Vector {
 pub struct VectorInfo {
     pub internal_type: String,
     pub count: usize,
+}
+
+/// A `vector<float, n>` value for binding to a query. Unlike a `Vec<f32>`, which binds as a
+/// `list<float>`, the elements are encoded back to back without a count or element lengths.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct FloatVector(pub Vec<f32>);
+
+impl From<Vec<f32>> for FloatVector {
+    #[inline]
+    fn from(value: Vec<f32>) -> Self {
+        FloatVector(value)
+    }
+}
+
+impl From<FloatVector> for Bytes {
+    fn from(value: FloatVector) -> Self {
+        Bytes::new(
+            value
+                .0
+                .into_iter()
+                .flat_map(|element| element.to_be_bytes())
+                .collect(),
+        )
+    }
 }
 
 const VECTOR_TYPE_CLASS: &str = "org.apache.cassandra.db.marshal.VectorType";
@@ -124,6 +149,27 @@ mod tests {
 
         let converted: Result<Option<Vec<f32>>> = vector.as_rust_type();
         assert!(converted.is_err());
+    }
+
+    #[test]
+    fn float_vector_binds_as_concatenated_elements() {
+        use crate::frame::Serialize;
+        use crate::types::value::Value;
+
+        // vector<float, 3> [1.0, 2.5, -2.0]: IEEE 754 binary32 big-endian elements concatenated
+        // without a count or per-element lengths
+        let expected = vec![
+            0x3F, 0x80, 0x00, 0x00, 0x40, 0x20, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00,
+        ];
+
+        let bytes: Bytes = FloatVector::from(vec![1.0, 2.5, -2.0]).into();
+        assert_eq!(bytes.into_inner(), expected);
+
+        let value = Value::from(FloatVector(vec![1.0, 2.5, -2.0]));
+        assert_eq!(
+            value.serialize_to_vec(Version::V5),
+            [vec![0x00, 0x00, 0x00, 0x0C], expected].concat()
+        );
     }
 
     #[test]
