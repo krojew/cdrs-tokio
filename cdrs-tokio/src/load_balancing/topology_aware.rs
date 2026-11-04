@@ -44,17 +44,32 @@ fn network_topology_strategy_replica_nodes<T: CdrsTransport, CM: ConnectionManag
     datacenter_replication_factor: &FxHashMap<String, usize>,
     cluster: &ClusterMetadata<T, CM>,
 ) -> Vec<Arc<Node<T, CM>>> {
+    network_topology_strategy_replicas_from_ring(
+        cluster.token_map().distinct_nodes_for_token(token),
+        datacenter_replication_factor,
+        cluster,
+    )
+}
+
+// Picks replicas from distinct nodes in ring order, consuming no more of the ring than needed.
+fn network_topology_strategy_replicas_from_ring<'a, T: CdrsTransport, CM: ConnectionManager<T>>(
+    ring: impl Iterator<Item = &'a Arc<Node<T, CM>>>,
+    datacenter_replication_factor: &FxHashMap<String, usize>,
+    cluster: &ClusterMetadata<T, CM>,
+) -> Vec<Arc<Node<T, CM>>> {
+    // A datacenter never holds more replicas than it has nodes. Without the cap, a replication
+    // factor above that count would make the walk below cover the whole ring.
     let mut remaining_replicas: FxHashMap<&str, usize> = datacenter_replication_factor
         .iter()
-        .map(|(dc, replication_factor)| (dc.as_str(), *replication_factor))
+        .map(|(dc, replication_factor)| {
+            (
+                dc.as_str(),
+                (*replication_factor).min(cluster.datacenter_node_count(dc)),
+            )
+        })
         .collect();
 
-    // replicas are never found in unknown datacenters, so don't wait for them before stopping
-    let desired_replica_count = datacenter_replication_factor
-        .iter()
-        .filter(|(dc, _)| cluster.datacenter(dc).is_some())
-        .map(|(_, replication_factor)| replication_factor)
-        .sum();
+    let desired_replica_count = remaining_replicas.values().sum();
     if desired_replica_count == 0 {
         return vec![];
     }
@@ -70,7 +85,7 @@ fn network_topology_strategy_replica_nodes<T: CdrsTransport, CM: ConnectionManag
     let mut result = Vec::with_capacity(desired_replica_count);
     let mut used_dc_racks: FxHashSet<(&str, &str)> = Default::default();
 
-    for replica in cluster.token_map().distinct_nodes_for_token(token) {
+    for replica in ring {
         if let Some(datacenter_replication_factor) =
             remaining_replicas.get_mut(replica.datacenter())
         {
@@ -331,13 +346,16 @@ mod tests {
     };
     use crate::cluster::ClusterMetadata;
     use crate::cluster::Murmur3Token;
-    use crate::load_balancing::topology_aware::network_topology_strategy_replica_nodes;
+    use crate::load_balancing::topology_aware::{
+        network_topology_strategy_replica_nodes, network_topology_strategy_replicas_from_ring,
+    };
     use crate::load_balancing::{
         LoadBalancingStrategy, Request, TopologyAwareLoadBalancingStrategy,
     };
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
     use itertools::Itertools;
+    use std::cell::Cell;
 
     static HOST_ID_1: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
     static HOST_ID_2: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
@@ -830,6 +848,43 @@ mod tests {
 
         assert_eq!(replica_ports(5), vec![2, 3, 1, 5, 6]);
         assert_eq!(replica_ports(65), vec![7, 8, 1, 2, 3]);
+    }
+
+    #[test]
+    fn should_stop_walking_ring_when_replication_factor_exceeds_dc_nodes() {
+        let nodes = [
+            create_node(1, NodeState::Up, &[0], "r1", "dc1"),
+            create_node(2, NodeState::Up, &[10], "r2", "dc1"),
+            create_node(3, NodeState::Up, &[20], "r1", "dc2"),
+            create_node(4, NodeState::Up, &[30], "r1", "dc2"),
+            create_node(5, NodeState::Up, &[40], "r1", "dc2"),
+            create_node(6, NodeState::Up, &[50], "r1", "dc2"),
+        ];
+        let datacenter_replication_factor = [("dc1", 3), ("dc2", 1)];
+        let cluster = create_nts_cluster(&nodes, &datacenter_replication_factor);
+        let replication_factor_map = datacenter_replication_factor
+            .iter()
+            .map(|(dc, replication_factor)| (dc.to_string(), *replication_factor))
+            .collect();
+
+        let visited_nodes = Cell::new(0);
+        let ring = cluster
+            .token_map()
+            .distinct_nodes_for_token(Murmur3Token::new(0))
+            .inspect(|_| visited_nodes.set(visited_nodes.get() + 1));
+
+        let replicas =
+            network_topology_strategy_replicas_from_ring(ring, &replication_factor_map, &cluster);
+
+        // both dc1 nodes are replicas despite RF 3, and nodes after the dc2 replica aren't visited
+        assert_eq!(
+            replicas
+                .iter()
+                .map(|node| node.broadcast_rpc_address().port())
+                .collect_vec(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(visited_nodes.get(), 3);
     }
 
     // nodes 2 and 3 are the remaining replicas, node 4 is not a replica

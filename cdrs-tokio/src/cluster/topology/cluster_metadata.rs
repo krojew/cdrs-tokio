@@ -31,6 +31,18 @@ fn build_datacenter_info<T: CdrsTransport, CM: ConnectionManager<T>>(
         .collect()
 }
 
+// Only nodes owning tokens appear in the token ring, so only they can be replicas.
+fn build_datacenter_node_counts<T: CdrsTransport, CM: ConnectionManager<T>>(
+    nodes: &NodeMap<T, CM>,
+) -> FxHashMap<String, usize> {
+    let mut node_counts: FxHashMap<String, usize> = Default::default();
+    for node in nodes.values().filter(|node| !node.tokens().is_empty()) {
+        *node_counts.entry(node.datacenter().into()).or_default() += 1;
+    }
+
+    node_counts
+}
+
 /// Immutable metadata of the Cassandra cluster that this driver instance is connected to.
 #[derive(Debug, Clone)]
 pub struct ClusterMetadata<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> {
@@ -38,17 +50,20 @@ pub struct ClusterMetadata<T: CdrsTransport + 'static, CM: ConnectionManager<T> 
     token_map: TokenMap<T, CM>,
     keyspaces: FxHashMap<String, KeyspaceMetadata>,
     datacenters: FxHashMap<String, DatacenterMetadata>,
+    datacenter_node_counts: FxHashMap<String, usize>,
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     pub fn new(nodes: NodeMap<T, CM>, keyspaces: FxHashMap<String, KeyspaceMetadata>) -> Self {
         let token_map = TokenMap::new(&nodes);
         let datacenters = build_datacenter_info(&nodes);
+        let datacenter_node_counts = build_datacenter_node_counts(&nodes);
         ClusterMetadata {
             nodes,
             token_map,
             keyspaces,
             datacenters,
+            datacenter_node_counts,
         }
     }
 
@@ -69,6 +84,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
             token_map: self.token_map.clone(),
             keyspaces,
             datacenters: self.datacenters.clone(),
+            datacenter_node_counts: self.datacenter_node_counts.clone(),
         }
     }
 
@@ -83,6 +99,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
             token_map: self.token_map.clone(),
             keyspaces,
             datacenters: self.datacenters.clone(),
+            datacenter_node_counts: self.datacenter_node_counts.clone(),
         }
     }
 
@@ -104,12 +121,14 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
         };
 
         let datacenters = build_datacenter_info(&nodes);
+        let datacenter_node_counts = build_datacenter_node_counts(&nodes);
 
         ClusterMetadata {
             nodes,
             token_map,
             keyspaces: self.keyspaces.clone(),
             datacenters,
+            datacenter_node_counts,
         }
     }
 
@@ -159,6 +178,12 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     #[inline]
     pub fn datacenter(&self, name: &str) -> Option<&DatacenterMetadata> {
         self.datacenters.get(name)
+    }
+
+    /// Returns the number of nodes owning tokens in the given datacenter.
+    #[inline]
+    pub(crate) fn datacenter_node_count(&self, name: &str) -> usize {
+        self.datacenter_node_counts.get(name).copied().unwrap_or(0)
     }
 
     /// Returns node that are not ignored for load balancing.
@@ -255,6 +280,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Default for ClusterMetadata<T, 
             token_map: Default::default(),
             keyspaces: Default::default(),
             datacenters: Default::default(),
+            datacenter_node_counts: Default::default(),
         }
     }
 }
