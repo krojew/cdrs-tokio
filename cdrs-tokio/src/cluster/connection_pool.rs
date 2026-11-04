@@ -633,7 +633,9 @@ pub(crate) struct ConnectionPool<T: CdrsTransport, CM: ConnectionManager<T>> {
     desired_size: usize,
     current_index: AtomicUsize,
     error_sender: mpsc::Sender<Error>,
-    // never sends; dropping it with the pool stops the pool's background tasks
+    // Never sends. The heartbeat and keyspace watcher exit as soon as it is dropped with the pool.
+    // The monitor exits once the error channel closes, after every transport holding its sender
+    // is dropped too.
     shutdown: watch::Sender<()>,
     // signaled by wake(); the reconnection task exits as soon as it is dropped with the pool
     wake: watch::Sender<()>,
