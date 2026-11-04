@@ -30,13 +30,26 @@ pub struct VectorInfo {
     pub count: usize,
 }
 
+const VECTOR_TYPE_CLASS: &str = "org.apache.cassandra.db.marshal.VectorType";
+
+/// Checks if a custom type option names the vector marshal type.
+pub(crate) fn is_vector_type(option_value: &ColTypeOptionValue) -> bool {
+    matches!(
+        option_value,
+        ColTypeOptionValue::CString(class_name)
+            if class_name.split('(').next().map(str::trim) == Some(VECTOR_TYPE_CLASS)
+    )
+}
+
 pub fn get_vector_type_info(option_value: &ColTypeOptionValue) -> Result<VectorInfo> {
     let input = match option_value {
         ColTypeOptionValue::CString(ref s) => s,
         _ => return Err(Error::General("Option value must be a string!".into())),
     };
 
-    let _custom_type = input.split('(').next().unwrap().rsplit('.').next().unwrap();
+    if !is_vector_type(option_value) {
+        return Err(Error::General(format!("{input} is not a vector type!")));
+    }
 
     let vector_type = input
         .split('(')
@@ -67,3 +80,69 @@ impl AsRust for Vector {}
 vector_as_rust!(f32);
 
 vector_as_cassandra_type!();
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn float_vector_type(count: usize) -> ColTypeOption {
+        ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(format!(
+                "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType, {count})"
+            ))),
+        }
+    }
+
+    #[test]
+    fn converts_float_vector() {
+        // IEEE 754 binary32 big-endian: 1.0, 2.5, -2.0
+        let vector = Vector::new(
+            float_vector_type(3),
+            vec![
+                CBytes::new(vec![0x3F, 0x80, 0x00, 0x00]),
+                CBytes::new(vec![0x40, 0x20, 0x00, 0x00]),
+                CBytes::new(vec![0xC0, 0x00, 0x00, 0x00]),
+            ],
+            Version::V5,
+        );
+
+        let converted: Option<Vec<f32>> = vector.as_rust_type().unwrap();
+        assert_eq!(converted, Some(vec![1.0, 2.5, -2.0]));
+    }
+
+    #[test]
+    fn null_float_vector_element_is_error() {
+        let vector = Vector::new(
+            float_vector_type(2),
+            vec![
+                CBytes::new(vec![0x3F, 0x80, 0x00, 0x00]),
+                CBytes::new_null(),
+            ],
+            Version::V5,
+        );
+
+        let converted: Result<Option<Vec<f32>>> = vector.as_rust_type();
+        assert!(converted.is_err());
+    }
+
+    #[test]
+    fn parses_vector_type_info() {
+        let info = get_vector_type_info(&ColTypeOptionValue::CString(
+            "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType,3)"
+                .into(),
+        ))
+        .unwrap();
+
+        assert_eq!(info.internal_type, "FloatType");
+        assert_eq!(info.count, 3);
+    }
+
+    #[test]
+    fn rejects_non_vector_custom_type_info() {
+        assert!(get_vector_type_info(&ColTypeOptionValue::CString(
+            "com.example.Pair(com.example.FloatType, 3)".into(),
+        ))
+        .is_err());
+    }
+}

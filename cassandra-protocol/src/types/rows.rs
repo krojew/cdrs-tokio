@@ -18,6 +18,7 @@ use crate::types::list::List;
 use crate::types::map::Map;
 use crate::types::tuple::Tuple;
 use crate::types::udt::Udt;
+use crate::types::vector::Vector;
 use crate::types::{ByIndex, ByName, CBytes, IntoRustByIndex, IntoRustByName};
 use num_bigint::BigInt;
 
@@ -101,6 +102,7 @@ into_rust_by_name!(Row, f32);
 into_rust_by_name!(Row, IpAddr);
 into_rust_by_name!(Row, Uuid);
 into_rust_by_name!(Row, List);
+into_rust_by_name!(Row, Vector);
 into_rust_by_name!(Row, Map);
 into_rust_by_name!(Row, Udt);
 into_rust_by_name!(Row, Tuple);
@@ -128,6 +130,7 @@ into_rust_by_index!(Row, f32);
 into_rust_by_index!(Row, IpAddr);
 into_rust_by_index!(Row, Uuid);
 into_rust_by_index!(Row, List);
+into_rust_by_index!(Row, Vector);
 into_rust_by_index!(Row, Map);
 into_rust_by_index!(Row, Udt);
 into_rust_by_index!(Row, Tuple);
@@ -140,3 +143,100 @@ into_rust_by_index!(Row, NonZeroI64);
 into_rust_by_index!(Row, NaiveDateTime);
 into_rust_by_index!(Row, DateTime<Utc>);
 into_rust_by_index!(Row, BigInt);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::message_result::RowsMetadataFlags;
+    use crate::types::AsRustType;
+
+    fn row_with_column(class_name: &str, value: CBytes) -> Row {
+        let metadata = RowsMetadata {
+            flags: RowsMetadataFlags::empty(),
+            columns_count: 1,
+            paging_state: None,
+            new_metadata_id: None,
+            global_table_spec: None,
+            col_specs: vec![ColSpec {
+                table_spec: None,
+                name: "embedding".into(),
+                col_type: ColTypeOption {
+                    id: ColType::Custom,
+                    value: Some(ColTypeOptionValue::CString(class_name.into())),
+                },
+            }],
+        };
+
+        Row::from_body(BodyResResultRows {
+            metadata,
+            rows_count: 1,
+            rows_content: vec![vec![value]],
+            protocol_version: Version::V5,
+        })
+        .remove(0)
+    }
+
+    const FLOAT_VECTOR_3: &str =
+        "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType, 3)";
+
+    #[test]
+    fn reads_float_vector_column() {
+        // vector<float, 3> [1.0, 2.5, -2.0]: fixed-size elements are concatenated without a count
+        // or per-element lengths
+        let row = row_with_column(
+            FLOAT_VECTOR_3,
+            CBytes::new(vec![
+                0x3F, 0x80, 0x00, 0x00, 0x40, 0x20, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00,
+            ]),
+        );
+
+        let by_name: Vector = row.r_by_name("embedding").unwrap();
+        let values: Vec<f32> = by_name.as_r_type().unwrap();
+        assert_eq!(values, vec![1.0, 2.5, -2.0]);
+
+        let by_index: Vector = row.r_by_index(0).unwrap();
+        let values: Vec<f32> = by_index.as_r_type().unwrap();
+        assert_eq!(values, vec![1.0, 2.5, -2.0]);
+    }
+
+    #[test]
+    fn reads_null_vector_column() {
+        let row = row_with_column(FLOAT_VECTOR_3, CBytes::new_null());
+
+        let by_name: Option<Vector> = row.by_name("embedding").unwrap();
+        assert!(by_name.is_none());
+    }
+
+    #[test]
+    fn truncated_vector_column_is_error() {
+        let row = row_with_column(
+            FLOAT_VECTOR_3,
+            CBytes::new(vec![0x3F, 0x80, 0x00, 0x00, 0x40, 0x20, 0x00, 0x00]),
+        );
+
+        let by_name: Result<Option<Vector>> = row.by_name("embedding");
+        assert!(by_name.is_err());
+    }
+
+    #[test]
+    fn non_float_vector_column_is_error() {
+        let row = row_with_column(
+            "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.Int32Type, 2)",
+            CBytes::new(vec![0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02]),
+        );
+
+        let by_name: Result<Option<Vector>> = row.by_name("embedding");
+        assert!(by_name.is_err());
+    }
+
+    #[test]
+    fn non_vector_custom_column_is_not_a_vector() {
+        let row = row_with_column(
+            "com.example.Pair(com.example.FloatType, 1)",
+            CBytes::new(vec![0x3F, 0x80, 0x00, 0x00]),
+        );
+
+        let by_name: Result<Option<Vector>> = row.by_name("embedding");
+        assert!(by_name.is_err());
+    }
+}

@@ -33,9 +33,9 @@ macro_rules! vector_as_rust {
             fn as_rust_type(&self) -> Result<Option<Vec<f32>>> {
                 let mut result: Vec<f32> = Vec::new();
                 for data_value in &self.data {
-                    let float = decode_float(data_value.as_slice().unwrap_or(Err(
-                        Error::General(format!("Failed to convert {:?} into float", data_value)),
-                    )?))?;
+                    let float = decode_float(data_value.as_slice().ok_or_else(|| {
+                        Error::General(format!("Failed to convert {:?} into float", data_value))
+                    })?)?;
                     result.push(float);
                 }
 
@@ -842,6 +842,19 @@ macro_rules! into_rust_by_index {
             }
         }
     );
+    (Row, Vector) => (
+        impl IntoRustByIndex<Vector> for Row {
+            fn get_by_index(&self, index: usize) -> Result<Option<Vector>> {
+                let protocol_version = self.protocol_version;
+                self.col_spec_by_index(index)
+                    .ok_or(column_is_empty_err(index))
+                    .and_then(|(col_spec, cbytes)| {
+                        let col_type = &col_spec.col_type;
+                        as_rust_type!(col_type, cbytes, protocol_version, Vector)
+                    })
+            }
+        }
+    );
     (Row, Map) => (
         impl IntoRustByIndex<Map> for Row {
             fn get_by_index(&self, index: usize) -> Result<Option<Map>> {
@@ -1355,17 +1368,29 @@ macro_rules! as_rust_type {
     };
     ($data_type_option:ident, $data_value:ident, $version:ident, Vector) => {
         match $data_type_option.id {
-            ColType::Custom => match $data_value.as_slice() {
-                Some(ref bytes) => {
-                    let crate::types::vector::VectorInfo { internal_type: _, count  } = crate::types::vector::get_vector_type_info($data_type_option.value.as_ref()?)?;
+            ColType::Custom => {
+                let crate::types::vector::VectorInfo { internal_type, count } = $data_type_option
+                    .value
+                    .as_ref()
+                    .ok_or_else(|| crate::error::Error::General("Custom type string is none".into()))
+                    .and_then(crate::types::vector::get_vector_type_info)?;
 
-                    decode_float_vector(bytes, $version, count)
+                if internal_type != "FloatType" {
+                    return Err(crate::error::Error::General(format!(
+                        "Invalid conversion. \
+                         Cannot convert Vector<{}> into Vector (valid types: Vector<FloatType>).",
+                        internal_type
+                    )));
+                }
+
+                match $data_value.as_slice() {
+                    Some(ref bytes) => decode_float_vector(bytes, $version, count)
                         .map(|data| Some(Vector::new($data_type_option.clone(), data, $version)))
-                        .map_err(Into::into)
-                },
-                None => Ok(None),
+                        .map_err(Into::into),
+                    None => Ok(None),
+                }
             },
-            _ => Err(crate::error::Error::(format!(
+            _ => Err(crate::error::Error::General(format!(
                 "Invalid conversion. \
                  Cannot convert {:?} into Vector (valid types: Custom).",
                 $data_type_option.id

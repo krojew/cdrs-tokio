@@ -81,7 +81,7 @@ pub mod wrappers {
     use crate::frame::Version;
     use crate::types::data_serialization_types::*;
     use crate::types::list::List;
-    use crate::types::vector::{get_vector_type_info, Vector, VectorInfo};
+    use crate::types::vector::{get_vector_type_info, is_vector_type, Vector, VectorInfo};
     use crate::types::AsCassandraType;
     use crate::types::CBytes;
     use crate::types::{map::Map, tuple::Tuple, udt::Udt};
@@ -91,26 +91,29 @@ pub mod wrappers {
         col_type: &ColTypeOption,
         version: Version,
     ) -> CDRSResult<CassandraType> {
-        if let ColTypeOption {
-            id: ColType::Custom,
-            value: Some(value),
-        } = col_type
-        {
-            let VectorInfo {
-                internal_type: _,
-                count,
-            } = get_vector_type_info(value)?;
+        let actual_bytes = match bytes.as_slice() {
+            Some(actual_bytes) => actual_bytes,
+            None => return Ok(CassandraType::Null),
+        };
 
-            if let Some(actual_bytes) = bytes.as_slice() {
-                let vector = decode_float_vector(actual_bytes, version, count)
+        match col_type {
+            ColTypeOption {
+                id: ColType::Custom,
+                value: Some(value),
+            } if is_vector_type(value) => {
+                let VectorInfo {
+                    internal_type: _,
+                    count,
+                } = get_vector_type_info(value)?;
+
+                Ok(decode_float_vector(actual_bytes, version, count)
                     .map(|data| Vector::new(col_type.clone(), data, version))?
                     .as_cassandra_type()?
-                    .unwrap_or(CassandraType::Null);
-                return Ok(vector);
+                    .unwrap_or(CassandraType::Null))
             }
+            // other custom types have no known structure; expose their raw bytes
+            _ => Ok(CassandraType::Blob(decode_blob(actual_bytes)?)),
         }
-
-        Ok(CassandraType::Null)
     }
 
     pub fn map(
@@ -461,5 +464,60 @@ pub mod wrappers {
             Some(t) => CassandraType::Duration(t),
             None => CassandraType::Null,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::frame::message_result::ColTypeOptionValue;
+
+    fn custom_type(class_name: &str) -> ColTypeOption {
+        ColTypeOption {
+            id: ColType::Custom,
+            value: Some(ColTypeOptionValue::CString(class_name.into())),
+        }
+    }
+
+    #[test]
+    fn custom_vector_type_converts_to_vector() {
+        let col_type = custom_type(
+            "org.apache.cassandra.db.marshal.VectorType(org.apache.cassandra.db.marshal.FloatType, 2)",
+        );
+        // IEEE 754 binary32 big-endian 1.0 and 2.5, concatenated
+        let bytes = CBytes::new(vec![0x3F, 0x80, 0x00, 0x00, 0x40, 0x20, 0x00, 0x00]);
+
+        assert_eq!(
+            wrapper_fn(&ColType::Custom)(&bytes, &col_type, Version::V5).unwrap(),
+            CassandraType::Vector(vec![CassandraType::Float(1.0), CassandraType::Float(2.5)])
+        );
+    }
+
+    #[test]
+    fn other_custom_types_convert_to_blob() {
+        for class_name in [
+            "com.example.CustomType",
+            "com.example.Pair(com.example.FloatType, 1)",
+        ] {
+            let col_type = custom_type(class_name);
+            let bytes = CBytes::new(vec![0x3F, 0x80, 0x00, 0x00]);
+
+            assert_eq!(
+                wrapper_fn(&ColType::Custom)(&bytes, &col_type, Version::V5).unwrap(),
+                CassandraType::Blob(vec![0x3F, 0x80, 0x00, 0x00].into()),
+                "{}",
+                class_name
+            );
+        }
+    }
+
+    #[test]
+    fn null_custom_value_converts_to_null() {
+        let col_type = custom_type("com.example.CustomType");
+
+        assert_eq!(
+            wrapper_fn(&ColType::Custom)(&CBytes::new_null(), &col_type, Version::V5).unwrap(),
+            CassandraType::Null
+        );
     }
 }
