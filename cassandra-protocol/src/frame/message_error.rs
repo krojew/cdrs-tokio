@@ -11,7 +11,7 @@ use crate::{error, Error};
 use derive_more::Display;
 use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 /// CDRS error which could be returned by Cassandra server as a response. As in the specification,
 /// it contains an error code and an error message. Apart of those depending of type of error,
@@ -62,8 +62,9 @@ impl ErrorBody {
 pub enum FailureInfo {
     /// Represents the number of nodes that experience a failure while executing the request.
     NumFailures(CInt),
-    /// Error code map for affected nodes.
-    ReasonMap(HashMap<IpAddr, CIntShort>),
+    /// Error code map for affected nodes. The protocol sends only node IP addresses, so the port
+    /// of every key is always 0.
+    ReasonMap(HashMap<SocketAddr, CIntShort>),
 }
 
 impl Serialize for FailureInfo {
@@ -75,7 +76,7 @@ impl Serialize for FailureInfo {
                 num_failures.serialize(cursor, version);
 
                 for (endpoint, error_code) in map {
-                    let address = match endpoint {
+                    let address = match endpoint.ip() {
                         IpAddr::V4(address) => address.octets().to_vec(),
                         IpAddr::V6(address) => address.octets().to_vec(),
                     };
@@ -112,8 +113,10 @@ impl FromCursor for FailureInfo {
                     let mut address_len = [0];
                     cursor.read_exact(&mut address_len)?;
 
-                    let endpoint =
-                        decode_inet(cursor_next_value_ref(cursor, address_len[0] as usize)?)?;
+                    let endpoint = SocketAddr::new(
+                        decode_inet(cursor_next_value_ref(cursor, address_len[0] as usize)?)?,
+                        0,
+                    );
                     let error_code = CIntShort::from_cursor(cursor, version)?;
                     map.insert(endpoint, error_code);
                 }
@@ -1061,7 +1064,7 @@ mod error_tests {
                 received: 1,
                 block_for: 1,
                 failure_info: FailureInfo::ReasonMap(HashMap::from([(
-                    IpAddr::V4(Ipv4Addr::LOCALHOST),
+                    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
                     1,
                 )])),
                 data_present: 1,
@@ -1092,7 +1095,7 @@ mod error_tests {
                 received: 1,
                 block_for: 2,
                 failure_info: FailureInfo::ReasonMap(HashMap::from([(
-                    IpAddr::V6(Ipv6Addr::LOCALHOST),
+                    SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), 0),
                     0,
                 )])),
                 write_type: WriteType::Simple,
