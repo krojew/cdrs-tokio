@@ -7,14 +7,23 @@ That's why CDRS driver was designed with multi-node support in mind. In order to
 ```rust
 use cdrs_tokio::authenticators::NoneAuthenticatorProvider;
 use cdrs_tokio::cluster::NodeTcpConfigBuilder;
+use std::sync::Arc;
 
-fn main() {
-  let cluster_config = NodeTcpConfigBuilder::new("127.0.0.1:9042".parse().unwrap(), Arc::new(NoneAuthenticatorProvider)).build();
+#[tokio::main]
+async fn main() {
+  let cluster_config = NodeTcpConfigBuilder::new()
+    .with_contact_point("127.0.0.1:9042".into())
+    .with_authenticator_provider(Arc::new(NoneAuthenticatorProvider))
+    .build()
+    .await
+    .unwrap();
   // ...
 }
 ```
 
-For each node configuration, `SaslAuthenticatorProvider` should be provided. `SaslAuthenticatorProvider` is a trait that the structure should implement so it can be used by CDRS session for authentication. Out of the box CDRS provides two types of authenticators:
+`build()` is async, because contact points given as host names are resolved, and returns a `Result`. Multiple contact points can be added with `with_contact_points`.
+
+A `SaslAuthenticatorProvider` is set with `with_authenticator_provider`; when none is set, `NoneAuthenticatorProvider` is used. `SaslAuthenticatorProvider` is a trait that the structure should implement so it can be used by CDRS session for authentication. Out of the box CDRS provides two types of authenticators:
 
 - `cdrs_tokio::authenticators::NoneAuthenticatorProvider` that should be used if authentication is disabled by a node ([Cassandra authenticator](http://cassandra.apache.org/doc/latest/configuration/cassandra_config_file.html#authenticator) is set to `AllowAllAuthenticator`) on server.
 
