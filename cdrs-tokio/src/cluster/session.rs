@@ -1826,7 +1826,14 @@ mod tests {
             )
             .await;
 
-        assert!(matches!(result, Err(Error::General(_))), "{:?}", result);
+        match result {
+            Err(Error::General(message)) => assert!(
+                message.starts_with("No active connections to:"),
+                "{}",
+                message
+            ),
+            other => panic!("Unexpected result: {:?}", other),
+        }
     }
 
     type RequestLog = Arc<Mutex<Vec<(SocketAddr, Opcode)>>>;
