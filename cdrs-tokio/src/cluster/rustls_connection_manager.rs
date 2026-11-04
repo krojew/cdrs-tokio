@@ -1,3 +1,5 @@
+#[cfg(feature = "http-proxy")]
+use crate::cluster::config_proxy::connect_host;
 use crate::cluster::connection_manager::{startup, ConnectionManager};
 #[cfg(feature = "http-proxy")]
 use crate::cluster::HttpProxyConfig;
@@ -93,7 +95,7 @@ impl RustlsConnectionManager {
             if let Some(auth) = &http_proxy.basic_auth {
                 http_connect_tokio_with_basic_auth(
                     &mut stream,
-                    &addr.ip().to_string(),
+                    &connect_host(addr),
                     addr.port(),
                     &auth.username,
                     &auth.password,
@@ -101,7 +103,7 @@ impl RustlsConnectionManager {
                 .await
                 .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
             } else {
-                http_connect_tokio(&mut stream, &addr.ip().to_string(), addr.port())
+                http_connect_tokio(&mut stream, &connect_host(addr), addr.port())
                     .await
                     .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
             }

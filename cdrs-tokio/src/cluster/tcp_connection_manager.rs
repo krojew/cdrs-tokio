@@ -1,3 +1,5 @@
+#[cfg(feature = "http-proxy")]
+use crate::cluster::config_proxy::connect_host;
 use crate::cluster::connection_manager::{startup, ConnectionManager};
 #[cfg(feature = "http-proxy")]
 use crate::cluster::HttpProxyConfig;
@@ -86,7 +88,7 @@ impl TcpConnectionManager {
             if let Some(auth) = &http_proxy.basic_auth {
                 http_connect_tokio_with_basic_auth(
                     &mut stream,
-                    &addr.ip().to_string(),
+                    &connect_host(addr),
                     addr.port(),
                     &auth.username,
                     &auth.password,
@@ -94,7 +96,7 @@ impl TcpConnectionManager {
                 .await
                 .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
             } else {
-                http_connect_tokio(&mut stream, &addr.ip().to_string(), addr.port())
+                http_connect_tokio(&mut stream, &connect_host(addr), addr.port())
                     .await
                     .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
             }
@@ -175,5 +177,69 @@ impl TcpConnectionManager {
         .await?;
 
         Ok(transport)
+    }
+}
+
+#[cfg(all(test, feature = "http-proxy"))]
+mod tests {
+    use super::*;
+    use crate::cluster::HttpProxyConfigBuilder;
+    use crate::frame_encoding::ProtocolFrameEncodingFactory;
+    use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
+    use std::net::Ipv6Addr;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpListener;
+    use tokio::sync::watch;
+
+    #[tokio::test]
+    async fn http_proxy_connect_request_brackets_ipv6_host() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let proxy_address = listener.local_addr().unwrap();
+
+        let proxy = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut stream = BufReader::new(stream);
+
+            let mut request_line = String::new();
+            stream.read_line(&mut request_line).await.unwrap();
+
+            loop {
+                let mut header = String::new();
+                if stream.read_line(&mut header).await.unwrap() == 0 || header == "\r\n" {
+                    break;
+                }
+            }
+
+            stream
+                .get_mut()
+                .write_all(b"HTTP/1.1 200 Connection established\r\n\r\n")
+                .await
+                .unwrap();
+
+            request_line
+        });
+
+        let (keyspace_sender, _) = watch::channel(None);
+        let manager = TcpConnectionManager::new(
+            Arc::new(NoneAuthenticatorProvider),
+            Arc::new(KeyspaceHolder::new(keyspace_sender)),
+            Box::new(ProtocolFrameEncodingFactory),
+            Compression::None,
+            32,
+            true,
+            Version::V4,
+            Some(HttpProxyConfigBuilder::new(proxy_address.to_string()).build()),
+        );
+
+        manager
+            .create_transport(
+                None,
+                None,
+                SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 9042),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(proxy.await.unwrap(), "CONNECT [::1]:9042 HTTP/1.1\r\n");
     }
 }

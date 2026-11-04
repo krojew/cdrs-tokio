@@ -1,4 +1,13 @@
 use std::fmt::{Debug, Formatter};
+use std::net::SocketAddr;
+
+/// Returns the host part of an HTTP CONNECT request target, with IPv6 literals in brackets.
+pub(crate) fn connect_host(addr: SocketAddr) -> String {
+    match addr {
+        SocketAddr::V4(addr) => addr.ip().to_string(),
+        SocketAddr::V6(addr) => format!("[{}]", addr.ip()),
+    }
+}
 
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub(crate) struct HttpBasicAuth {
@@ -54,6 +63,22 @@ impl HttpProxyConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn connect_host_brackets_only_ipv6() {
+        assert_eq!(
+            connect_host(SocketAddr::new(Ipv4Addr::new(10, 0, 0, 1).into(), 9042)),
+            "10.0.0.1"
+        );
+        assert_eq!(
+            connect_host(SocketAddr::new(
+                Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1).into(),
+                9042
+            )),
+            "[2001:db8::1]"
+        );
+    }
 
     #[test]
     fn debug_output_redacts_basic_auth_password() {
