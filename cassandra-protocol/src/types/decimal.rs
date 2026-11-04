@@ -1,6 +1,8 @@
 use derive_more::Constructor;
 use num_bigint::{BigInt, Sign};
+use std::convert::TryFrom;
 use std::io::Cursor;
+use thiserror::Error as ThisError;
 
 use crate::frame::{Serialize, Version};
 
@@ -93,32 +95,40 @@ impl Decimal {
     }
 }
 
-/// Converts a float into the decimal with the fewest digits that round-trips to the same float,
-/// e.g. `0.1` becomes `1` with scale `1`.
+/// Error converting a NaN or infinite float into a [`Decimal`], which CQL decimals cannot
+/// represent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ThisError)]
+#[error("Cannot convert a NaN or infinite float into a decimal")]
+pub struct NonFiniteFloatError;
+
+/// Converts a finite float into the decimal with the fewest digits that round-trips to the same
+/// float, e.g. `0.1` becomes `1` with scale `1`. Negative zero becomes zero.
 ///
-/// CQL decimals cannot represent NaN or infinities: NaN becomes zero, and positive and negative
-/// infinity become `i64::MAX` and `i64::MIN`, all with scale `0`. Negative zero becomes zero.
-impl From<f32> for Decimal {
-    fn from(f: f32) -> Decimal {
+/// NaN and infinities yield [`NonFiniteFloatError`].
+impl TryFrom<f32> for Decimal {
+    type Error = NonFiniteFloatError;
+
+    fn try_from(f: f32) -> Result<Decimal, NonFiniteFloatError> {
         if f.is_finite() {
-            Decimal::from_float_exponential(&format!("{f:e}"))
+            Ok(Decimal::from_float_exponential(&format!("{f:e}")))
         } else {
-            Decimal::new((f as i64).into(), 0)
+            Err(NonFiniteFloatError)
         }
     }
 }
 
-/// Converts a float into the decimal with the fewest digits that round-trips to the same float,
-/// e.g. `0.1` becomes `1` with scale `1`.
+/// Converts a finite float into the decimal with the fewest digits that round-trips to the same
+/// float, e.g. `0.1` becomes `1` with scale `1`. Negative zero becomes zero.
 ///
-/// CQL decimals cannot represent NaN or infinities: NaN becomes zero, and positive and negative
-/// infinity become `i64::MAX` and `i64::MIN`, all with scale `0`. Negative zero becomes zero.
-impl From<f64> for Decimal {
-    fn from(f: f64) -> Decimal {
+/// NaN and infinities yield [`NonFiniteFloatError`].
+impl TryFrom<f64> for Decimal {
+    type Error = NonFiniteFloatError;
+
+    fn try_from(f: f64) -> Result<Decimal, NonFiniteFloatError> {
         if f.is_finite() {
-            Decimal::from_float_exponential(&format!("{f:e}"))
+            Ok(Decimal::from_float_exponential(&format!("{f:e}")))
         } else {
-            Decimal::new((f as i64).into(), 0)
+            Err(NonFiniteFloatError)
         }
     }
 }
@@ -161,15 +171,15 @@ mod test {
     #[test]
     fn from_f32() {
         assert_eq!(
-            Decimal::from(12300001_f32),
+            Decimal::try_from(12300001_f32).unwrap(),
             Decimal::new(12300001.into(), 0)
         );
         assert_eq!(
-            Decimal::from(1230000.1_f32),
+            Decimal::try_from(1230000.1_f32).unwrap(),
             Decimal::new(12300001.into(), 1)
         );
         assert_eq!(
-            Decimal::from(0.12300001_f32),
+            Decimal::try_from(0.12300001_f32).unwrap(),
             Decimal::new(12300001.into(), 8)
         );
     }
@@ -177,15 +187,15 @@ mod test {
     #[test]
     fn from_f64() {
         assert_eq!(
-            Decimal::from(1230000000000001_f64),
+            Decimal::try_from(1230000000000001_f64).unwrap(),
             Decimal::new(1230000000000001i64.into(), 0)
         );
         assert_eq!(
-            Decimal::from(123000000000000.1f64),
+            Decimal::try_from(123000000000000.1f64).unwrap(),
             Decimal::new(1230000000000001i64.into(), 1)
         );
         assert_eq!(
-            Decimal::from(0.1230000000000001f64),
+            Decimal::try_from(0.1230000000000001f64).unwrap(),
             Decimal::new(1230000000000001i64.into(), 16)
         );
     }
@@ -199,10 +209,16 @@ mod test {
     // than to the exact binary value.
     #[test]
     fn from_f32_tolerates_inexact_floats() {
-        assert_eq!(Decimal::from(0.1f32), Decimal::new(1.into(), 1));
-        assert_eq!(Decimal::from(0.2f32), Decimal::new(2.into(), 1));
+        assert_eq!(
+            Decimal::try_from(0.1f32).unwrap(),
+            Decimal::new(1.into(), 1)
+        );
+        assert_eq!(
+            Decimal::try_from(0.2f32).unwrap(),
+            Decimal::new(2.into(), 1)
+        );
 
-        let third = Decimal::from(1.0f32 / 3.0f32);
+        let third = Decimal::try_from(1.0f32 / 3.0f32).unwrap();
         assert!(third.scale <= 18, "{:?}", third);
         assert!(
             (approximate_value(&third) - 1.0 / 3.0).abs() < 1e-6,
@@ -213,10 +229,16 @@ mod test {
 
     #[test]
     fn from_f64_tolerates_inexact_floats() {
-        assert_eq!(Decimal::from(0.1f64), Decimal::new(1.into(), 1));
-        assert_eq!(Decimal::from(0.2f64), Decimal::new(2.into(), 1));
+        assert_eq!(
+            Decimal::try_from(0.1f64).unwrap(),
+            Decimal::new(1.into(), 1)
+        );
+        assert_eq!(
+            Decimal::try_from(0.2f64).unwrap(),
+            Decimal::new(2.into(), 1)
+        );
 
-        let third = Decimal::from(1.0f64 / 3.0f64);
+        let third = Decimal::try_from(1.0f64 / 3.0f64).unwrap();
         assert!(third.scale <= 18, "{:?}", third);
         assert!(
             (approximate_value(&third) - 1.0 / 3.0).abs() < 1e-12,
@@ -228,11 +250,11 @@ mod test {
     #[test]
     fn from_f64_keeps_values_beyond_i64_range() {
         assert_eq!(
-            Decimal::from(1e20f64),
+            Decimal::try_from(1e20f64).unwrap(),
             Decimal::new(BigInt::from(10).pow(20), 0)
         );
         assert_eq!(
-            Decimal::from(-1e19f64),
+            Decimal::try_from(-1e19f64).unwrap(),
             Decimal::new(-BigInt::from(10).pow(19), 0)
         );
     }
@@ -240,53 +262,74 @@ mod test {
     #[test]
     fn from_f64_keeps_all_significant_digits() {
         assert_eq!(
-            Decimal::from(1000000000000000.5f64),
+            Decimal::try_from(1000000000000000.5f64).unwrap(),
             Decimal::new(10000000000000005i64.into(), 1)
         );
-        assert_eq!(Decimal::from(-0.5f64), Decimal::new((-5).into(), 1));
+        assert_eq!(
+            Decimal::try_from(-0.5f64).unwrap(),
+            Decimal::new((-5).into(), 1)
+        );
     }
 
     #[test]
     fn from_f64_keeps_small_values() {
-        assert_eq!(Decimal::from(1e-30f64), Decimal::new(1.into(), 30));
-        assert_eq!(Decimal::from(5e-324f64), Decimal::new(5.into(), 324));
+        assert_eq!(
+            Decimal::try_from(1e-30f64).unwrap(),
+            Decimal::new(1.into(), 30)
+        );
+        assert_eq!(
+            Decimal::try_from(5e-324f64).unwrap(),
+            Decimal::new(5.into(), 324)
+        );
     }
 
     #[test]
     fn from_f32_keeps_values_beyond_i64_range() {
         assert_eq!(
-            Decimal::from(3e38f32),
+            Decimal::try_from(3e38f32).unwrap(),
             Decimal::new(BigInt::from(3) * BigInt::from(10).pow(38), 0)
         );
-        assert_eq!(Decimal::from(1e-30f32), Decimal::new(1.into(), 30));
+        assert_eq!(
+            Decimal::try_from(1e-30f32).unwrap(),
+            Decimal::new(1.into(), 30)
+        );
     }
 
     #[test]
-    fn from_non_finite_floats() {
-        assert_eq!(Decimal::from(f64::NAN), Decimal::new(0.into(), 0));
+    fn from_non_finite_floats_is_error() {
+        assert_eq!(Decimal::try_from(f64::NAN), Err(NonFiniteFloatError));
+        assert_eq!(Decimal::try_from(f64::INFINITY), Err(NonFiniteFloatError));
         assert_eq!(
-            Decimal::from(f64::INFINITY),
-            Decimal::new(i64::MAX.into(), 0)
+            Decimal::try_from(f64::NEG_INFINITY),
+            Err(NonFiniteFloatError)
         );
+        assert_eq!(Decimal::try_from(f32::NAN), Err(NonFiniteFloatError));
+        assert_eq!(Decimal::try_from(f32::INFINITY), Err(NonFiniteFloatError));
         assert_eq!(
-            Decimal::from(f64::NEG_INFINITY),
-            Decimal::new(i64::MIN.into(), 0)
+            Decimal::try_from(f32::NEG_INFINITY),
+            Err(NonFiniteFloatError)
         );
-        assert_eq!(Decimal::from(f32::NAN), Decimal::new(0.into(), 0));
+    }
+
+    #[test]
+    fn non_finite_float_error_is_std_error() {
+        let error: Box<dyn std::error::Error> = Box::new(NonFiniteFloatError);
         assert_eq!(
-            Decimal::from(f32::INFINITY),
-            Decimal::new(i64::MAX.into(), 0)
-        );
-        assert_eq!(
-            Decimal::from(f32::NEG_INFINITY),
-            Decimal::new(i64::MIN.into(), 0)
+            error.to_string(),
+            "Cannot convert a NaN or infinite float into a decimal"
         );
     }
 
     #[test]
     fn from_negative_zero() {
-        assert_eq!(Decimal::from(-0.0f64), Decimal::new(0.into(), 0));
-        assert_eq!(Decimal::from(-0.0f32), Decimal::new(0.into(), 0));
+        assert_eq!(
+            Decimal::try_from(-0.0f64).unwrap(),
+            Decimal::new(0.into(), 0)
+        );
+        assert_eq!(
+            Decimal::try_from(-0.0f32).unwrap(),
+            Decimal::new(0.into(), 0)
+        );
     }
 
     #[test]
