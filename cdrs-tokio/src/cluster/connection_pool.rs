@@ -91,15 +91,33 @@ impl ConnectionPoolConfigBuilder {
     }
 
     /// Sets local node pool size.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `local_size` is 0.
     #[must_use]
     pub fn with_local_size(mut self, local_size: usize) -> Self {
+        assert!(
+            local_size > 0,
+            "Local connection pool size must be at least 1!"
+        );
+
         self.config.local_size = local_size;
         self
     }
 
     /// Sets remote node pool size.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `remote_size` is 0.
     #[must_use]
     pub fn with_remote_size(mut self, remote_size: usize) -> Self {
+        assert!(
+            remote_size > 0,
+            "Remote connection pool size must be at least 1!"
+        );
+
         self.config.remote_size = remote_size;
         self
     }
@@ -696,6 +714,18 @@ mod tests {
             "".into(),
             "".into(),
         ))
+    }
+
+    #[test]
+    #[should_panic(expected = "Local connection pool size must be at least 1")]
+    fn config_rejects_empty_local_pool() {
+        let _ = ConnectionPoolConfigBuilder::new().with_local_size(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Remote connection pool size must be at least 1")]
+    fn config_rejects_empty_remote_pool() {
+        let _ = ConnectionPoolConfigBuilder::new().with_remote_size(0);
     }
 
     #[tokio::test]
