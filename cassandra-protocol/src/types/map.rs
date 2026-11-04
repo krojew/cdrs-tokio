@@ -1,5 +1,7 @@
+use chrono::{DateTime, NaiveDateTime, Utc};
 use std::collections::HashMap;
 use std::net::IpAddr;
+use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
 use time::PrimitiveDateTime;
 use uuid::Uuid;
 
@@ -58,6 +60,12 @@ map_as_rust!({ Blob }, { Udt });
 map_as_rust!({ Blob }, { Tuple });
 map_as_rust!({ Blob }, { Decimal });
 map_as_rust!({ Blob }, { BigInt });
+map_as_rust!({ Blob }, { NaiveDateTime });
+map_as_rust!({ Blob }, { DateTime<Utc> });
+map_as_rust!({ Blob }, { NonZeroI8 });
+map_as_rust!({ Blob }, { NonZeroI16 });
+map_as_rust!({ Blob }, { NonZeroI32 });
+map_as_rust!({ Blob }, { NonZeroI64 });
 
 map_as_rust!({ String }, { Blob });
 map_as_rust!({ String }, { String });
@@ -77,6 +85,12 @@ map_as_rust!({ String }, { Udt });
 map_as_rust!({ String }, { Tuple });
 map_as_rust!({ String }, { Decimal });
 map_as_rust!({ String }, { BigInt });
+map_as_rust!({ String }, { NaiveDateTime });
+map_as_rust!({ String }, { DateTime<Utc> });
+map_as_rust!({ String }, { NonZeroI8 });
+map_as_rust!({ String }, { NonZeroI16 });
+map_as_rust!({ String }, { NonZeroI32 });
+map_as_rust!({ String }, { NonZeroI64 });
 
 map_as_rust!({ bool }, { Blob });
 map_as_rust!({ bool }, { String });
@@ -96,6 +110,12 @@ map_as_rust!({ bool }, { Udt });
 map_as_rust!({ bool }, { Tuple });
 map_as_rust!({ bool }, { Decimal });
 map_as_rust!({ bool }, { BigInt });
+map_as_rust!({ bool }, { NaiveDateTime });
+map_as_rust!({ bool }, { DateTime<Utc> });
+map_as_rust!({ bool }, { NonZeroI8 });
+map_as_rust!({ bool }, { NonZeroI16 });
+map_as_rust!({ bool }, { NonZeroI32 });
+map_as_rust!({ bool }, { NonZeroI64 });
 
 map_as_rust!({ i64 }, { Blob });
 map_as_rust!({ i64 }, { String });
@@ -115,6 +135,12 @@ map_as_rust!({ i64 }, { Udt });
 map_as_rust!({ i64 }, { Tuple });
 map_as_rust!({ i64 }, { Decimal });
 map_as_rust!({ i64 }, { BigInt });
+map_as_rust!({ i64 }, { NaiveDateTime });
+map_as_rust!({ i64 }, { DateTime<Utc> });
+map_as_rust!({ i64 }, { NonZeroI8 });
+map_as_rust!({ i64 }, { NonZeroI16 });
+map_as_rust!({ i64 }, { NonZeroI32 });
+map_as_rust!({ i64 }, { NonZeroI64 });
 
 map_as_rust!({ i32 }, { Blob });
 map_as_rust!({ i32 }, { String });
@@ -134,6 +160,12 @@ map_as_rust!({ i32 }, { Udt });
 map_as_rust!({ i32 }, { Tuple });
 map_as_rust!({ i32 }, { Decimal });
 map_as_rust!({ i32 }, { BigInt });
+map_as_rust!({ i32 }, { NaiveDateTime });
+map_as_rust!({ i32 }, { DateTime<Utc> });
+map_as_rust!({ i32 }, { NonZeroI8 });
+map_as_rust!({ i32 }, { NonZeroI16 });
+map_as_rust!({ i32 }, { NonZeroI32 });
+map_as_rust!({ i32 }, { NonZeroI64 });
 
 map_as_rust!({ i16 }, { Blob });
 map_as_rust!({ i16 }, { String });
@@ -153,6 +185,12 @@ map_as_rust!({ i16 }, { Udt });
 map_as_rust!({ i16 }, { Tuple });
 map_as_rust!({ i16 }, { Decimal });
 map_as_rust!({ i16 }, { BigInt });
+map_as_rust!({ i16 }, { NaiveDateTime });
+map_as_rust!({ i16 }, { DateTime<Utc> });
+map_as_rust!({ i16 }, { NonZeroI8 });
+map_as_rust!({ i16 }, { NonZeroI16 });
+map_as_rust!({ i16 }, { NonZeroI32 });
+map_as_rust!({ i16 }, { NonZeroI64 });
 
 map_as_rust!({ i8 }, { Blob });
 map_as_rust!({ i8 }, { String });
@@ -172,6 +210,12 @@ map_as_rust!({ i8 }, { Udt });
 map_as_rust!({ i8 }, { Tuple });
 map_as_rust!({ i8 }, { Decimal });
 map_as_rust!({ i8 }, { BigInt });
+map_as_rust!({ i8 }, { NaiveDateTime });
+map_as_rust!({ i8 }, { DateTime<Utc> });
+map_as_rust!({ i8 }, { NonZeroI8 });
+map_as_rust!({ i8 }, { NonZeroI16 });
+map_as_rust!({ i8 }, { NonZeroI32 });
+map_as_rust!({ i8 }, { NonZeroI64 });
 
 map_as_rust!({ IpAddr }, { Blob });
 map_as_rust!({ IpAddr }, { String });
@@ -191,6 +235,12 @@ map_as_rust!({ IpAddr }, { Udt });
 map_as_rust!({ IpAddr }, { Tuple });
 map_as_rust!({ IpAddr }, { Decimal });
 map_as_rust!({ IpAddr }, { BigInt });
+map_as_rust!({ IpAddr }, { NaiveDateTime });
+map_as_rust!({ IpAddr }, { DateTime<Utc> });
+map_as_rust!({ IpAddr }, { NonZeroI8 });
+map_as_rust!({ IpAddr }, { NonZeroI16 });
+map_as_rust!({ IpAddr }, { NonZeroI32 });
+map_as_rust!({ IpAddr }, { NonZeroI64 });
 
 map_as_rust!({ Uuid }, { Blob });
 map_as_rust!({ Uuid }, { String });
@@ -210,6 +260,12 @@ map_as_rust!({ Uuid }, { Udt });
 map_as_rust!({ Uuid }, { Tuple });
 map_as_rust!({ Uuid }, { Decimal });
 map_as_rust!({ Uuid }, { BigInt });
+map_as_rust!({ Uuid }, { NaiveDateTime });
+map_as_rust!({ Uuid }, { DateTime<Utc> });
+map_as_rust!({ Uuid }, { NonZeroI8 });
+map_as_rust!({ Uuid }, { NonZeroI16 });
+map_as_rust!({ Uuid }, { NonZeroI32 });
+map_as_rust!({ Uuid }, { NonZeroI64 });
 
 map_as_rust!({ PrimitiveDateTime }, { Blob });
 map_as_rust!({ PrimitiveDateTime }, { String });
@@ -229,6 +285,12 @@ map_as_rust!({ PrimitiveDateTime }, { Udt });
 map_as_rust!({ PrimitiveDateTime }, { Tuple });
 map_as_rust!({ PrimitiveDateTime }, { Decimal });
 map_as_rust!({ PrimitiveDateTime }, { BigInt });
+map_as_rust!({ PrimitiveDateTime }, { NaiveDateTime });
+map_as_rust!({ PrimitiveDateTime }, { DateTime<Utc> });
+map_as_rust!({ PrimitiveDateTime }, { NonZeroI8 });
+map_as_rust!({ PrimitiveDateTime }, { NonZeroI16 });
+map_as_rust!({ PrimitiveDateTime }, { NonZeroI32 });
+map_as_rust!({ PrimitiveDateTime }, { NonZeroI64 });
 
 map_as_rust!({ Tuple }, { Blob });
 map_as_rust!({ Tuple }, { String });
@@ -248,5 +310,72 @@ map_as_rust!({ Tuple }, { Udt });
 map_as_rust!({ Tuple }, { Tuple });
 map_as_rust!({ Tuple }, { Decimal });
 map_as_rust!({ Tuple }, { BigInt });
+map_as_rust!({ Tuple }, { NaiveDateTime });
+map_as_rust!({ Tuple }, { DateTime<Utc> });
+map_as_rust!({ Tuple }, { NonZeroI8 });
+map_as_rust!({ Tuple }, { NonZeroI16 });
+map_as_rust!({ Tuple }, { NonZeroI32 });
+map_as_rust!({ Tuple }, { NonZeroI64 });
 
 map_as_cassandra_type!();
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn map_of(value_type: ColType, data: Vec<(CBytes, CBytes)>) -> Map {
+        Map::new(
+            data,
+            ColTypeOption {
+                id: ColType::Map,
+                value: Some(ColTypeOptionValue::CMap(
+                    Box::new(ColTypeOption {
+                        id: ColType::Varchar,
+                        value: None,
+                    }),
+                    Box::new(ColTypeOption {
+                        id: value_type,
+                        value: None,
+                    }),
+                )),
+            },
+            Version::V4,
+        )
+    }
+
+    fn entry(key: &str, value: Vec<u8>) -> (CBytes, CBytes) {
+        (CBytes::new(key.as_bytes().to_vec()), CBytes::new(value))
+    }
+
+    #[test]
+    fn converts_timestamp_values_to_date_times() {
+        let map = map_of(
+            ColType::Timestamp,
+            vec![entry("a", (-1_500i64).to_be_bytes().to_vec())],
+        );
+        let expected = chrono::DateTime::from_timestamp(-2, 500_000_000).unwrap();
+
+        let utc: Option<HashMap<String, chrono::DateTime<chrono::Utc>>> =
+            map.as_rust_type().unwrap();
+        assert_eq!(utc, Some(HashMap::from([("a".to_string(), expected)])));
+
+        let naive: Option<HashMap<String, chrono::NaiveDateTime>> = map.as_rust_type().unwrap();
+        assert_eq!(
+            naive,
+            Some(HashMap::from([("a".to_string(), expected.naive_utc())]))
+        );
+    }
+
+    #[test]
+    fn converts_values_to_non_zero_integers() {
+        let map = map_of(ColType::Int, vec![entry("a", 5i32.to_be_bytes().to_vec())]);
+        let converted: Option<HashMap<String, std::num::NonZeroI32>> = map.as_rust_type().unwrap();
+        assert_eq!(
+            converted,
+            Some(HashMap::from([(
+                "a".to_string(),
+                std::num::NonZeroI32::new(5).unwrap()
+            )]))
+        );
+    }
+}

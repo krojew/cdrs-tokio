@@ -1,7 +1,10 @@
+use chrono::{DateTime, NaiveDateTime, Utc};
 use derive_more::Constructor;
 use itertools::Itertools;
 use num_bigint::BigInt;
 use std::net::IpAddr;
+use std::num::{NonZeroI16, NonZeroI32, NonZeroI64, NonZeroI8};
+use time::PrimitiveDateTime;
 use uuid::Uuid;
 
 use crate::error::{Error, Result};
@@ -53,6 +56,13 @@ list_as_rust!(Udt);
 list_as_rust!(Tuple);
 list_as_rust!(Decimal);
 list_as_rust!(BigInt);
+list_as_rust!(PrimitiveDateTime);
+list_as_rust!(NaiveDateTime);
+list_as_rust!(DateTime<Utc>);
+list_as_rust!(NonZeroI8);
+list_as_rust!(NonZeroI16);
+list_as_rust!(NonZeroI32);
+list_as_rust!(NonZeroI64);
 
 list_as_cassandra_type!();
 
@@ -128,5 +138,56 @@ mod tests {
         );
         let converted: Result<Option<Vec<List>>> = list.as_rust_type();
         assert!(converted.is_err());
+    }
+
+    fn bigint_bytes(value: i64) -> CBytes {
+        CBytes::new(value.to_be_bytes().to_vec())
+    }
+
+    #[test]
+    fn converts_timestamp_elements_to_date_times() {
+        let list = list_of(
+            ColType::Timestamp,
+            vec![bigint_bytes(1_500), bigint_bytes(-1_500)],
+        );
+        let expected = vec![
+            chrono::DateTime::from_timestamp(1, 500_000_000).unwrap(),
+            chrono::DateTime::from_timestamp(-2, 500_000_000).unwrap(),
+        ];
+
+        let utc: Option<Vec<chrono::DateTime<chrono::Utc>>> = list.as_rust_type().unwrap();
+        assert_eq!(utc, Some(expected.clone()));
+
+        let naive: Option<Vec<chrono::NaiveDateTime>> = list.as_rust_type().unwrap();
+        assert_eq!(
+            naive,
+            Some(expected.iter().map(|value| value.naive_utc()).collect())
+        );
+
+        let primitive: Option<Vec<time::PrimitiveDateTime>> = list.as_rust_type().unwrap();
+        assert_eq!(
+            primitive,
+            Some(vec![
+                time::macros::datetime!(1970-01-01 00:00:01.5),
+                time::macros::datetime!(1969-12-31 23:59:58.5),
+            ])
+        );
+    }
+
+    #[test]
+    fn converts_elements_to_non_zero_integers() {
+        let list = list_of(ColType::Int, vec![int_bytes(1), int_bytes(-2)]);
+        let converted: Option<Vec<std::num::NonZeroI32>> = list.as_rust_type().unwrap();
+        assert_eq!(
+            converted,
+            Some(vec![
+                std::num::NonZeroI32::new(1).unwrap(),
+                std::num::NonZeroI32::new(-2).unwrap(),
+            ])
+        );
+
+        let list = list_of(ColType::Bigint, vec![bigint_bytes(7)]);
+        let converted: Option<Vec<std::num::NonZeroI64>> = list.as_rust_type().unwrap();
+        assert_eq!(converted, Some(vec![std::num::NonZeroI64::new(7).unwrap()]));
     }
 }
