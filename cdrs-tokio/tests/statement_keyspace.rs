@@ -68,9 +68,7 @@ async fn statement_keyspace_test(session: CurrentSession) {
     for keyspace in ["cdrs_test", "cdrs_test_other"] {
         query_in_keyspace(
             &session,
-            &format!(
-                "INSERT INTO test_statement_keyspace (pk, value) VALUES (1, '{keyspace}')"
-            ),
+            &format!("INSERT INTO test_statement_keyspace (pk, value) VALUES (1, '{keyspace}')"),
             keyspace,
         )
         .await;
