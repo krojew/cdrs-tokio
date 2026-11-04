@@ -1,5 +1,5 @@
 use derive_more::Constructor;
-use num_bigint::BigInt;
+use num_bigint::{BigInt, Sign};
 use std::io::Cursor;
 
 use crate::frame::{Serialize, Version};
@@ -16,6 +16,12 @@ impl Decimal {
     ///
     /// Negative scale is handled by multiplying instead of dividing.
     pub fn as_plain(&self) -> BigInt {
+        // any scale leaves zero unchanged, and a large negative one would otherwise compute an
+        // arbitrarily large power of ten only to multiply it by zero
+        if self.unscaled.sign() == Sign::NoSign {
+            return BigInt::from(0);
+        }
+
         if self.scale >= 0 {
             let exponent = self.scale as u32;
             // 10^scale >= 2^scale > |unscaled| once scale reaches the bit length, so the result
@@ -316,6 +322,11 @@ mod test {
 
         let unscaled = BigInt::from(7) * BigInt::from(10).pow(40) + 3;
         assert_eq!(Decimal::new(unscaled, 40).as_plain(), BigInt::from(7));
+    }
+
+    #[test]
+    fn as_plain_of_zero_with_huge_negative_scale_is_zero() {
+        assert_eq!(Decimal::new(0.into(), i32::MIN).as_plain(), BigInt::from(0));
     }
 
     #[test]
