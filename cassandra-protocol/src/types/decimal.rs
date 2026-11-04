@@ -13,20 +13,19 @@ pub struct Decimal {
 }
 
 impl Decimal {
-    /// Method that returns plain `BigInt` value.
+    /// Method that returns plain `BigInt` value, with any fractional part truncated toward zero.
     ///
-    /// Negative scale is handled by multiplying instead of dividing - that
-    /// avoids the previous `scale as u32` cast which made a negative scale
-    /// wrap to a huge value and panic in `10i64.pow`.
+    /// Negative scale is handled by multiplying instead of dividing.
     pub fn as_plain(&self) -> BigInt {
         if self.scale >= 0 {
-            // dividing by 10^scale; use checked_pow on a u32 exponent so an
-            // out-of-range value yields a clean zero rather than panicking.
             let exponent = self.scale as u32;
-            match 10i64.checked_pow(exponent) {
-                Some(divisor) => self.unscaled.clone() / divisor,
-                None => BigInt::from(0),
+            // 10^scale >= 2^scale > |unscaled| once scale reaches the bit length, so the result
+            // is zero without computing an arbitrarily large power
+            if u64::from(exponent) >= self.unscaled.bits() {
+                return BigInt::from(0);
             }
+
+            self.unscaled.clone() / BigInt::from(10).pow(exponent)
         } else {
             // negative scale means the unscaled value should be multiplied
             // by 10^|scale| to recover the represented integer
@@ -183,34 +182,81 @@ mod test {
         );
     }
 
-    // 0.1 is not exactly representable in IEEE-754 float, so the previous
-    // implementation kept doubling `scale` looking for an exact match and
-    // eventually panicked on `10i64.pow(scale)` overflow when scale exceeded
-    // the number of significant digits. The conversion must terminate without
-    // panicking and produce a sensible Decimal.
+    fn approximate_value(decimal: &Decimal) -> f64 {
+        decimal.unscaled.to_string().parse::<f64>().unwrap() / 10f64.powi(decimal.scale)
+    }
+
+    // 0.1 is not exactly representable in IEEE-754 float, so an exact match
+    // between the scaled value and its truncation may never occur. The
+    // conversion must terminate and produce a close approximation.
     #[test]
     fn from_f32_tolerates_inexact_floats() {
-        let _decimal = Decimal::from(0.1f32);
-        let _decimal = Decimal::from(0.2f32);
-        let _decimal = Decimal::from(1.0f32 / 3.0f32);
+        assert_eq!(Decimal::from(0.1f32), Decimal::new(1.into(), 1));
+        assert_eq!(Decimal::from(0.2f32), Decimal::new(2.into(), 1));
+
+        let third = Decimal::from(1.0f32 / 3.0f32);
+        assert!(third.scale <= 18, "{:?}", third);
+        assert!(
+            (approximate_value(&third) - 1.0 / 3.0).abs() < 1e-6,
+            "{:?}",
+            third
+        );
     }
 
     #[test]
     fn from_f64_tolerates_inexact_floats() {
-        let _decimal = Decimal::from(0.1f64);
-        let _decimal = Decimal::from(0.2f64);
-        let _decimal = Decimal::from(1.0f64 / 3.0f64);
+        assert_eq!(Decimal::from(0.1f64), Decimal::new(1.into(), 1));
+        assert_eq!(Decimal::from(0.2f64), Decimal::new(2.into(), 1));
+
+        let third = Decimal::from(1.0f64 / 3.0f64);
+        assert!(third.scale <= 18, "{:?}", third);
+        assert!(
+            (approximate_value(&third) - 1.0 / 3.0).abs() < 1e-12,
+            "{:?}",
+            third
+        );
     }
 
-    // as_plain divides by 10^scale; if scale is negative the previous
-    // `scale as u32` cast wrapped to a huge value and `10i64.pow` panicked.
-    // The function should either reject negative scales or handle them.
     #[test]
-    fn as_plain_does_not_panic_on_negative_scale() {
-        let decimal = Decimal::new(5.into(), -3);
-        // Just verify it does not panic; we don't assert a specific value
-        // here because the semantics of negative scale aren't part of this
-        // bug fix - we only need to be safe.
-        let _ = decimal.as_plain();
+    fn as_plain_handles_negative_scale() {
+        assert_eq!(Decimal::new(5.into(), -3).as_plain(), BigInt::from(5000));
+        assert_eq!(
+            Decimal::new(BigInt::from(-5), -3).as_plain(),
+            BigInt::from(-5000)
+        );
+    }
+
+    #[test]
+    fn as_plain_truncates_fraction() {
+        assert_eq!(
+            Decimal::new(123456789.into(), 3).as_plain(),
+            BigInt::from(123456)
+        );
+        assert_eq!(
+            Decimal::new(BigInt::from(-123456789), 3).as_plain(),
+            BigInt::from(-123456)
+        );
+        assert_eq!(Decimal::new(5.into(), 30).as_plain(), BigInt::from(0));
+    }
+
+    #[test]
+    fn as_plain_handles_scale_beyond_i64_range() {
+        let unscaled = BigInt::from(12345) * BigInt::from(10).pow(19);
+        assert_eq!(
+            Decimal::new(unscaled.clone(), 19).as_plain(),
+            BigInt::from(12345)
+        );
+        assert_eq!(Decimal::new(-unscaled, 19).as_plain(), BigInt::from(-12345));
+
+        let unscaled = BigInt::from(7) * BigInt::from(10).pow(40) + 3;
+        assert_eq!(Decimal::new(unscaled, 40).as_plain(), BigInt::from(7));
+    }
+
+    #[test]
+    fn as_plain_with_huge_scale_is_zero() {
+        assert_eq!(
+            Decimal::new(BigInt::from(i64::MAX), i32::MAX).as_plain(),
+            BigInt::from(0)
+        );
     }
 }
