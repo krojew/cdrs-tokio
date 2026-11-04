@@ -264,7 +264,7 @@ async fn pre_epoch_timestamps_test(version: Version) {
             .and_then(|date| date.and_hms_milli_opt(hour, minute, second, milli))
             .expect("valid timestamp")
     };
-    let timestamps = vec![
+    let timestamps = [
         timestamp(1969, 7, 20, 20, 17, 40, 123),
         timestamp(1969, 12, 31, 23, 59, 59, 999),
         timestamp(1969, 12, 31, 23, 59, 59, 1),
