@@ -16,6 +16,8 @@ use cdrs_tokio::statement::StatementParamsBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::blob::Blob;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::types::duration::Duration;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::IntoCdrsValue;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::{TryFromRow, TryFromUdt};
@@ -651,6 +653,132 @@ async fn udt_with_null_fields_test(session: CurrentSession) {
 
     let rows = session
         .query("SELECT * FROM cdrs_test.test_derive_optional_udt")
+        .await
+        .expect("query")
+        .response_body()
+        .expect("get body")
+        .into_rows()
+        .expect("into rows");
+
+    let mut rows: Vec<RowStruct> = rows
+        .into_iter()
+        .map(|row| RowStruct::try_from_row(row).expect("into RowStruct"))
+        .collect();
+    rows.sort_by_key(|row| row.my_key);
+
+    assert_eq!(rows, expected);
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn durations_v4() {
+    let create_type_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.derive_duration_udt \
+                           (my_duration duration, my_optional duration, my_list list<duration>)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_derive_durations \
+                            (my_key int PRIMARY KEY, my_duration duration, my_optional duration, \
+                            my_list list<duration>, my_map map<text, duration>, \
+                            my_udt frozen<derive_duration_udt>)";
+    let session = setup_multiple(&[create_type_cql, create_table_cql], Version::V4)
+        .await
+        .expect("setup");
+
+    durations_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn durations_v5() {
+    let create_type_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.derive_duration_udt \
+                           (my_duration duration, my_optional duration, my_list list<duration>)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_derive_durations \
+                            (my_key int PRIMARY KEY, my_duration duration, my_optional duration, \
+                            my_list list<duration>, my_map map<text, duration>, \
+                            my_udt frozen<derive_duration_udt>)";
+    let session = setup_multiple(&[create_type_cql, create_table_cql], Version::V5)
+        .await
+        .expect("setup");
+
+    durations_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn durations_test(session: CurrentSession) {
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromUdt, PartialEq)]
+    struct DurationUdt {
+        my_duration: Duration,
+        my_optional: Option<Duration>,
+        my_list: Vec<Duration>,
+    }
+
+    #[derive(Clone, Debug, TryFromRow, PartialEq)]
+    struct RowStruct {
+        my_key: i32,
+        my_duration: Duration,
+        my_optional: Option<Duration>,
+        my_list: Vec<Duration>,
+        my_map: HashMap<String, Duration>,
+        my_udt: DurationUdt,
+    }
+
+    let duration =
+        |months, days, nanoseconds| Duration::new(months, days, nanoseconds).expect("duration");
+
+    let expected = vec![
+        RowStruct {
+            my_key: 0,
+            my_duration: duration(i32::MAX, i32::MAX, i64::MAX),
+            my_optional: None,
+            my_list: vec![],
+            my_map: HashMap::new(),
+            my_udt: DurationUdt {
+                my_duration: duration(i32::MIN, i32::MIN, i64::MIN),
+                my_optional: None,
+                my_list: vec![],
+            },
+        },
+        RowStruct {
+            my_key: 1,
+            my_duration: duration(1, 2, 3),
+            my_optional: Some(duration(-1, -2, -3)),
+            my_list: vec![
+                duration(64, 64, 64),
+                duration(0, 0, 0),
+                duration(-100, -1000, 0),
+            ],
+            my_map: hashmap! {
+                "a".to_string() => duration(14, 3, 0),
+                "b".to_string() => duration(0, 0, -5_000_000_000),
+            },
+            my_udt: DurationUdt {
+                my_duration: duration(0, 14, 123),
+                my_optional: Some(duration(2, 0, 0)),
+                my_list: vec![duration(1, 0, 0), duration(0, 1, 0), duration(0, 0, 1)],
+            },
+        },
+    ];
+
+    // Cassandra stores empty non-frozen collections as null, which decode as empty again
+    for row in &expected {
+        session
+            .query_with_values(
+                "INSERT INTO cdrs_test.test_derive_durations \
+                 (my_key, my_duration, my_optional, my_list, my_map, my_udt) \
+                 VALUES (?, ?, ?, ?, ?, ?)",
+                query_values!(
+                    row.my_key,
+                    row.my_duration,
+                    row.my_optional,
+                    row.my_list.clone(),
+                    row.my_map.clone(),
+                    row.my_udt.clone()
+                ),
+            )
+            .await
+            .expect("insert");
+    }
+
+    let rows = session
+        .query("SELECT * FROM cdrs_test.test_derive_durations")
         .await
         .expect("query")
         .response_body()

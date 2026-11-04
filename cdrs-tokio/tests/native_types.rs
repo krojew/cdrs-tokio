@@ -13,11 +13,17 @@ use cdrs_tokio::types::decimal::Decimal;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::duration::Duration;
 #[cfg(feature = "e2e-tests")]
+use cdrs_tokio::types::list::List;
+#[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::map::Map;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::types::tuple::Tuple;
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::types::udt::Udt;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::value::Bytes;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::types::{AsRust, ByName, IntoRustByName};
+use cdrs_tokio::types::{AsRust, ByName, IntoRustByIndex, IntoRustByName};
 #[cfg(feature = "e2e-tests")]
 use chrono::NaiveDate;
 #[cfg(feature = "e2e-tests")]
@@ -750,6 +756,136 @@ async fn duration_test(session: CurrentSession) {
         .collect();
 
     assert_eq!(actual, expected);
+
+    let rows = body.into_rows().expect("into rows");
+
+    let by_name: HashMap<i32, Duration> = rows
+        .iter()
+        .map(|row| {
+            (
+                row.get_r_by_name("id").expect("id by name"),
+                row.get_r_by_name("my_duration")
+                    .expect("my_duration by name"),
+            )
+        })
+        .collect();
+    assert_eq!(by_name, expected);
+
+    let by_index: HashMap<i32, Duration> = rows
+        .iter()
+        .map(|row| {
+            (
+                row.get_r_by_index(0).expect("id by index"),
+                row.get_r_by_index(1).expect("my_duration by index"),
+            )
+        })
+        .collect();
+    assert_eq!(by_index, expected);
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn duration_collections_v4() {
+    let create_type_cql =
+        "CREATE TYPE IF NOT EXISTS cdrs_test.duration_udt (my_duration duration, my_text text)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_duration_collections \
+         (id int PRIMARY KEY, my_list list<duration>, my_map map<text, duration>, \
+         my_udt frozen<duration_udt>, my_tuple tuple<duration, int>)";
+    let session = setup_multiple(&[create_type_cql, create_table_cql], Version::V4)
+        .await
+        .expect("setup");
+
+    duration_collections_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn duration_collections_v5() {
+    let create_type_cql =
+        "CREATE TYPE IF NOT EXISTS cdrs_test.duration_udt (my_duration duration, my_text text)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_duration_collections \
+         (id int PRIMARY KEY, my_list list<duration>, my_map map<text, duration>, \
+         my_udt frozen<duration_udt>, my_tuple tuple<duration, int>)";
+    let session = setup_multiple(&[create_type_cql, create_table_cql], Version::V5)
+        .await
+        .expect("setup");
+
+    duration_collections_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn duration_collections_test(session: CurrentSession) {
+    const NANOS_PER_SECOND: i64 = 1_000_000_000;
+
+    let id: i32 = 1;
+    let my_list = vec![
+        Duration::new(1, 2, 3).expect("valid duration"),
+        Duration::new(-1, -2, -3).expect("valid duration"),
+        Duration::new(i32::MAX, i32::MAX, i64::MAX).expect("valid duration"),
+    ];
+    let my_map = HashMap::from([
+        (
+            "a".to_string(),
+            Duration::new(0, 0, 0).expect("valid duration"),
+        ),
+        (
+            "b".to_string(),
+            Duration::new(64, 64, 64).expect("valid duration"),
+        ),
+        (
+            "c".to_string(),
+            Duration::new(i32::MIN, i32::MIN, i64::MIN).expect("valid duration"),
+        ),
+    ]);
+
+    session
+        .query_with_values(
+            "INSERT INTO cdrs_test.test_duration_collections \
+             (id, my_list, my_map, my_udt, my_tuple) \
+             VALUES (?, ?, ?, {my_duration: 1y2mo3d, my_text: 'udt'}, (4h5m6s, 7))",
+            query_values!(id, my_list.clone(), my_map.clone()),
+        )
+        .await
+        .expect("insert duration collections");
+
+    let rows = session
+        .query("SELECT * FROM cdrs_test.test_duration_collections")
+        .await
+        .expect("select duration collections")
+        .response_body()
+        .expect("body")
+        .into_rows()
+        .expect("into rows");
+    assert_eq!(rows.len(), 1);
+    let row = &rows[0];
+
+    let list: Vec<Duration> = row
+        .r_by_name::<List>("my_list")
+        .expect("my_list by name")
+        .as_r_rust()
+        .expect("my_list as r rust");
+    assert_eq!(list, my_list);
+
+    let map: HashMap<String, Duration> = row
+        .r_by_name::<Map>("my_map")
+        .expect("my_map by name")
+        .as_r_rust()
+        .expect("my_map as r rust");
+    assert_eq!(map, my_map);
+
+    let udt: Udt = row.get_r_by_name("my_udt").expect("my_udt");
+    let udt_duration: Duration = udt.get_r_by_name("my_duration").expect("udt my_duration");
+    assert_eq!(
+        udt_duration,
+        Duration::new(14, 3, 0).expect("valid duration")
+    );
+
+    let tuple: Tuple = row.get_r_by_name("my_tuple").expect("my_tuple");
+    let tuple_duration: Duration = tuple.get_r_by_index(0).expect("tuple duration");
+    assert_eq!(
+        tuple_duration,
+        Duration::new(0, 0, (4 * 3600 + 5 * 60 + 6) * NANOS_PER_SECOND).expect("valid duration")
+    );
 }
 
 #[tokio::test]
