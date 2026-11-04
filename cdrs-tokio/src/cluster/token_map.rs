@@ -1,3 +1,4 @@
+use fxhash::FxHashSet;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
@@ -63,28 +64,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
         token: Murmur3Token,
         replica_count: usize,
     ) -> impl Iterator<Item = Arc<Node<T, CM>>> + '_ {
-        // Iterate ring positions starting from `token` and wrap around. We
-        // can't use `Iterator::take(replica_count)` directly because
-        // `replica_count` counts unique nodes, not ring positions.
-        //
-        // The set tracks broadcast RPC addresses we've already yielded; this
-        // matches the identity used elsewhere in the load balancer
-        // (`unique_by(|node| node.broadcast_rpc_address())`).
-        let mut seen = std::collections::HashSet::with_capacity(replica_count);
-        self.token_ring
-            .range(token..)
-            .chain(self.token_ring.iter())
-            .filter_map(move |(_, node)| {
-                if seen.len() >= replica_count {
-                    // already collected the requested number of replicas
-                    return None;
-                }
-                if seen.insert(node.broadcast_rpc_address()) {
-                    Some(node.clone())
-                } else {
-                    None
-                }
-            })
+        self.distinct_nodes_for_token(token)
+            .take(replica_count)
+            .cloned()
     }
 
     /// Returns all distinct nodes starting at the given token and walking the
@@ -96,17 +78,21 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
         &self,
         token: Murmur3Token,
     ) -> impl Iterator<Item = Arc<Node<T, CM>>> + '_ {
-        let mut seen = std::collections::HashSet::new();
+        self.distinct_nodes_for_token(token).cloned()
+    }
+
+    /// Lazily walks the ring once, starting at the given token, yielding each distinct node (by
+    /// broadcast RPC address, the identity used by load balancers) the first time it's seen.
+    pub(crate) fn distinct_nodes_for_token(
+        &self,
+        token: Murmur3Token,
+    ) -> impl Iterator<Item = &Arc<Node<T, CM>>> + '_ {
+        let mut seen = FxHashSet::default();
         self.token_ring
             .range(token..)
-            .chain(self.token_ring.iter())
-            .filter_map(move |(_, node)| {
-                if seen.insert(node.broadcast_rpc_address()) {
-                    Some(node.clone())
-                } else {
-                    None
-                }
-            })
+            .chain(self.token_ring.range(..token))
+            .map(|(_, node)| node)
+            .filter(move |node| seen.insert(node.broadcast_rpc_address()))
     }
 
     /// Creates a new map with a new node inserted.
@@ -281,6 +267,105 @@ mod tests {
             .collect_vec();
         let host_ids: Vec<_> = nodes.iter().map(|n| n.host_id().unwrap()).collect();
         assert_eq!(host_ids, vec![*HOST_ID_1, *HOST_ID_3]);
+    }
+
+    fn prepare_vnode_nodes() -> NodeMap<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>
+    {
+        let (_, keyspace_receiver) = watch::channel(None);
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            MockConnectionManager::<MockCdrsTransport>::new(),
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        ));
+
+        // deterministic pseudo-random tokens
+        let mut state = 1u64;
+        let mut next_token = move || {
+            state = state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            Murmur3Token::new(state as i64)
+        };
+
+        let mut nodes = NodeMap::default();
+        for port in 1..=6 {
+            let host_id = Uuid::new_v4();
+            nodes.insert(
+                host_id,
+                Arc::new(Node::new(
+                    connection_pool_factory.clone(),
+                    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port),
+                    None,
+                    Some(host_id),
+                    None,
+                    (0..16).map(|_| next_token()).collect(),
+                    "".into(),
+                    "".into(),
+                )),
+            );
+        }
+
+        nodes
+    }
+
+    // distinct node addresses in ring order, starting at the given token
+    fn walk_ring(
+        nodes: &NodeMap<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>,
+        token: Murmur3Token,
+    ) -> Vec<SocketAddr> {
+        let ring = nodes
+            .values()
+            .flat_map(|node| node.tokens().iter().map(move |token| (*token, node)))
+            .sorted_by_key(|(token, _)| *token)
+            .collect_vec();
+        let start = ring
+            .iter()
+            .position(|(ring_token, _)| *ring_token >= token)
+            .unwrap_or(ring.len());
+
+        ring[start..]
+            .iter()
+            .chain(ring[..start].iter())
+            .map(|(_, node)| node.broadcast_rpc_address())
+            .unique()
+            .collect()
+    }
+
+    #[test]
+    fn should_walk_vnode_ring_in_order() {
+        let nodes = prepare_vnode_nodes();
+        let token_map = TokenMap::new(&nodes);
+
+        let tokens = nodes
+            .values()
+            .flat_map(|node| node.tokens().iter().copied())
+            .chain((-10..10).map(|i| Murmur3Token::new(i * (i64::MAX / 10))))
+            .collect_vec();
+
+        for token in tokens {
+            let expected = walk_ring(&nodes, token);
+            assert_eq!(expected.len(), nodes.len());
+
+            assert_eq!(
+                token_map
+                    .nodes_for_token(token)
+                    .map(|node| node.broadcast_rpc_address())
+                    .collect_vec(),
+                expected
+            );
+
+            for replica_count in 0..=nodes.len() + 1 {
+                assert_eq!(
+                    token_map
+                        .nodes_for_token_capped(token, replica_count)
+                        .map(|node| node.broadcast_rpc_address())
+                        .collect_vec(),
+                    expected[..replica_count.min(expected.len())]
+                );
+            }
+        }
     }
 
     #[test]

@@ -38,6 +38,76 @@ pub struct TopologyAwareLoadBalancingStrategy<T: CdrsTransport, CM: ConnectionMa
     _connection_manager: PhantomData<CM>,
 }
 
+// Replicas for the given token in ring order, including ignored nodes.
+fn network_topology_strategy_replica_nodes<T: CdrsTransport, CM: ConnectionManager<T>>(
+    token: Murmur3Token,
+    datacenter_replication_factor: &FxHashMap<String, usize>,
+    cluster: &ClusterMetadata<T, CM>,
+) -> Vec<Arc<Node<T, CM>>> {
+    let mut remaining_replicas: FxHashMap<&str, usize> = datacenter_replication_factor
+        .iter()
+        .map(|(dc, replication_factor)| (dc.as_str(), *replication_factor))
+        .collect();
+
+    // replicas are never found in unknown datacenters, so don't wait for them before stopping
+    let desired_replica_count = datacenter_replication_factor
+        .iter()
+        .filter(|(dc, _)| cluster.datacenter(dc).is_some())
+        .map(|(_, replication_factor)| replication_factor)
+        .sum();
+    if desired_replica_count == 0 {
+        return vec![];
+    }
+
+    let mut same_rack_replicas: FxHashMap<&str, usize> = datacenter_replication_factor
+        .iter()
+        .map(|(dc, replication_factor)| {
+            let rack_count = cluster.datacenter(dc).map(|dc| dc.rack_count).unwrap_or(0);
+            (dc.as_str(), replication_factor.saturating_sub(rack_count))
+        })
+        .collect();
+
+    let mut result = Vec::with_capacity(desired_replica_count);
+    let mut used_dc_racks: FxHashSet<(&str, &str)> = Default::default();
+
+    for replica in cluster.token_map().distinct_nodes_for_token(token) {
+        if let Some(datacenter_replication_factor) =
+            remaining_replicas.get_mut(replica.datacenter())
+        {
+            if *datacenter_replication_factor == 0 {
+                // found enough nodes in this datacenter
+                continue;
+            }
+
+            let current_node_dc = replica.datacenter();
+            let current_node_rack = replica.rack();
+
+            if used_dc_racks.contains(&(current_node_dc, current_node_rack)) {
+                // check if we need to put nodes from the same rack multiple times to meet
+                // the replication factor
+                if let Some(same_rack_replicas) = same_rack_replicas.get_mut(current_node_dc) {
+                    if *same_rack_replicas > 0 {
+                        *same_rack_replicas -= 1;
+                        *datacenter_replication_factor -= 1;
+                        result.push(replica.clone());
+                    }
+                }
+            } else {
+                *datacenter_replication_factor -= 1;
+
+                used_dc_racks.insert((current_node_dc, current_node_rack));
+                result.push(replica.clone());
+            }
+
+            if result.len() == desired_replica_count {
+                break;
+            }
+        }
+    }
+
+    result
+}
+
 impl<T: CdrsTransport, CM: ConnectionManager<T>> LoadBalancingStrategy<T, CM>
     for TopologyAwareLoadBalancingStrategy<T, CM>
 {
@@ -116,7 +186,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
                 datacenter_replication_factor,
             } => self.network_topology_strategy_replicas(
                 token,
-                datacenter_replication_factor.clone(),
+                datacenter_replication_factor,
                 consistency,
                 cluster,
             ),
@@ -127,7 +197,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
     fn network_topology_strategy_replicas(
         &self,
         token: Murmur3Token,
-        mut datacenter_replication_factor: FxHashMap<String, usize>,
+        datacenter_replication_factor: &FxHashMap<String, usize>,
         consistency: Option<Consistency>,
         cluster: &ClusterMetadata<T, CM>,
     ) -> QueryPlan<T, CM> {
@@ -142,57 +212,11 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TopologyAwareLoadBalancingStrat
         // Replica placement doesn't depend on node state, so ignored nodes are
         // removed only after placement - otherwise a non-replica would take
         // the place of an ignored replica.
-        let replicas = cluster.token_map().nodes_for_token(token).collect_vec();
-
-        let desired_replica_count = datacenter_replication_factor.values().sum();
-        let mut same_rack_replicas: FxHashMap<String, usize> = datacenter_replication_factor
-            .iter()
-            .map(|(dc, replication_factor)| {
-                let rack_count = cluster.datacenter(dc).map(|dc| dc.rack_count).unwrap_or(0);
-                (dc.into(), replication_factor.saturating_sub(rack_count))
-            })
-            .collect();
-
-        let mut result = Vec::with_capacity(desired_replica_count);
-        let mut used_dc_racks: FxHashSet<(&str, &str)> = Default::default();
-
-        for replica in &replicas {
-            if let Some(datacenter_replication_factor) =
-                datacenter_replication_factor.get_mut(replica.datacenter())
-            {
-                if *datacenter_replication_factor == 0 {
-                    // found enough nodes in this datacenter
-                    continue;
-                }
-
-                let current_node_dc = replica.datacenter();
-                let current_node_rack = replica.rack();
-
-                if used_dc_racks.contains(&(current_node_dc, current_node_rack)) {
-                    // check if we need to put nodes from the same rack multiple times to meet
-                    // the replication factor
-                    if let Some(same_rack_replicas) = same_rack_replicas.get_mut(current_node_dc) {
-                        if *same_rack_replicas > 0 {
-                            *same_rack_replicas -= 1;
-                            *datacenter_replication_factor -= 1;
-                            result.push(replica.clone());
-                        }
-                    }
-                } else {
-                    *datacenter_replication_factor -= 1;
-
-                    used_dc_racks.insert((current_node_dc, current_node_rack));
-                    result.push(replica.clone());
-                }
-
-                if result.len() == desired_replica_count {
-                    break;
-                }
-            }
-        }
+        let replicas =
+            network_topology_strategy_replica_nodes(token, datacenter_replication_factor, cluster);
 
         // unignored nodes always have a distance
-        let (mut local_replicas, remote_replicas): (Vec<_>, Vec<_>) = result
+        let (mut local_replicas, remote_replicas): (Vec<_>, Vec<_>) = replicas
             .into_iter()
             .filter(|node| !node.is_ignored())
             .partition(|node| node.is_local());
@@ -307,11 +331,13 @@ mod tests {
     };
     use crate::cluster::ClusterMetadata;
     use crate::cluster::Murmur3Token;
+    use crate::load_balancing::topology_aware::network_topology_strategy_replica_nodes;
     use crate::load_balancing::{
         LoadBalancingStrategy, Request, TopologyAwareLoadBalancingStrategy,
     };
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
+    use itertools::Itertools;
 
     static HOST_ID_1: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
     static HOST_ID_2: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4);
@@ -574,6 +600,178 @@ mod tests {
             .collect();
 
         assert!(first_nodes.len() > 1, "replicas were not shuffled");
+    }
+
+    fn create_multi_dc_vnode_cluster(
+    ) -> ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>> {
+        // deterministic pseudo-random tokens
+        let mut state = 7u64;
+        let mut next_tokens = move || {
+            (0..16)
+                .map(|_| {
+                    state = state
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
+                    state as i64
+                })
+                .collect_vec()
+        };
+
+        let mut nodes = vec![];
+        let mut port = 0;
+        for (dc, racks, node_count) in [
+            ("dc1", &["r1", "r2", "r3"][..], 6),
+            ("dc2", &["r1", "r2"][..], 4),
+            ("dc3", &["r1"][..], 2),
+        ]
+        .iter()
+        {
+            for index in 0..*node_count {
+                port += 1;
+                let state = if port % 5 == 0 {
+                    NodeState::Down
+                } else {
+                    NodeState::Up
+                };
+                nodes.push(create_node(
+                    port,
+                    state,
+                    &next_tokens(),
+                    racks[index % racks.len()],
+                    dc,
+                ));
+            }
+        }
+
+        create_test_cluster(&nodes, ReplicationStrategy::Other)
+    }
+
+    fn reference_nts_replica_ports(
+        token: Murmur3Token,
+        datacenter_replication_factor: &[(&str, usize)],
+        cluster: &ClusterMetadata<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>,
+    ) -> Vec<u16> {
+        let mut datacenter_replication_factor: FxHashMap<String, usize> =
+            datacenter_replication_factor
+                .iter()
+                .map(|(dc, replication_factor)| (dc.to_string(), *replication_factor))
+                .collect();
+
+        let ring = cluster
+            .nodes()
+            .values()
+            .flat_map(|node| node.tokens().iter().map(move |token| (*token, node)))
+            .sorted_by_key(|(token, _)| *token)
+            .collect_vec();
+        let start = ring
+            .iter()
+            .position(|(ring_token, _)| *ring_token >= token)
+            .unwrap_or(ring.len());
+        let replicas = ring[start..]
+            .iter()
+            .chain(ring[..start].iter())
+            .map(|(_, node)| *node)
+            .unique_by(|node| node.broadcast_rpc_address())
+            .collect_vec();
+
+        let desired_replica_count = datacenter_replication_factor.values().sum();
+        let mut same_rack_replicas: FxHashMap<String, usize> = datacenter_replication_factor
+            .iter()
+            .map(|(dc, replication_factor)| {
+                let rack_count = cluster.datacenter(dc).map(|dc| dc.rack_count).unwrap_or(0);
+                (dc.into(), replication_factor.saturating_sub(rack_count))
+            })
+            .collect();
+
+        let mut result: Vec<&TestNode> = Vec::with_capacity(desired_replica_count);
+        let mut used_dc_racks: FxHashSet<(&str, &str)> = Default::default();
+
+        for replica in &replicas {
+            if let Some(datacenter_replication_factor) =
+                datacenter_replication_factor.get_mut(replica.datacenter())
+            {
+                if *datacenter_replication_factor == 0 {
+                    continue;
+                }
+
+                let current_node_dc = replica.datacenter();
+                let current_node_rack = replica.rack();
+
+                if used_dc_racks.contains(&(current_node_dc, current_node_rack)) {
+                    if let Some(same_rack_replicas) = same_rack_replicas.get_mut(current_node_dc) {
+                        if *same_rack_replicas > 0 {
+                            *same_rack_replicas -= 1;
+                            *datacenter_replication_factor -= 1;
+                            result.push(replica);
+                        }
+                    }
+                } else {
+                    *datacenter_replication_factor -= 1;
+
+                    used_dc_racks.insert((current_node_dc, current_node_rack));
+                    result.push(replica);
+                }
+
+                if result.len() == desired_replica_count {
+                    break;
+                }
+            }
+        }
+
+        result
+            .iter()
+            .map(|node| node.broadcast_rpc_address().port())
+            .collect()
+    }
+
+    #[test]
+    fn should_place_nts_replicas_on_multi_dc_vnode_ring() {
+        let cluster = create_multi_dc_vnode_cluster();
+
+        let tokens = cluster
+            .nodes()
+            .values()
+            .flat_map(|node| node.tokens().iter().copied())
+            .chain((-10..10).map(|i| Murmur3Token::new(i * (i64::MAX / 10))))
+            .collect_vec();
+
+        let replication_factors: &[&[(&str, usize)]] = &[
+            &[("dc1", 3), ("dc2", 2)],
+            &[("dc1", 3), ("dc2", 3), ("dc3", 1)],
+            &[("dc1", 2)],
+            &[("dc1", 5)],
+            &[("dc1", 7)],
+            &[("dc3", 3)],
+            &[("dc4", 1)],
+            &[("dc1", 0), ("dc2", 1)],
+            &[],
+        ];
+
+        for datacenter_replication_factor in replication_factors {
+            let replication_factor_map = datacenter_replication_factor
+                .iter()
+                .map(|(dc, replication_factor)| (dc.to_string(), *replication_factor))
+                .collect();
+
+            for token in &tokens {
+                let replicas = network_topology_strategy_replica_nodes(
+                    *token,
+                    &replication_factor_map,
+                    &cluster,
+                );
+
+                assert_eq!(
+                    replicas
+                        .iter()
+                        .map(|node| node.broadcast_rpc_address().port())
+                        .collect_vec(),
+                    reference_nts_replica_ports(*token, datacenter_replication_factor, &cluster),
+                    "token: {:?}, replication: {:?}",
+                    token,
+                    datacenter_replication_factor
+                );
+            }
+        }
     }
 
     // nodes 2 and 3 are the remaining replicas, node 4 is not a replica
