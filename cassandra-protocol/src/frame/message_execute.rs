@@ -2,16 +2,30 @@ use crate::error;
 use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
 use crate::query::QueryParams;
 use crate::types::CBytesShort;
-use derive_more::Constructor;
 use std::io::Cursor;
 
 /// The structure that represents a body of a envelope of type `execute`.
-#[derive(Debug, Constructor, Eq, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 #[non_exhaustive]
 pub struct BodyReqExecute<'a> {
     pub id: &'a CBytesShort,
     pub result_metadata_id: Option<&'a CBytesShort>,
     pub query_parameters: &'a QueryParams,
+}
+
+impl<'a> BodyReqExecute<'a> {
+    /// Creates a new body. Fields added in the future get default values.
+    pub fn new(
+        id: &'a CBytesShort,
+        result_metadata_id: Option<&'a CBytesShort>,
+        query_parameters: &'a QueryParams,
+    ) -> Self {
+        BodyReqExecute {
+            id,
+            result_metadata_id,
+            query_parameters,
+        }
+    }
 }
 
 impl<'a> Serialize for BodyReqExecute<'a> {
@@ -41,12 +55,27 @@ impl<'a> Serialize for BodyReqExecute<'a> {
 }
 
 /// The structure that represents an owned body of a envelope of type `execute`.
-#[derive(Debug, Constructor, Clone, Eq, PartialEq, Default)]
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 #[non_exhaustive]
 pub struct BodyReqExecuteOwned {
     pub id: CBytesShort,
     pub result_metadata_id: Option<CBytesShort>,
     pub query_parameters: QueryParams,
+}
+
+impl BodyReqExecuteOwned {
+    /// Creates a new body. Fields added in the future get default values.
+    pub fn new(
+        id: CBytesShort,
+        result_metadata_id: Option<CBytesShort>,
+        query_parameters: QueryParams,
+    ) -> Self {
+        BodyReqExecuteOwned {
+            id,
+            result_metadata_id,
+            query_parameters,
+        }
+    }
 }
 
 impl FromCursor for BodyReqExecuteOwned {

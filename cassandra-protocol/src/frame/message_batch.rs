@@ -9,11 +9,11 @@ use crate::types::{
     CIntShort, CLong, INT_LEN, SHORT_LEN,
 };
 use crate::{error, Error};
-use derive_more::{Constructor, Display};
+use derive_more::Display;
 use std::convert::{TryFrom, TryInto};
 use std::io::{Cursor, Read};
 
-#[derive(Debug, Clone, Constructor, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct BodyReqBatch {
     pub batch_type: BatchType,
@@ -23,6 +23,29 @@ pub struct BodyReqBatch {
     pub timestamp: Option<CLong>,
     pub keyspace: Option<String>,
     pub now_in_seconds: Option<CInt>,
+}
+
+impl BodyReqBatch {
+    /// Creates a new body. Fields added in the future get default values.
+    pub fn new(
+        batch_type: BatchType,
+        queries: Vec<BatchQuery>,
+        consistency: Consistency,
+        serial_consistency: Option<Consistency>,
+        timestamp: Option<CLong>,
+        keyspace: Option<String>,
+        now_in_seconds: Option<CInt>,
+    ) -> Self {
+        BodyReqBatch {
+            batch_type,
+            queries,
+            consistency,
+            serial_consistency,
+            timestamp,
+            keyspace,
+            now_in_seconds,
+        }
+    }
 }
 
 impl Serialize for BodyReqBatch {
@@ -187,7 +210,7 @@ pub enum BatchQuerySubj {
 }
 
 /// The structure that represents a query to be batched.
-#[derive(Debug, Clone, Constructor, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct BatchQuery {
     /// Contains either id of a prepared query or a query itself.
@@ -198,6 +221,13 @@ pub struct BatchQuery {
     /// protocol. See <https://issues.apache.org/jira/browse/CASSANDRA-10246> for
     /// more details
     pub values: QueryValues,
+}
+
+impl BatchQuery {
+    /// Creates a new batched query. Fields added in the future get default values.
+    pub fn new(subject: BatchQuerySubj, values: QueryValues) -> Self {
+        BatchQuery { subject, values }
+    }
 }
 
 impl Serialize for BatchQuery {
