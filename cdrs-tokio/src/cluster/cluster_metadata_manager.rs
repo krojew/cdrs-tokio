@@ -684,6 +684,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 } else {
                     refresh_metadata(
                         &node_infos,
+                        keyspaces.clone(),
                         old_metadata.as_ref(),
                         &self.connection_pool_factory,
                         self.node_distance_evaluator.as_ref(),

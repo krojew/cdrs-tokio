@@ -55,6 +55,7 @@ pub(crate) fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>
 
 pub(crate) fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_infos: &[NodeInfo],
+    keyspaces: FxHashMap<String, KeyspaceMetadata>,
     old_metadata: &ClusterMetadata<T, CM>,
     connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
     node_distance_evaluator: &dyn NodeDistanceEvaluator,
@@ -104,7 +105,7 @@ pub(crate) fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
         }
     }
 
-    ClusterMetadata::new(added_or_updated, old_metadata.keyspaces().clone())
+    ClusterMetadata::new(added_or_updated, keyspaces)
 }
 
 pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
@@ -159,11 +160,14 @@ mod tests {
         add_new_node, build_initial_metadata, refresh_metadata,
     };
     use crate::cluster::topology::NodeMap;
-    use crate::cluster::topology::{Node, NodeDistance, NodeState};
+    use crate::cluster::topology::{
+        KeyspaceMetadata, Node, NodeDistance, NodeState, ReplicationStrategy,
+    };
     use crate::cluster::{ClusterMetadata, NodeInfo};
     use crate::load_balancing::node_distance_evaluator::MockNodeDistanceEvaluator;
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
+    use fxhash::FxHashMap;
 
     fn create_connection_pool_factory(
     ) -> Arc<ConnectionPoolFactory<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>>
@@ -353,6 +357,7 @@ mod tests {
 
         let metadata = refresh_metadata(
             &node_infos,
+            Default::default(),
             &old_metadata,
             &connection_pool_factory,
             &node_distance_evaluator,
@@ -367,6 +372,37 @@ mod tests {
                 .broadcast_rpc_address(),
             node_infos[0].broadcast_rpc_address
         );
+    }
+
+    #[test]
+    fn should_use_fetched_keyspaces_on_refresh() {
+        let connection_pool_factory = create_connection_pool_factory();
+
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+
+        let mut old_keyspaces = FxHashMap::default();
+        old_keyspaces.insert(
+            "dropped".to_string(),
+            KeyspaceMetadata::new(ReplicationStrategy::Other),
+        );
+        let old_metadata = ClusterMetadata::new(Default::default(), old_keyspaces);
+
+        let mut keyspaces = FxHashMap::default();
+        keyspaces.insert(
+            "created".to_string(),
+            KeyspaceMetadata::new(ReplicationStrategy::Other),
+        );
+
+        let metadata = refresh_metadata(
+            &[],
+            keyspaces,
+            &old_metadata,
+            &connection_pool_factory,
+            &node_distance_evaluator,
+        );
+
+        assert!(metadata.keyspace("created").is_some());
+        assert!(metadata.keyspace("dropped").is_none());
     }
 
     #[test]
@@ -391,6 +427,7 @@ mod tests {
 
         let metadata = refresh_metadata(
             &node_infos,
+            Default::default(),
             &old_metadata,
             &connection_pool_factory,
             &node_distance_evaluator,
@@ -442,6 +479,7 @@ mod tests {
 
         let metadata = refresh_metadata(
             &node_infos,
+            Default::default(),
             &old_metadata,
             &connection_pool_factory,
             &node_distance_evaluator,
@@ -496,6 +534,7 @@ mod tests {
 
         let metadata = refresh_metadata(
             &node_infos,
+            Default::default(),
             &old_metadata,
             &connection_pool_factory,
             &node_distance_evaluator,
@@ -548,6 +587,7 @@ mod tests {
 
         let metadata = refresh_metadata(
             &node_infos,
+            Default::default(),
             &old_metadata,
             &connection_pool_factory,
             &node_distance_evaluator,
