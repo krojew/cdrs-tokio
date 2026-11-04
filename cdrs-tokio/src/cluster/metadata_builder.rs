@@ -162,7 +162,10 @@ pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
 #[cfg(test)]
 mod tests {
     use cassandra_protocol::frame::Version;
+    use futures::future::ready;
+    use futures::FutureExt;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
     use tokio::sync::watch;
     use uuid::Uuid;
@@ -171,6 +174,9 @@ mod tests {
     use crate::cluster::connection_pool::ConnectionPoolFactory;
     use crate::cluster::metadata_builder::{
         add_new_node, build_initial_metadata, refresh_metadata,
+    };
+    use crate::cluster::test_support::{
+        self, node_address, void_response, TestConnectionManager, TestNode, TestTransport,
     };
     use crate::cluster::topology::NodeMap;
     use crate::cluster::topology::{
@@ -834,5 +840,140 @@ mod tests {
             Some(NodeDistance::Local)
         );
         assert!(!nodes.get(&node_info.host_id).unwrap().is_ignored());
+    }
+
+    fn counting_connection_pool_factory(
+        connect_count: Arc<AtomicUsize>,
+    ) -> Arc<ConnectionPoolFactory<TestTransport, TestConnectionManager>> {
+        test_support::create_connection_pool_factory(
+            TestConnectionManager::new(|_, _| ready(Ok(void_response(Version::V4))).boxed())
+                .with_connect_handler(move |_| {
+                    connect_count.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }),
+            Version::V4,
+        )
+    }
+
+    fn test_node_info(broadcast_rpc_address: SocketAddr) -> NodeInfo {
+        NodeInfo::new(
+            Uuid::new_v4(),
+            broadcast_rpc_address,
+            None,
+            "".into(),
+            Default::default(),
+            "".into(),
+        )
+    }
+
+    fn create_up_node(
+        connection_pool_factory: &Arc<ConnectionPoolFactory<TestTransport, TestConnectionManager>>,
+        node_info: &NodeInfo,
+    ) -> Arc<TestNode> {
+        Arc::new(Node::new_with_state(
+            connection_pool_factory.clone(),
+            node_info.broadcast_rpc_address,
+            node_info.broadcast_address,
+            Some(node_info.host_id),
+            Some(NodeDistance::Local),
+            NodeState::Up,
+            node_info.tokens.clone(),
+            node_info.rack.clone(),
+            node_info.datacenter.clone(),
+        ))
+    }
+
+    fn metadata_with_node(
+        node: Arc<TestNode>,
+    ) -> ClusterMetadata<TestTransport, TestConnectionManager> {
+        let mut nodes = NodeMap::default();
+        nodes.insert(node.host_id().unwrap(), node);
+        ClusterMetadata::new(nodes, Default::default())
+    }
+
+    #[tokio::test]
+    async fn should_reuse_connection_pool_when_rpc_address_is_unchanged() {
+        let connect_count = Arc::new(AtomicUsize::new(0));
+        let connection_pool_factory = counting_connection_pool_factory(connect_count.clone());
+
+        let node_info = test_node_info(node_address(1));
+        let old_node = create_up_node(&connection_pool_factory, &node_info);
+        old_node.persistent_connection().await.unwrap();
+        let old_metadata = metadata_with_node(old_node.clone());
+
+        let metadata = refresh_metadata(
+            &[node_info.clone()],
+            Default::default(),
+            &old_metadata,
+            &connection_pool_factory,
+            &MockNodeDistanceEvaluator::new(),
+        );
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        node.persistent_connection().await.unwrap();
+
+        assert_eq!(connect_count.load(Ordering::Relaxed), 1);
+        assert!(node.shares_connectivity_with(&old_node));
+    }
+
+    #[tokio::test]
+    async fn should_create_new_connection_pool_when_rpc_address_changes() {
+        let connect_count = Arc::new(AtomicUsize::new(0));
+        let connection_pool_factory = counting_connection_pool_factory(connect_count.clone());
+
+        let old_node_info = test_node_info(node_address(1));
+        let old_node = create_up_node(&connection_pool_factory, &old_node_info);
+        old_node.persistent_connection().await.unwrap();
+        let old_pool = Arc::downgrade(&old_node.connection_pool().unwrap());
+        let old_metadata = metadata_with_node(old_node.clone());
+
+        let mut node_info = old_node_info.clone();
+        node_info.broadcast_rpc_address = node_address(2);
+
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(NodeDistance::Local));
+
+        let metadata = refresh_metadata(
+            &[node_info.clone()],
+            Default::default(),
+            &old_metadata,
+            &connection_pool_factory,
+            &node_distance_evaluator,
+        );
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        node.persistent_connection().await.unwrap();
+
+        assert_eq!(connect_count.load(Ordering::Relaxed), 2);
+        assert!(!node.shares_connectivity_with(&old_node));
+
+        drop(old_metadata);
+        drop(old_node);
+        assert!(old_pool.upgrade().is_none());
+    }
+
+    #[tokio::test]
+    async fn should_close_connection_pool_of_removed_node() {
+        let connection_pool_factory = counting_connection_pool_factory(Default::default());
+
+        let node_info = test_node_info(node_address(1));
+        let old_node = create_up_node(&connection_pool_factory, &node_info);
+        old_node.persistent_connection().await.unwrap();
+        let old_pool = Arc::downgrade(&old_node.connection_pool().unwrap());
+        let old_metadata = metadata_with_node(old_node);
+
+        let metadata = refresh_metadata(
+            &[],
+            Default::default(),
+            &old_metadata,
+            &connection_pool_factory,
+            &MockNodeDistanceEvaluator::new(),
+        );
+        assert!(!metadata.has_nodes());
+
+        drop(old_metadata);
+        assert!(old_pool.upgrade().is_none());
     }
 }

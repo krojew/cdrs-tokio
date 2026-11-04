@@ -810,7 +810,8 @@ mod tests {
     use super::*;
     use crate::cluster::connection_manager::MockConnectionManager;
     use crate::cluster::topology::Node;
-    use crate::cluster::KeyspaceHolder;
+    use crate::cluster::{KeyspaceHolder, NodeInfo};
+    use crate::load_balancing::node_distance_evaluator::MockNodeDistanceEvaluator;
     use crate::retry::{ConstantReconnectionPolicy, MockReconnectionPolicy};
     use crate::transport::{MockCdrsTransport, TransportTcp};
     use cassandra_protocol::compression::Compression;
@@ -822,6 +823,7 @@ mod tests {
     use tokio::io::{duplex, AsyncReadExt};
     use tokio::sync::{watch, Notify};
     use tokio::time::timeout;
+    use uuid::Uuid;
 
     type TestConnectionManager = MockConnectionManager<MockCdrsTransport>;
 
@@ -1308,6 +1310,60 @@ mod tests {
             .expect("connection broken during reconnection was not reconnected");
 
         release.notify_one();
+    }
+
+    #[tokio::test]
+    async fn monitor_state_change_is_visible_on_refreshed_node() {
+        let broken = Arc::new(AtomicBool::new(false));
+
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager.expect_connection().returning({
+            let broken = broken.clone();
+            move |_, _, _| {
+                let transport = transport_with_broken_flag(broken.clone());
+                Box::pin(async move { Ok(transport) })
+            }
+        });
+
+        let (_, keyspace_receiver) = watch::channel(None);
+        let factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+            // keeps the node down for the duration of the test
+            Arc::new(ConstantReconnectionPolicy::new(Duration::from_secs(3600))),
+        ));
+
+        let node = create_node(factory);
+        drop(node.persistent_connection().await.unwrap());
+        let pool = node.connection_pool().unwrap();
+
+        let refreshed = node.clone_with_node_info(
+            NodeInfo::new(
+                Uuid::new_v4(),
+                node.broadcast_rpc_address(),
+                None,
+                "".into(),
+                Default::default(),
+                "".into(),
+            ),
+            &MockNodeDistanceEvaluator::new(),
+        );
+        drop(node);
+
+        broken.store(true, Ordering::Relaxed);
+        pool.error_sender
+            .try_send(Error::General("connection broken".into()))
+            .unwrap();
+
+        timeout(TEST_GUARD_TIMEOUT, async {
+            while refreshed.state() != NodeState::Down {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("monitor did not mark the refreshed node down");
     }
 
     #[tokio::test]

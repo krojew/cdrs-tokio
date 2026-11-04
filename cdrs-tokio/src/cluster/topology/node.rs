@@ -171,6 +171,16 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         &self.shared
     }
 
+    #[cfg(test)]
+    pub(crate) fn shares_connectivity_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.shared, &other.shared)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn connection_pool(&self) -> Option<Arc<ConnectionPool<T, CM>>> {
+        self.shared.connection_pool.get().cloned()
+    }
+
     #[inline]
     pub fn state(&self) -> NodeState {
         self.shared.state()
@@ -305,42 +315,47 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         node_info: NodeInfo,
         node_distance_evaluator: &dyn NodeDistanceEvaluator,
     ) -> Self {
-        let address_changed = self.broadcast_rpc_address() != node_info.broadcast_rpc_address;
+        let shared = if self.broadcast_rpc_address() == node_info.broadcast_rpc_address {
+            // A down node is excluded from load balancing, so unless its pool is reconnecting,
+            // only an UP status event brings it back, and that event may have been sent while the
+            // control connection was down. Being listed in the peers table, the node is treated as
+            // up instead. Unknown and forced down nodes are left to topology events and load
+            // balancers. Refreshes run inside rcu closures, which can run more than once, hence the
+            // idempotent exchange.
+            if self
+                .shared
+                .state
+                .compare_exchange(
+                    NodeState::Down,
+                    NodeState::Up,
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                )
+                .is_ok()
+            {
+                debug!(
+                    ?node_info.broadcast_rpc_address,
+                    "Marked down node as up on refresh.",
+                );
+            }
 
-        let mut new_node_state = self.state();
-        let mut distance = self.distance();
-        if address_changed {
+            self.shared.clone()
+        } else {
             // A node listed in the peers table under a new address is treated as up, like a newly
             // discovered node. Only an UP status event promotes an unknown node, and that event may
             // have been sent while the control connection was down, which would leave the node
             // ignored indefinitely. If the node is not reachable, it is handled like any other up
             // node whose connections fail.
-            new_node_state = NodeState::Up;
-            distance = node_distance_evaluator.compute_distance(&node_info);
-        }
-
-        // If we recreate the node with the status Down, it will be removed from the load-balancing strategy.
-        // The only way to promote the node back to the Up state is to receive an error in
-        // connection_pool.rs::monitor_connections and schedule the reconnection. This method
-        // is triggered only when we call persistent_connection on the node, which means that the node
-        // must be a part of the load-balancing strategy at least once.
-        // We do not care about it for Unknown and ForcedDown, because these will be taken care of
-        // on topology events in control_connection.rs::process_events or in load balancers
-        if new_node_state == NodeState::Down {
-            debug!(
-                ?node_info.broadcast_rpc_address,
-                "Cloned the node with Down state",
-            );
-            new_node_state = NodeState::Up;
-        }
-
-        Self {
-            shared: Arc::new(NodeShared::new(
+            Arc::new(NodeShared::new(
                 self.shared.connection_pool_factory.clone(),
                 node_info.broadcast_rpc_address,
-                distance,
-                new_node_state,
-            )),
+                node_distance_evaluator.compute_distance(&node_info),
+                NodeState::Up,
+            ))
+        };
+
+        Self {
+            shared,
             broadcast_address: node_info.broadcast_address,
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,
