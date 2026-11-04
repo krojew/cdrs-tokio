@@ -163,7 +163,7 @@ impl Lz4FrameDecoder {
             // An uncompressed length of 0 signals that the compressed payload should be used as-is
             // and not decompressed.
             let payload = buffer[COMPRESSED_FRAME_HEADER_LENGTH..compressed_payload_end].into();
-            *buffer = buffer.split_off(frame_end);
+            buffer.drain(..frame_end);
 
             return Ok(Some((self_contained, payload)));
         }
@@ -174,7 +174,7 @@ impl Lz4FrameDecoder {
         )
         .map_err(|error| CompressionError::Lz4(io::Error::other(error)).into())
         .map(|payload| {
-            *buffer = buffer.split_off(frame_end);
+            buffer.drain(..frame_end);
             Some((self_contained, payload))
         })
     }
@@ -243,7 +243,7 @@ impl UncompressedFrameDecoder {
         let self_contained = (header & (1 << 17)) != 0;
 
         let payload = buffer[UNCOMPRESSED_FRAME_HEADER_LENGTH..payload_end].into();
-        *buffer = buffer.split_off(frame_end);
+        buffer.drain(..frame_end);
 
         Ok(Some((self_contained, payload)))
     }
@@ -379,7 +379,7 @@ impl GenericFrameDecoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::frame::frame_encoder::{FrameEncoder, UncompressedFrameEncoder};
+    use crate::frame::frame_encoder::{FrameEncoder, Lz4FrameEncoder, UncompressedFrameEncoder};
     use crate::frame::{Direction, Envelope, Flags, Opcode, Version, MAX_ENVELOPE_BODY_SIZE};
 
     // Build a body of `size` bytes filled with the supplied byte. We pick the
@@ -492,6 +492,82 @@ mod tests {
         assert_eq!(envelopes[0].body, vec![0xAA; 100]);
         assert_eq!(envelopes[1].stream_id, 2);
         assert_eq!(envelopes[1].body, vec![0xBB; 200]);
+    }
+
+    // xorshift output, which lz4 cannot compress
+    fn incompressible_bytes(len: usize) -> Vec<u8> {
+        let mut state = 0x2545_f491_4f6c_dd1d_u64;
+        (0..len)
+            .map(|_| {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state as u8
+            })
+            .collect()
+    }
+
+    fn make_incompressible_envelope(body_size: usize) -> Vec<u8> {
+        Envelope {
+            version: Version::V5,
+            direction: Direction::Request,
+            flags: Flags::empty(),
+            opcode: Opcode::Query,
+            stream_id: 1,
+            body: incompressible_bytes(body_size),
+            tracing_id: None,
+            warnings: vec![],
+        }
+        .encode_with(Compression::None)
+        .unwrap()
+    }
+
+    #[test]
+    fn decoders_keep_read_buffer_capacity() {
+        let small_envelope = make_envelope(1, 0xAA, 100);
+
+        let mut encoder = UncompressedFrameEncoder::default();
+        encoder.add_envelope(small_envelope.clone());
+        let uncompressed_frame = encoder.finalize_self_contained().to_vec();
+
+        let mut encoder = Lz4FrameEncoder::default();
+        encoder.add_envelope(small_envelope);
+        let compressed_frame = encoder.finalize_self_contained().to_vec();
+
+        let mut encoder = Lz4FrameEncoder::default();
+        let (_, frame) =
+            encoder.finalize_non_self_contained(&make_incompressible_envelope(PAYLOAD_SIZE_LIMIT));
+        let stored_frame = frame.to_vec();
+
+        let stored_header = u64::from_le_bytes(stored_frame[..8].try_into().unwrap());
+        assert_eq!(
+            (stored_header >> 17) & 0x1ffff,
+            0,
+            "test setup: payload must be stored uncompressed"
+        );
+
+        for leftover in [0, 10] {
+            let cases: Vec<(Box<dyn FrameDecoder>, &[u8])> = vec![
+                (
+                    Box::<UncompressedFrameDecoder>::default(),
+                    &uncompressed_frame,
+                ),
+                (Box::<Lz4FrameDecoder>::default(), &compressed_frame),
+                (Box::<Lz4FrameDecoder>::default(), &stored_frame),
+            ];
+
+            for (mut decoder, frame) in cases {
+                let mut buffer = Vec::with_capacity(2 * MAX_FRAME_SIZE);
+                buffer.extend_from_slice(frame);
+                buffer.extend_from_slice(&frame[..leftover]);
+                let capacity = buffer.capacity();
+
+                decoder.consume(&mut buffer, Compression::None).unwrap();
+
+                assert!(buffer.is_empty());
+                assert_eq!(buffer.capacity(), capacity, "leftover: {}", leftover);
+            }
+        }
     }
 
     #[test]
