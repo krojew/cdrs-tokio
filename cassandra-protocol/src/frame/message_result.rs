@@ -888,12 +888,14 @@ impl Serialize for PreparedMetadata {
         let columns_count = self.col_specs.len() as i32;
         columns_count.serialize(cursor, version);
 
-        let pk_count = self.pk_indexes.len() as i32;
-        pk_count.serialize(cursor, version);
+        if version >= Version::V4 {
+            let pk_count = self.pk_indexes.len() as i32;
+            pk_count.serialize(cursor, version);
 
-        self.pk_indexes
-            .iter()
-            .for_each(|f| f.serialize(cursor, version));
+            self.pk_indexes
+                .iter()
+                .for_each(|f| f.serialize(cursor, version));
+        }
 
         if let Some(global_table_spec) = &self.global_table_spec {
             global_table_spec.serialize(cursor, version);
@@ -1533,6 +1535,51 @@ mod prepared_metadata {
             let mut buffer = Vec::new();
             let mut cursor = Cursor::new(&mut buffer);
             expected.serialize(&mut cursor, Version::V4);
+            assert_eq!(buffer, bytes);
+        }
+    }
+
+    #[test]
+    fn prepared_metadata_v3() {
+        let bytes = &[
+            0, 0, 0, 1, // global table space flag
+            0, 0, 0, 1, // columns counts
+            //
+            // global table spec
+            0, 7, 107, 115, 110, 97, 109, 101, 49, // ksname1
+            0, 9, 116, 97, 98, 108, 101, 110, 97, 109, 101, // tablename
+            //
+            // col spec
+            0, 3, 102, 111, 111, // foo
+            0, 9, // id
+        ];
+
+        let expected = PreparedMetadata {
+            pk_indexes: vec![],
+            global_table_spec: Some(TableSpec {
+                ks_name: "ksname1".into(),
+                table_name: "tablename".into(),
+            }),
+            col_specs: vec![ColSpec {
+                table_spec: None,
+                name: "foo".into(),
+                col_type: ColTypeOption {
+                    id: ColType::Int,
+                    value: None,
+                },
+            }],
+        };
+
+        {
+            let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+            let metadata = PreparedMetadata::from_cursor(&mut cursor, Version::V3).unwrap();
+            assert_eq!(metadata, expected);
+        }
+
+        {
+            let mut buffer = Vec::new();
+            let mut cursor = Cursor::new(&mut buffer);
+            expected.serialize(&mut cursor, Version::V3);
             assert_eq!(buffer, bytes);
         }
     }
