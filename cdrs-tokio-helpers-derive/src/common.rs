@@ -114,7 +114,7 @@ fn into_rust_with_args(
     Ok(match get_ident_string(&field_type_ident, name)?.as_str() {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "Decimal"
         | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
-        | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => {
+        | "Duration" | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => {
             quote! {
               <#field_type_ident as ::cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_r(#arguments)?
             }
@@ -200,7 +200,7 @@ fn get_cdrs_type(ty: &Type, name: &str) -> Result<Type> {
         // the original type keeps any path and generic arguments needed to resolve it
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "Decimal"
         | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
-        | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => ty.clone(),
+        | "Duration" | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => ty.clone(),
         "Vec" => parse_str("::cdrs_tokio::types::list::List").unwrap(),
         "HashMap" => parse_str("::cdrs_tokio::types::map::Map").unwrap(),
         "Option" => parse_str("::core::option::Option").unwrap(),
@@ -234,7 +234,7 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
     Ok(match get_ident_string(&cdrs_type, name)?.as_str() {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "IpAddr"
         | "Uuid" | "Timespec" | "Decimal" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
-        | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => val,
+        | "Duration" | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => val,
         "List" => {
             let vec_type = get_ident_params_string(ty, name)?;
             let inter_rust_type = get_cdrs_type(&vec_type, name)?;
@@ -355,6 +355,23 @@ mod tests {
             let error = field_error(input);
             assert!(error.contains("Unsupported type"), "{}", error);
             assert!(error.contains("`field`"), "{}", error);
+        }
+    }
+
+    #[test]
+    fn decodes_duration_fields_as_native_values() {
+        let inputs: Vec<DeriveInput> = vec![
+            parse_quote! { struct S { field: Duration } },
+            parse_quote! { struct S { field: Option<Duration> } },
+            parse_quote! { struct S { field: Vec<Duration> } },
+            parse_quote! { struct S { field: HashMap<String, Duration> } },
+            parse_quote! { struct S { field: cdrs_tokio::types::duration::Duration } },
+        ];
+
+        for input in inputs {
+            let fields = get_struct_fields(&input).unwrap();
+            let generated = quote::quote! { #(#fields),* }.to_string();
+            assert!(!generated.contains("TryFromUdt"), "{}", generated);
         }
     }
 }

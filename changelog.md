@@ -108,6 +108,11 @@
   field types no longer need to implement `Clone`, but a struct
   implementing `Drop` can no longer derive it.
 
+### Added
+
+* `TryFromRow` and `TryFromUdt` support `Duration`, `Option<Duration>`,
+  `Vec<Duration>` and `HashMap<_, Duration>` fields.
+
 ## cdrs-tokio 9.1.0
 
 ### Added

@@ -8,6 +8,7 @@ use cdrs_tokio::frame::message_result::{
 };
 use cdrs_tokio::frame::{Serialize, TryFromRow, TryFromUdt, Version};
 use cdrs_tokio::query::QueryValues;
+use cdrs_tokio::types::duration::Duration;
 use cdrs_tokio::types::from_cdrs::FromCdrsByName;
 use cdrs_tokio::types::list::List;
 use cdrs_tokio::types::map::Map;
@@ -237,6 +238,79 @@ fn time_and_non_zero_types_decode() {
             missing_utc: None,
             non_zero: NonZeroI32::new(7).unwrap(),
             optional_non_zero: NonZeroI64::new(8),
+        }
+    );
+}
+
+#[derive(Clone, Debug, PartialEq, TryFromUdt, IntoCdrsValue)]
+struct DurationUdt {
+    duration: Duration,
+    optional: Option<Duration>,
+    list: Vec<Duration>,
+}
+
+#[derive(Debug, PartialEq, TryFromRow)]
+struct DurationRow {
+    duration: Duration,
+    optional: Option<Duration>,
+    missing: Option<Duration>,
+    list: Vec<Duration>,
+    map: HashMap<String, Duration>,
+    udt: DurationUdt,
+}
+
+#[test]
+fn duration_fields_decode() {
+    let positive = Duration::new(1, 2, 3).unwrap();
+    let negative = Duration::new(-1, -2, -3).unwrap();
+    // protocol v4 has no native duration type and sends the marshal class instead
+    let custom_duration = ColTypeOption {
+        id: ColType::Custom,
+        value: Some(ColTypeOptionValue::CString(
+            "org.apache.cassandra.db.marshal.DurationType".into(),
+        )),
+    };
+    let udt_value = DurationUdt {
+        duration: negative,
+        optional: None,
+        list: vec![positive, negative],
+    };
+    let row = row(vec![
+        ("duration", native(ColType::Duration), value(positive)),
+        ("optional", custom_duration.clone(), value(negative)),
+        ("missing", native(ColType::Duration), null()),
+        (
+            "list",
+            list_of(custom_duration),
+            value(vec![positive, negative]),
+        ),
+        (
+            "map",
+            map_of(native(ColType::Varchar), native(ColType::Duration)),
+            value(HashMap::from([("a".to_string(), positive)])),
+        ),
+        (
+            "udt",
+            udt_of(vec![
+                ("duration", native(ColType::Duration)),
+                ("optional", native(ColType::Duration)),
+                ("list", list_of(native(ColType::Duration))),
+            ]),
+            value(udt_value.clone()),
+        ),
+    ]);
+
+    let decoded = DurationRow::try_from_row(row).unwrap();
+
+    assert_eq!(
+        decoded,
+        DurationRow {
+            duration: positive,
+            optional: Some(negative),
+            missing: None,
+            list: vec![positive, negative],
+            map: HashMap::from([("a".to_string(), positive)]),
+            udt: udt_value,
         }
     );
 }
