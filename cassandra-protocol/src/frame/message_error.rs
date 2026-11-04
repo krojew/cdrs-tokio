@@ -249,8 +249,8 @@ pub struct WriteTimeoutError {
     pub block_for: CInt,
     /// Describes the type of the write that timed out.
     pub write_type: WriteType,
-    /// The number of contentions occurred during the CAS operation. The field only presents when
-    /// the `write_type` is `Cas`.
+    /// The number of contentions occurred during the CAS operation. The field is only present when
+    /// the `write_type` is `Cas` and the protocol version is V5 or later.
     pub contentions: Option<CIntShort>,
 }
 
@@ -261,8 +261,10 @@ impl Serialize for WriteTimeoutError {
         self.block_for.serialize(cursor, version);
         self.write_type.serialize(cursor, version);
 
-        if let Some(contentions) = self.contentions {
-            contentions.serialize(cursor, version);
+        if version >= Version::V5 {
+            if let Some(contentions) = self.contentions {
+                contentions.serialize(cursor, version);
+            }
         }
     }
 }
@@ -276,7 +278,7 @@ impl FromCursor for WriteTimeoutError {
         let received = CInt::from_cursor(cursor, version)?;
         let block_for = CInt::from_cursor(cursor, version)?;
         let write_type = WriteType::from_cursor(cursor, version)?;
-        let contentions = if write_type == WriteType::Cas {
+        let contentions = if version >= Version::V5 && write_type == WriteType::Cas {
             Some(CIntShort::from_cursor(cursor, version)?)
         } else {
             None
@@ -599,16 +601,21 @@ impl FromCursor for UnpreparedError {
 //noinspection DuplicatedCode
 #[cfg(test)]
 fn test_encode_decode(bytes: &[u8], expected: ErrorBody) {
+    test_encode_decode_with_version(bytes, expected, Version::V4);
+}
+
+#[cfg(test)]
+fn test_encode_decode_with_version(bytes: &[u8], expected: ErrorBody, version: Version) {
     {
         let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
-        let result = ErrorBody::from_cursor(&mut cursor, Version::V4).unwrap();
+        let result = ErrorBody::from_cursor(&mut cursor, version).unwrap();
         assert_eq!(expected, result);
     }
 
     {
         let mut buffer = Vec::new();
         let mut cursor = Cursor::new(&mut buffer);
-        expected.serialize(&mut cursor, Version::V4);
+        expected.serialize(&mut cursor, version);
         assert_eq!(buffer, bytes);
     }
 }
@@ -740,6 +747,80 @@ mod error_tests {
             }),
         };
         test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn write_timeout_cas_v4() {
+        let bytes = &[
+            0, 0, 17, 0, // write timeout
+            0, 3, 102, 111, 111, // message - foo
+            //
+            // timeout error
+            0, 0, // consistency any
+            0, 0, 0, 1, // received
+            0, 0, 0, 1, // block_for
+            0, 3, 67, 65, 83, // write type cas
+        ];
+        let expected = ErrorBody {
+            message: "foo".into(),
+            ty: ErrorType::WriteTimeout(WriteTimeoutError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 1,
+                write_type: WriteType::Cas,
+                contentions: None,
+            }),
+        };
+        test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn write_timeout_cas_v4_does_not_serialize_contentions() {
+        let error = WriteTimeoutError {
+            cl: Consistency::Any,
+            received: 1,
+            block_for: 1,
+            write_type: WriteType::Cas,
+            contentions: Some(2),
+        };
+
+        let mut buffer = Vec::new();
+        error.serialize(&mut Cursor::new(&mut buffer), Version::V4);
+        assert_eq!(
+            buffer,
+            [
+                0, 0, // consistency any
+                0, 0, 0, 1, // received
+                0, 0, 0, 1, // block_for
+                0, 3, 67, 65, 83, // write type cas
+            ]
+        );
+    }
+
+    #[test]
+    fn write_timeout_cas_v5() {
+        let bytes = &[
+            0, 0, 17, 0, // write timeout
+            0, 3, 102, 111, 111, // message - foo
+            //
+            // timeout error
+            0, 0, // consistency any
+            0, 0, 0, 1, // received
+            0, 0, 0, 1, // block_for
+            0, 3, 67, 65, 83, // write type cas
+            0, 2, // contentions
+        ];
+        let expected = ErrorBody {
+            message: "foo".into(),
+            ty: ErrorType::WriteTimeout(WriteTimeoutError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 1,
+                write_type: WriteType::Cas,
+                contentions: Some(2),
+            }),
+        };
+        test_encode_decode_with_version(bytes, expected, Version::V5);
     }
 
     #[test]
