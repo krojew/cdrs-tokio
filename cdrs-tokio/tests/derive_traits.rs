@@ -20,6 +20,8 @@ use cdrs_tokio::IntoCdrsValue;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::{TryFromRow, TryFromUdt};
 #[cfg(feature = "e2e-tests")]
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+#[cfg(feature = "e2e-tests")]
 use common::*;
 #[cfg(feature = "e2e-tests")]
 use maplit::hashmap;
@@ -452,4 +454,215 @@ async fn update_list_with_udt_test(session: CurrentSession) {
         let altered_row: RowStruct = RowStruct::try_from_row(row).expect("into RowStruct");
         assert_eq!(altered_row, expected_row_struct);
     }
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn collections_and_timestamps_v4() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_derive_collections \
+               (my_key int PRIMARY KEY, my_list list<int>, my_set set<text>, \
+               my_map map<text, int>, my_timestamps list<timestamp>, my_utc timestamp)";
+    let session = setup(cql, Version::V4).await.expect("setup");
+
+    collections_and_timestamps_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn collections_and_timestamps_v5() {
+    let cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_derive_collections \
+               (my_key int PRIMARY KEY, my_list list<int>, my_set set<text>, \
+               my_map map<text, int>, my_timestamps list<timestamp>, my_utc timestamp)";
+    let session = setup(cql, Version::V5).await.expect("setup");
+
+    collections_and_timestamps_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn collections_and_timestamps_test(session: CurrentSession) {
+    #[derive(Clone, Debug, TryFromRow, PartialEq)]
+    struct RowStruct {
+        my_key: i32,
+        my_list: Vec<i32>,
+        my_set: Vec<String>,
+        my_map: HashMap<String, i32>,
+        my_timestamps: Vec<NaiveDateTime>,
+        my_utc: Option<DateTime<Utc>>,
+    }
+
+    let timestamp = |year, month, day, milli| -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(year, month, day)
+            .and_then(|date| date.and_hms_milli_opt(12, 34, 56, milli))
+            .expect("valid timestamp")
+    };
+
+    let filled = RowStruct {
+        my_key: 2,
+        my_list: vec![3, 1, 2],
+        my_set: vec!["a".to_string(), "b".to_string()],
+        my_map: hashmap! { "x".to_string() => 1, "y".to_string() => 2 },
+        my_timestamps: vec![
+            timestamp(1969, 7, 20, 123),
+            timestamp(1970, 1, 1, 0),
+            timestamp(2024, 2, 29, 999),
+        ],
+        my_utc: Some(timestamp(1955, 11, 5, 1).and_utc()),
+    };
+
+    // Cassandra stores empty non-frozen collections as null, so both rows read back empty
+    session
+        .query("INSERT INTO cdrs_test.test_derive_collections (my_key) VALUES (0)")
+        .await
+        .expect("insert nulls");
+    session
+        .query(
+            "INSERT INTO cdrs_test.test_derive_collections \
+             (my_key, my_list, my_set, my_map, my_timestamps) VALUES (1, [], {}, {}, [])",
+        )
+        .await
+        .expect("insert empty collections");
+    session
+        .query_with_values(
+            "INSERT INTO cdrs_test.test_derive_collections \
+             (my_key, my_list, my_set, my_map, my_timestamps, my_utc) VALUES (?, ?, ?, ?, ?, ?)",
+            query_values!(
+                filled.my_key,
+                filled.my_list.clone(),
+                filled.my_set.clone(),
+                filled.my_map.clone(),
+                filled.my_timestamps.clone(),
+                filled.my_utc
+            ),
+        )
+        .await
+        .expect("insert filled row");
+
+    let rows = session
+        .query("SELECT * FROM cdrs_test.test_derive_collections")
+        .await
+        .expect("query")
+        .response_body()
+        .expect("get body")
+        .into_rows()
+        .expect("into rows");
+    assert_eq!(rows.len(), 3);
+
+    let mut rows: Vec<RowStruct> = rows
+        .into_iter()
+        .map(|row| RowStruct::try_from_row(row).expect("into RowStruct"))
+        .collect();
+    rows.sort_by_key(|row| row.my_key);
+
+    for (key, row) in rows.iter().take(2).enumerate() {
+        assert_eq!(
+            row,
+            &RowStruct {
+                my_key: key as i32,
+                my_list: vec![],
+                my_set: vec![],
+                my_map: HashMap::new(),
+                my_timestamps: vec![],
+                my_utc: None,
+            }
+        );
+    }
+    assert_eq!(rows[2], filled);
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn udt_with_null_fields_v4() {
+    let create_type_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.derive_optional_udt \
+                           (my_text text, my_int int, my_utc timestamp)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_derive_optional_udt \
+                            (my_key int PRIMARY KEY, my_udt frozen<derive_optional_udt>)";
+    let session = setup_multiple(&[create_type_cql, create_table_cql], Version::V4)
+        .await
+        .expect("setup");
+
+    udt_with_null_fields_test(session).await;
+}
+
+#[tokio::test]
+#[cfg(feature = "e2e-tests")]
+async fn udt_with_null_fields_v5() {
+    let create_type_cql = "CREATE TYPE IF NOT EXISTS cdrs_test.derive_optional_udt \
+                           (my_text text, my_int int, my_utc timestamp)";
+    let create_table_cql = "CREATE TABLE IF NOT EXISTS cdrs_test.test_derive_optional_udt \
+                            (my_key int PRIMARY KEY, my_udt frozen<derive_optional_udt>)";
+    let session = setup_multiple(&[create_type_cql, create_table_cql], Version::V5)
+        .await
+        .expect("setup");
+
+    udt_with_null_fields_test(session).await;
+}
+
+#[cfg(feature = "e2e-tests")]
+async fn udt_with_null_fields_test(session: CurrentSession) {
+    #[derive(Clone, Debug, TryFromRow, PartialEq)]
+    struct RowStruct {
+        my_key: i32,
+        my_udt: OptionalUdt,
+    }
+
+    #[derive(Clone, Debug, IntoCdrsValue, TryFromUdt, PartialEq)]
+    struct OptionalUdt {
+        my_text: Option<String>,
+        my_int: Option<i32>,
+        my_utc: Option<DateTime<Utc>>,
+    }
+
+    let expected = vec![
+        RowStruct {
+            my_key: 0,
+            my_udt: OptionalUdt {
+                my_text: None,
+                my_int: None,
+                my_utc: None,
+            },
+        },
+        RowStruct {
+            my_key: 1,
+            my_udt: OptionalUdt {
+                my_text: Some("my_text".to_string()),
+                my_int: None,
+                my_utc: DateTime::from_timestamp_millis(-1_234_567),
+            },
+        },
+        RowStruct {
+            my_key: 2,
+            my_udt: OptionalUdt {
+                my_text: None,
+                my_int: Some(-7),
+                my_utc: None,
+            },
+        },
+    ];
+
+    for row in &expected {
+        session
+            .query_with_values(
+                "INSERT INTO cdrs_test.test_derive_optional_udt (my_key, my_udt) VALUES (?, ?)",
+                query_values!(row.my_key, row.my_udt.clone()),
+            )
+            .await
+            .expect("insert");
+    }
+
+    let rows = session
+        .query("SELECT * FROM cdrs_test.test_derive_optional_udt")
+        .await
+        .expect("query")
+        .response_body()
+        .expect("get body")
+        .into_rows()
+        .expect("into rows");
+
+    let mut rows: Vec<RowStruct> = rows
+        .into_iter()
+        .map(|row| RowStruct::try_from_row(row).expect("into RowStruct"))
+        .collect();
+    rows.sort_by_key(|row| row.my_key);
+
+    assert_eq!(rows, expected);
 }
