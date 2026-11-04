@@ -147,13 +147,6 @@ impl From<i64> for Bytes {
     }
 }
 
-impl From<u8> for Bytes {
-    #[inline]
-    fn from(value: u8) -> Self {
-        Bytes(vec![value])
-    }
-}
-
 impl From<u16> for Bytes {
     #[inline]
     fn from(value: u16) -> Self {
@@ -289,12 +282,27 @@ impl From<Duration> for Bytes {
     }
 }
 
+/// Uses the bytes as they are, which is the encoding of a CQL `blob`.
+impl From<Vec<u8>> for Bytes {
+    #[inline]
+    fn from(value: Vec<u8>) -> Self {
+        Bytes(value)
+    }
+}
+
+/// Uses the bytes as they are, which is the encoding of a CQL `blob`.
+impl From<&[u8]> for Bytes {
+    #[inline]
+    fn from(value: &[u8]) -> Self {
+        Bytes(value.to_vec())
+    }
+}
+
 /// Encodes the vector as a CQL collection (`list` or `set`): an element count followed by
 /// length-prefixed elements.
 ///
-/// A `Vec<u8>` therefore becomes a `list<tinyint>`, not a blob. Wrap raw bytes in [`Blob`] to
-/// bind them to a blob column - a blob column accepts any bytes, so a `Vec<u8>` bound to it is
-/// stored together with the collection framing.
+/// A `Vec<u8>` is not a collection but a blob, encoded as the raw bytes. A `list<tinyint>` binds
+/// from a `Vec<i8>`.
 impl<T: Into<Bytes>> From<Vec<T>> for Bytes {
     fn from(vec: Vec<T>) -> Bytes {
         let mut bytes = Vec::with_capacity(INT_LEN);
@@ -450,7 +458,6 @@ mod tests {
             Value::new("hello".to_string()),
             Value::Some(vec!(104, 101, 108, 108, 111))
         );
-        assert_eq!(Value::new(1_u8), Value::Some(vec!(1)));
         assert_eq!(Value::new(1_u16), Value::Some(vec!(0, 1)));
         assert_eq!(Value::new(1_u32), Value::Some(vec!(0, 0, 0, 1)));
         assert_eq!(Value::new(1_u64), Value::Some(vec!(0, 0, 0, 0, 0, 0, 0, 1)));
@@ -462,6 +469,33 @@ mod tests {
         assert_eq!(
             Value::new(Duration::new(100, 200, 300).unwrap()),
             Value::Some(vec!(0x80, 0xC8, 0x81, 0x90, 0x82, 0x58))
+        );
+    }
+
+    #[test]
+    fn test_byte_vec_is_blob() {
+        assert_eq!(Bytes::from(vec![1u8, 2, 3]).into_inner(), vec![1, 2, 3]);
+        assert_eq!(Bytes::from(Vec::<u8>::new()).into_inner(), Vec::<u8>::new());
+        assert_eq!(Value::from(vec![1u8, 2, 3]), Value::Some(vec![1, 2, 3]));
+        assert_eq!(
+            Value::from(vec![1u8, 2, 3]).serialize_to_vec(Version::V4),
+            vec![0, 0, 0, 3, 1, 2, 3]
+        );
+        assert_eq!(Value::from(Some(vec![1u8])), Value::Some(vec![1]));
+    }
+
+    #[test]
+    fn test_byte_slice_is_blob() {
+        let bytes: &[u8] = &[1, 2, 3];
+        assert_eq!(Bytes::from(bytes).into_inner(), vec![1, 2, 3]);
+        assert_eq!(Value::from(bytes), Value::Some(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn test_vec_of_byte_vecs_is_list_of_blobs() {
+        assert_eq!(
+            Bytes::from(vec![vec![1u8], vec![2, 3]]).into_inner(),
+            vec![0, 0, 0, 2, 0, 0, 0, 1, 1, 0, 0, 0, 2, 2, 3]
         );
     }
 }

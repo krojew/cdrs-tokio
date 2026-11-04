@@ -2,8 +2,7 @@ use derive_more::Constructor;
 
 /// Special type that represents Cassandra blob type.
 ///
-/// Use it to bind raw bytes to a blob column. A plain `Vec<u8>` is encoded as a `list<tinyint>`
-/// collection instead.
+/// Binding a `Blob` sends its bytes as they are, the same as binding a `Vec<u8>` or `&[u8]`.
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Constructor)]
 #[repr(transparent)]
 pub struct Blob(Vec<u8>);

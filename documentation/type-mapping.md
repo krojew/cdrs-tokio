@@ -29,9 +29,8 @@
 | udt | Rust struct |
 | vector&lt;float, n&gt; | `FloatVector` (binding), `Vector -> Vec<f32>` (reading) |
 
-Binding a `Vec<T>` always produces a CQL collection: a 4-byte element count followed by
-length-prefixed elements. A `Vec<u8>` is therefore encoded as a `list<tinyint>`, not as a blob.
-Since a blob column accepts arbitrary bytes, binding a `Vec<u8>` to it does not fail, but stores
-the collection framing as part of the data. Wrap raw bytes in `Blob` to bind them to a blob
-column, e.g. `Blob::new(bytes)`. For the same reason, bind `vector<float, n>` values with
-`FloatVector` rather than `Vec<f32>`.
+Binding a `Vec<T>` produces a CQL collection: a 4-byte element count followed by
+length-prefixed elements. The exception is `Vec<u8>`, which binds as a blob: its bytes are sent as
+they are, the same as for `&[u8]` and `Blob`. A `list<tinyint>` binds from a `Vec<i8>`, and a
+`Vec<Vec<u8>>` binds as a `list<blob>`. Since a `Vec<f32>` binds as a collection, bind
+`vector<float, n>` values with `FloatVector`.
