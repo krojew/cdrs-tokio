@@ -1,5 +1,4 @@
 use derive_more::Constructor;
-use float_eq::*;
 use num_bigint::BigInt;
 use std::io::Cursor;
 
@@ -64,53 +63,56 @@ impl_from_for_decimal!(i64);
 impl_from_for_decimal!(u8);
 impl_from_for_decimal!(u16);
 
-impl From<f32> for Decimal {
-    fn from(f: f32) -> Decimal {
-        // Cap the loop just below the point where 10i64.pow(scale) overflows
-        // (10^19 > i64::MAX). Without this guard a hostile input could keep
-        // the loop spinning until the pow call panics. In practice f32
-        // precision causes the equality check to succeed long before this
-        // cap, so existing well-formed inputs are unaffected.
-        const MAX_SCALE: u32 = 18;
-        let mut scale: u32 = 0;
+impl Decimal {
+    /// Builds a decimal from the `{:e}` formatting of a finite float, which yields the shortest
+    /// digit sequence that round-trips to the same float.
+    fn from_float_exponential(exponential: &str) -> Decimal {
+        let (mantissa, exponent) = exponential
+            .split_once('e')
+            .expect("exponential float formatting always contains an exponent");
+        let exponent: i32 = exponent
+            .parse()
+            .expect("exponential float formatting yields an integer exponent");
+        let (integer, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+        let unscaled: BigInt = format!("{integer}{fraction}")
+            .parse()
+            .expect("exponential float formatting yields decimal digits");
 
-        loop {
-            let unscaled = f * (10i64.pow(scale) as f32);
-
-            if float_eq!(unscaled, unscaled.trunc(), abs <= f32::EPSILON) {
-                return Decimal::new((unscaled as i64).into(), scale as i32);
-            }
-
-            if scale >= MAX_SCALE {
-                // best-effort termination: snap to the truncated value at the
-                // current scale rather than looping forever / panicking
-                return Decimal::new((unscaled.trunc() as i64).into(), scale as i32);
-            }
-
-            scale += 1;
+        let scale = fraction.len() as i32 - exponent;
+        if scale < 0 {
+            Decimal::new(unscaled * BigInt::from(10).pow(scale.unsigned_abs()), 0)
+        } else {
+            Decimal::new(unscaled, scale)
         }
     }
 }
 
+/// Converts a float into the decimal with the fewest digits that round-trips to the same float,
+/// e.g. `0.1` becomes `1` with scale `1`.
+///
+/// CQL decimals cannot represent NaN or infinities: NaN becomes zero, and positive and negative
+/// infinity become `i64::MAX` and `i64::MIN`, all with scale `0`. Negative zero becomes zero.
+impl From<f32> for Decimal {
+    fn from(f: f32) -> Decimal {
+        if f.is_finite() {
+            Decimal::from_float_exponential(&format!("{f:e}"))
+        } else {
+            Decimal::new((f as i64).into(), 0)
+        }
+    }
+}
+
+/// Converts a float into the decimal with the fewest digits that round-trips to the same float,
+/// e.g. `0.1` becomes `1` with scale `1`.
+///
+/// CQL decimals cannot represent NaN or infinities: NaN becomes zero, and positive and negative
+/// infinity become `i64::MAX` and `i64::MIN`, all with scale `0`. Negative zero becomes zero.
 impl From<f64> for Decimal {
     fn from(f: f64) -> Decimal {
-        // Same termination guard as the f32 conversion - bounded just below
-        // i64 overflow on 10i64.pow.
-        const MAX_SCALE: u32 = 18;
-        let mut scale: u32 = 0;
-
-        loop {
-            let unscaled = f * (10i64.pow(scale) as f64);
-
-            if float_eq!(unscaled, unscaled.trunc(), abs <= f64::EPSILON) {
-                return Decimal::new((unscaled as i64).into(), scale as i32);
-            }
-
-            if scale >= MAX_SCALE {
-                return Decimal::new((unscaled.trunc() as i64).into(), scale as i32);
-            }
-
-            scale += 1;
+        if f.is_finite() {
+            Decimal::from_float_exponential(&format!("{f:e}"))
+        } else {
+            Decimal::new((f as i64).into(), 0)
         }
     }
 }
@@ -215,6 +217,70 @@ mod test {
             "{:?}",
             third
         );
+    }
+
+    #[test]
+    fn from_f64_keeps_values_beyond_i64_range() {
+        assert_eq!(
+            Decimal::from(1e20f64),
+            Decimal::new(BigInt::from(10).pow(20), 0)
+        );
+        assert_eq!(
+            Decimal::from(-1e19f64),
+            Decimal::new(-BigInt::from(10).pow(19), 0)
+        );
+    }
+
+    #[test]
+    fn from_f64_keeps_all_significant_digits() {
+        assert_eq!(
+            Decimal::from(1000000000000000.5f64),
+            Decimal::new(10000000000000005i64.into(), 1)
+        );
+        assert_eq!(Decimal::from(-0.5f64), Decimal::new((-5).into(), 1));
+    }
+
+    #[test]
+    fn from_f64_keeps_small_values() {
+        assert_eq!(Decimal::from(1e-30f64), Decimal::new(1.into(), 30));
+        assert_eq!(Decimal::from(5e-324f64), Decimal::new(5.into(), 324));
+    }
+
+    #[test]
+    fn from_f32_keeps_values_beyond_i64_range() {
+        assert_eq!(
+            Decimal::from(3e38f32),
+            Decimal::new(BigInt::from(3) * BigInt::from(10).pow(38), 0)
+        );
+        assert_eq!(Decimal::from(1e-30f32), Decimal::new(1.into(), 30));
+    }
+
+    #[test]
+    fn from_non_finite_floats() {
+        assert_eq!(Decimal::from(f64::NAN), Decimal::new(0.into(), 0));
+        assert_eq!(
+            Decimal::from(f64::INFINITY),
+            Decimal::new(i64::MAX.into(), 0)
+        );
+        assert_eq!(
+            Decimal::from(f64::NEG_INFINITY),
+            Decimal::new(i64::MIN.into(), 0)
+        );
+        assert_eq!(Decimal::from(f32::NAN), Decimal::new(0.into(), 0));
+        assert_eq!(
+            Decimal::from(f32::INFINITY),
+            Decimal::new(i64::MAX.into(), 0)
+        );
+        assert_eq!(
+            Decimal::from(f32::NEG_INFINITY),
+            Decimal::new(i64::MIN.into(), 0)
+        );
+    }
+
+    #[test]
+    fn from_negative_zero() {
+        assert_eq!(Decimal::from(-0.0f64), Decimal::new(0.into(), 0));
+        assert_eq!(Decimal::from(-0.0f32), Decimal::new(0.into(), 0));
     }
 
     #[test]
