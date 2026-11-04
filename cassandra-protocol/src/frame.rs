@@ -198,7 +198,8 @@ impl Envelope {
 
         let tracing_id = if flags.contains(Flags::TRACING) && direction == Direction::Response {
             let mut tracing_bytes = [0; UUID_LEN];
-            std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes).unwrap();
+            std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes)
+                .map_err(|error| ParseEnvelopeError::InvalidTracingId(error.into()))?;
 
             Some(decode_timeuuid(&tracing_bytes).map_err(ParseEnvelopeError::InvalidUuid)?)
         } else {
@@ -362,6 +363,8 @@ pub enum ParseEnvelopeError {
     /// The body length is negative or exceeds [`MAX_ENVELOPE_BODY_SIZE`].
     #[error("Invalid envelope body length: {0}")]
     InvalidBodyLength(i32),
+    #[error("Invalid tracing id: {0}")]
+    InvalidTracingId(error::Error),
 }
 
 /// Protocol version.
@@ -1255,6 +1258,25 @@ mod flags {
         let body = ResponseBody::Result(ResResultBody::Void);
 
         helpers::test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
+    }
+
+    #[test]
+    fn test_truncated_tracing_id_response() {
+        let raw_envelope = [
+            132, //version
+            2,   // flags
+            0, 12, // stream id
+            8,  //opcode
+            0, 0, 0, 4, // length
+            0, 0, 0, 1, // body without a tracing id
+        ];
+
+        let result = Envelope::from_buffer(&raw_envelope, Compression::None);
+        assert!(
+            matches!(result, Err(ParseEnvelopeError::InvalidTracingId(_))),
+            "{:?}",
+            result
+        );
     }
 
     #[test]
