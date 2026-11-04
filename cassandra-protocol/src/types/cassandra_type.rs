@@ -96,6 +96,15 @@ pub mod wrappers {
             None => return Ok(CassandraType::Null),
         };
 
+        // protocol v4 has no native duration type and describes durations by their marshal class
+        if matches!(
+            &col_type.value,
+            Some(ColTypeOptionValue::CString(class_name))
+                if class_name == "org.apache.cassandra.db.marshal.DurationType"
+        ) {
+            return Ok(CassandraType::Duration(decode_duration(actual_bytes)?));
+        }
+
         let float_vector_count = match col_type {
             ColTypeOption {
                 id: ColType::Custom,
@@ -540,6 +549,18 @@ mod tests {
                 class_name
             );
         }
+    }
+
+    #[test]
+    fn custom_duration_type_converts_to_duration() {
+        let col_type = custom_type("org.apache.cassandra.db.marshal.DurationType");
+        // zigzag encoded vints of 1 month, 2 days and 3 nanoseconds
+        let bytes = CBytes::new(vec![0x02, 0x04, 0x06]);
+
+        assert_eq!(
+            wrapper_fn(&ColType::Custom)(&bytes, &col_type, Version::V4).unwrap(),
+            CassandraType::Duration(Duration::new(1, 2, 3).unwrap())
+        );
     }
 
     #[test]

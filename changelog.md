@@ -79,6 +79,12 @@
 * `ParseEnvelopeError::InvalidCustomPayload`.
 * `types::decimal::NonFiniteFloatError`.
 
+### Fixed
+
+* The generic `CassandraType` conversion decodes `duration` values on
+  protocol v4, where they arrive as the custom `DurationType`, into
+  `CassandraType::Duration` instead of a blob.
+
 ### Removed
 
 * `Envelope::message_body`.
