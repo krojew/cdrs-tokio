@@ -288,15 +288,11 @@ impl<
                 parameters.beta_protocol,
             );
 
-            let result_metadata_id = prepared
-                .result_metadata_id
-                .load()
-                .as_ref()
-                .map(|metadata| (**metadata).clone());
+            let result_metadata_id = prepared.result_metadata_id();
 
             let envelope = Envelope::new_req_execute(
                 &prepared.id,
-                result_metadata_id.as_ref(),
+                result_metadata_id.as_deref(),
                 &parameters.query_params,
                 flags,
                 self.version,
@@ -382,9 +378,7 @@ impl<
 
             if self.version >= Version::V5 {
                 if let Some(new_metadata_id) = result.as_ref().ok().and_then(peek_new_metadata_id) {
-                    prepared
-                        .result_metadata_id
-                        .swap(Some(Arc::new(new_metadata_id)));
+                    prepared.set_result_metadata_id(Some(new_metadata_id));
                 }
             }
 
@@ -2230,7 +2224,7 @@ mod tests {
         session.exec(&prepared).await.unwrap();
 
         assert_eq!(
-            prepared.result_metadata_id.load().as_deref(),
+            prepared.result_metadata_id().as_deref(),
             Some(&new_metadata_id)
         );
     }

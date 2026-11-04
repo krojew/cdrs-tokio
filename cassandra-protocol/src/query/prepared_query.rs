@@ -13,7 +13,7 @@ pub struct PreparedQuery {
     pub query: String,
     pub keyspace: Option<String>,
     pub pk_indexes: Vec<i16>,
-    pub result_metadata_id: ArcSwapOption<CBytesShort>,
+    result_metadata_id: ArcSwapOption<CBytesShort>,
 }
 
 impl PreparedQuery {
@@ -34,6 +34,20 @@ impl PreparedQuery {
             pk_indexes,
             result_metadata_id: ArcSwapOption::new(result_metadata_id.map(Arc::new)),
         }
+    }
+
+    /// Returns the id of the result metadata the server associates with this statement. Present
+    /// since protocol v5.
+    pub fn result_metadata_id(&self) -> Option<Arc<CBytesShort>> {
+        self.result_metadata_id.load_full()
+    }
+
+    /// Replaces the result metadata id, as required when a protocol v5 response announces changed
+    /// result metadata. Takes `&self`, so a statement shared between tasks can be updated in
+    /// place.
+    pub fn set_result_metadata_id(&self, result_metadata_id: Option<CBytesShort>) {
+        self.result_metadata_id
+            .store(result_metadata_id.map(Arc::new));
     }
 }
 
@@ -105,8 +119,34 @@ mod tests {
         assert_eq!(query.keyspace.as_deref(), Some("ks"));
         assert_eq!(query.pk_indexes, vec![0]);
         assert_eq!(
-            query.result_metadata_id.load().as_deref(),
+            query.result_metadata_id().as_deref(),
             Some(&CBytesShort::new(vec![2]))
         );
+    }
+
+    #[test]
+    fn should_replace_result_metadata_id() {
+        let query = PreparedQuery::new(
+            CBytesShort::new(vec![1]),
+            "SELECT * FROM ks.table",
+            None,
+            vec![],
+            Some(CBytesShort::new(vec![2])),
+        );
+        let clone = query.clone();
+
+        query.set_result_metadata_id(Some(CBytesShort::new(vec![3])));
+        assert_eq!(
+            query.result_metadata_id().as_deref(),
+            Some(&CBytesShort::new(vec![3]))
+        );
+        assert_eq!(
+            clone.result_metadata_id().as_deref(),
+            Some(&CBytesShort::new(vec![2]))
+        );
+        assert_ne!(query, clone);
+
+        query.set_result_metadata_id(None);
+        assert!(query.result_metadata_id().is_none());
     }
 }
