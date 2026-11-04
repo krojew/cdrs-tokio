@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::Duration;
 use tokio::sync::watch::Receiver;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, watch, RwLock};
 use tokio::time::{interval_at, sleep, timeout, Instant, Interval, MissedTickBehavior};
 use tracing::*;
 
@@ -283,13 +283,27 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
             node,
             self.config.heartbeat_interval,
             self.version,
+            pool.shutdown.subscribe(),
         );
 
         let weak_pool_for_keyspace = weak_pool.clone();
         let version = self.version;
+        let mut shutdown = pool.shutdown.subscribe();
 
         tokio::spawn(async move {
-            while let Ok(()) = keyspace_receiver.changed().await {
+            loop {
+                tokio::select! {
+                    changed = keyspace_receiver.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
+                    }
+                    _ = shutdown.changed() => {
+                        debug!("Pool dropped, exiting keyspace watcher task.");
+                        break;
+                    }
+                }
+
                 let keyspace = keyspace_receiver.borrow().clone();
 
                 // Try to upgrade the weak reference to a strong Arc
@@ -347,11 +361,18 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         node: Weak<NodeShared<T, CM>>,
         heartbeat_interval: Duration,
         version: Version,
+        mut shutdown: watch::Receiver<()>,
     ) {
         let mut interval = create_heartbeat_interval(Instant::now(), heartbeat_interval);
         tokio::spawn(async move {
             loop {
-                interval.tick().await;
+                tokio::select! {
+                    _ = interval.tick() => {}
+                    _ = shutdown.changed() => {
+                        debug!("Stopping heartbeat due to pool being gone.");
+                        break;
+                    }
+                }
 
                 if let Some(node) = node.upgrade() {
                     let broadcast_rpc_address = node.broadcast_rpc_address();
@@ -592,6 +613,8 @@ pub(crate) struct ConnectionPool<T: CdrsTransport, CM: ConnectionManager<T>> {
     desired_size: usize,
     current_index: AtomicUsize,
     error_sender: mpsc::Sender<Error>,
+    // never sends; dropping it with the pool stops the pool's background tasks
+    shutdown: watch::Sender<()>,
 }
 
 impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM> {
@@ -648,6 +671,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
             desired_size,
             current_index: AtomicUsize::new(0),
             error_sender,
+            shutdown: watch::channel(()).0,
         })
     }
 
@@ -1364,6 +1388,72 @@ mod tests {
         })
         .await
         .expect("monitor did not mark the refreshed node down");
+    }
+
+    fn healthy_connection_manager() -> TestConnectionManager {
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager.expect_connection().returning(|_, _, _| {
+            let transport = transport_with_broken_flag(Default::default());
+            Box::pin(async move { Ok(transport) })
+        });
+
+        connection_manager
+    }
+
+    #[tokio::test]
+    async fn keyspace_watcher_exits_when_pool_is_dropped() {
+        let (keyspace_sender, keyspace_receiver) = watch::channel(None);
+        let factory = ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            healthy_connection_manager(),
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        );
+        let receiver_count = keyspace_sender.receiver_count();
+
+        let pool = factory
+            .create(NodeDistance::Local, test_address(), Weak::new())
+            .await
+            .unwrap();
+        assert_eq!(keyspace_sender.receiver_count(), receiver_count + 1);
+
+        drop(pool);
+
+        timeout(TEST_GUARD_TIMEOUT, async {
+            while keyspace_sender.receiver_count() != receiver_count {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("keyspace watcher did not exit");
+    }
+
+    #[tokio::test]
+    async fn pool_tasks_release_node_when_pool_is_dropped() {
+        let factory = create_factory(Default::default(), healthy_connection_manager());
+        let node = create_node(factory.clone());
+
+        let pool = factory
+            .create(
+                NodeDistance::Local,
+                test_address(),
+                Arc::downgrade(node.shared()),
+            )
+            .await
+            .unwrap();
+        assert_ne!(Arc::weak_count(node.shared()), 0);
+
+        drop(pool);
+
+        // the heartbeat would otherwise hold the node until its next tick
+        timeout(TEST_GUARD_TIMEOUT, async {
+            while Arc::weak_count(node.shared()) != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("pool tasks did not exit");
     }
 
     #[tokio::test]
