@@ -54,6 +54,19 @@ pub fn into_cdrs_value(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Implements `TryFromRow`, which decodes each field from the row column with the same name.
+///
+/// # Generic structs
+///
+/// The derive adds no trait bounds: the generated impl carries exactly the generic parameters and
+/// where clause written on the struct, so every bound needed to decode a field must be declared
+/// there.
+///
+/// Field types are recognized by the last segment of their path, so a field whose type is a bare
+/// type parameter, such as `value: T`, is always decoded as a UDT and requires `T: TryFromUdt`.
+/// The same holds for a type parameter used as the element type of a `Vec` or `Option` field, or
+/// as the value type of a `HashMap` field. Such a parameter cannot stand for a primitive type like
+/// `i32`.
 #[proc_macro_derive(TryFromRow)]
 pub fn try_from_row(input: TokenStream) -> TokenStream {
     // Parse the string representation
@@ -65,6 +78,19 @@ pub fn try_from_row(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Implements `TryFromUdt`, which decodes each field from the UDT field with the same name.
+///
+/// # Generic structs
+///
+/// The derive adds no trait bounds: the generated impl carries exactly the generic parameters and
+/// where clause written on the struct, so every bound needed to decode a field must be declared
+/// there.
+///
+/// Field types are recognized by the last segment of their path, so a field whose type is a bare
+/// type parameter, such as `value: T`, is always decoded as a UDT and requires `T: TryFromUdt`.
+/// The same holds for a type parameter used as the element type of a `Vec` or `Option` field, or
+/// as the value type of a `HashMap` field. Such a parameter cannot stand for a primitive type like
+/// `i32`.
 #[proc_macro_derive(TryFromUdt)]
 pub fn try_from_udt(input: TokenStream) -> TokenStream {
     // Parse the string representation
