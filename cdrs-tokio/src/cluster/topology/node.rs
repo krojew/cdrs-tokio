@@ -263,7 +263,12 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         let mut new_node_state = self.state.load(Ordering::Relaxed);
         let mut distance = self.distance;
         if address_changed {
-            new_node_state = NodeState::Unknown;
+            // A node listed in the peers table under a new address is treated as up, like a newly
+            // discovered node. Only an UP status event promotes an unknown node, and that event may
+            // have been sent while the control connection was down, which would leave the node
+            // ignored indefinitely. If the node is not reachable, it is handled like any other up
+            // node whose connections fail.
+            new_node_state = NodeState::Up;
             distance = node_distance_evaluator.compute_distance(&node_info);
         }
 

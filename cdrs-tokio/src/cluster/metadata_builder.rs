@@ -550,7 +550,7 @@ mod tests {
     }
 
     #[test]
-    fn should_reset_node_state_when_rpc_address_changes() {
+    fn should_mark_node_up_when_rpc_address_changes() {
         let connection_pool_factory = create_connection_pool_factory();
 
         let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
@@ -602,8 +602,9 @@ mod tests {
             node.broadcast_rpc_address(),
             node_infos[0].broadcast_rpc_address
         );
-        assert_eq!(node.state(), NodeState::Unknown);
+        assert_eq!(node.state(), NodeState::Up);
         assert_eq!(node.distance(), Some(NodeDistance::Remote));
+        assert!(!node.is_ignored());
     }
 
     #[test]
