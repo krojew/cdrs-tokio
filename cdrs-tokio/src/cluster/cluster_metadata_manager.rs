@@ -567,13 +567,15 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             Ok(Some(new_node_info)) => {
                 // metadata might have changed while waiting for node info
                 self.metadata.rcu(|metadata| {
-                    Arc::new(add_new_node(
+                    add_new_node(
                         new_node_info.clone(),
                         metadata.as_ref(),
                         &self.connection_pool_factory,
                         self.node_distance_evaluator.as_ref(),
                         state,
-                    ))
+                    )
+                    .map(Arc::new)
+                    .unwrap_or_else(|| metadata.clone())
                 });
             }
             Ok(None) => {

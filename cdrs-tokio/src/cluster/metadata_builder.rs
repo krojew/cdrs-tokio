@@ -108,31 +108,44 @@ pub(crate) fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
     ClusterMetadata::new(added_or_updated, keyspaces)
 }
 
+/// Returns `None` if the metadata doesn't need to change.
 pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_info: NodeInfo,
     old_metadata: &ClusterMetadata<T, CM>,
     connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
     node_distance_evaluator: &dyn NodeDistanceEvaluator,
     state: NodeState,
-) -> ClusterMetadata<T, CM> {
+) -> Option<ClusterMetadata<T, CM>> {
     let old_node = old_metadata.find_node_by_host_id(&node_info.host_id);
     if let Some(old_node) = old_node {
         // If a node is restarted after changing its broadcast RPC address, Cassandra considers that
         // an addition, even though the host_id hasn't changed :(
         if old_node.broadcast_rpc_address() == node_info.broadcast_rpc_address {
-            debug!(?old_node, "Ignoring adding an existing node.");
-            return old_metadata.clone_with_node(old_node.clone_with_node_state(state));
+            // A refresh may have added the node, as up, while its info was being fetched. The
+            // event's state is applied only when it promotes the node to up, so an up node is never
+            // demoted and ignored.
+            if state != NodeState::Up || old_node.state() == NodeState::Up {
+                debug!(?old_node, "Ignoring adding an existing node.");
+                return None;
+            }
+
+            debug!(?old_node, "Setting existing node state to up.");
+            return Some(
+                old_metadata.clone_with_node(old_node.clone_with_node_state(NodeState::Up)),
+            );
         }
 
         debug!(?old_node, "Updating old node with new info.");
-        return old_metadata.clone_with_node(old_node.clone_with_node_info_and_state(
-            node_info,
-            node_distance_evaluator,
-            state,
-        ));
+        return Some(
+            old_metadata.clone_with_node(old_node.clone_with_node_info_and_state(
+                node_info,
+                node_distance_evaluator,
+                state,
+            )),
+        );
     }
 
-    old_metadata.clone_with_node(Node::new_with_state(
+    Some(old_metadata.clone_with_node(Node::new_with_state(
         connection_pool_factory.clone(),
         node_info.broadcast_rpc_address,
         node_info.broadcast_address,
@@ -142,7 +155,7 @@ pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
         node_info.tokens,
         node_info.rack,
         node_info.datacenter,
-    ))
+    )))
 }
 
 //noinspection DuplicatedCode
@@ -643,7 +656,8 @@ mod tests {
             &connection_pool_factory,
             &node_distance_evaluator,
             NodeState::Up,
-        );
+        )
+        .unwrap();
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
@@ -662,6 +676,53 @@ mod tests {
             nodes.get(&node_info.host_id).unwrap().distance().unwrap(),
             NodeDistance::Local
         );
+    }
+
+    #[test]
+    fn should_not_demote_existing_up_node() {
+        let connection_pool_factory = create_connection_pool_factory();
+
+        let node_info = NodeInfo::new(
+            Uuid::new_v4(),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9042),
+            None,
+            "".into(),
+            Default::default(),
+            "".into(),
+        );
+
+        let old_node = Arc::new(Node::new_with_state(
+            connection_pool_factory.clone(),
+            node_info.broadcast_rpc_address,
+            None,
+            Some(node_info.host_id),
+            Some(NodeDistance::Local),
+            NodeState::Up,
+            Default::default(),
+            "".into(),
+            "".into(),
+        ));
+
+        let mut old_nodes = NodeMap::default();
+        old_nodes.insert(node_info.host_id, old_node.clone());
+
+        let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
+
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+
+        let metadata = add_new_node(
+            node_info.clone(),
+            &old_metadata,
+            &connection_pool_factory,
+            &node_distance_evaluator,
+            NodeState::Unknown,
+        )
+        .unwrap_or(old_metadata);
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert_eq!(node.state(), NodeState::Up);
+        assert!(!node.is_ignored());
+        assert!(Arc::ptr_eq(&node, &old_node));
     }
 
     #[test]
@@ -703,7 +764,8 @@ mod tests {
             &connection_pool_factory,
             &node_distance_evaluator,
             NodeState::Up,
-        );
+        )
+        .unwrap();
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
@@ -751,7 +813,8 @@ mod tests {
             &connection_pool_factory,
             &node_distance_evaluator,
             NodeState::Up,
-        );
+        )
+        .unwrap();
 
         let nodes = metadata.nodes();
         assert_eq!(nodes.len(), 1);
