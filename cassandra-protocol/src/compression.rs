@@ -404,7 +404,19 @@ mod tests {
         let mut bytes = (MAX_ENVELOPE_BODY_SIZE as i32 + 1).to_be_bytes().to_vec();
         bytes.extend_from_slice(&[0x10, b'a']); // a single literal "a"
 
-        assert!(Compression::Lz4.decode(bytes).is_err());
+        let result = Compression::Lz4.decode(bytes);
+        assert!(
+            matches!(
+                result,
+                Err(CompressionError::Lz4(ref error))
+                    if error.kind() == io::ErrorKind::InvalidData
+                        && error
+                            .to_string()
+                            .contains(&format!("exceeds maximum {}", MAX_ENVELOPE_BODY_SIZE))
+            ),
+            "{:?}",
+            result
+        );
     }
 
     #[test]
