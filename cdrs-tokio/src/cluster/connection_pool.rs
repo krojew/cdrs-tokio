@@ -7,7 +7,7 @@ use futures::future::join_all;
 use itertools::Itertools;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
@@ -598,46 +598,44 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
     }
 
     async fn reconnect_broken(&self) -> CdrsResult<bool> {
-        if let Some(connection_manager) = self.connection_manager.upgrade() {
-            let mut pool = self.pool.write().await;
-
-            // 1. try to reconnect broken
-            for connection in pool.deref_mut() {
-                if connection.is_broken() {
-                    *connection = Arc::new(
-                        new_connection(
-                            connection_manager.as_ref(),
-                            self.broadcast_rpc_address,
-                            self.config.connect_timeout,
-                            None,
-                            Some(self.error_sender.clone()),
-                        )
-                        .await?,
-                    );
-                }
-            }
-
-            // 2. try to fill missing
-            for _ in pool.len()..self.desired_size {
-                pool.push(Arc::new(
-                    new_connection(
-                        connection_manager.as_ref(),
-                        self.broadcast_rpc_address,
-                        self.config.connect_timeout,
-                        None,
-                        Some(self.error_sender.clone()),
-                    )
-                    .await?,
-                ));
-            }
-
-            // at this point either all connections are up, or some might have died in the meantime,
-            // which will trigger a new reconnection
-            Ok(true)
-        } else {
+        let connection_manager = match self.connection_manager.upgrade() {
+            Some(connection_manager) => connection_manager,
             // connection manager is gone - we're probably dropping the session
-            Ok(false)
+            None => return Ok(false),
+        };
+
+        let missing = {
+            let pool = self.pool.read().await;
+            pool.iter()
+                .filter(|connection| connection.is_broken())
+                .count()
+                + self.desired_size.saturating_sub(pool.len())
+        };
+
+        // connections are established without holding the lock, so the pool stays usable
+        for _ in 0..missing {
+            let connection = Arc::new(
+                new_connection(
+                    connection_manager.as_ref(),
+                    self.broadcast_rpc_address,
+                    self.config.connect_timeout,
+                    None,
+                    Some(self.error_sender.clone()),
+                )
+                .await?,
+            );
+
+            let mut pool = self.pool.write().await;
+            if let Some(broken) = pool.iter_mut().find(|connection| connection.is_broken()) {
+                *broken = connection;
+            } else if pool.len() < self.desired_size {
+                pool.push(connection);
+            }
         }
+
+        // at this point either all connections are up, or some might have died in the meantime,
+        // which will trigger a new reconnection
+        Ok(true)
     }
 }
 
@@ -673,8 +671,10 @@ mod tests {
     use crate::retry::MockReconnectionPolicy;
     use crate::transport::MockCdrsTransport;
     use futures::future::pending;
+    use futures::FutureExt;
     use std::net::{IpAddr, Ipv4Addr};
-    use tokio::sync::watch;
+    use std::sync::atomic::AtomicBool;
+    use tokio::sync::{watch, Notify};
     use tokio::time::timeout;
 
     type TestConnectionManager = MockConnectionManager<MockCdrsTransport>;
@@ -726,6 +726,101 @@ mod tests {
     #[should_panic(expected = "Remote connection pool size must be at least 1")]
     fn config_rejects_empty_remote_pool() {
         let _ = ConnectionPoolConfigBuilder::new().with_remote_size(0);
+    }
+
+    fn transport_with_broken_flag(broken: Arc<AtomicBool>) -> MockCdrsTransport {
+        let mut transport = MockCdrsTransport::new();
+        transport
+            .expect_is_broken()
+            .returning(move || broken.load(Ordering::Relaxed));
+        transport
+    }
+
+    async fn create_pool(
+        connection_manager: TestConnectionManager,
+        size: usize,
+    ) -> (
+        Arc<ConnectionPool<MockCdrsTransport, TestConnectionManager>>,
+        Arc<TestConnectionManager>,
+        mpsc::Receiver<Error>,
+    ) {
+        let connection_manager = Arc::new(connection_manager);
+        let (error_sender, error_receiver) = mpsc::channel(size);
+        let config = ConnectionPoolConfigBuilder::new()
+            .with_local_size(size)
+            .build();
+
+        let pool = ConnectionPool::new(
+            &connection_manager,
+            test_address(),
+            NodeDistance::Local,
+            config,
+            error_sender,
+        )
+        .await
+        .unwrap();
+
+        (Arc::new(pool), connection_manager, error_receiver)
+    }
+
+    #[tokio::test]
+    async fn pool_stays_usable_while_reconnecting() {
+        let broken = Arc::new(AtomicBool::new(false));
+        let (entered_sender, mut entered_receiver) = mpsc::channel(1);
+        let release = Arc::new(Notify::new());
+        let calls = AtomicUsize::new(0);
+
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager.expect_connection().returning({
+            let broken = broken.clone();
+            let release = release.clone();
+            move |_, _, _| match calls.fetch_add(1, Ordering::Relaxed) {
+                0 => {
+                    let transport = transport_with_broken_flag(broken.clone());
+                    Box::pin(async move { Ok(transport) })
+                }
+                1 => {
+                    let transport = transport_with_broken_flag(Default::default());
+                    Box::pin(async move { Ok(transport) })
+                }
+                _ => {
+                    let _ = entered_sender.try_send(());
+                    let release = release.clone();
+                    let transport = transport_with_broken_flag(Default::default());
+                    Box::pin(async move {
+                        release.notified().await;
+                        Ok(transport)
+                    })
+                }
+            }
+        });
+
+        let (pool, _connection_manager, _error_receiver) = create_pool(connection_manager, 2).await;
+        broken.store(true, Ordering::Relaxed);
+
+        let reconnection = tokio::spawn({
+            let pool = pool.clone();
+            async move { pool.reconnect_broken().await }
+        });
+
+        timeout(TEST_GUARD_TIMEOUT, entered_receiver.recv())
+            .await
+            .expect("reconnection did not start");
+
+        let connection = pool
+            .connection()
+            .now_or_never()
+            .expect("pool is locked while reconnecting");
+        assert!(!connection.unwrap().is_broken());
+
+        release.notify_one();
+        assert!(reconnection.await.unwrap().unwrap());
+        assert!(pool
+            .pool
+            .read()
+            .await
+            .iter()
+            .all(|connection| !connection.is_broken()));
     }
 
     #[tokio::test]
