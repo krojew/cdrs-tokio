@@ -571,6 +571,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     new_node_info,
                     metadata.as_ref(),
                     &self.connection_pool_factory,
+                    self.node_distance_evaluator.as_ref(),
                     state,
                 )));
             }

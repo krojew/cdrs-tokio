@@ -14,6 +14,7 @@ use crate::cluster::connection_pool::{ConnectionPool, ConnectionPoolFactory};
 use crate::cluster::topology::{NodeDistance, NodeState};
 use crate::cluster::Murmur3Token;
 use crate::cluster::{ConnectionManager, NodeInfo};
+use crate::load_balancing::node_distance_evaluator::NodeDistanceEvaluator;
 use crate::transport::CdrsTransport;
 
 /// Metadata about a Cassandra node in the cluster, along with a connection.
@@ -89,31 +90,6 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             broadcast_rpc_address,
             broadcast_address,
             distance,
-            state: Atomic::new(state),
-            host_id,
-            tokens,
-            rack,
-            datacenter,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn with_state(
-        connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,
-        broadcast_rpc_address: SocketAddr,
-        broadcast_address: Option<SocketAddr>,
-        host_id: Option<Uuid>,
-        state: NodeState,
-        tokens: Vec<Murmur3Token>,
-        rack: String,
-        datacenter: String,
-    ) -> Self {
-        Self {
-            connection_pool_factory,
-            connection_pool: Default::default(),
-            broadcast_rpc_address,
-            broadcast_address,
-            distance: None,
             state: Atomic::new(state),
             host_id,
             tokens,
@@ -276,12 +252,18 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     }
 
     #[inline]
-    pub(crate) fn clone_with_node_info(&self, node_info: NodeInfo) -> Self {
+    pub(crate) fn clone_with_node_info(
+        &self,
+        node_info: NodeInfo,
+        node_distance_evaluator: &dyn NodeDistanceEvaluator,
+    ) -> Self {
         let address_changed = self.broadcast_rpc_address != node_info.broadcast_rpc_address;
 
         let mut new_node_state = self.state.load(Ordering::Relaxed);
+        let mut distance = self.distance;
         if address_changed {
             new_node_state = NodeState::Unknown;
+            distance = node_distance_evaluator.compute_distance(&node_info);
         }
 
         // If we recreate the node with the status Down, it will be removed from the load-balancing strategy.
@@ -304,8 +286,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             connection_pool: Default::default(),
             broadcast_rpc_address: node_info.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
-            // since address could change, we can't be sure of distance or state
-            distance: if address_changed { None } else { self.distance },
+            distance,
             state: Atomic::new(new_node_state),
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,
@@ -335,6 +316,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
     pub(crate) fn clone_with_node_info_and_state(
         &self,
         node_info: NodeInfo,
+        node_distance_evaluator: &dyn NodeDistanceEvaluator,
         state: NodeState,
     ) -> Self {
         Self {
@@ -342,8 +324,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             connection_pool: Default::default(),
             broadcast_rpc_address: node_info.broadcast_rpc_address,
             broadcast_address: node_info.broadcast_address,
-            // since address could change, we can't be sure of distance
-            distance: None,
+            distance: node_distance_evaluator.compute_distance(&node_info),
             state: Atomic::new(state),
             host_id: Some(node_info.host_id),
             tokens: node_info.tokens,

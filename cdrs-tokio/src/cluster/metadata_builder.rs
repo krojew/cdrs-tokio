@@ -78,7 +78,9 @@ pub(crate) fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
                 debug!(?node_info, "Updating old node.");
                 added_or_updated.insert(
                     node_info.host_id,
-                    Arc::new(old_node.clone_with_node_info(node_info.clone())),
+                    Arc::new(
+                        old_node.clone_with_node_info(node_info.clone(), node_distance_evaluator),
+                    ),
                 );
             } else {
                 debug!(?node_info, "Adding new node.");
@@ -106,6 +108,7 @@ pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
     node_info: NodeInfo,
     old_metadata: &ClusterMetadata<T, CM>,
     connection_pool_factory: &Arc<ConnectionPoolFactory<T, CM>>,
+    node_distance_evaluator: &dyn NodeDistanceEvaluator,
     state: NodeState,
 ) -> ClusterMetadata<T, CM> {
     let old_node = old_metadata.find_node_by_host_id(&node_info.host_id);
@@ -118,15 +121,19 @@ pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
         }
 
         debug!(?old_node, "Updating old node with new info.");
-        return old_metadata
-            .clone_with_node(old_node.clone_with_node_info_and_state(node_info, state));
+        return old_metadata.clone_with_node(old_node.clone_with_node_info_and_state(
+            node_info,
+            node_distance_evaluator,
+            state,
+        ));
     }
 
-    old_metadata.clone_with_node(Node::with_state(
+    old_metadata.clone_with_node(Node::new_with_state(
         connection_pool_factory.clone(),
         node_info.broadcast_rpc_address,
         node_info.broadcast_address,
         Some(node_info.host_id),
+        node_distance_evaluator.compute_distance(&node_info),
         state,
         node_info.tokens,
         node_info.rack,
@@ -313,7 +320,10 @@ mod tests {
     fn should_update_old_metadata_nodes_with_new_info() {
         let connection_pool_factory = create_connection_pool_factory();
 
-        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(NodeDistance::Local));
 
         let node_infos = [NodeInfo::new(
             Uuid::new_v4(),
@@ -415,7 +425,10 @@ mod tests {
     fn should_reset_node_state_when_rpc_address_changes() {
         let connection_pool_factory = create_connection_pool_factory();
 
-        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(NodeDistance::Remote));
 
         let node_infos = [NodeInfo::new(
             Uuid::new_v4(),
@@ -461,7 +474,7 @@ mod tests {
             node_infos[0].broadcast_rpc_address
         );
         assert_eq!(node.state(), NodeState::Unknown);
-        assert!(node.distance().is_none());
+        assert_eq!(node.distance(), Some(NodeDistance::Remote));
     }
 
     #[test]
@@ -492,10 +505,13 @@ mod tests {
 
         let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
 
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+
         let metadata = add_new_node(
             node_info.clone(),
             &old_metadata,
             &connection_pool_factory,
+            &node_distance_evaluator,
             NodeState::Up,
         );
 
@@ -546,10 +562,16 @@ mod tests {
 
         let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
 
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(NodeDistance::Remote));
+
         let metadata = add_new_node(
             node_info.clone(),
             &old_metadata,
             &connection_pool_factory,
+            &node_distance_evaluator,
             NodeState::Up,
         );
 
@@ -566,7 +588,11 @@ mod tests {
             nodes.get(&node_info.host_id).unwrap().state(),
             NodeState::Up
         );
-        assert!(nodes.get(&node_info.host_id).unwrap().distance().is_none());
+        assert_eq!(
+            nodes.get(&node_info.host_id).unwrap().distance(),
+            Some(NodeDistance::Remote)
+        );
+        assert!(!nodes.get(&node_info.host_id).unwrap().is_ignored());
     }
 
     #[test]
@@ -584,10 +610,16 @@ mod tests {
 
         let old_metadata = ClusterMetadata::new(Default::default(), Default::default());
 
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(NodeDistance::Local));
+
         let metadata = add_new_node(
             node_info.clone(),
             &old_metadata,
             &connection_pool_factory,
+            &node_distance_evaluator,
             NodeState::Up,
         );
 
@@ -604,6 +636,10 @@ mod tests {
             nodes.get(&node_info.host_id).unwrap().state(),
             NodeState::Up
         );
-        assert!(nodes.get(&node_info.host_id).unwrap().distance().is_none());
+        assert_eq!(
+            nodes.get(&node_info.host_id).unwrap().distance(),
+            Some(NodeDistance::Local)
+        );
+        assert!(!nodes.get(&node_info.host_id).unwrap().is_ignored());
     }
 }
