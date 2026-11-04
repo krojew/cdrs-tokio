@@ -2,7 +2,10 @@ use crate::compression::{Compression, CompressionError};
 use crate::frame::message_request::RequestBody;
 use crate::frame::message_response::ResponseBody;
 use crate::types::data_serialization_types::decode_timeuuid;
-use crate::types::{from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN};
+use crate::types::{
+    cursor_next_value_ref, from_cursor_str, from_cursor_string_list, try_i16_from_bytes,
+    try_i32_from_bytes, INT_LEN, SHORT_LEN, UUID_LEN,
+};
 use bitflags::bitflags;
 use derivative::Derivative;
 use derive_more::{Constructor, Display};
@@ -80,6 +83,25 @@ pub(crate) fn checked_body_len(body_len: i32) -> Option<usize> {
     usize::try_from(body_len)
         .ok()
         .filter(|body_len| *body_len <= MAX_ENVELOPE_BODY_SIZE)
+}
+
+fn skip_bytes_map(cursor: &mut Cursor<&[u8]>) -> error::Result<()> {
+    let mut buffer = [0; SHORT_LEN];
+    std::io::Read::read_exact(cursor, &mut buffer)?;
+
+    for _ in 0..u16::from_be_bytes(buffer) {
+        from_cursor_str(cursor)?;
+
+        let mut buffer = [0; INT_LEN];
+        std::io::Read::read_exact(cursor, &mut buffer)?;
+
+        // a negative length denotes a null value without any bytes
+        if let Ok(len) = usize::try_from(i32::from_be_bytes(buffer)) {
+            cursor_next_value_ref(cursor, len)?;
+        }
+    }
+
+    Ok(())
 }
 
 /// Cassandra stream identifier.
@@ -212,6 +234,10 @@ impl Envelope {
         } else {
             vec![]
         };
+
+        if flags.contains(Flags::CUSTOM_PAYLOAD) {
+            skip_bytes_map(&mut body_cursor).map_err(ParseEnvelopeError::InvalidCustomPayload)?;
+        }
 
         let mut body = Vec::with_capacity(body_len - body_cursor.position() as usize);
 
@@ -365,6 +391,8 @@ pub enum ParseEnvelopeError {
     InvalidBodyLength(i32),
     #[error("Invalid tracing id: {0}")]
     InvalidTracingId(error::Error),
+    #[error("Invalid custom payload: {0}")]
+    InvalidCustomPayload(error::Error),
 }
 
 /// Protocol version.
@@ -1306,5 +1334,92 @@ mod flags {
         };
 
         helpers::test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
+    }
+
+    // [bytes map] {"k": [1, 2, 3], "n": null}
+    const CUSTOM_PAYLOAD: [u8; 19] = [
+        0, 2, // entries
+        0, 1, 107, 0, 0, 0, 3, 1, 2, 3, // "k" => [1, 2, 3]
+        0, 1, 110, 255, 255, 255, 255, // "n" => null
+    ];
+
+    fn response_with_body(flags: Flags, body: &[u8]) -> Vec<u8> {
+        let mut raw_envelope = vec![132, flags.bits(), 0, 12, 8];
+        raw_envelope.extend_from_slice(&(body.len() as i32).to_be_bytes());
+        raw_envelope.extend_from_slice(body);
+        raw_envelope
+    }
+
+    #[test]
+    fn test_custom_payload_response() {
+        let mut body = CUSTOM_PAYLOAD.to_vec();
+        body.extend_from_slice(&[0, 0, 0, 1]);
+
+        let raw_envelope = response_with_body(Flags::CUSTOM_PAYLOAD, &body);
+        let envelope = Envelope::from_buffer(&raw_envelope, Compression::None)
+            .unwrap()
+            .envelope;
+
+        assert_eq!(envelope.body, vec![0, 0, 0, 1]);
+        assert_eq!(
+            envelope.response_body().unwrap(),
+            ResponseBody::Result(ResResultBody::Void)
+        );
+    }
+
+    #[test]
+    fn test_custom_payload_after_tracing_id_and_warnings_response() {
+        let tracing_id = [4, 54, 67, 12, 43, 2, 98, 76, 32, 50, 87, 5, 1, 33, 43, 87];
+
+        let mut body = tracing_id.to_vec();
+        body.extend_from_slice(&[0, 1, 0, 2, 104, 105]); // warnings ["hi"]
+        body.extend_from_slice(&CUSTOM_PAYLOAD);
+        body.extend_from_slice(&[0, 0, 0, 1]);
+
+        let raw_envelope = response_with_body(
+            Flags::TRACING | Flags::WARNING | Flags::CUSTOM_PAYLOAD,
+            &body,
+        );
+        let envelope = Envelope::from_buffer(&raw_envelope, Compression::None)
+            .unwrap()
+            .envelope;
+
+        assert_eq!(envelope.tracing_id, Some(Uuid::from_bytes(tracing_id)));
+        assert_eq!(envelope.warnings, vec!["hi".to_string()]);
+        assert_eq!(envelope.body, vec![0, 0, 0, 1]);
+    }
+
+    #[test]
+    fn test_custom_payload_request() {
+        let query_body = [0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 64];
+
+        let mut body = CUSTOM_PAYLOAD.to_vec();
+        body.extend_from_slice(&query_body);
+
+        let mut raw_envelope = vec![4, Flags::CUSTOM_PAYLOAD.bits(), 0, 12, 7];
+        raw_envelope.extend_from_slice(&(body.len() as i32).to_be_bytes());
+        raw_envelope.extend_from_slice(&body);
+
+        let envelope = Envelope::from_buffer(&raw_envelope, Compression::None)
+            .unwrap()
+            .envelope;
+
+        assert_eq!(envelope.body, query_body.to_vec());
+        assert!(matches!(
+            envelope.request_body().unwrap(),
+            RequestBody::Query(BodyReqQuery { query, .. }) if query == "blah"
+        ));
+    }
+
+    #[test]
+    fn test_truncated_custom_payload_response() {
+        let raw_envelope = response_with_body(Flags::CUSTOM_PAYLOAD, &CUSTOM_PAYLOAD[..15]);
+
+        let result = Envelope::from_buffer(&raw_envelope, Compression::None);
+        assert!(
+            matches!(result, Err(ParseEnvelopeError::InvalidCustomPayload(_))),
+            "{:?}",
+            result
+        );
     }
 }

@@ -1,6 +1,5 @@
 use std::convert::TryFrom;
 use std::io;
-use std::io::Cursor;
 use std::net::SocketAddr;
 use tokio::io::AsyncReadExt;
 
@@ -8,41 +7,30 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::message_response::ResponseBody;
 use cassandra_protocol::frame::{
-    Direction, Envelope, Flags, Opcode, Version, LENGTH_LEN, MAX_ENVELOPE_BODY_SIZE, STREAM_LEN,
+    Envelope, Flags, Opcode, ParseEnvelopeError, Version, LENGTH_LEN, MAX_ENVELOPE_BODY_SIZE,
+    STREAM_LEN,
 };
-use cassandra_protocol::types::data_serialization_types::decode_timeuuid;
-use cassandra_protocol::types::{
-    from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN,
-};
+use cassandra_protocol::types::try_i32_from_bytes;
+
+const OPCODE_POS: usize = Version::BYTE_LENGTH + Flags::BYTE_LENGTH + STREAM_LEN;
+const ENVELOPE_HEADER_LEN: usize = OPCODE_POS + Opcode::BYTE_LENGTH + LENGTH_LEN;
 
 async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
     compressor: Compression,
 ) -> error::Result<Envelope> {
-    let mut version_bytes = [0; Version::BYTE_LENGTH];
-    let mut flag_bytes = [0; Flags::BYTE_LENGTH];
-    let mut opcode_bytes = [0; Opcode::BYTE_LENGTH];
-    let mut stream_bytes = [0; STREAM_LEN];
-    let mut length_bytes = [0; LENGTH_LEN];
+    let mut envelope = vec![0; ENVELOPE_HEADER_LEN];
+    cursor.read_exact(&mut envelope).await?;
 
-    // NOTE: order of reads matters
-    cursor.read_exact(&mut version_bytes).await?;
-    cursor.read_exact(&mut flag_bytes).await?;
-    cursor.read_exact(&mut stream_bytes).await?;
-    cursor.read_exact(&mut opcode_bytes).await?;
-    cursor.read_exact(&mut length_bytes).await?;
-
-    let version = Version::try_from(version_bytes[0])?;
-    let direction = Direction::from(version_bytes[0]);
-    let flags = Flags::from_bits_truncate(flag_bytes[0]);
-    let stream_id = try_i16_from_bytes(&stream_bytes)?;
-    let opcode = Opcode::try_from(opcode_bytes[0])?;
+    // reject garbage before waiting for a body which might never arrive
+    Version::try_from(envelope[0])?;
+    Opcode::try_from(envelope[OPCODE_POS])?;
 
     // The wire format encodes the body length as a signed 32-bit int. Without
     // validation a negative value would wrap around to a multi-gigabyte usize,
     // and even a legitimate large positive value would happily allocate up to
     // 2 GiB before reading any body bytes. Reject both before allocating.
-    let length_signed = try_i32_from_bytes(&length_bytes)?;
+    let length_signed = try_i32_from_bytes(&envelope[ENVELOPE_HEADER_LEN - LENGTH_LEN..])?;
     if length_signed < 0 {
         return Err(error::Error::Io(io::Error::new(
             io::ErrorKind::InvalidData,
@@ -57,58 +45,17 @@ async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
         )));
     }
 
-    let mut body_bytes = vec![0; length];
+    envelope.resize(ENVELOPE_HEADER_LEN + length, 0);
+    cursor
+        .read_exact(&mut envelope[ENVELOPE_HEADER_LEN..])
+        .await?;
 
-    cursor.read_exact(&mut body_bytes).await?;
-
-    let full_body = if flags.contains(Flags::COMPRESSION) {
-        compressor.decode(body_bytes)?
-    } else {
-        Compression::None.decode(body_bytes)?
-    };
-
-    let body_len = full_body.len();
-
-    // Use cursor to get tracing id, warnings and actual body
-    let mut body_cursor = Cursor::new(full_body.as_slice());
-
-    // The TRACING flag has different semantics in each direction: in a request
-    // it is the client asking the server to enable tracing; in a response it
-    // signals that the body starts with a 16-byte tracing UUID. Reading that
-    // UUID on the wrong direction (which the previous code did) would silently
-    // consume the first 16 bytes of a request body. Match the canonical
-    // Envelope::from_buffer parser by gating on direction too.
-    let tracing_id = if flags.contains(Flags::TRACING) && direction == Direction::Response {
-        let mut tracing_bytes = [0; UUID_LEN];
-        std::io::Read::read_exact(&mut body_cursor, &mut tracing_bytes)?;
-
-        decode_timeuuid(&tracing_bytes).ok()
-    } else {
-        None
-    };
-
-    let warnings = if flags.contains(Flags::WARNING) {
-        from_cursor_string_list(&mut body_cursor)?
-    } else {
-        vec![]
-    };
-
-    let mut body = Vec::with_capacity(body_len - body_cursor.position() as usize);
-
-    std::io::Read::read_to_end(&mut body_cursor, &mut body)?;
-
-    let envelope = Envelope {
-        version,
-        direction,
-        flags,
-        opcode,
-        stream_id,
-        body,
-        tracing_id,
-        warnings,
-    };
-
-    Ok(envelope)
+    Envelope::from_buffer(&envelope, compressor)
+        .map(|parsed| parsed.envelope)
+        .map_err(|error| match error {
+            ParseEnvelopeError::DecompressionError(error) => error.into(),
+            error => error::Error::General(error.to_string()),
+        })
 }
 
 pub async fn parse_envelope<T: AsyncReadExt + Unpin>(
@@ -142,7 +89,7 @@ pub(crate) fn convert_envelope_into_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cassandra_protocol::frame::Version;
+    use cassandra_protocol::frame::{Direction, Version};
 
     // Build a minimal valid envelope header byte sequence with the supplied
     // 4-byte length field. The header layout is:
@@ -230,5 +177,45 @@ mod tests {
             "request body should be preserved verbatim, got {:?}",
             envelope.body
         );
+    }
+
+    #[tokio::test]
+    async fn parse_envelope_rejects_unknown_version_before_reading_body() {
+        let mut wire = header_with_length(100i32.to_be_bytes());
+        wire[0] = 0x48;
+
+        let mut reader = wire.as_slice();
+        let result = parse_raw_envelope(&mut reader, Compression::None).await;
+        assert!(
+            matches!(result, Err(error::Error::General(_))),
+            "{:?}",
+            result
+        );
+    }
+
+    #[tokio::test]
+    async fn parse_envelope_skips_custom_payload() {
+        let mut body = vec![0, 1, 0, 2, 104, 105]; // warnings ["hi"]
+        body.extend_from_slice(&[0, 1, 0, 1, 107, 0, 0, 0, 1, 42]); // custom payload {"k": [42]}
+        body.extend_from_slice(&[0, 0, 0, 1]);
+
+        let mut wire = vec![
+            u8::from(Version::V4) | u8::from(Direction::Response),
+            (Flags::WARNING | Flags::CUSTOM_PAYLOAD).bits(),
+            0,
+            0,
+            u8::from(Opcode::Result),
+        ];
+        wire.extend_from_slice(&(body.len() as i32).to_be_bytes());
+        wire.extend_from_slice(&body);
+
+        let mut reader = wire.as_slice();
+        let envelope = parse_raw_envelope(&mut reader, Compression::None)
+            .await
+            .unwrap();
+
+        assert_eq!(envelope.warnings, vec!["hi".to_string()]);
+        assert_eq!(envelope.body, vec![0, 0, 0, 1]);
+        assert!(reader.is_empty());
     }
 }
