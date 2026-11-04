@@ -986,25 +986,42 @@ mod tests {
 
     // The test cluster has two ignored nodes at tokens 8 and 9, which are the
     // only replicas for token 8 with RF=2 (keyspace k1). The next nodes on the
-    // ring aren't replicas, so the plan falls back to round-robin unignored
-    // nodes.
+    // ring aren't replicas, so the plan is exactly the round-robin order of the
+    // unignored nodes, with no node promoted to the front.
     #[test]
     fn simple_strategy_skips_ignored_replicas() {
         let cluster = create_cluster();
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
-        let query_plan = lb.query_plan(
-            Some(Request::new(
-                Some("k1"), // SimpleStrategy with replication_factor: 2
-                Some(Murmur3Token::new(8)),
-                None,
-                None,
-            )),
-            &cluster,
-        );
+        let unignored_nodes = cluster
+            .unignored_nodes()
+            .iter()
+            .map(|node| node.broadcast_rpc_address())
+            .collect_vec();
+        assert_eq!(unignored_nodes.len(), 5);
 
-        assert_eq!(query_plan.nodes.len(), 5);
-        assert!(query_plan.nodes.iter().all(|node| !node.is_ignored()));
+        for offset in 0..unignored_nodes.len() {
+            let query_plan = lb.query_plan(
+                Some(Request::new(
+                    Some("k1"), // SimpleStrategy with replication_factor: 2
+                    Some(Murmur3Token::new(8)),
+                    None,
+                    None,
+                )),
+                &cluster,
+            );
+
+            let mut expected = unignored_nodes.clone();
+            expected.rotate_left(offset);
+            assert_eq!(
+                query_plan
+                    .nodes
+                    .iter()
+                    .map(|node| node.broadcast_rpc_address())
+                    .collect_vec(),
+                expected
+            );
+        }
     }
 
     #[test]
