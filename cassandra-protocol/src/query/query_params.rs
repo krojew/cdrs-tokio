@@ -17,6 +17,7 @@ pub struct QueryParams {
     /// Cassandra consistency level.
     pub consistency: Consistency,
     /// Were values provided with names
+    #[deprecated(note = "ignored when serializing - the flag is derived from `values`")]
     pub with_names: bool,
     /// Array of values.
     pub values: Option<QueryValues>,
@@ -44,7 +45,7 @@ impl QueryParams {
             flags.insert(QueryFlags::VALUE);
         }
 
-        if self.with_names {
+        if self.values.as_ref().is_some_and(QueryValues::has_names) {
             flags.insert(QueryFlags::WITH_NAMES_FOR_VALUES);
         }
 
@@ -200,6 +201,7 @@ impl FromCursor for QueryParams {
 
         let with_names = flags.contains(QueryFlags::WITH_NAMES_FOR_VALUES);
 
+        #[allow(deprecated)]
         Ok(QueryParams {
             consistency,
             with_names,
@@ -269,5 +271,30 @@ mod tests {
         let decoded =
             QueryParams::from_cursor(&mut Cursor::new(data.as_slice()), Version::V5).unwrap();
         assert_eq!(decoded, params);
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn should_derive_names_flag_from_values() {
+        let named = QueryParams {
+            values: Some(QueryValues::NamedValues(
+                vec![("a".to_string(), Value::Null)].into_iter().collect(),
+            )),
+            with_names: false,
+            ..Default::default()
+        };
+        let data = named.serialize_to_vec(Version::V4);
+        assert_eq!(
+            data[2] & QueryFlags::WITH_NAMES_FOR_VALUES.bits() as u8,
+            QueryFlags::WITH_NAMES_FOR_VALUES.bits() as u8
+        );
+
+        let simple = QueryParams {
+            values: Some(QueryValues::SimpleValues(vec![Value::Null])),
+            with_names: true,
+            ..Default::default()
+        };
+        let data = simple.serialize_to_vec(Version::V4);
+        assert_eq!(data[2] & QueryFlags::WITH_NAMES_FOR_VALUES.bits() as u8, 0);
     }
 }

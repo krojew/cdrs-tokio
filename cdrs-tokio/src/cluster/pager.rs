@@ -151,10 +151,6 @@ impl<
             .paging_state
             .clone_from(&self.pager_state.cursor);
 
-        if let Some(values) = &query_params.values {
-            query_params.with_names = values.has_names();
-        }
-
         let params = StatementParams {
             keyspace: query_params.keyspace.clone(),
             query_params,

@@ -21,7 +21,6 @@ impl BodyReqQuery {
         query: String,
         consistency: Consistency,
         values: Option<QueryValues>,
-        with_names: bool,
         page_size: Option<CInt>,
         paging_state: Option<CBytes>,
         serial_consistency: Option<Consistency>,
@@ -29,6 +28,9 @@ impl BodyReqQuery {
         keyspace: Option<String>,
         now_in_seconds: Option<CInt>,
     ) -> BodyReqQuery {
+        let with_names = values.as_ref().is_some_and(QueryValues::has_names);
+
+        #[allow(deprecated)]
         BodyReqQuery {
             query,
             query_params: QueryParams {
@@ -75,12 +77,14 @@ impl Serialize for BodyReqQuery {
 }
 
 impl Envelope {
+    /// Creates a QUERY request. The "with names for values" flag is derived from `values`, so
+    /// `_with_names` is ignored.
     #[allow(clippy::too_many_arguments)]
     pub fn new_req_query(
         query: String,
         consistency: Consistency,
         values: Option<QueryValues>,
-        with_names: bool,
+        _with_names: bool,
         page_size: Option<CInt>,
         paging_state: Option<CBytes>,
         serial_consistency: Option<Consistency>,
@@ -96,7 +100,6 @@ impl Envelope {
             query,
             consistency,
             values,
-            with_names,
             page_size,
             paging_state,
             serial_consistency,
@@ -119,19 +122,15 @@ impl Envelope {
 
     #[inline]
     pub fn new_query(query: BodyReqQuery, flags: Flags, version: Version) -> Envelope {
-        Envelope::new_req_query(
-            query.query,
-            query.query_params.consistency,
-            query.query_params.values,
-            query.query_params.with_names,
-            query.query_params.page_size,
-            query.query_params.paging_state,
-            query.query_params.serial_consistency,
-            query.query_params.timestamp,
-            query.query_params.keyspace,
-            query.query_params.now_in_seconds,
-            flags,
+        Envelope::new(
             version,
+            Direction::Request,
+            flags,
+            Opcode::Query,
+            0,
+            query.serialize_to_vec(version),
+            None,
+            vec![],
         )
     }
 }
