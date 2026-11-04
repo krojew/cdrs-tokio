@@ -367,6 +367,51 @@ fn generic_struct_mirrors_db() {
     }
 }
 
+#[derive(IntoCdrsValue)]
+struct OptionalFields {
+    missing: Option<i32>,
+    present: Option<String>,
+}
+
+#[test]
+fn missing_optional_udt_field_serializes_as_null() {
+    let bytes: Bytes = OptionalFields {
+        missing: None,
+        present: Some("a".to_string()),
+    }
+    .into();
+
+    assert_eq!(
+        bytes.into_inner(),
+        udt(vec![Value::Null, Value::new("a")]).into_inner()
+    );
+}
+
+#[derive(IntoCdrsValue)]
+struct NotCloneable {
+    text: String,
+}
+
+#[derive(IntoCdrsValue)]
+struct OptionalNotCloneable {
+    inner: Option<NotCloneable>,
+}
+
+#[test]
+fn optional_udt_field_does_not_require_clone() {
+    let bytes: Bytes = OptionalNotCloneable {
+        inner: Some(NotCloneable {
+            text: "a".to_string(),
+        }),
+    }
+    .into();
+
+    assert_eq!(
+        bytes.into_inner(),
+        udt(vec![Value::new(udt(vec![Value::new("a")]))]).into_inner()
+    );
+}
+
 #[derive(DbMirror)]
 struct r#RawNames {
     id: i32,
