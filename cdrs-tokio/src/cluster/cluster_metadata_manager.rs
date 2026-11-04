@@ -401,19 +401,13 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     async fn process_topology_event(&self, event: TopologyChange) {
         match event.change_type {
             TopologyChangeType::NewNode => {
-                // For NewNode we need an async metadata fetch (system.peers
-                // lookup) before we can decide what to install, so we have to
-                // start by snapshotting the current cluster state. The
-                // subsequent add_new_node call performs its own atomic swap.
-                let metadata = self.metadata.load().clone();
-                if metadata.has_node_by_rpc_address(event.addr) {
+                if self.metadata.load().has_node_by_rpc_address(event.addr) {
                     debug!(
                         broadcast_rpc_address = %event.addr,
                         "Trying to add already existing node - ignoring."
                     );
                 } else {
-                    self.add_new_node(event.addr, NodeState::Unknown, metadata)
-                        .await;
+                    self.add_new_node(event.addr, NodeState::Unknown).await;
                 }
             }
             TopologyChangeType::RemovedNode => {
@@ -435,8 +429,9 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                 // unknown to us, so the existing-node update is split out and
                 // performed via rcu to avoid losing concurrent metadata
                 // changes between load and store.
-                let metadata_snapshot = self.metadata.load().clone();
-                if metadata_snapshot
+                if self
+                    .metadata
+                    .load()
                     .find_node_by_rpc_address(event.addr)
                     .is_some()
                 {
@@ -455,8 +450,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                         }
                     });
                 } else {
-                    self.add_new_node(event.addr, NodeState::Up, metadata_snapshot)
-                        .await;
+                    self.add_new_node(event.addr, NodeState::Up).await;
                 }
             }
             StatusChangeType::Down => {
@@ -556,24 +550,22 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         })
     }
 
-    async fn add_new_node(
-        &self,
-        broadcast_rpc_address: SocketAddr,
-        state: NodeState,
-        metadata: Arc<ClusterMetadata<T, CM>>,
-    ) {
+    async fn add_new_node(&self, broadcast_rpc_address: SocketAddr, state: NodeState) {
         debug!(%broadcast_rpc_address, %state, "Adding new node to metadata.");
 
         let new_node_info = self.find_new_node_info(broadcast_rpc_address).await;
         match new_node_info {
             Ok(Some(new_node_info)) => {
-                self.metadata.store(Arc::new(add_new_node(
-                    new_node_info,
-                    metadata.as_ref(),
-                    &self.connection_pool_factory,
-                    self.node_distance_evaluator.as_ref(),
-                    state,
-                )));
+                // metadata might have changed while waiting for node info
+                self.metadata.rcu(|metadata| {
+                    Arc::new(add_new_node(
+                        new_node_info.clone(),
+                        metadata.as_ref(),
+                        &self.connection_pool_factory,
+                        self.node_distance_evaluator.as_ref(),
+                        state,
+                    ))
+                });
             }
             Ok(None) => {
                 warn!(%broadcast_rpc_address, "Cannot find new node info. Ignoring new node.");
@@ -808,5 +800,206 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
             self.beta_protocol,
         )
         .await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cassandra_protocol::frame::message_request::RequestBody;
+    use cassandra_protocol::frame::message_result::{
+        BodyResResultRows, ColSpec, ColType, ColTypeOption, ColTypeOptionValue, ResResultBody,
+        RowsMetadata, RowsMetadataFlags, TableSpec,
+    };
+    use cassandra_protocol::frame::{Direction, Opcode, Serialize};
+    use cassandra_protocol::types::CBytes;
+    use futures::FutureExt;
+    use std::net::Ipv4Addr;
+    use std::sync::Mutex;
+    use tokio::sync::{oneshot, watch};
+    use uuid::Uuid;
+
+    use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
+    use crate::retry::MockReconnectionPolicy;
+    use crate::transport::MockCdrsTransport;
+
+    type TestMetadataManager =
+        ClusterMetadataManager<MockCdrsTransport, MockConnectionManager<MockCdrsTransport>>;
+
+    fn address(last_octet: u8) -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, last_octet)), 9042)
+    }
+
+    fn simple_type(id: ColType) -> ColTypeOption {
+        ColTypeOption { id, value: None }
+    }
+
+    fn column(name: &str, col_type: ColTypeOption) -> ColSpec {
+        ColSpec {
+            table_spec: None,
+            name: name.into(),
+            col_type,
+        }
+    }
+
+    // system.local identifies the node by broadcast_address, system.peers_v2 by peer
+    fn node_columns(address_column: &str) -> Vec<ColSpec> {
+        vec![
+            column("rpc_address", simple_type(ColType::Inet)),
+            column(address_column, simple_type(ColType::Inet)),
+            column("host_id", simple_type(ColType::Uuid)),
+            column("data_center", simple_type(ColType::Varchar)),
+            column("rack", simple_type(ColType::Varchar)),
+            column(
+                "tokens",
+                ColTypeOption {
+                    id: ColType::Set,
+                    value: Some(ColTypeOptionValue::CSet(Box::new(simple_type(
+                        ColType::Varchar,
+                    )))),
+                },
+            ),
+            column("schema_version", simple_type(ColType::Uuid)),
+        ]
+    }
+
+    fn node_row(address: SocketAddr, host_id: Uuid, tokens: &[i64]) -> Vec<CBytes> {
+        let ip = match address.ip() {
+            IpAddr::V4(ip) => ip.octets().to_vec(),
+            IpAddr::V6(ip) => ip.octets().to_vec(),
+        };
+
+        let mut encoded_tokens = (tokens.len() as i32).to_be_bytes().to_vec();
+        for token in tokens {
+            let token = token.to_string();
+            encoded_tokens.extend_from_slice(&(token.len() as i32).to_be_bytes());
+            encoded_tokens.extend_from_slice(token.as_bytes());
+        }
+
+        vec![
+            CBytes::new(ip.clone()),
+            CBytes::new(ip),
+            CBytes::new(host_id.as_bytes().to_vec()),
+            CBytes::new(b"dc1".to_vec()),
+            CBytes::new(b"r1".to_vec()),
+            CBytes::new(encoded_tokens),
+            CBytes::new(Uuid::new_v4().as_bytes().to_vec()),
+        ]
+    }
+
+    fn result_envelope(body: ResResultBody) -> Envelope {
+        Envelope::new(
+            Version::V4,
+            Direction::Response,
+            Flags::empty(),
+            Opcode::Result,
+            0,
+            body.serialize_to_vec(Version::V4),
+            None,
+            vec![],
+        )
+    }
+
+    fn rows_envelope(col_specs: Vec<ColSpec>, rows: Vec<Vec<CBytes>>) -> Envelope {
+        result_envelope(ResResultBody::Rows(BodyResResultRows {
+            metadata: RowsMetadata {
+                flags: RowsMetadataFlags::GLOBAL_TABLE_SPACE,
+                columns_count: col_specs.len() as i32,
+                paging_state: None,
+                new_metadata_id: None,
+                global_table_spec: Some(TableSpec {
+                    ks_name: "system".into(),
+                    table_name: "test".into(),
+                }),
+                col_specs,
+            },
+            rows_count: rows.len() as i32,
+            rows_content: rows,
+            protocol_version: Version::V4,
+        }))
+    }
+
+    fn query_text(envelope: &Envelope) -> String {
+        match envelope.request_body() {
+            Ok(RequestBody::Query(query)) => query.query,
+            _ => panic!("Expected a query!"),
+        }
+    }
+
+    fn create_metadata_manager(transport: MockCdrsTransport) -> TestMetadataManager {
+        let (_, keyspace_receiver) = watch::channel(None);
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            MockConnectionManager::new(),
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        ));
+
+        let session_context = Arc::new(SessionContext::default());
+        session_context
+            .control_connection_transport
+            .store(Some(Arc::new(transport)));
+
+        ClusterMetadataManager::new(
+            vec![],
+            connection_pool_factory,
+            session_context,
+            Box::new(AllLocalNodeDistanceEvaluator),
+            Version::V4,
+            false,
+        )
+    }
+
+    #[tokio::test]
+    async fn should_keep_concurrent_changes_when_adding_node() {
+        let new_node_address = address(2);
+        let new_node_host_id = Uuid::new_v4();
+
+        let (response_sender, response_receiver) = oneshot::channel::<()>();
+        let response_receiver = Mutex::new(Some(response_receiver));
+
+        let mut transport = MockCdrsTransport::new();
+        transport.expect_address().return_const(address(1));
+        transport
+            .expect_write_envelope()
+            .returning(move |envelope, _| {
+                assert_eq!(query_text(envelope), "SELECT * FROM system.peers_v2");
+
+                let response_receiver = response_receiver.lock().unwrap().take().unwrap();
+                let response = rows_envelope(
+                    node_columns("peer"),
+                    vec![node_row(new_node_address, new_node_host_id, &[1])],
+                );
+
+                async move {
+                    response_receiver.await.unwrap();
+                    Ok(response)
+                }
+                .boxed()
+            });
+
+        let metadata_manager = create_metadata_manager(transport);
+
+        // the keyspace is added while the peers query is still in flight
+        tokio::join!(
+            metadata_manager.add_new_node(new_node_address, NodeState::Up),
+            async {
+                metadata_manager.metadata.rcu(|metadata| {
+                    Arc::new(metadata.clone_with_keyspace(
+                        "ks".into(),
+                        KeyspaceMetadata::new(ReplicationStrategy::Other),
+                    ))
+                });
+                response_sender.send(()).unwrap();
+            }
+        );
+
+        let metadata = metadata_manager.metadata();
+        assert!(metadata.keyspace("ks").is_some());
+        assert!(metadata
+            .find_node_by_rpc_address(new_node_address)
+            .is_some());
     }
 }
