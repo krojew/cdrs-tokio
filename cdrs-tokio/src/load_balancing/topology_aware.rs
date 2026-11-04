@@ -19,13 +19,31 @@ use std::sync::Arc;
 /// [`TopologyAwareNodeDistanceEvaluator`](crate::load_balancing::node_distance_evaluator::TopologyAwareNodeDistanceEvaluator))
 /// should also be used.
 ///
-/// This implementation prioritizes replica nodes over non-replica ones; if more than one replica
-/// is available, the replicas will be shuffled. Non-replica nodes will be included in a round-robin
-/// fashion. Local nodes are always placed before remote ones. If local nodes are present in the
-/// cluster, only those will be used, unless a remote failover dc is allowed.
+/// Local and remote nodes are those with the corresponding
+/// [`NodeDistance`](crate::cluster::topology::NodeDistance). Nodes ignored for load balancing (not
+/// up, or with an unknown distance) are never included, and an ignored replica is skipped rather
+/// than replaced by a non-replica.
 ///
-/// Note: if a referenced keyspace doesn't use `NetworkTopologyStrategy`, replica nodes will be
-/// chosen ignoring distance information.
+/// For a request with a token (given directly or computed from the routing key) and a keyspace
+/// using `NetworkTopologyStrategy`, the query plan consists of, in order:
+///
+/// 1. local replicas, shuffled,
+/// 2. local non-replicas, in a round-robin fashion,
+/// 3. remote replicas, in ring order,
+/// 4. if `max_nodes_per_remote_dc` is set, up to that many randomly chosen remote nodes from each
+///    datacenter, shuffled, skipping nodes already in the plan.
+///
+/// Remote nodes (steps 3 and 4) are dropped only when the request uses a dc-local consistency
+/// level (`LocalOne`, `LocalQuorum` or `LocalSerial`) and `allow_dc_failover_for_local_cl` is
+/// `false`.
+///
+/// For a keyspace using `SimpleStrategy`, replicas are chosen ignoring distance information: the
+/// plan consists of shuffled replicas followed by all other nodes, local and remote, in a
+/// round-robin fashion. Any other replication strategy is treated as `SimpleStrategy` with a
+/// replication factor of 1.
+///
+/// Without a request, a token or a known keyspace, the plan consists of local nodes in a
+/// round-robin fashion.
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct TopologyAwareLoadBalancingStrategy<T: CdrsTransport, CM: ConnectionManager<T>> {
