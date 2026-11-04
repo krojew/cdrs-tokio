@@ -76,7 +76,7 @@ pub trait CdrsTransport: Send + Sync {
     fn is_broken(&self) -> bool;
 
     /// Marks the connection as broken, e.g. when it stops answering heartbeats, and fails all
-    /// requests waiting for a response on it. Afterwards, [`is_broken`](Self::is_broken) should
+    /// requests waiting for a response on it. Afterward, [`is_broken`](Self::is_broken) should
     /// return `true`. The caller handles the failure itself, so the error handler of the
     /// connection does not need to be notified. The default implementation does nothing.
     fn mark_broken(&self) {}
