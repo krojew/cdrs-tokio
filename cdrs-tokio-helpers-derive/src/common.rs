@@ -115,26 +115,27 @@ fn into_rust_with_args(
               #field_type_ident::from_cdrs_r(#arguments)?
             }
         }
+        // Cassandra stores an empty non-frozen collection as null.
         "List" => {
             let list_as_rust = as_rust(field_type, quote! {list}, name)?;
 
             quote! {
-              match cdrs_tokio::types::list::List::from_cdrs_r(#arguments) {
-                Ok(ref list) => {
+              match cdrs_tokio::types::list::List::from_cdrs_by_name(#arguments)? {
+                Some(ref list) => {
                   #list_as_rust
                 },
-                _ => return Err("List should not be empty".into())
+                None => Default::default()
               }
             }
         }
         "Map" => {
             let map_as_rust = as_rust(field_type, quote! {map}, name)?;
             quote! {
-              match cdrs_tokio::types::map::Map::from_cdrs_r(#arguments) {
-                Ok(map) => {
+              match cdrs_tokio::types::map::Map::from_cdrs_by_name(#arguments)? {
+                Some(map) => {
                   #map_as_rust
                 },
-                _ => return Err("Map should not be empty".into())
+                None => Default::default()
               }
             }
         }
