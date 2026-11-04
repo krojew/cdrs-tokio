@@ -190,8 +190,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     #[inline]
     pub fn unignored_nodes(&self) -> Vec<Arc<Node<T, CM>>> {
         self.nodes
-            .iter()
-            .filter_map(|(_, node)| {
+            .values()
+            .filter_map(|node| {
                 if node.is_ignored() {
                     None
                 } else {
@@ -205,8 +205,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
     #[inline]
     pub fn unignored_local_nodes(&self) -> Vec<Arc<Node<T, CM>>> {
         self.nodes
-            .iter()
-            .filter_map(|(_, node)| {
+            .values()
+            .filter_map(|node| {
                 if node.is_ignored() || !node.is_local() {
                     None
                 } else {

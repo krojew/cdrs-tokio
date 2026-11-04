@@ -42,8 +42,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> TokenMap<T, CM> {
     pub fn new(nodes: &NodeMap<T, CM>) -> Self {
         TokenMap {
             token_ring: nodes
-                .iter()
-                .flat_map(|(_, node)| {
+                .values()
+                .flat_map(|node| {
                     node.tokens()
                         .iter()
                         .map(move |token| (*token, node.clone()))
