@@ -250,6 +250,13 @@ impl BodyResResultRows {
         columns_count: i32,
         version: Version,
     ) -> error::Result<Vec<Vec<CBytes>>> {
+        // a row without columns occupies no bytes, so the remaining data cannot bound their count
+        if columns_count <= 0 && rows_count > 0 {
+            return Err(Error::General(format!(
+                "Rows result contains {rows_count} rows but no columns"
+            )));
+        }
+
         (0..rows_count)
             .map(|_| {
                 (0..columns_count)
@@ -1397,6 +1404,21 @@ mod rows {
         });
 
         test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn test_rows_without_columns() {
+        for rows_count in [1_000_000, i32::MAX] {
+            let mut bytes = vec![
+                0, 0, 0, 2, // rows flag
+                0, 0, 0, 0, // rows metadata flag
+                0, 0, 0, 0, // columns count
+            ];
+            bytes.extend_from_slice(&rows_count.to_be_bytes());
+
+            let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+            assert!(ResResultBody::from_cursor(&mut cursor, Version::V4).is_err());
+        }
     }
 
     #[test]
