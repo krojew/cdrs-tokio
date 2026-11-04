@@ -149,10 +149,59 @@ async fn set_keyspace<T: CdrsTransport>(
         );
 
         transport
-            .write_envelope(&use_envelope, false)
+            .write_internal_envelope(&use_envelope, false)
             .await
             .map(|_| ())
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transport::MockCdrsTransport;
+    use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
+    use cassandra_protocol::frame::{Direction, Flags};
+    use tokio::sync::watch;
+
+    #[tokio::test]
+    async fn startup_sets_keyspace_with_internal_request() {
+        let mut transport = MockCdrsTransport::new();
+        transport
+            .expect_write_envelope()
+            .times(1)
+            .returning(|_, _| {
+                Box::pin(async {
+                    Ok(Envelope::new(
+                        Version::V4,
+                        Direction::Response,
+                        Flags::empty(),
+                        Opcode::Ready,
+                        0,
+                        vec![],
+                        None,
+                        vec![],
+                    ))
+                })
+            });
+        transport
+            .expect_write_internal_envelope()
+            .times(1)
+            .returning(|_, _| Box::pin(async { Ok(Envelope::new_req_options(Version::V4)) }));
+
+        let (keyspace_sender, _) = watch::channel(None);
+        let keyspace_holder = KeyspaceHolder::new(keyspace_sender);
+        keyspace_holder.update_current_keyspace_without_notification("ks".into());
+
+        startup(
+            &transport,
+            &NoneAuthenticatorProvider,
+            &keyspace_holder,
+            Compression::None,
+            Version::V4,
+        )
+        .await
+        .unwrap();
     }
 }

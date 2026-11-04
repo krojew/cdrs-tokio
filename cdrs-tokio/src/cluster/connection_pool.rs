@@ -276,7 +276,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                         .map(|connection| {
                             let use_envelope = use_envelope.clone();
                             async move {
-                                if let Err(error) = connection.write_envelope(use_envelope.as_ref(), false).await {
+                                if let Err(error) = connection.write_internal_envelope(use_envelope.as_ref(), false).await {
                                     error!(%error, ?broadcast_rpc_address, "Error settings keyspace for connection!");
                                 }
                             }
@@ -726,6 +726,47 @@ mod tests {
     #[should_panic(expected = "Remote connection pool size must be at least 1")]
     fn config_rejects_empty_remote_pool() {
         let _ = ConnectionPoolConfigBuilder::new().with_remote_size(0);
+    }
+
+    #[tokio::test]
+    async fn keyspace_watcher_propagates_keyspace_with_internal_requests() {
+        let (keyspace_sender, keyspace_receiver) = watch::channel(None);
+        let (propagated_sender, mut propagated_receiver) = mpsc::channel(1);
+
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager
+            .expect_connection()
+            .returning(move |_, _, _| {
+                let propagated_sender = propagated_sender.clone();
+                let mut transport = MockCdrsTransport::new();
+                transport.expect_is_broken().return_const(false);
+                transport
+                    .expect_write_internal_envelope()
+                    .returning(move |_, _| {
+                        let _ = propagated_sender.try_send(());
+                        Box::pin(async { Ok(Envelope::new_req_options(Version::V4)) })
+                    });
+
+                Box::pin(async move { Ok(transport) })
+            });
+
+        let factory = ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        );
+        let _pool = factory
+            .create(NodeDistance::Local, test_address(), Weak::new())
+            .await
+            .unwrap();
+
+        keyspace_sender.send(Some("ks".into())).unwrap();
+
+        timeout(TEST_GUARD_TIMEOUT, propagated_receiver.recv())
+            .await
+            .expect("keyspace was not propagated with an internal request");
     }
 
     #[tokio::test]

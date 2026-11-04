@@ -60,6 +60,19 @@ pub trait CdrsTransport: Send + Sync {
         handshake: bool,
     ) -> BoxFuture<'a, Result<Envelope>>;
 
+    /// Schedules an envelope issued internally by the driver, e.g. to propagate the current
+    /// keyspace to a connection, for writing and waits for a response. Unlike
+    /// [`write_envelope`](Self::write_envelope), the response must not change shared session
+    /// state, such as the current keyspace. The default implementation delegates to
+    /// `write_envelope`.
+    fn write_internal_envelope<'a>(
+        &'a self,
+        envelope: &'a Envelope,
+        handshake: bool,
+    ) -> BoxFuture<'a, Result<Envelope>> {
+        self.write_envelope(envelope, handshake)
+    }
+
     /// Checks if the connection is broken (e.g. after read or write errors).
     fn is_broken(&self) -> bool;
 
@@ -74,6 +87,12 @@ mock! {
 
     impl CdrsTransport for CdrsTransport {
         fn write_envelope(
+            &self,
+            envelope: &Envelope,
+            handshake: bool,
+        ) -> BoxFuture<'static, Result<Envelope>>;
+
+        fn write_internal_envelope(
             &self,
             envelope: &Envelope,
             handshake: bool,
@@ -158,7 +177,18 @@ impl CdrsTransport for TransportTcp {
         envelope: &'a Envelope,
         handshake: bool,
     ) -> BoxFuture<'a, Result<Envelope>> {
-        self.inner.write_envelope(envelope, handshake).boxed()
+        self.inner
+            .write_envelope(envelope, handshake, false)
+            .boxed()
+    }
+
+    #[inline]
+    fn write_internal_envelope<'a>(
+        &'a self,
+        envelope: &'a Envelope,
+        handshake: bool,
+    ) -> BoxFuture<'a, Result<Envelope>> {
+        self.inner.write_envelope(envelope, handshake, true).boxed()
     }
 
     #[inline]
@@ -257,7 +287,18 @@ impl CdrsTransport for TransportRustls {
         envelope: &'a Envelope,
         handshake: bool,
     ) -> BoxFuture<'a, Result<Envelope>> {
-        self.inner.write_envelope(envelope, handshake).boxed()
+        self.inner
+            .write_envelope(envelope, handshake, false)
+            .boxed()
+    }
+
+    #[inline]
+    fn write_internal_envelope<'a>(
+        &'a self,
+        envelope: &'a Envelope,
+        handshake: bool,
+    ) -> BoxFuture<'a, Result<Envelope>> {
+        self.inner.write_envelope(envelope, handshake, true).boxed()
     }
 
     #[inline]
@@ -336,7 +377,12 @@ impl AsyncTransport {
         self.addr
     }
 
-    async fn write_envelope(&self, envelope: &Envelope, handshake: bool) -> Result<Envelope> {
+    async fn write_envelope(
+        &self,
+        envelope: &Envelope,
+        handshake: bool,
+        internal: bool,
+    ) -> Result<Envelope> {
         let (sender, receiver) = oneshot::channel();
 
         // leave stream id empty for now and generate it later
@@ -349,7 +395,7 @@ impl AsyncTransport {
         };
 
         self.write_sender
-            .send(Request::new(data, sender, handshake))
+            .send(Request::new(data, sender, handshake, internal))
             .await
             .map_err(|_| Error::General("Connection closed when writing data!".into()))?;
 
@@ -471,6 +517,8 @@ impl AsyncTransport {
                 if envelope.stream_id >= 0 {
                     // in case we get a SetKeyspace result, we need to store current keyspace
                     // checks are done manually for speed
+                    // internal requests only follow the current keyspace, so a late response
+                    // to one must not override a newer keyspace set by the user
                     if envelope.opcode == Opcode::Result {
                         let result_kind = envelope
                             .body
@@ -479,7 +527,9 @@ impl AsyncTransport {
                                 Error::General("Result body without result kind!".into())
                             })
                             .and_then(ResultKind::from_bytes)?;
-                        if result_kind == ResultKind::SetKeyspace {
+                        if result_kind == ResultKind::SetKeyspace
+                            && !response_handler_map.is_internal(envelope.stream_id)
+                        {
                             let response_body = envelope.response_body()?;
                             let set_keyspace =
                                 response_body.into_set_keyspace().ok_or_else(|| {
@@ -538,7 +588,7 @@ impl AsyncTransport {
                 frame_stream_ids.push(stream_id);
 
                 request.set_stream_id(stream_id);
-                response_handler_map.add_handler(stream_id, request.handler);
+                response_handler_map.add_handler(stream_id, request.handler, request.internal);
 
                 if request.handshake {
                     // handshake messages are not framed, so let's write them directly
@@ -729,8 +779,13 @@ impl Drop for ProcessingFailureHandler {
 
 type ResponseHandler = oneshot::Sender<Result<Envelope>>;
 
+struct PendingResponse {
+    handler: ResponseHandler,
+    internal: bool,
+}
+
 struct ResponseHandlerMap {
-    stream_handlers: Mutex<FxHashMap<StreamId, ResponseHandler>>,
+    stream_handlers: Mutex<FxHashMap<StreamId, PendingResponse>>,
     // Responses are matched with requests by stream id, so an id can be handed out again only
     // after a response (or an error) has been sent to the handler of its previous request.
     free_stream_ids: Mutex<VecDeque<StreamId>>,
@@ -751,19 +806,28 @@ impl ResponseHandlerMap {
     }
 
     #[inline]
-    pub fn add_handler(&self, stream_id: StreamId, handler: ResponseHandler) {
+    pub fn add_handler(&self, stream_id: StreamId, handler: ResponseHandler, internal: bool) {
         self.stream_handlers
             .lock()
             .unwrap()
-            .insert(stream_id, handler);
+            .insert(stream_id, PendingResponse { handler, internal });
+    }
+
+    /// Checks if the request in flight with given stream id was issued internally by the driver.
+    pub fn is_internal(&self, stream_id: StreamId) -> bool {
+        self.stream_handlers
+            .lock()
+            .unwrap()
+            .get(&stream_id)
+            .is_some_and(|pending| pending.internal)
     }
 
     pub fn send_response(&self, stream_id: StreamId, response: Result<Envelope>) -> Result<()> {
-        let handler = self.stream_handlers.lock().unwrap().remove(&stream_id);
-        match handler {
-            Some(handler) => {
+        let pending = self.stream_handlers.lock().unwrap().remove(&stream_id);
+        match pending {
+            Some(pending) => {
                 self.release_stream_id(stream_id);
-                let _ = handler.send(response);
+                let _ = pending.handler.send(response);
                 Ok(())
             }
             // unmatched stream - probably a bug somewhere
@@ -772,10 +836,10 @@ impl ResponseHandlerMap {
     }
 
     pub fn signal_general_error(&self, error: &Error) {
-        let handlers: Vec<_> = self.stream_handlers.lock().unwrap().drain().collect();
-        for (stream_id, handler) in handlers {
+        let pending: Vec<_> = self.stream_handlers.lock().unwrap().drain().collect();
+        for (stream_id, pending) in pending {
             self.release_stream_id(stream_id);
-            let _ = handler.send(Err(error.clone()));
+            let _ = pending.handler.send(Err(error.clone()));
         }
     }
 
@@ -812,6 +876,7 @@ struct Request {
     data: Vec<u8>,
     handler: ResponseHandler,
     handshake: bool,
+    internal: bool,
 }
 
 impl Request {
@@ -889,7 +954,7 @@ mod stream_id_tests {
         );
 
         let (handler, _receiver) = oneshot::channel();
-        map.add_handler(5, handler);
+        map.add_handler(5, handler, false);
 
         let next_stream_id = map.next_stream_id();
         tokio::pin!(next_stream_id);
@@ -920,6 +985,7 @@ mod transport_tests {
     struct TestConnection {
         transport: TransportTcp,
         server: FakeServer,
+        keyspace_holder: Arc<KeyspaceHolder>,
         error_receiver: mpsc::Receiver<Error>,
     }
 
@@ -932,7 +998,7 @@ mod transport_tests {
         let transport = TransportTcp::with_stream(
             client_stream,
             "127.0.0.1:9042".parse().unwrap(),
-            keyspace_holder,
+            keyspace_holder.clone(),
             None,
             Some(error_sender),
             Compression::None,
@@ -948,6 +1014,7 @@ mod transport_tests {
                 stream: server_stream,
                 buffer: vec![],
             },
+            keyspace_holder,
             error_receiver,
         }
     }
@@ -1031,6 +1098,63 @@ mod transport_tests {
         assert!(
             error.is_some(),
             "error handler was dropped without a notification"
+        );
+    }
+
+    fn set_keyspace_result(keyspace: &str) -> Vec<u8> {
+        let mut body = vec![0, 0, 0, 3];
+        body.extend_from_slice(&(keyspace.len() as i16).to_be_bytes());
+        body.extend_from_slice(keyspace.as_bytes());
+        body
+    }
+
+    fn use_query(keyspace: &str) -> Envelope {
+        Envelope::new_req_query(
+            format!("USE {keyspace}"),
+            Default::default(),
+            None,
+            false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Default::default(),
+            Version::V4,
+        )
+    }
+
+    #[tokio::test]
+    async fn internal_requests_do_not_update_current_keyspace() {
+        let mut connection = connect();
+        handshake(&mut connection).await;
+
+        let use_b = use_query("b");
+        let (response, _) = tokio::join!(
+            connection.transport.write_envelope(&use_b, false),
+            connection
+                .server
+                .respond_to_next(Opcode::Result, set_keyspace_result("b")),
+        );
+        response.unwrap();
+        assert_eq!(
+            connection.keyspace_holder.current_keyspace().as_deref(),
+            Some(&"b".to_string())
+        );
+
+        // a late response to keyspace propagation issued before the user switched to "b"
+        let use_a = use_query("a");
+        let (response, _) = tokio::join!(
+            connection.transport.write_internal_envelope(&use_a, false),
+            connection
+                .server
+                .respond_to_next(Opcode::Result, set_keyspace_result("a")),
+        );
+        response.unwrap();
+        assert_eq!(
+            connection.keyspace_holder.current_keyspace().as_deref(),
+            Some(&"b".to_string())
         );
     }
 
