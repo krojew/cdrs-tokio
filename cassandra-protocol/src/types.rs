@@ -230,7 +230,7 @@ pub(crate) fn from_cursor_str<'a>(cursor: &mut Cursor<&'a [u8]>) -> CDRSResult<&
     let mut buff = [0; SHORT_LEN];
     cursor.read_exact(&mut buff)?;
 
-    let len = CIntShort::from_be_bytes(buff);
+    let len = u16::from_be_bytes(buff);
     let body_bytes = cursor_next_value_ref(cursor, len as usize)?;
 
     std::str::from_utf8(body_bytes).map_err(Into::into)
@@ -263,8 +263,9 @@ pub fn from_cursor_string_list(cursor: &mut Cursor<&[u8]>) -> CDRSResult<Vec<Str
     let mut buff = [0; SHORT_LEN];
     cursor.read_exact(&mut buff)?;
 
-    let len = i16::from_be_bytes(buff);
-    let mut list = Vec::with_capacity(len as usize);
+    let len = u16::from_be_bytes(buff);
+    let remaining = (cursor.get_ref().len() as u64).saturating_sub(cursor.position());
+    let mut list = Vec::with_capacity((len as u64).min(remaining / SHORT_LEN as u64) as usize);
     for _ in 0..len {
         list.push(from_cursor_str(cursor)?.to_string());
     }
@@ -458,6 +459,17 @@ impl FromCursor for SocketAddr {
 }
 
 pub fn cursor_next_value(cursor: &mut Cursor<&[u8]>, len: usize) -> CDRSResult<Vec<u8>> {
+    let end = cursor.get_ref().len() as u64;
+    if len as u64 > end.saturating_sub(cursor.position()) {
+        // a short read leaves the cursor at the end, same as `read_exact`
+        cursor.set_position(end);
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "not enough bytes to read the value",
+        )
+        .into());
+    }
+
     let mut buff = vec![0u8; len];
     cursor.read_exact(&mut buff)?;
     Ok(buff)
@@ -467,17 +479,17 @@ pub fn cursor_next_value_ref<'a>(
     cursor: &mut Cursor<&'a [u8]>,
     len: usize,
 ) -> CDRSResult<&'a [u8]> {
+    let data: &'a [u8] = *cursor.get_ref();
     let start = cursor.position() as usize;
-    let result = &cursor.get_ref()[start..start + len];
-    cursor.set_position(cursor.position() + len as u64);
+    let result = start
+        .checked_add(len)
+        .and_then(|end| data.get(start..end))
+        .ok_or_else(|| {
+            CdrsError::General("cursor_next_value_ref could not retrieve a full slice".into())
+        })?;
 
-    if result.len() != len {
-        Err(CdrsError::General(
-            "cursor_next_value_ref could not retrieve a full slice".into(),
-        ))
-    } else {
-        Ok(result)
-    }
+    cursor.set_position(cursor.position() + len as u64);
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -626,6 +638,65 @@ mod tests {
         let l = 3;
         let val = cursor_next_value(&mut cursor, l).unwrap();
         assert_eq!(val, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn cursor_next_value_rejects_length_past_end_without_allocating() {
+        let a = &[0, 1, 2, 3, 4];
+        let mut cursor: Cursor<&[u8]> = Cursor::new(a);
+        cursor.set_position(1);
+
+        let error = cursor_next_value(&mut cursor, usize::MAX).unwrap_err();
+        assert!(
+            matches!(&error, CdrsError::Io(io_error) if io_error.kind() == io::ErrorKind::UnexpectedEof),
+            "unexpected error: {:?}",
+            error
+        );
+        assert_eq!(cursor.position(), 5);
+
+        cursor.set_position(1);
+        assert!(cursor_next_value(&mut cursor, 5).is_err());
+    }
+
+    #[test]
+    fn cursor_next_value_ref_rejects_length_past_end() {
+        let a = &[0, 1, 2, 3, 4];
+        let mut cursor: Cursor<&[u8]> = Cursor::new(a);
+        cursor.set_position(1);
+
+        assert!(cursor_next_value_ref(&mut cursor, 5).is_err());
+        assert!(cursor_next_value_ref(&mut cursor, usize::MAX).is_err());
+        assert_eq!(cursor.position(), 1);
+
+        assert_eq!(
+            cursor_next_value_ref(&mut cursor, 4).unwrap(),
+            &[1, 2, 3, 4]
+        );
+        assert_eq!(cursor.position(), 5);
+    }
+
+    #[test]
+    fn from_cursor_str_reads_length_as_unsigned() {
+        let mut a = vec![0x80, 0x00];
+        a.resize(SHORT_LEN + 0x8000, b'a');
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&a);
+
+        let string = from_cursor_str(&mut cursor).unwrap();
+        assert_eq!(string.len(), 0x8000);
+    }
+
+    #[test]
+    fn from_cursor_string_list_reads_count_as_unsigned() {
+        let mut a = vec![0x80, 0x00];
+        a.resize(SHORT_LEN + SHORT_LEN * 0x8000, 0);
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&a);
+
+        let list = from_cursor_string_list(&mut cursor).unwrap();
+        assert_eq!(list.len(), 0x8000);
+
+        let a = &[0xff, 0xff];
+        let mut cursor: Cursor<&[u8]> = Cursor::new(a);
+        assert!(from_cursor_string_list(&mut cursor).is_err());
     }
 
     #[test]
