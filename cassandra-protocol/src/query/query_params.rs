@@ -6,8 +6,9 @@ use crate::frame::traits::FromCursor;
 use crate::frame::{Serialize, Version};
 use crate::query::query_flags::QueryFlags;
 use crate::query::query_values::QueryValues;
+use crate::query::utils::bounded_capacity;
 use crate::types::{from_cursor_str, serialize_str, value::Value, CInt, CIntShort};
-use crate::types::{CBytes, CLong};
+use crate::types::{CBytes, CLong, INT_LEN, SHORT_LEN};
 use crate::Error;
 
 /// Parameters of Query for query operation.
@@ -126,10 +127,14 @@ impl FromCursor for QueryParams {
         let flags = QueryFlags::from_cursor(cursor, version)?;
 
         let values = if flags.contains(QueryFlags::VALUE) {
-            let number_of_values = CIntShort::from_cursor(cursor, version)?;
+            let number_of_values = CIntShort::from_cursor(cursor, version)? as u16;
 
             if flags.contains(QueryFlags::WITH_NAMES_FOR_VALUES) {
-                let mut map = HashMap::with_capacity(number_of_values as usize);
+                let mut map = HashMap::with_capacity(bounded_capacity(
+                    cursor,
+                    number_of_values as usize,
+                    SHORT_LEN + INT_LEN,
+                ));
                 for _ in 0..number_of_values {
                     map.insert(
                         from_cursor_str(cursor)?.to_string(),
@@ -138,7 +143,11 @@ impl FromCursor for QueryParams {
                 }
                 Some(QueryValues::NamedValues(map))
             } else {
-                let mut vec = Vec::with_capacity(number_of_values as usize);
+                let mut vec = Vec::with_capacity(bounded_capacity(
+                    cursor,
+                    number_of_values as usize,
+                    INT_LEN,
+                ));
                 for _ in 0..number_of_values {
                     vec.push(Value::from_cursor(cursor, version)?);
                 }
@@ -197,5 +206,32 @@ impl FromCursor for QueryParams {
             keyspace,
             now_in_seconds,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_reject_value_count_exceeding_data() {
+        let data = [
+            0, 1,    // consistency one
+            0x01, // values flag
+            0xff, 0xff, // number of values
+        ];
+        let mut cursor = Cursor::new(data.as_slice());
+        assert!(QueryParams::from_cursor(&mut cursor, Version::V4).is_err());
+    }
+
+    #[test]
+    fn should_reject_named_value_count_exceeding_data() {
+        let data = [
+            0, 1,    // consistency one
+            0x41, // values and names for values flags
+            0xff, 0xff, // number of values
+        ];
+        let mut cursor = Cursor::new(data.as_slice());
+        assert!(QueryParams::from_cursor(&mut cursor, Version::V4).is_err());
     }
 }

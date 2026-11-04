@@ -2,6 +2,7 @@ use crate::error;
 use crate::error::Error;
 use crate::frame::events::SchemaChange;
 use crate::frame::{FromBytes, FromCursor, Serialize, Version};
+use crate::query::utils::bounded_capacity;
 use crate::types::rows::Row;
 use crate::types::{
     from_cursor_str, serialize_str, try_i16_from_bytes, try_i32_from_bytes, try_u64_from_bytes,
@@ -743,8 +744,10 @@ impl FromCursor for CUdt {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
-        let n = i16::from_be_bytes(buff);
-        let mut descriptions = Vec::with_capacity(n as usize);
+        let n = u16::from_be_bytes(buff);
+        // each field holds at least a [string] name length and an [option] id
+        let mut descriptions =
+            Vec::with_capacity(bounded_capacity(cursor, n as usize, 2 * SHORT_LEN));
         for _ in 0..n {
             let name = from_cursor_str(cursor)?.to_string();
             let col_type = ColTypeOption::from_cursor(cursor, version)?;
@@ -780,8 +783,8 @@ impl FromCursor for CTuple {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
-        let n = i16::from_be_bytes(buff);
-        let mut types = Vec::with_capacity(n as usize);
+        let n = u16::from_be_bytes(buff);
+        let mut types = Vec::with_capacity(bounded_capacity(cursor, n as usize, SHORT_LEN));
         for _ in 0..n {
             let col_type = ColTypeOption::from_cursor(cursor, version)?;
             types.push(col_type);
@@ -1015,12 +1018,43 @@ mod cudt {
             assert_eq!(buffer, bytes);
         }
     }
+
+    #[test]
+    fn cudt_count_exceeding_data() {
+        let bytes = &[
+            0, 3, 98, 97, 114, // keyspace name - bar
+            0, 3, 102, 111, 111, // udt_name - foo
+            0xff, 0xff, // length
+        ];
+        let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+        assert!(CUdt::from_cursor(&mut cursor, Version::V4).is_err());
+    }
 }
 
 #[cfg(test)]
 //noinspection DuplicatedCode
 mod ctuple {
     use super::*;
+
+    #[test]
+    fn ctuple_count_exceeding_data() {
+        let bytes = &[0xff, 0xff];
+        let mut cursor: Cursor<&[u8]> = Cursor::new(bytes);
+        assert!(CTuple::from_cursor(&mut cursor, Version::V4).is_err());
+    }
+
+    #[test]
+    fn ctuple_count_is_unsigned() {
+        let count = 0x8000;
+        let mut bytes = vec![0x80, 0x00];
+        for _ in 0..count {
+            bytes.extend_from_slice(&[0, 9]);
+        }
+
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        let tuple = CTuple::from_cursor(&mut cursor, Version::V4).unwrap();
+        assert_eq!(tuple.types.len(), count);
+    }
 
     #[test]
     fn ctuple() {

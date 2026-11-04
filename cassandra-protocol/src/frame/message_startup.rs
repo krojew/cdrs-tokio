@@ -1,6 +1,7 @@
 use crate::error;
 use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
-use crate::types::{from_cursor_str, serialize_str, CIntShort};
+use crate::query::utils::bounded_capacity;
+use crate::types::{from_cursor_str, serialize_str, CIntShort, SHORT_LEN};
 use std::collections::HashMap;
 use std::io::Cursor;
 
@@ -48,9 +49,10 @@ impl Serialize for BodyReqStartup {
 
 impl FromCursor for BodyReqStartup {
     fn from_cursor(cursor: &mut Cursor<&[u8]>, version: Version) -> error::Result<Self> {
-        let num = CIntShort::from_cursor(cursor, version)?;
+        let num = CIntShort::from_cursor(cursor, version)? as u16;
 
-        let mut map = HashMap::with_capacity(num as usize);
+        // each entry holds at least two [string] lengths
+        let mut map = HashMap::with_capacity(bounded_capacity(cursor, num as usize, 2 * SHORT_LEN));
         for _ in 0..num {
             map.insert(
                 from_cursor_str(cursor)?.to_string(),
@@ -134,5 +136,12 @@ mod test {
 
         let mut cursor = Cursor::new(bytes.as_slice());
         BodyReqStartup::from_cursor(&mut cursor, Version::V4).unwrap();
+    }
+
+    #[test]
+    fn body_req_startup_count_exceeding_data() {
+        let bytes = [0xff, 0xff];
+        let mut cursor = Cursor::new(bytes.as_slice());
+        assert!(BodyReqStartup::from_cursor(&mut cursor, Version::V4).is_err());
     }
 }

@@ -1,6 +1,7 @@
 use super::Serialize;
 use crate::error;
 use crate::frame::{FromCursor, Version};
+use crate::query::utils::bounded_capacity;
 use crate::types::{from_cursor_str, from_cursor_string_list, serialize_str, CIntShort, SHORT_LEN};
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
@@ -31,8 +32,10 @@ impl FromCursor for BodyResSupported {
         let mut buff = [0; SHORT_LEN];
         cursor.read_exact(&mut buff)?;
 
-        let l = i16::from_be_bytes(buff) as usize;
-        let mut data: HashMap<String, Vec<String>> = HashMap::with_capacity(l);
+        let l = u16::from_be_bytes(buff) as usize;
+        // each entry holds at least a [string] key length and a [string list] count
+        let mut data: HashMap<String, Vec<String>> =
+            HashMap::with_capacity(bounded_capacity(cursor, l, 2 * SHORT_LEN));
         for _ in 0..l {
             let name = from_cursor_str(cursor)?.to_string();
             let val = from_cursor_string_list(cursor)?;
@@ -74,5 +77,12 @@ mod tests {
             expected.serialize(&mut cursor, Version::V4);
             assert_eq!(buffer, bytes);
         }
+    }
+
+    #[test]
+    fn body_res_supported_count_exceeding_data() {
+        let bytes = [0xff, 0xff];
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        assert!(BodyResSupported::from_cursor(&mut cursor, Version::V4).is_err());
     }
 }

@@ -1,11 +1,12 @@
 use crate::consistency::Consistency;
 use crate::frame::{Direction, Envelope, Flags, FromCursor, Opcode, Serialize, Version};
+use crate::query::utils::bounded_capacity;
 use crate::query::QueryFlags;
 use crate::query::QueryValues;
 use crate::types::value::Value;
 use crate::types::{
     from_cursor_str, from_cursor_str_long, serialize_str, serialize_str_long, CBytesShort, CInt,
-    CIntShort, CLong,
+    CIntShort, CLong, INT_LEN, SHORT_LEN,
 };
 use crate::{error, Error};
 use derive_more::{Constructor, Display};
@@ -82,9 +83,14 @@ impl FromCursor for BodyReqBatch {
         cursor.read_exact(&mut batch_type)?;
 
         let batch_type = BatchType::try_from(batch_type[0])?;
-        let len = CIntShort::from_cursor(cursor, version)?;
+        let len = CIntShort::from_cursor(cursor, version)? as u16;
 
-        let mut queries = Vec::with_capacity(len as usize);
+        // each query holds at least a kind byte, a [short] id length and a [short] value count
+        let mut queries = Vec::with_capacity(bounded_capacity(
+            cursor,
+            len as usize,
+            1 + SHORT_LEN + SHORT_LEN,
+        ));
         for _ in 0..len {
             queries.push(BatchQuery::from_cursor(cursor, version)?);
         }
@@ -218,11 +224,11 @@ impl FromCursor for BatchQuery {
             BatchQuerySubj::QueryString(from_cursor_str_long(cursor).map(Into::into)?)
         };
 
-        let len = CIntShort::from_cursor(cursor, version)?;
+        let len = CIntShort::from_cursor(cursor, version)? as u16;
 
         // assuming names are not present due to
         // https://issues.apache.org/jira/browse/CASSANDRA-10246
-        let mut values = Vec::with_capacity(len as usize);
+        let mut values = Vec::with_capacity(bounded_capacity(cursor, len as usize, INT_LEN));
         for _ in 0..len {
             values.push(Value::from_cursor(cursor, version)?);
         }
@@ -267,6 +273,20 @@ mod tests {
         let query = BatchQuery::from_cursor(&mut cursor, Version::V4).unwrap();
         assert_eq!(query.subject, BatchQuerySubj::QueryString("A".into()));
         assert_eq!(query.values, QueryValues::SimpleValues(vec![Value::NotSet]));
+    }
+
+    #[test]
+    fn should_reject_query_value_count_exceeding_data() {
+        let data = [0, 0, 0, 0, 1, 65, 0xff, 0xff];
+        let mut cursor = Cursor::new(data.as_slice());
+        assert!(BatchQuery::from_cursor(&mut cursor, Version::V4).is_err());
+    }
+
+    #[test]
+    fn should_reject_query_count_exceeding_data() {
+        let data = [0, 0xff, 0xff];
+        let mut cursor = Cursor::new(data.as_slice());
+        assert!(BodyReqBatch::from_cursor(&mut cursor, Version::V4).is_err());
     }
 
     #[test]
