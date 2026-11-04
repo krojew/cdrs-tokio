@@ -11,8 +11,8 @@ pub fn impl_try_from_row(ast: &DeriveInput) -> Result<TokenStream> {
 
     Ok(quote! {
         #[automatically_derived]
-        impl #impl_generics cdrs_tokio::frame::TryFromRow for #name #ty_generics #where_clause {
-            fn try_from_row(cdrs: cdrs_tokio::types::rows::Row) -> cdrs_tokio::Result<Self> {
+        impl #impl_generics ::cdrs_tokio::frame::TryFromRow for #name #ty_generics #where_clause {
+            fn try_from_row(cdrs: ::cdrs_tokio::types::rows::Row) -> ::cdrs_tokio::Result<Self> {
                 ::core::result::Result::Ok(#name {
                   #(#fields),*
                 })

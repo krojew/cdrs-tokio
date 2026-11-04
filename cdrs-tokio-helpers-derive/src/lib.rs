@@ -3,9 +3,6 @@
 use proc_macro::TokenStream;
 use syn::{parse_macro_input, DeriveInput, Error};
 
-// Generated code names `cdrs_tokio` by a relative path, so it also resolves when the crate is only
-// reachable through a re-export imported into the deriving module. Standard library items use
-// absolute paths, which a local item cannot shadow.
 mod common;
 mod db_mirror;
 mod into_cdrs_value;

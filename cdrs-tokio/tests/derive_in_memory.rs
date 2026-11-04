@@ -435,11 +435,10 @@ fn raw_identifiers_are_unescaped_in_db_mirror() {
     }
 }
 
-/// Shadows the standard library crate names and prelude items that generated code could otherwise
-/// resolve to. `cdrs_tokio` is not shadowed: generated code names it by a relative path, so that it
-/// also resolves through a re-export imported into the deriving module.
+/// Shadows the crate names and prelude items that generated code could otherwise resolve to.
 #[allow(dead_code)]
 mod shadowed_names {
+    mod cdrs_tokio {}
     mod core {}
     mod std {}
 

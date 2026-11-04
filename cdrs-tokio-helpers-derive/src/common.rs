@@ -116,7 +116,7 @@ fn into_rust_with_args(
         | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
         | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => {
             quote! {
-              <#field_type_ident as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_r(#arguments)?
+              <#field_type_ident as ::cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_r(#arguments)?
             }
         }
         // Cassandra stores an empty non-frozen collection as null.
@@ -124,7 +124,7 @@ fn into_rust_with_args(
             let list_as_rust = as_rust(field_type, quote! {list}, name)?;
 
             quote! {
-              match <cdrs_tokio::types::list::List as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)? {
+              match <::cdrs_tokio::types::list::List as ::cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)? {
                 ::core::option::Option::Some(list) => {
                   #list_as_rust
                 },
@@ -135,7 +135,7 @@ fn into_rust_with_args(
         "Map" => {
             let map_as_rust = as_rust(field_type, quote! {map}, name)?;
             quote! {
-              match <cdrs_tokio::types::map::Map as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)? {
+              match <::cdrs_tokio::types::map::Map as ::cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)? {
                 ::core::option::Option::Some(map) => {
                   #map_as_rust
                 },
@@ -150,12 +150,12 @@ fn into_rust_with_args(
 
             if is_non_zero_primitive(&opt_type_rustified, name)? {
                 quote! {
-                  <#opt_type_rustified as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)?
+                  <#opt_type_rustified as ::cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)?
                 }
             } else {
                 quote! {
                   {
-                    match <#opt_type_rustified as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)? {
+                    match <#opt_type_rustified as ::cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)? {
                       ::core::option::Option::Some(opt_value) => {
                         let decoded = #opt_value_as_rust;
                         ::core::option::Option::Some(decoded)
@@ -167,8 +167,8 @@ fn into_rust_with_args(
             }
         }
         _ => quote! {
-          <#field_type as cdrs_tokio::frame::TryFromUdt>::try_from_udt(
-            <cdrs_tokio::types::udt::Udt as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_r(#arguments)?
+          <#field_type as ::cdrs_tokio::frame::TryFromUdt>::try_from_udt(
+            <::cdrs_tokio::types::udt::Udt as ::cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_r(#arguments)?
           )?
         },
     })
@@ -201,10 +201,10 @@ fn get_cdrs_type(ty: &Type, name: &str) -> Result<Type> {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "Decimal"
         | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
         | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => ty.clone(),
-        "Vec" => parse_str("cdrs_tokio::types::list::List").unwrap(),
-        "HashMap" => parse_str("cdrs_tokio::types::map::Map").unwrap(),
+        "Vec" => parse_str("::cdrs_tokio::types::list::List").unwrap(),
+        "HashMap" => parse_str("::cdrs_tokio::types::map::Map").unwrap(),
         "Option" => parse_str("::core::option::Option").unwrap(),
-        _ => parse_str("cdrs_tokio::types::udt::Udt").unwrap(),
+        _ => parse_str("::cdrs_tokio::types::udt::Udt").unwrap(),
     })
 }
 
@@ -242,7 +242,7 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
             quote! {
               {
                 let inner: ::std::vec::Vec<#inter_rust_type> =
-                  cdrs_tokio::types::AsRustType::<::std::vec::Vec<#inter_rust_type>>::as_r_type(&#val)?;
+                  ::cdrs_tokio::types::AsRustType::<::std::vec::Vec<#inter_rust_type>>::as_r_type(&#val)?;
                 let mut decoded: ::std::vec::Vec<#vec_type> = ::std::vec::Vec::with_capacity(inner.len());
                 for item in inner {
                   decoded.push(#decoded_item);
@@ -259,7 +259,7 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
             quote! {
               {
                 let inner: ::std::collections::HashMap<#map_key_type, #inter_rust_type> =
-                  cdrs_tokio::types::AsRustType::<::std::collections::HashMap<#map_key_type, #inter_rust_type>>::as_r_type(&#val)?;
+                  ::cdrs_tokio::types::AsRustType::<::std::collections::HashMap<#map_key_type, #inter_rust_type>>::as_r_type(&#val)?;
                 let mut decoded: ::std::collections::HashMap<#map_key_type, #map_value_type #map_hasher_type> =
                   ::std::collections::HashMap::with_capacity_and_hasher(inner.len(), ::core::default::Default::default());
                 for (key, val) in inner {
@@ -281,7 +281,7 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
         }
         _ => {
             quote! {
-              <#ty as cdrs_tokio::frame::TryFromUdt>::try_from_udt(#val)?
+              <#ty as ::cdrs_tokio::frame::TryFromUdt>::try_from_udt(#val)?
             }
         }
     })
