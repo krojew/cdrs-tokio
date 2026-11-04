@@ -365,7 +365,15 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                         }
                     }
                     Err(RecvError::Lagged(n)) => {
-                        warn!("Skipped {} events.", n);
+                        warn!("Skipped {} events - refreshing metadata.", n);
+
+                        if let Some(cmm) = cmm.upgrade() {
+                            if let Err(error) = cmm.refresh_metadata(true).await {
+                                error!(%error, "Error refreshing metadata after skipping events!");
+                            }
+                        } else {
+                            break;
+                        }
                     }
                     Err(RecvError::Closed) => break,
                 }
@@ -1032,6 +1040,56 @@ mod tests {
         assert!(metadata.keyspace("ks").is_some());
         assert!(metadata
             .find_node_by_rpc_address(new_node_address)
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn should_refresh_metadata_after_skipping_events() {
+        let control_address = address(1);
+        let control_host_id = Uuid::new_v4();
+
+        let mut transport = MockCdrsTransport::new();
+        transport.expect_address().return_const(control_address);
+        transport
+            .expect_write_envelope()
+            .returning(move |envelope, _| {
+                let response = match query_text(envelope).as_str() {
+                    "SELECT * FROM system.local" => rows_envelope(
+                        node_columns("broadcast_address"),
+                        vec![node_row(control_address, control_host_id, &[1])],
+                    ),
+                    "SELECT * FROM system.peers_v2" => rows_envelope(node_columns("peer"), vec![]),
+                    _ => result_envelope(ResResultBody::Void),
+                };
+
+                async move { Ok(response) }.boxed()
+            });
+
+        let metadata_manager = Arc::new(create_metadata_manager(transport));
+
+        let (event_sender, event_receiver) = tokio::sync::broadcast::channel(1);
+        let event = ServerEvent::StatusChange(StatusChange {
+            change_type: StatusChangeType::Down,
+            addr: address(3),
+        });
+
+        // the second event overwrites the first one, so the receiver lags behind
+        event_sender.send(event.clone()).unwrap();
+        event_sender.send(event).unwrap();
+
+        metadata_manager.listen_to_events(event_receiver);
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !metadata_manager.metadata().has_nodes() {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("Metadata should be refreshed after skipping events!");
+
+        assert!(metadata_manager
+            .metadata()
+            .find_node_by_host_id(&control_host_id)
             .is_some());
     }
 
