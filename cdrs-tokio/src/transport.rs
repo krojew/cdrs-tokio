@@ -17,7 +17,6 @@ use cassandra_protocol::frame::message_result::ResultKind;
 use cassandra_protocol::frame::{Envelope, StreamId, MAX_FRAME_SIZE};
 use cassandra_protocol::frame::{FromBytes, Opcode, EVENT_STREAM_ID};
 use cassandra_protocol::types::INT_LEN;
-use derive_more::Constructor;
 use futures::FutureExt;
 use fxhash::FxHashMap;
 use itertools::Itertools;
@@ -410,7 +409,12 @@ impl AsyncTransport {
         };
 
         self.write_sender
-            .send(Request::new(data, sender, handshake, internal))
+            .send(Request {
+                data,
+                handler: sender,
+                handshake,
+                internal,
+            })
             .await
             .map_err(|_| Error::General("Connection closed when writing data!".into()))?;
 
@@ -886,7 +890,6 @@ impl ResponseHandlerMap {
     }
 }
 
-#[derive(Constructor)]
 struct Request {
     data: Vec<u8>,
     handler: ResponseHandler,
