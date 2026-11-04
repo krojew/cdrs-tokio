@@ -48,11 +48,14 @@ impl Serialize for BodyReqBatch {
             flags.insert(QueryFlags::WITH_DEFAULT_TIMESTAMP)
         }
 
-        if self.keyspace.is_some() {
+        // keyspace and "now" in seconds were added in protocol v5 and have no earlier encoding
+        let with_v5_fields = version >= Version::V5;
+
+        if with_v5_fields && self.keyspace.is_some() {
             flags.insert(QueryFlags::WITH_KEYSPACE)
         }
 
-        if self.now_in_seconds.is_some() {
+        if with_v5_fields && self.now_in_seconds.is_some() {
             flags.insert(QueryFlags::WITH_NOW_IN_SECONDS)
         }
 
@@ -67,12 +70,14 @@ impl Serialize for BodyReqBatch {
             timestamp.serialize(cursor, version);
         }
 
-        if let Some(keyspace) = &self.keyspace {
-            serialize_str(cursor, keyspace.as_str(), version);
-        }
+        if with_v5_fields {
+            if let Some(keyspace) = &self.keyspace {
+                serialize_str(cursor, keyspace.as_str(), version);
+            }
 
-        if let Some(now_in_seconds) = self.now_in_seconds {
-            now_in_seconds.serialize(cursor, version);
+            if let Some(now_in_seconds) = self.now_in_seconds {
+                now_in_seconds.serialize(cursor, version);
+            }
         }
     }
 }
@@ -338,5 +343,29 @@ mod tests {
         let body =
             BodyReqBatch::from_cursor(&mut Cursor::new(data.as_slice()), Version::V5).unwrap();
         assert_eq!(body.now_in_seconds, Some(now_in_seconds));
+    }
+
+    #[test]
+    fn should_omit_v5_fields_for_v4() {
+        let body = BodyReqBatch::new(
+            BatchType::Logged,
+            vec![],
+            Consistency::Any,
+            None,
+            None,
+            Some("abc".into()),
+            Some(4),
+        );
+
+        let data = body.serialize_to_vec(Version::V4);
+        assert_eq!(
+            data,
+            [
+                0, // batch type
+                0, 0, // number of queries
+                0, 0, // consistency any
+                0, // flags
+            ]
+        );
     }
 }

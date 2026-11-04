@@ -37,7 +37,7 @@ pub struct QueryParams {
 }
 
 impl QueryParams {
-    fn flags(&self) -> QueryFlags {
+    fn flags(&self, version: Version) -> QueryFlags {
         let mut flags = QueryFlags::empty();
 
         if self.values.is_some() {
@@ -64,12 +64,15 @@ impl QueryParams {
             flags.insert(QueryFlags::WITH_DEFAULT_TIMESTAMP);
         }
 
-        if self.keyspace.is_some() {
-            flags.insert(QueryFlags::WITH_KEYSPACE);
-        }
+        // keyspace and "now" in seconds were added in protocol v5 and have no earlier encoding
+        if version >= Version::V5 {
+            if self.keyspace.is_some() {
+                flags.insert(QueryFlags::WITH_KEYSPACE);
+            }
 
-        if self.now_in_seconds.is_some() {
-            flags.insert(QueryFlags::WITH_NOW_IN_SECONDS);
+            if self.now_in_seconds.is_some() {
+                flags.insert(QueryFlags::WITH_NOW_IN_SECONDS);
+            }
         }
 
         flags
@@ -81,7 +84,7 @@ impl Serialize for QueryParams {
         let consistency: CIntShort = self.consistency.into();
         consistency.serialize(cursor, version);
 
-        let flag_bits = self.flags().bits();
+        let flag_bits = self.flags(version).bits();
         if version >= Version::V5 {
             flag_bits.serialize(cursor, version);
         } else {
@@ -111,12 +114,14 @@ impl Serialize for QueryParams {
             timestamp.serialize(cursor, version);
         }
 
-        if let Some(keyspace) = &self.keyspace {
-            serialize_str(cursor, keyspace.as_str(), version);
-        }
+        if version >= Version::V5 {
+            if let Some(keyspace) = &self.keyspace {
+                serialize_str(cursor, keyspace.as_str(), version);
+            }
 
-        if let Some(now_in_seconds) = self.now_in_seconds {
-            now_in_seconds.serialize(cursor, version);
+            if let Some(now_in_seconds) = self.now_in_seconds {
+                now_in_seconds.serialize(cursor, version);
+            }
         }
     }
 }
@@ -233,5 +238,35 @@ mod tests {
         ];
         let mut cursor = Cursor::new(data.as_slice());
         assert!(QueryParams::from_cursor(&mut cursor, Version::V4).is_err());
+    }
+
+    fn params_with_v5_fields() -> QueryParams {
+        QueryParams {
+            consistency: Consistency::One,
+            keyspace: Some("ks".into()),
+            now_in_seconds: Some(4),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn should_omit_v5_fields_for_v4() {
+        let data = params_with_v5_fields().serialize_to_vec(Version::V4);
+        assert_eq!(
+            data,
+            [
+                0, 1, // consistency one
+                0, // flags
+            ]
+        );
+    }
+
+    #[test]
+    fn should_support_v5_fields_for_v5() {
+        let params = params_with_v5_fields();
+        let data = params.serialize_to_vec(Version::V5);
+        let decoded =
+            QueryParams::from_cursor(&mut Cursor::new(data.as_slice()), Version::V5).unwrap();
+        assert_eq!(decoded, params);
     }
 }
