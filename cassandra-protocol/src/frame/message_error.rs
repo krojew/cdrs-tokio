@@ -1,9 +1,10 @@
 use super::Serialize;
 use crate::consistency::Consistency;
-use crate::error;
 use crate::frame::traits::FromCursor;
 use crate::frame::Version;
+use crate::query::utils::bounded_capacity;
 use crate::types::*;
+use crate::{error, Error};
 /// This modules contains [Cassandra's errors](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 /// which server could respond to client.
 use derive_more::Display;
@@ -87,7 +88,18 @@ impl FromCursor for FailureInfo {
             Version::V3 | Version::V4 => Self::NumFailures(CInt::from_cursor(cursor, version)?),
             Version::V5 => {
                 let num_failures = CInt::from_cursor(cursor, version)?;
-                let mut map = HashMap::with_capacity(num_failures as usize);
+                if num_failures < 0 {
+                    return Err(Error::General(format!(
+                        "Invalid reason map size: {num_failures}"
+                    )));
+                }
+
+                // each entry holds at least a length-prefixed IPv4 address and a [short] code
+                let mut map = HashMap::with_capacity(bounded_capacity(
+                    cursor,
+                    num_failures as usize,
+                    1 + 4 + SHORT_LEN,
+                ));
 
                 for _ in 0..num_failures {
                     let endpoint = SocketAddr::from_cursor(cursor, version)?;
@@ -999,6 +1011,20 @@ mod error_tests {
             }
         );
         assert_eq!(body.ty.to_error_code(), 0x3000);
+    }
+
+    #[test]
+    fn reason_map_negative_count() {
+        let bytes = [0xff, 0xff, 0xff, 0xff];
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        assert!(FailureInfo::from_cursor(&mut cursor, Version::V5).is_err());
+    }
+
+    #[test]
+    fn reason_map_count_exceeding_data() {
+        let bytes = [0x7f, 0xff, 0xff, 0xff];
+        let mut cursor: Cursor<&[u8]> = Cursor::new(&bytes);
+        assert!(FailureInfo::from_cursor(&mut cursor, Version::V5).is_err());
     }
 
     #[test]
