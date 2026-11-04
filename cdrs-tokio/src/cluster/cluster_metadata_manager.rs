@@ -437,7 +437,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
         let node = self.metadata.load().find_node_by_rpc_address(event.addr);
         match event.change_type {
             StatusChangeType::Up => match node {
-                Some(node) if node.try_set_state(NodeState::Up) => {
+                Some(node) if node.promote_up() => {
                     debug!(?node, "Set existing node state to up.");
                 }
                 Some(_) => {
@@ -445,7 +445,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     // which is no longer forced down is idempotent.
                     self.metadata.rcu(|metadata| {
                         match metadata.find_node_by_rpc_address(event.addr) {
-                            Some(node) if !node.try_set_state(NodeState::Up) => {
+                            Some(node) if !node.promote_up() => {
                                 debug!(?node, "Recreating forced down node as up.");
                                 let new_node = node.clone_with_node_state(NodeState::Up);
                                 Arc::new(metadata.clone_with_node(new_node))
@@ -849,7 +849,8 @@ mod tests {
 
     use crate::cluster::connection_manager::MockConnectionManager;
     use crate::cluster::test_support::{
-        self, void_response, TestConnectionManager, TestNode, TestTransport,
+        self, break_connections, create_slowly_reconnecting_connection_pool_factory, void_response,
+        wait_for_connection, ConnectionTracker, TestConnectionManager, TestNode, TestTransport,
     };
     use crate::cluster::topology::NodeDistance;
     use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
@@ -1153,15 +1154,23 @@ mod tests {
         ClusterMetadataManager<TestTransport, TestConnectionManager>,
         Arc<TestNode>,
     ) {
-        let connection_pool_factory = test_support::create_connection_pool_factory(
+        create_metadata_manager_with_node(test_support::create_connection_pool_factory(
             TestConnectionManager::new(|_, _| ready(Ok(void_response(Version::V4))).boxed())
                 .with_connect_handler(move |_| {
                     connect_count.fetch_add(1, Ordering::Relaxed);
                     Ok(())
                 }),
             Version::V4,
-        );
+        ))
+    }
 
+    // A metadata manager knowing a single up node.
+    fn create_metadata_manager_with_node(
+        connection_pool_factory: Arc<ConnectionPoolFactory<TestTransport, TestConnectionManager>>,
+    ) -> (
+        ClusterMetadataManager<TestTransport, TestConnectionManager>,
+        Arc<TestNode>,
+    ) {
         let node = Arc::new(Node::new_with_state(
             connection_pool_factory.clone(),
             address(1),
@@ -1255,5 +1264,25 @@ mod tests {
 
         current_node.persistent_connection().await.unwrap();
         assert_eq!(connect_count.load(Ordering::Relaxed), 2);
+    }
+
+    #[tokio::test]
+    async fn should_reconnect_right_away_when_down_node_comes_up() {
+        let tracker = ConnectionTracker::default();
+        let (metadata_manager, node) = create_metadata_manager_with_node(
+            create_slowly_reconnecting_connection_pool_factory(tracker.clone()),
+        );
+        node.persistent_connection().await.unwrap();
+        break_connections(&node, &tracker).await;
+
+        metadata_manager
+            .process_status_event(StatusChange {
+                change_type: StatusChangeType::Up,
+                addr: node.broadcast_rpc_address(),
+            })
+            .await;
+
+        wait_for_connection(&node).await;
+        assert_eq!(tracker.count(), 2);
     }
 }

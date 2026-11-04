@@ -34,8 +34,8 @@ pub(crate) fn build_initial_metadata<T: CdrsTransport, CM: ConnectionManager<T>>
             let node = match old_node {
                 // Listed in the peers table, so assumed to be up. A forced down node cannot leave
                 // that state in place, so it gets fresh connectivity instead. The caller may retry
-                // building inside an rcu closure, and setting the state is idempotent.
-                Some(old_node) if old_node.try_set_state(NodeState::Up) => {
+                // building inside an rcu closure, and promoting is idempotent.
+                Some(old_node) if old_node.promote_up() => {
                     debug!(?node_info, "Reusing old node.");
                     Arc::new(old_node.clone_with_node_info(node_info, node_distance_evaluator))
                 }
@@ -157,7 +157,7 @@ pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
 
             // The state changes in place, which every node sharing its connectivity sees. Only a
             // forced down node needs fresh connectivity.
-            if old_node.try_set_state(NodeState::Up) {
+            if old_node.promote_up() {
                 debug!(?old_node, "Set existing node state to up.");
                 return None;
             }
@@ -212,7 +212,9 @@ mod tests {
         add_new_node, build_initial_metadata, refresh_metadata,
     };
     use crate::cluster::test_support::{
-        self, node_address, void_response, TestConnectionManager, TestNode, TestTransport,
+        self, break_connections, create_slowly_reconnecting_connection_pool_factory, node_address,
+        void_response, wait_for_connection, ConnectionTracker, TestConnectionManager, TestNode,
+        TestTransport,
     };
     use crate::cluster::topology::NodeMap;
     use crate::cluster::topology::{
@@ -1236,5 +1238,92 @@ mod tests {
         .await
         .expect("monitor did not mark the metadata node down");
         assert_eq!(contact_point.state(), NodeState::Up);
+    }
+
+    // An up node whose connections broke, so its pool is waiting out a long reconnection backoff.
+    async fn create_reconnecting_node(
+        tracker: &ConnectionTracker,
+    ) -> (
+        Arc<ConnectionPoolFactory<TestTransport, TestConnectionManager>>,
+        NodeInfo,
+        Arc<TestNode>,
+    ) {
+        let connection_pool_factory =
+            create_slowly_reconnecting_connection_pool_factory(tracker.clone());
+
+        let node_info = test_node_info(node_address(1));
+        let node = create_up_node(&connection_pool_factory, &node_info);
+        node.persistent_connection().await.unwrap();
+        break_connections(&node, tracker).await;
+
+        (connection_pool_factory, node_info, node)
+    }
+
+    #[tokio::test]
+    async fn should_reconnect_right_away_when_full_refresh_revives_down_node() {
+        let tracker = ConnectionTracker::default();
+        let (connection_pool_factory, node_info, old_node) =
+            create_reconnecting_node(&tracker).await;
+        let old_metadata = metadata_with_node(old_node);
+
+        let metadata = build_initial_metadata(
+            vec![node_info.clone()],
+            Default::default(),
+            &[],
+            Some(&old_metadata),
+            &connection_pool_factory,
+            &distance_evaluator(NodeDistance::Local),
+        );
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert_eq!(node.state(), NodeState::Up);
+
+        wait_for_connection(&node).await;
+        assert_eq!(tracker.count(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_reconnect_right_away_when_refresh_revives_down_node() {
+        let tracker = ConnectionTracker::default();
+        let (connection_pool_factory, node_info, old_node) =
+            create_reconnecting_node(&tracker).await;
+        let old_metadata = metadata_with_node(old_node);
+
+        let metadata = refresh_metadata(
+            std::slice::from_ref(&node_info),
+            Default::default(),
+            &old_metadata,
+            &connection_pool_factory,
+            &MockNodeDistanceEvaluator::new(),
+        );
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert_eq!(node.state(), NodeState::Up);
+
+        wait_for_connection(&node).await;
+        assert_eq!(tracker.count(), 2);
+    }
+
+    #[tokio::test]
+    async fn should_reconnect_right_away_when_adding_down_node() {
+        let tracker = ConnectionTracker::default();
+        let (connection_pool_factory, node_info, old_node) =
+            create_reconnecting_node(&tracker).await;
+        let old_metadata = metadata_with_node(old_node);
+
+        let metadata = add_new_node(
+            node_info.clone(),
+            &old_metadata,
+            &connection_pool_factory,
+            &MockNodeDistanceEvaluator::new(),
+            NodeState::Up,
+        )
+        .unwrap_or(old_metadata);
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert_eq!(node.state(), NodeState::Up);
+
+        wait_for_connection(&node).await;
+        assert_eq!(tracker.count(), 2);
     }
 }

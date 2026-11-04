@@ -13,17 +13,23 @@ use futures::future::ready;
 use futures::FutureExt;
 use std::io;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::sync::mpsc::{Sender, WeakSender};
 use tokio::sync::watch;
+use tokio::time::timeout;
 use uuid::Uuid;
 
 use crate::cluster::connection_pool::ConnectionPoolFactory;
 use crate::cluster::topology::{Node, NodeDistance, NodeState};
 use crate::cluster::ConnectionManager;
 use crate::future::BoxFuture;
-use crate::retry::NeverReconnectionPolicy;
+use crate::retry::{ConstantReconnectionPolicy, NeverReconnectionPolicy, ReconnectionPolicy};
 use crate::transport::CdrsTransport;
+
+// upper bound for awaiting outcomes which are expected to happen right away
+pub(crate) const TEST_GUARD_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) type RequestHandler =
     Arc<dyn Fn(SocketAddr, &Envelope) -> BoxFuture<'static, Result<Envelope>> + Send + Sync>;
@@ -32,11 +38,16 @@ pub(crate) type RequestHandler =
 pub(crate) struct TestTransport {
     addr: SocketAddr,
     handler: RequestHandler,
+    broken: Arc<AtomicBool>,
 }
 
 impl TestTransport {
     pub(crate) fn new(addr: SocketAddr, handler: RequestHandler) -> Self {
-        TestTransport { addr, handler }
+        TestTransport {
+            addr,
+            handler,
+            broken: Default::default(),
+        }
     }
 }
 
@@ -50,7 +61,7 @@ impl CdrsTransport for TestTransport {
     }
 
     fn is_broken(&self) -> bool {
-        false
+        self.broken.load(Ordering::Relaxed)
     }
 
     fn address(&self) -> SocketAddr {
@@ -60,10 +71,38 @@ impl CdrsTransport for TestTransport {
 
 type ConnectHandler = Arc<dyn Fn(SocketAddr) -> Result<()> + Send + Sync>;
 
+// broken flag and error handler of a connection
+type TrackedConnection = (Arc<AtomicBool>, Option<WeakSender<Error>>);
+
+/// Records connections made by a [`TestConnectionManager`], so tests can count and break them.
+#[derive(Clone, Default)]
+pub(crate) struct ConnectionTracker {
+    connections: Arc<Mutex<Vec<TrackedConnection>>>,
+}
+
+impl ConnectionTracker {
+    pub(crate) fn count(&self) -> usize {
+        self.connections.lock().unwrap().len()
+    }
+
+    /// Breaks every connection made so far and reports it to its error handler, as a real
+    /// transport does.
+    pub(crate) fn break_all(&self) {
+        for (broken, error_handler) in self.connections.lock().unwrap().iter() {
+            broken.store(true, Ordering::Relaxed);
+
+            if let Some(error_handler) = error_handler.as_ref().and_then(WeakSender::upgrade) {
+                let _ = error_handler.try_send(Error::General("connection broken".into()));
+            }
+        }
+    }
+}
+
 /// Connection manager creating [`TestTransport`]s. Connecting to a node can be made to fail.
 pub(crate) struct TestConnectionManager {
     handler: RequestHandler,
     connect_handler: ConnectHandler,
+    tracker: ConnectionTracker,
 }
 
 impl TestConnectionManager {
@@ -76,7 +115,14 @@ impl TestConnectionManager {
         TestConnectionManager {
             handler: Arc::new(handler),
             connect_handler: Arc::new(|_| Ok(())),
+            tracker: Default::default(),
         }
+    }
+
+    #[must_use]
+    pub(crate) fn with_connection_tracker(mut self, tracker: ConnectionTracker) -> Self {
+        self.tracker = tracker;
+        self
     }
 
     /// Sets a handler called on every connection attempt; returning an error fails the attempt.
@@ -106,11 +152,19 @@ impl ConnectionManager<TestTransport> for TestConnectionManager {
     fn connection(
         &self,
         _event_handler: Option<Sender<Envelope>>,
-        _error_handler: Option<Sender<Error>>,
+        error_handler: Option<Sender<Error>>,
         addr: SocketAddr,
     ) -> BoxFuture<'_, Result<TestTransport>> {
-        let result =
-            (self.connect_handler)(addr).map(|_| TestTransport::new(addr, self.handler.clone()));
+        let result = (self.connect_handler)(addr).map(|_| {
+            let transport = TestTransport::new(addr, self.handler.clone());
+            self.tracker.connections.lock().unwrap().push((
+                transport.broken.clone(),
+                error_handler.as_ref().map(Sender::downgrade),
+            ));
+
+            transport
+        });
+
         ready(result).boxed()
     }
 }
@@ -132,14 +186,65 @@ pub(crate) fn create_connection_pool_factory(
     connection_manager: TestConnectionManager,
     version: Version,
 ) -> Arc<ConnectionPoolFactory<TestTransport, TestConnectionManager>> {
+    create_connection_pool_factory_with_reconnection_policy(
+        connection_manager,
+        version,
+        Arc::new(NeverReconnectionPolicy),
+    )
+}
+
+pub(crate) fn create_connection_pool_factory_with_reconnection_policy(
+    connection_manager: TestConnectionManager,
+    version: Version,
+    reconnection_policy: Arc<dyn ReconnectionPolicy + Send + Sync>,
+) -> Arc<ConnectionPoolFactory<TestTransport, TestConnectionManager>> {
     let (_, keyspace_receiver) = watch::channel(None);
     Arc::new(ConnectionPoolFactory::new(
         Default::default(),
         version,
         connection_manager,
         keyspace_receiver,
-        Arc::new(NeverReconnectionPolicy),
+        reconnection_policy,
     ))
+}
+
+/// Creates a factory whose pools wait an hour between reconnection attempts, so a node whose
+/// connections break stays down for the duration of a test, unless something wakes its pool.
+pub(crate) fn create_slowly_reconnecting_connection_pool_factory(
+    tracker: ConnectionTracker,
+) -> Arc<ConnectionPoolFactory<TestTransport, TestConnectionManager>> {
+    create_connection_pool_factory_with_reconnection_policy(
+        TestConnectionManager::new(|_, _| ready(Ok(void_response(Version::V4))).boxed())
+            .with_connection_tracker(tracker),
+        Version::V4,
+        Arc::new(ConstantReconnectionPolicy::new(Duration::from_secs(3600))),
+    )
+}
+
+/// Breaks all connections and waits until the pool of the node marks it down, which starts a
+/// reconnection.
+pub(crate) async fn break_connections(node: &TestNode, tracker: &ConnectionTracker) {
+    tracker.break_all();
+
+    timeout(TEST_GUARD_TIMEOUT, async {
+        while node.state() != NodeState::Down {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("node was not marked down");
+}
+
+/// Waits until the pool of the node hands out a connection, which is expected to happen right
+/// away.
+pub(crate) async fn wait_for_connection(node: &Arc<TestNode>) {
+    timeout(TEST_GUARD_TIMEOUT, async {
+        while node.persistent_connection().await.is_err() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("node was not reconnected right away");
 }
 
 pub(crate) fn create_node(

@@ -67,6 +67,41 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> NodeShared<T, CM> {
         self.try_set_state(NodeState::Up);
     }
 
+    /// Marks the node up based on evidence from outside its pool, like a status event or a
+    /// metadata refresh. Returns `false` if the node is forced down.
+    pub(crate) fn promote_up(&self) -> bool {
+        self.promote(|state| state != NodeState::ForcedDown)
+    }
+
+    /// Marks the node up if it is down, like [`Self::promote_up`]. Returns whether it was down.
+    pub(crate) fn promote_down_to_up(&self) -> bool {
+        self.promote(|state| state == NodeState::Down)
+    }
+
+    fn promote(&self, promotable: impl Fn(NodeState) -> bool) -> bool {
+        let previous = self
+            .state
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |state| {
+                (promotable(state) && state != NodeState::ForcedDown).then_some(NodeState::Up)
+            });
+
+        match previous {
+            Ok(previous) => {
+                // The pool may be waiting out a reconnection backoff, or hold connections which
+                // went stale unnoticed, while the node now gets requests. Only a node which was
+                // not up wakes it, so repeating a promotion, e.g. in an rcu closure, is harmless.
+                if previous != NodeState::Up {
+                    if let Some(pool) = self.connection_pool.get() {
+                        pool.wake();
+                    }
+                }
+
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     /// Sets the state, unless the node is forced down. Pool tasks stop for good once the node is
     /// forced down, so leaving that state requires a fresh `NodeShared`.
     pub(crate) fn try_set_state(&self, state: NodeState) -> bool {
@@ -330,6 +365,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         self.shared.try_set_state(state)
     }
 
+    /// Marks the node up based on evidence from outside its pool, waking the pool if the node was
+    /// not up. Returns `false` if the node is forced down, which only a fresh node can leave.
+    #[inline]
+    pub(crate) fn promote_up(&self) -> bool {
+        self.shared.promote_up()
+    }
+
     #[inline]
     pub(crate) fn clone_with_node_info(
         &self,
@@ -341,19 +383,9 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
             // only an UP status event brings it back, and that event may have been sent while the
             // control connection was down. Being listed in the peers table, the node is treated as
             // up instead. Unknown and forced down nodes are left to topology events and load
-            // balancers. Refreshes run inside rcu closures, which can run more than once, hence the
-            // idempotent exchange.
-            if self
-                .shared
-                .state
-                .compare_exchange(
-                    NodeState::Down,
-                    NodeState::Up,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                )
-                .is_ok()
-            {
+            // balancers. Refreshes run inside rcu closures, which can run more than once, and promoting
+            // is idempotent.
+            if self.shared.promote_down_to_up() {
                 debug!(
                     ?node_info.broadcast_rpc_address,
                     "Marked down node as up on refresh.",

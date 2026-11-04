@@ -284,6 +284,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
             self.config.heartbeat_interval,
             self.version,
             pool.shutdown.subscribe(),
+            pool.wake.subscribe(),
         );
 
         let weak_pool_for_keyspace = weak_pool.clone();
@@ -362,12 +363,15 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
         heartbeat_interval: Duration,
         version: Version,
         mut shutdown: watch::Receiver<()>,
+        mut wake: watch::Receiver<()>,
     ) {
         let mut interval = create_heartbeat_interval(Instant::now(), heartbeat_interval);
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     _ = interval.tick() => {}
+                    // closes together with shutdown
+                    Ok(()) = wake.changed() => {}
                     _ = shutdown.changed() => {
                         debug!("Stopping heartbeat due to pool being gone.");
                         break;
@@ -428,21 +432,25 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                         break;
                     }
 
-                    {
+                    // Subscribed before the node can be marked down, so a reconnection sees a wake
+                    // which follows right after.
+                    let mut wake = if let Some(pool) = pool.upgrade() {
+                        let wake = pool.wake.subscribe();
+
                         // check if the node is down (no active connections)
-                        if let Some(pool) = pool.upgrade() {
-                            if Self::are_all_connections_down(pool.deref()).await {
-                                debug!(
-                                    ?broadcast_rpc_address,
-                                    "All connections broken - marking node as down."
-                                );
-                                node.mark_down();
-                            }
-                        } else {
-                            // the pool is gone - we're shutting down
-                            break;
+                        if Self::are_all_connections_down(pool.deref()).await {
+                            debug!(
+                                ?broadcast_rpc_address,
+                                "All connections broken - marking node as down."
+                            );
+                            node.mark_down();
                         }
-                    }
+
+                        wake
+                    } else {
+                        // the pool is gone - we're shutting down
+                        break;
+                    };
 
                     // when one connection goes down, all of them will most likely go down, so we need
                     // to protect against many reconnection attempts
@@ -477,6 +485,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                             let new_state = Self::run_reconnection_loop(
                                 reconnection_policy.new_node_schedule(),
                                 pool.clone(),
+                                &mut wake,
                             )
                             .await;
 
@@ -564,9 +573,20 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
     async fn run_reconnection_loop(
         mut reconnection_schedule: Box<dyn ReconnectionSchedule + Send + Sync>,
         pool: Weak<ConnectionPool<T, CM>>,
+        wake: &mut watch::Receiver<()>,
     ) -> ReconnectionState {
         while let Some(delay) = reconnection_schedule.next_delay() {
-            sleep(delay).await;
+            tokio::select! {
+                _ = sleep(delay) => {}
+                woken = wake.changed() => {
+                    if woken.is_err() {
+                        // the pool is gone
+                        return ReconnectionState::Disabled;
+                    }
+
+                    debug!("Reconnecting right away after being woken.");
+                }
+            }
 
             let pool = match pool.upgrade() {
                 None => return ReconnectionState::Disabled, // the pool might be gone
@@ -615,6 +635,8 @@ pub(crate) struct ConnectionPool<T: CdrsTransport, CM: ConnectionManager<T>> {
     error_sender: mpsc::Sender<Error>,
     // never sends; dropping it with the pool stops the pool's background tasks
     shutdown: watch::Sender<()>,
+    // signaled by wake(); the reconnection task exits as soon as it is dropped with the pool
+    wake: watch::Sender<()>,
 }
 
 impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM> {
@@ -672,7 +694,15 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
             current_index: AtomicUsize::new(0),
             error_sender,
             shutdown: watch::channel(()).0,
+            wake: watch::channel(()).0,
         })
+    }
+
+    /// Makes a reconnection in progress attempt right away instead of waiting out its backoff,
+    /// and checks connections with a heartbeat, since heartbeats skip nodes which are not up.
+    /// Wakes coalesce, so repeating it is harmless.
+    pub(crate) fn wake(&self) {
+        self.wake.send_replace(());
     }
 
     pub(crate) async fn connection(&self) -> CdrsResult<Arc<T>> {
@@ -1454,6 +1484,91 @@ mod tests {
         })
         .await
         .expect("pool tasks did not exit");
+    }
+
+    #[tokio::test]
+    async fn promoted_node_checks_connections_right_away() {
+        let (heartbeat_sender, mut heartbeat_receiver) = mpsc::channel(1);
+        let node = create_node(create_factory(
+            Default::default(),
+            unresponsive_connection_manager(heartbeat_sender),
+        ));
+        drop(node.persistent_connection().await.unwrap());
+
+        // connections may go stale unnoticed while the node is down, since heartbeats skip it
+        node.shared().mark_down();
+        let _refreshed = node.clone_with_node_info(
+            NodeInfo::new(
+                Uuid::new_v4(),
+                node.broadcast_rpc_address(),
+                None,
+                "".into(),
+                Default::default(),
+                "".into(),
+            ),
+            &MockNodeDistanceEvaluator::new(),
+        );
+
+        timeout(TEST_GUARD_TIMEOUT, heartbeat_receiver.recv())
+            .await
+            .expect("connections were not checked");
+    }
+
+    #[tokio::test]
+    async fn reconnection_task_exits_when_pool_is_dropped() {
+        let broken = Arc::new(AtomicBool::new(false));
+
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager.expect_connection().returning({
+            let broken = broken.clone();
+            move |_, _, _| {
+                let transport = transport_with_broken_flag(broken.clone());
+                Box::pin(async move { Ok(transport) })
+            }
+        });
+
+        let (_, keyspace_receiver) = watch::channel(None);
+        let factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+            Arc::new(ConstantReconnectionPolicy::new(Duration::from_secs(3600))),
+        ));
+        let node = create_node(factory.clone());
+
+        let pool = factory
+            .create(
+                NodeDistance::Local,
+                test_address(),
+                Arc::downgrade(node.shared()),
+            )
+            .await
+            .unwrap();
+
+        broken.store(true, Ordering::Relaxed);
+        pool.error_sender
+            .try_send(Error::General("connection broken".into()))
+            .unwrap();
+
+        timeout(TEST_GUARD_TIMEOUT, async {
+            while node.state() != NodeState::Down {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("reconnection did not start");
+
+        drop(pool);
+
+        // the reconnection would otherwise hold the node until its next attempt
+        timeout(TEST_GUARD_TIMEOUT, async {
+            while Arc::weak_count(node.shared()) != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("reconnection task did not exit");
     }
 
     #[tokio::test]
