@@ -479,7 +479,7 @@ pub fn cursor_next_value_ref<'a>(
     cursor: &mut Cursor<&'a [u8]>,
     len: usize,
 ) -> CDRSResult<&'a [u8]> {
-    let data: &'a [u8] = *cursor.get_ref();
+    let data: &'a [u8] = cursor.get_ref();
     let start = cursor.position() as usize;
     let result = start
         .checked_add(len)
