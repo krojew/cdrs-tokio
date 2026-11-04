@@ -129,7 +129,14 @@ pub(crate) fn add_new_node<T: CdrsTransport, CM: ConnectionManager<T>>(
                 return None;
             }
 
-            debug!(?old_node, "Setting existing node state to up.");
+            // The state changes in place, which every node sharing its connectivity sees. Only a
+            // forced down node needs fresh connectivity.
+            if old_node.try_set_state(NodeState::Up) {
+                debug!(?old_node, "Set existing node state to up.");
+                return None;
+            }
+
+            debug!(?old_node, "Recreating forced down node as up.");
             return Some(
                 old_metadata.clone_with_node(old_node.clone_with_node_state(NodeState::Up)),
             );
@@ -656,16 +663,17 @@ mod tests {
 
         let node_distance_evaluator = MockNodeDistanceEvaluator::new();
 
+        // the state changes in place
         let metadata = add_new_node(
             node_info.clone(),
             &old_metadata,
             &connection_pool_factory,
             &node_distance_evaluator,
             NodeState::Up,
-        )
-        .unwrap();
+        );
+        assert!(metadata.is_none());
 
-        let nodes = metadata.nodes();
+        let nodes = old_metadata.nodes();
         assert_eq!(nodes.len(), 1);
         assert_eq!(
             nodes
@@ -975,5 +983,34 @@ mod tests {
 
         drop(old_metadata);
         assert!(old_pool.upgrade().is_none());
+    }
+
+    #[tokio::test]
+    async fn should_keep_connection_pool_when_adding_existing_node() {
+        let connect_count = Arc::new(AtomicUsize::new(0));
+        let connection_pool_factory = counting_connection_pool_factory(connect_count.clone());
+
+        let node_info = test_node_info(node_address(1));
+        let old_node = create_up_node(&connection_pool_factory, &node_info);
+        old_node.persistent_connection().await.unwrap();
+        old_node.shared().mark_down();
+        let old_metadata = metadata_with_node(old_node.clone());
+
+        let metadata = add_new_node(
+            node_info.clone(),
+            &old_metadata,
+            &connection_pool_factory,
+            &MockNodeDistanceEvaluator::new(),
+            NodeState::Up,
+        )
+        .unwrap_or(old_metadata);
+
+        let node = metadata.nodes().get(&node_info.host_id).unwrap().clone();
+        assert_eq!(node.state(), NodeState::Up);
+        assert_eq!(old_node.state(), NodeState::Up);
+
+        node.persistent_connection().await.unwrap();
+        assert_eq!(connect_count.load(Ordering::Relaxed), 1);
+        assert!(node.shares_connectivity_with(&old_node));
     }
 }

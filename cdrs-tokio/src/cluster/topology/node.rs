@@ -60,11 +60,25 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> NodeShared<T, CM> {
     }
 
     pub(crate) fn mark_down(&self) {
-        self.state.store(NodeState::Down, Ordering::Relaxed);
+        self.try_set_state(NodeState::Down);
     }
 
     pub(crate) fn mark_up(&self) {
-        self.state.store(NodeState::Up, Ordering::Relaxed);
+        self.try_set_state(NodeState::Up);
+    }
+
+    /// Sets the state, unless the node is forced down. Pool tasks stop for good once the node is
+    /// forced down, so leaving that state requires a fresh `NodeShared`.
+    pub(crate) fn try_set_state(&self, state: NodeState) -> bool {
+        self.state
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                if current == NodeState::ForcedDown && state != NodeState::ForcedDown {
+                    None
+                } else {
+                    Some(state)
+                }
+            })
+            .is_ok()
     }
 }
 
@@ -309,6 +323,13 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         self.shared.force_down();
     }
 
+    /// Changes the state in place, visible on every node sharing connectivity with this one.
+    /// Returns `false` if the node is forced down, which only a fresh node can leave.
+    #[inline]
+    pub(crate) fn try_set_state(&self, state: NodeState) -> bool {
+        self.shared.try_set_state(state)
+    }
+
     #[inline]
     pub(crate) fn clone_with_node_info(
         &self,
@@ -409,20 +430,53 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
         }
     }
 
+    /// Shares connectivity with this node and changes the shared state, unless the node is forced
+    /// down, in which case the clone gets fresh connectivity.
     #[inline]
     pub(crate) fn clone_with_node_state(&self, state: NodeState) -> Self {
-        Self {
-            shared: Arc::new(NodeShared::new(
+        let shared = if self.try_set_state(state) {
+            self.shared.clone()
+        } else {
+            Arc::new(NodeShared::new(
                 self.shared.connection_pool_factory.clone(),
                 self.broadcast_rpc_address(),
                 self.distance(),
                 state,
-            )),
+            ))
+        };
+
+        Self {
+            shared,
             broadcast_address: self.broadcast_address,
             host_id: self.host_id,
             tokens: self.tokens.clone(),
             rack: self.rack.clone(),
             datacenter: self.datacenter.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cassandra_protocol::frame::Version;
+    use futures::future::ready;
+    use futures::FutureExt;
+
+    use crate::cluster::test_support::*;
+    use crate::cluster::topology::NodeState;
+
+    #[test]
+    fn pool_tasks_do_not_revive_forced_down_node() {
+        let connection_pool_factory = create_connection_pool_factory(
+            TestConnectionManager::new(|_, _| ready(Ok(void_response(Version::V4))).boxed()),
+            Version::V4,
+        );
+        let node = create_node(&connection_pool_factory, node_address(1));
+
+        node.force_down();
+        node.shared().mark_up();
+        node.shared().mark_down();
+
+        assert_eq!(node.state(), NodeState::ForcedDown);
     }
 }

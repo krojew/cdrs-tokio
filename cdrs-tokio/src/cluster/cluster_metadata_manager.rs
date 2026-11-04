@@ -432,41 +432,32 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
     }
 
     async fn process_status_event(&self, event: StatusChange) {
+        // Known nodes change state in place, which every node sharing their connectivity sees, so
+        // metadata only changes when a forced down node needs fresh connectivity.
+        let node = self.metadata.load().find_node_by_rpc_address(event.addr);
         match event.change_type {
-            StatusChangeType::Up => {
-                // We need an async fallback (add_new_node) when the node is
-                // unknown to us, so the existing-node update is split out and
-                // performed via rcu to avoid losing concurrent metadata
-                // changes between load and store.
-                if self
-                    .metadata
-                    .load()
-                    .find_node_by_rpc_address(event.addr)
-                    .is_some()
-                {
+            StatusChangeType::Up => match node {
+                Some(node) if node.try_set_state(NodeState::Up) => {
+                    debug!(?node, "Set existing node state to up.");
+                }
+                Some(_) => {
+                    // The rcu closure can run more than once, so the in-place change on a node
+                    // which is no longer forced down is idempotent.
                     self.metadata.rcu(|metadata| {
-                        // Re-check inside the closure: a concurrent update may
-                        // have already moved the node to Up, in which case
-                        // leave the metadata untouched and return the same
-                        // Arc so rcu skips the swap.
                         match metadata.find_node_by_rpc_address(event.addr) {
-                            Some(node) if node.state() != NodeState::Up => {
-                                debug!(?node, "Setting existing node state to up.");
+                            Some(node) if !node.try_set_state(NodeState::Up) => {
+                                debug!(?node, "Recreating forced down node as up.");
                                 let new_node = node.clone_with_node_state(NodeState::Up);
                                 Arc::new(metadata.clone_with_node(new_node))
                             }
                             _ => metadata.clone(),
                         }
                     });
-                } else {
-                    self.add_new_node(event.addr, NodeState::Up).await;
                 }
-            }
-            StatusChangeType::Down => {
-                // Capture the connection-state warning outside the rcu closure
-                // because is_any_connection_up is async and rcu's closure is
-                // synchronous (and may run multiple times under contention).
-                if let Some(node) = self.metadata.load().find_node_by_rpc_address(event.addr) {
+                None => self.add_new_node(event.addr, NodeState::Up).await,
+            },
+            StatusChangeType::Down => match node {
+                Some(node) => {
                     let state = node.state();
                     if state != NodeState::Down
                         && state != NodeState::ForcedDown
@@ -477,28 +468,14 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                             "Marking node as down while there are established connections."
                         );
                     }
-                } else {
-                    debug!(broadcast_rpc_address = %event.addr, "Unknown node down.");
-                    return;
-                }
 
-                // Now atomically transition the node to Down via rcu. The
-                // closure re-checks the state because an interleaved update
-                // could have already moved it.
-                self.metadata.rcu(
-                    |metadata| match metadata.find_node_by_rpc_address(event.addr) {
-                        Some(node)
-                            if node.state() != NodeState::Down
-                                && node.state() != NodeState::ForcedDown =>
-                        {
-                            debug!(?node, "Setting existing node state to down.");
-                            let new_node = node.clone_with_node_state(NodeState::Down);
-                            Arc::new(metadata.clone_with_node(new_node))
-                        }
-                        _ => metadata.clone(),
-                    },
-                );
-            }
+                    // forced down nodes stay that way
+                    if node.try_set_state(NodeState::Down) {
+                        debug!(?node, "Set existing node state to down.");
+                    }
+                }
+                None => debug!(broadcast_rpc_address = %event.addr, "Unknown node down."),
+            },
             _ => warn!(?event, "Unrecognized status event."),
         }
     }
@@ -860,13 +837,18 @@ mod tests {
     };
     use cassandra_protocol::frame::{Direction, Opcode, Serialize};
     use cassandra_protocol::types::CBytes;
+    use futures::future::ready;
     use futures::FutureExt;
     use std::net::Ipv4Addr;
+    use std::sync::atomic::AtomicUsize;
     use std::sync::Mutex;
     use tokio::sync::{oneshot, watch};
     use uuid::Uuid;
 
     use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::test_support::{
+        self, void_response, TestConnectionManager, TestNode, TestTransport,
+    };
     use crate::cluster::topology::NodeDistance;
     use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
     use crate::retry::MockReconnectionPolicy;
@@ -1160,5 +1142,116 @@ mod tests {
             .next()
             .unwrap();
         assert_eq!(first_ring_node.tokens(), &[Murmur3Token::new(50)]);
+    }
+
+    // A metadata manager knowing a single up node, whose connection attempts are counted.
+    fn create_counting_metadata_manager(
+        connect_count: Arc<AtomicUsize>,
+    ) -> (
+        ClusterMetadataManager<TestTransport, TestConnectionManager>,
+        Arc<TestNode>,
+    ) {
+        let connection_pool_factory = test_support::create_connection_pool_factory(
+            TestConnectionManager::new(|_, _| ready(Ok(void_response(Version::V4))).boxed())
+                .with_connect_handler(move |_| {
+                    connect_count.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                }),
+            Version::V4,
+        );
+
+        let node = Arc::new(Node::new_with_state(
+            connection_pool_factory.clone(),
+            address(1),
+            None,
+            Some(Uuid::new_v4()),
+            Some(NodeDistance::Local),
+            NodeState::Up,
+            Default::default(),
+            "".into(),
+            "".into(),
+        ));
+
+        let metadata_manager = ClusterMetadataManager::new(
+            vec![],
+            connection_pool_factory,
+            Arc::new(SessionContext::default()),
+            Box::new(AllLocalNodeDistanceEvaluator),
+            Version::V4,
+            false,
+        );
+
+        let mut nodes = FxHashMap::default();
+        nodes.insert(node.host_id().unwrap(), node.clone());
+        metadata_manager
+            .metadata
+            .store(Arc::new(ClusterMetadata::new(nodes, Default::default())));
+
+        (metadata_manager, node)
+    }
+
+    #[tokio::test]
+    async fn should_keep_connection_pool_on_status_down_and_up_events() {
+        let connect_count = Arc::new(AtomicUsize::new(0));
+        let (metadata_manager, node) = create_counting_metadata_manager(connect_count.clone());
+        node.persistent_connection().await.unwrap();
+
+        metadata_manager
+            .process_status_event(StatusChange {
+                change_type: StatusChangeType::Down,
+                addr: node.broadcast_rpc_address(),
+            })
+            .await;
+
+        let current_node = metadata_manager
+            .metadata()
+            .find_node_by_rpc_address(node.broadcast_rpc_address())
+            .unwrap();
+        assert_eq!(current_node.state(), NodeState::Down);
+        assert_eq!(node.state(), NodeState::Down);
+
+        metadata_manager
+            .process_status_event(StatusChange {
+                change_type: StatusChangeType::Up,
+                addr: node.broadcast_rpc_address(),
+            })
+            .await;
+
+        let current_node = metadata_manager
+            .metadata()
+            .find_node_by_rpc_address(node.broadcast_rpc_address())
+            .unwrap();
+        assert_eq!(current_node.state(), NodeState::Up);
+        assert_eq!(node.state(), NodeState::Up);
+
+        current_node.persistent_connection().await.unwrap();
+        assert_eq!(connect_count.load(Ordering::Relaxed), 1);
+        assert!(current_node.shares_connectivity_with(&node));
+    }
+
+    #[tokio::test]
+    async fn should_recreate_connection_pool_when_forced_down_node_comes_up() {
+        let connect_count = Arc::new(AtomicUsize::new(0));
+        let (metadata_manager, node) = create_counting_metadata_manager(connect_count.clone());
+        node.persistent_connection().await.unwrap();
+        node.force_down();
+
+        metadata_manager
+            .process_status_event(StatusChange {
+                change_type: StatusChangeType::Up,
+                addr: node.broadcast_rpc_address(),
+            })
+            .await;
+
+        let current_node = metadata_manager
+            .metadata()
+            .find_node_by_rpc_address(node.broadcast_rpc_address())
+            .unwrap();
+        assert_eq!(current_node.state(), NodeState::Up);
+        assert_eq!(node.state(), NodeState::ForcedDown);
+        assert!(!current_node.shares_connectivity_with(&node));
+
+        current_node.persistent_connection().await.unwrap();
+        assert_eq!(connect_count.load(Ordering::Relaxed), 2);
     }
 }
