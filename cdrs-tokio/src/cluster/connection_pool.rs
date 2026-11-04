@@ -8,12 +8,12 @@ use itertools::Itertools;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::ops::Deref;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::sync::watch::Receiver;
 use tokio::sync::{mpsc, RwLock};
-use tokio::time::{interval_at, sleep, Instant, Interval, MissedTickBehavior};
+use tokio::time::{interval_at, sleep, timeout, Instant, Interval, MissedTickBehavior};
 use tracing::*;
 
 use crate::cluster::topology::{Node, NodeDistance, NodeState};
@@ -66,6 +66,7 @@ pub struct ConnectionPoolConfig {
     remote_size: usize,
     connect_timeout: Option<Duration>,
     heartbeat_interval: Duration,
+    heartbeat_timeout: Duration,
 }
 
 impl Default for ConnectionPoolConfig {
@@ -75,6 +76,7 @@ impl Default for ConnectionPoolConfig {
             remote_size: 1,
             connect_timeout: None,
             heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL,
+            heartbeat_timeout: DEFAULT_HEARTBEAT_TIMEOUT,
         }
     }
 }
@@ -133,6 +135,13 @@ impl ConnectionPoolConfigBuilder {
     #[must_use]
     pub fn with_heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
         self.config.heartbeat_interval = heartbeat_interval;
+        self
+    }
+
+    /// Sets how long to wait for a heartbeat response before considering the connection broken.
+    #[must_use]
+    pub fn with_heartbeat_timeout(mut self, heartbeat_timeout: Duration) -> Self {
+        self.config.heartbeat_timeout = heartbeat_timeout;
         self
     }
 
@@ -270,9 +279,17 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                         version,
                     ));
 
-                    let pool_guard = pool.pool.read().await;
-                    join_all(pool_guard.iter()
+                    // responses are awaited without holding the lock
+                    let connections: Vec<_> = pool
+                        .pool
+                        .read()
+                        .await
+                        .iter()
                         .filter(|connection| !connection.is_broken())
+                        .map(|connection| connection.transport.clone())
+                        .collect();
+
+                    join_all(connections.iter()
                         .map(|connection| {
                             let use_envelope = use_envelope.clone();
                             async move {
@@ -312,16 +329,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
 
                     if state == NodeState::Up {
                         if let Some(pool) = pool.upgrade() {
-                            let envelope = Envelope::new_req_options(version);
-
-                            let pool = pool.pool.read().await;
-                            for connection in pool.deref() {
-                                if let Err(error) =
-                                    connection.write_envelope(&envelope, false).await
-                                {
-                                    warn!(?broadcast_rpc_address, %error, "Error waiting for heartbeat response - the connection will probably go down.");
-                                }
-                            }
+                            pool.heartbeat(&Envelope::new_req_options(version)).await;
                         } else {
                             debug!(
                                 ?broadcast_rpc_address,
@@ -486,11 +494,31 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
     }
 }
 
+struct PooledConnection<T> {
+    transport: Arc<T>,
+    // set when the connection stops answering heartbeats, which the transport cannot detect
+    unresponsive: AtomicBool,
+}
+
+impl<T: CdrsTransport> PooledConnection<T> {
+    fn new(transport: T) -> Self {
+        PooledConnection {
+            transport: Arc::new(transport),
+            unresponsive: AtomicBool::new(false),
+        }
+    }
+
+    #[inline]
+    fn is_broken(&self) -> bool {
+        self.unresponsive.load(Ordering::Relaxed) || self.transport.is_broken()
+    }
+}
+
 pub(crate) struct ConnectionPool<T: CdrsTransport, CM: ConnectionManager<T>> {
     connection_manager: Weak<CM>,
     broadcast_rpc_address: SocketAddr,
     config: ConnectionPoolConfig,
-    pool: RwLock<Vec<Arc<T>>>,
+    pool: RwLock<Vec<Arc<PooledConnection<T>>>>,
     desired_size: usize,
     current_index: AtomicUsize,
     error_sender: mpsc::Sender<Error>,
@@ -529,7 +557,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
             // skip invalid connections which can be established later
             Err(_) => None,
         })
-        .map_ok(Arc::new)
+        .map_ok(|connection| Arc::new(PooledConnection::new(connection)))
         .try_collect()?;
 
         if pool.len() != desired_size {
@@ -574,7 +602,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
         loop {
             let connection = &pool[index];
             if !connection.is_broken() {
-                return Ok(connection.clone());
+                return Ok(connection.transport.clone());
             }
 
             index = (index + 1) % pool_len;
@@ -584,6 +612,47 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
                 return Err(create_no_connections_error(self.broadcast_rpc_address));
             }
         }
+    }
+
+    async fn heartbeat(&self, envelope: &Envelope) {
+        // Responses are awaited without holding the lock, since a writer waiting for it would
+        // block all readers in the meantime.
+        let connections: Vec<_> = self
+            .pool
+            .read()
+            .await
+            .iter()
+            .filter(|connection| !connection.is_broken())
+            .cloned()
+            .collect();
+
+        join_all(connections.iter().map(|connection| async move {
+            match timeout(
+                self.config.heartbeat_timeout,
+                connection.transport.write_envelope(envelope, false),
+            )
+            .await
+            {
+                Ok(Ok(_)) => {}
+                Ok(Err(error)) => {
+                    warn!(broadcast_rpc_address = ?self.broadcast_rpc_address, %error, "Error waiting for heartbeat response - the connection will probably go down.");
+                }
+                Err(_) => {
+                    warn!(broadcast_rpc_address = ?self.broadcast_rpc_address, "Timeout waiting for heartbeat response - marking the connection as broken.");
+
+                    connection.unresponsive.store(true, Ordering::Relaxed);
+
+                    match self.error_sender.try_send(Error::Timeout(format!(
+                        "Timeout waiting for heartbeat response from: {}",
+                        self.broadcast_rpc_address
+                    ))) {
+                        Ok(_) => debug!("Error handler notified!"),
+                        Err(e) => warn!("Error handler failed to notify: {e}"),
+                    }
+                }
+            }
+        }))
+        .await;
     }
 
     pub(crate) async fn is_any_connection_up(&self) -> bool {
@@ -614,7 +683,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
 
         // connections are established without holding the lock, so the pool stays usable
         for _ in 0..missing {
-            let connection = Arc::new(
+            let connection = Arc::new(PooledConnection::new(
                 new_connection(
                     connection_manager.as_ref(),
                     self.broadcast_rpc_address,
@@ -623,7 +692,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
                     Some(self.error_sender.clone()),
                 )
                 .await?,
-            );
+            ));
 
             let mut pool = self.pool.write().await;
             if let Some(broken) = pool.iter_mut().find(|connection| connection.is_broken()) {
@@ -673,7 +742,6 @@ mod tests {
     use futures::future::pending;
     use futures::FutureExt;
     use std::net::{IpAddr, Ipv4Addr};
-    use std::sync::atomic::AtomicBool;
     use tokio::sync::{watch, Notify};
     use tokio::time::timeout;
 
@@ -738,17 +806,14 @@ mod tests {
 
     async fn create_pool(
         connection_manager: TestConnectionManager,
-        size: usize,
+        config: ConnectionPoolConfig,
     ) -> (
         Arc<ConnectionPool<MockCdrsTransport, TestConnectionManager>>,
         Arc<TestConnectionManager>,
         mpsc::Receiver<Error>,
     ) {
         let connection_manager = Arc::new(connection_manager);
-        let (error_sender, error_receiver) = mpsc::channel(size);
-        let config = ConnectionPoolConfigBuilder::new()
-            .with_local_size(size)
-            .build();
+        let (error_sender, error_receiver) = mpsc::channel(config.local_size);
 
         let pool = ConnectionPool::new(
             &connection_manager,
@@ -795,7 +860,13 @@ mod tests {
             }
         });
 
-        let (pool, _connection_manager, _error_receiver) = create_pool(connection_manager, 2).await;
+        let (pool, _connection_manager, _error_receiver) = create_pool(
+            connection_manager,
+            ConnectionPoolConfigBuilder::new()
+                .with_local_size(2)
+                .build(),
+        )
+        .await;
         broken.store(true, Ordering::Relaxed);
 
         let reconnection = tokio::spawn({
@@ -821,6 +892,78 @@ mod tests {
             .await
             .iter()
             .all(|connection| !connection.is_broken()));
+    }
+
+    // A connection which accepts heartbeats, but never answers them.
+    fn unresponsive_connection_manager(
+        heartbeat_sender: mpsc::Sender<()>,
+    ) -> TestConnectionManager {
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager
+            .expect_connection()
+            .returning(move |_, _, _| {
+                let heartbeat_sender = heartbeat_sender.clone();
+                let mut transport = transport_with_broken_flag(Default::default());
+                transport.expect_write_envelope().returning(move |_, _| {
+                    let _ = heartbeat_sender.try_send(());
+                    Box::pin(pending())
+                });
+
+                Box::pin(async move { Ok(transport) })
+            });
+
+        connection_manager
+    }
+
+    #[tokio::test]
+    async fn heartbeat_does_not_hold_pool_lock_while_waiting_for_response() {
+        let (heartbeat_sender, mut heartbeat_receiver) = mpsc::channel(1);
+        let (pool, _connection_manager, _error_receiver) = create_pool(
+            unresponsive_connection_manager(heartbeat_sender),
+            Default::default(),
+        )
+        .await;
+
+        let heartbeat = tokio::spawn({
+            let pool = pool.clone();
+            async move {
+                pool.heartbeat(&Envelope::new_req_options(Version::V4))
+                    .await
+            }
+        });
+
+        timeout(TEST_GUARD_TIMEOUT, heartbeat_receiver.recv())
+            .await
+            .expect("heartbeat was not sent");
+
+        assert!(
+            pool.pool.try_write().is_ok(),
+            "pool is locked while waiting for heartbeat response"
+        );
+
+        heartbeat.abort();
+    }
+
+    #[tokio::test]
+    async fn unanswered_heartbeat_marks_connection_broken() {
+        let (heartbeat_sender, _heartbeat_receiver) = mpsc::channel(1);
+        let (pool, _connection_manager, mut error_receiver) = create_pool(
+            unresponsive_connection_manager(heartbeat_sender),
+            ConnectionPoolConfigBuilder::new()
+                .with_heartbeat_timeout(Duration::from_millis(10))
+                .build(),
+        )
+        .await;
+
+        timeout(
+            TEST_GUARD_TIMEOUT,
+            pool.heartbeat(&Envelope::new_req_options(Version::V4)),
+        )
+        .await
+        .expect("heartbeat response was awaited without a timeout");
+
+        assert!(pool.connection().await.is_err());
+        assert!(matches!(error_receiver.try_recv(), Ok(Error::Timeout(_))));
     }
 
     #[tokio::test]
@@ -862,6 +1005,51 @@ mod tests {
         timeout(TEST_GUARD_TIMEOUT, propagated_receiver.recv())
             .await
             .expect("keyspace was not propagated with an internal request");
+    }
+
+    #[tokio::test]
+    async fn keyspace_watcher_does_not_hold_pool_lock_while_waiting_for_response() {
+        let (keyspace_sender, keyspace_receiver) = watch::channel(None);
+        let (propagated_sender, mut propagated_receiver) = mpsc::channel(1);
+
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager
+            .expect_connection()
+            .returning(move |_, _, _| {
+                let propagated_sender = propagated_sender.clone();
+                let mut transport = transport_with_broken_flag(Default::default());
+                transport
+                    .expect_write_internal_envelope()
+                    .returning(move |_, _| {
+                        let _ = propagated_sender.try_send(());
+                        Box::pin(pending())
+                    });
+
+                Box::pin(async move { Ok(transport) })
+            });
+
+        let factory = ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+            Arc::new(MockReconnectionPolicy::new()),
+        );
+        let pool = factory
+            .create(NodeDistance::Local, test_address(), Weak::new())
+            .await
+            .unwrap();
+
+        keyspace_sender.send(Some("ks".into())).unwrap();
+
+        timeout(TEST_GUARD_TIMEOUT, propagated_receiver.recv())
+            .await
+            .expect("keyspace was not propagated");
+
+        assert!(
+            pool.pool.try_write().is_ok(),
+            "pool is locked while waiting for keyspace propagation"
+        );
     }
 
     #[tokio::test]
