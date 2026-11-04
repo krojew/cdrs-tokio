@@ -10,12 +10,16 @@ use tokio_rustls::rustls::{pki_types::ServerName, ClientConfig};
 use crate::cluster::HttpProxyConfig;
 use crate::cluster::NodeAddress;
 
+type ServerNameResolver = dyn Fn(SocketAddr) -> ServerName<'static> + Send + Sync;
+
 /// Single node TLS connection config. See [NodeRustlsConfigBuilder].
 #[derive(Derivative, Clone)]
 #[derivative(Debug)]
 pub struct NodeRustlsConfig {
     pub(crate) contact_points: Vec<SocketAddr>,
     pub(crate) dns_name: ServerName<'static>,
+    #[derivative(Debug = "ignore")]
+    pub(crate) server_name_resolver: Option<Arc<ServerNameResolver>>,
     #[derivative(Debug = "ignore")]
     pub(crate) authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     pub(crate) config: Arc<ClientConfig>,
@@ -32,6 +36,8 @@ pub struct NodeRustlsConfigBuilder {
     addrs: Vec<NodeAddress>,
     dns_name: ServerName<'static>,
     #[derivative(Debug = "ignore")]
+    server_name_resolver: Option<Arc<ServerNameResolver>>,
+    #[derivative(Debug = "ignore")]
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<ClientConfig>,
     version: Version,
@@ -45,6 +51,7 @@ impl NodeRustlsConfigBuilder {
         NodeRustlsConfigBuilder {
             addrs: vec![],
             dns_name,
+            server_name_resolver: None,
             authenticator_provider: Arc::new(NoneAuthenticatorProvider),
             config,
             version: Version::V4,
@@ -52,6 +59,18 @@ impl NodeRustlsConfigBuilder {
             #[cfg(feature = "http-proxy")]
             http_proxy: None,
         }
+    }
+
+    /// Resolves the server name used for SNI and certificate verification separately for each
+    /// node address, e.g. when nodes present certificates with distinct names. By default, the
+    /// DNS name given at construction is used for all nodes.
+    #[must_use]
+    pub fn with_server_name_resolver<F>(mut self, resolver: F) -> Self
+    where
+        F: Fn(SocketAddr) -> ServerName<'static> + Send + Sync + 'static,
+    {
+        self.server_name_resolver = Some(Arc::new(resolver));
+        self
     }
 
     /// Sets new authenticator.
@@ -112,6 +131,7 @@ impl NodeRustlsConfigBuilder {
         Ok(NodeRustlsConfig {
             contact_points,
             dns_name: self.dns_name,
+            server_name_resolver: self.server_name_resolver,
             authenticator_provider: self.authenticator_provider,
             config: self.config,
             version: self.version,

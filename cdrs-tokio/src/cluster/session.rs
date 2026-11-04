@@ -1509,7 +1509,7 @@ impl<
             ) {
                 Ok(()) => {
                     let (keyspace_holder, keyspace_receiver) = create_keyspace_holder();
-                    let connection_manager = RustlsConnectionManager::new(
+                    let mut connection_manager = RustlsConnectionManager::new(
                         self.node_config.dns_name,
                         self.node_config.authenticator_provider,
                         self.node_config.config,
@@ -1523,6 +1523,11 @@ impl<
                         self.node_config.http_proxy,
                     )
                     .with_beta_protocol(self.node_config.beta_protocol);
+
+                    if let Some(resolver) = self.node_config.server_name_resolver {
+                        connection_manager = connection_manager
+                            .with_server_name_resolver(move |addr| resolver(addr));
+                    }
 
                     self.config
                         .into_session(
