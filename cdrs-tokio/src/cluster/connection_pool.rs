@@ -142,8 +142,17 @@ impl ConnectionPoolConfigBuilder {
     }
 
     /// Sets how long to wait for a heartbeat response before considering the connection broken.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `heartbeat_timeout` is zero.
     #[must_use]
     pub fn with_heartbeat_timeout(mut self, heartbeat_timeout: Duration) -> Self {
+        assert!(
+            !heartbeat_timeout.is_zero(),
+            "Heartbeat timeout must be greater than zero!"
+        );
+
         self.config.heartbeat_timeout = heartbeat_timeout;
         self
     }
@@ -830,6 +839,12 @@ mod tests {
     #[should_panic(expected = "Remote connection pool size must be at least 1")]
     fn config_rejects_empty_remote_pool() {
         let _ = ConnectionPoolConfigBuilder::new().with_remote_size(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Heartbeat timeout must be greater than zero")]
+    fn config_rejects_zero_heartbeat_timeout() {
+        let _ = ConnectionPoolConfigBuilder::new().with_heartbeat_timeout(Duration::ZERO);
     }
 
     fn transport_with_broken_flag(broken: Arc<AtomicBool>) -> MockCdrsTransport {
