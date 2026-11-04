@@ -1600,7 +1600,7 @@ pub(crate) mod test_session {
     // Builds a session over given nodes without running a control connection. Until
     // `refresh_metadata` is called on its metadata manager, every query plan consists of all the
     // nodes in the given order.
-    pub(crate) fn create_session<LB: LoadBalancingStrategy<TestTransport, TestConnectionManager>>(
+    pub(crate) fn create_session<LB>(
         addresses: &[SocketAddr],
         connection_manager: TestConnectionManager,
         load_balancing: LB,
@@ -1608,7 +1608,7 @@ pub(crate) mod test_session {
         version: Version,
     ) -> Session<TestTransport, TestConnectionManager, LB>
     where
-        LB: Send + Sync + 'static,
+        LB: LoadBalancingStrategy<TestTransport, TestConnectionManager> + Send + Sync + 'static,
     {
         let connection_pool_factory = create_connection_pool_factory(connection_manager, version);
         let contact_points = addresses
