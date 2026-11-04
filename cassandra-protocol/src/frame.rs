@@ -48,7 +48,7 @@ use crate::error;
 pub const EVENT_STREAM_ID: i16 = -1;
 
 const fn const_max(a: usize, b: usize) -> usize {
-    if a < b {
+    if a > b {
         a
     } else {
         b
@@ -603,6 +603,16 @@ mod tests {
     use crate::query::query_values::QueryValues;
     use crate::types::value::Value;
     use crate::types::CBytes;
+
+    #[test]
+    fn max_frame_size_fits_largest_frame() {
+        assert_eq!(const_max(6, 8), 8);
+        assert_eq!(const_max(8, 6), 8);
+        assert_eq!(
+            MAX_FRAME_SIZE,
+            PAYLOAD_SIZE_LIMIT + COMPRESSED_FRAME_HEADER_LENGTH + FRAME_TRAILER_LENGTH
+        );
+    }
 
     #[test]
     fn test_frame_version_as_byte() {
