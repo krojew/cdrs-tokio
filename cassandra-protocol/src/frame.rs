@@ -199,7 +199,7 @@ impl Envelope {
         let version = Version::try_from(data[0])
             .map_err(|_| ParseEnvelopeError::UnsupportedVersion(data[0] & 0x7f))?;
         let direction = Direction::from(data[0]);
-        let flags = Flags::from_bits_truncate(data[1]);
+        let mut flags = Flags::from_bits_truncate(data[1]);
         let stream_id = try_i16_from_bytes(&data[2..4]).unwrap();
         let opcode = Opcode::try_from(data[4])
             .map_err(|_| ParseEnvelopeError::UnsupportedOpcode(data[4]))?;
@@ -237,6 +237,8 @@ impl Envelope {
 
         if flags.contains(Flags::CUSTOM_PAYLOAD) {
             skip_bytes_map(&mut body_cursor).map_err(ParseEnvelopeError::InvalidCustomPayload)?;
+            // the payload is not kept, so the envelope must not claim to carry one
+            flags.remove(Flags::CUSTOM_PAYLOAD);
         }
 
         let mut body = Vec::with_capacity(body_len - body_cursor.position() as usize);
@@ -1365,6 +1367,24 @@ mod flags {
             envelope.response_body().unwrap(),
             ResponseBody::Result(ResResultBody::Void)
         );
+    }
+
+    #[test]
+    fn test_custom_payload_response_reencodes_consistently() {
+        let mut body = CUSTOM_PAYLOAD.to_vec();
+        body.extend_from_slice(&[0, 0, 0, 1]);
+
+        let raw_envelope = response_with_body(Flags::CUSTOM_PAYLOAD, &body);
+        let envelope = Envelope::from_buffer(&raw_envelope, Compression::None)
+            .unwrap()
+            .envelope;
+
+        let encoded = envelope.encode_with(Compression::None).unwrap();
+        let reparsed = Envelope::from_buffer(&encoded, Compression::None)
+            .unwrap()
+            .envelope;
+
+        assert_eq!(reparsed.body, vec![0, 0, 0, 1]);
     }
 
     #[test]
