@@ -1,4 +1,4 @@
-## cdrs-tokio (unreleased)
+## cdrs-tokio 9.1.0
 
 ### Added
 
@@ -85,7 +85,7 @@
 * `StatementParamsBuilder::with_names`; the flag is derived from the
   values.
 
-## cassandra-protocol (unreleased)
+## cassandra-protocol 4.1.0
 
 ### Added
 
@@ -157,7 +157,7 @@
 * `QueryParams::with_names`, which is ignored when serializing.
 * `QueryParamsBuilder::with_flags` and `QueryParamsBuilder::with_names`.
 
-## cdrs-tokio-helpers-derive (unreleased)
+## cdrs-tokio-helpers-derive 5.1.0
 
 ### Added
 
