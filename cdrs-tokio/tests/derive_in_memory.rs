@@ -14,9 +14,11 @@ use cdrs_tokio::types::rows::Row;
 use cdrs_tokio::types::value::Bytes;
 use cdrs_tokio::types::CBytes;
 use cdrs_tokio::TryFromRow;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
+use std::num::{NonZeroI32, NonZeroI64};
 
 fn native(id: ColType) -> ColTypeOption {
     ColTypeOption { id, value: None }
@@ -170,4 +172,48 @@ fn map_with_custom_hasher_decodes() {
     assert_eq!(decoded.map.len(), 2);
     assert_eq!(decoded.map["a"], 1);
     assert_eq!(decoded.map["b"], 2);
+}
+
+#[derive(Debug, PartialEq, TryFromRow)]
+struct TimeAndNonZeroRow {
+    naive: NaiveDateTime,
+    utc: DateTime<Utc>,
+    optional_naive: Option<NaiveDateTime>,
+    optional_utc: Option<DateTime<Utc>>,
+    missing_naive: Option<NaiveDateTime>,
+    missing_utc: Option<DateTime<Utc>>,
+    non_zero: NonZeroI32,
+    optional_non_zero: Option<NonZeroI64>,
+}
+
+#[test]
+fn time_and_non_zero_types_decode() {
+    let utc = DateTime::from_timestamp(1_700_000_000, 123_000_000).unwrap();
+    let naive = utc.naive_utc();
+    let row = row(vec![
+        ("naive", native(ColType::Timestamp), value(naive)),
+        ("utc", native(ColType::Timestamp), value(utc)),
+        ("optional_naive", native(ColType::Timestamp), value(naive)),
+        ("optional_utc", native(ColType::Timestamp), value(utc)),
+        ("missing_naive", native(ColType::Timestamp), null()),
+        ("missing_utc", native(ColType::Timestamp), null()),
+        ("non_zero", native(ColType::Int), value(7)),
+        ("optional_non_zero", native(ColType::Bigint), value(8i64)),
+    ]);
+
+    let decoded = TimeAndNonZeroRow::try_from_row(row).unwrap();
+
+    assert_eq!(
+        decoded,
+        TimeAndNonZeroRow {
+            naive,
+            utc,
+            optional_naive: Some(naive),
+            optional_utc: Some(utc),
+            missing_naive: None,
+            missing_utc: None,
+            non_zero: NonZeroI32::new(7).unwrap(),
+            optional_non_zero: NonZeroI64::new(8),
+        }
+    );
 }

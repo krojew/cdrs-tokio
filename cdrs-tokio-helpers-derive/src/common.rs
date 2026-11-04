@@ -113,7 +113,8 @@ fn into_rust_with_args(
     let field_type_ident = get_cdrs_type(field_type, name)?;
     Ok(match get_ident_string(&field_type_ident, name)?.as_str() {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "Decimal"
-        | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime" => {
+        | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
+        | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => {
             quote! {
               #field_type_ident::from_cdrs_r(#arguments)?
             }
@@ -181,6 +182,17 @@ fn is_non_zero_primitive(ty: &Type, name: &str) -> Result<bool> {
 }
 
 fn get_cdrs_type(ty: &Type, name: &str) -> Result<Type> {
+    if !matches!(ty, Type::Path(_)) {
+        return Err(Error::new(
+            ty.span(),
+            format!(
+                "Unsupported type of field `{}`: expected a primitive type, Vec, HashMap, Option \
+                 or a type implementing TryFromUdt",
+                name
+            ),
+        ));
+    }
+
     let type_string = get_ident_string(ty, name)?;
     Ok(match type_string.as_str() {
         "Blob" => parse_str("Blob").unwrap(),
@@ -235,7 +247,8 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
     let cdrs_type = get_cdrs_type(ty, name)?;
     Ok(match get_ident_string(&cdrs_type, name)?.as_str() {
         "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "IpAddr"
-        | "Uuid" | "Timespec" | "Decimal" | "PrimitiveDateTime" => val,
+        | "Uuid" | "Timespec" | "Decimal" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
+        | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => val,
         "List" => {
             let vec_type = get_ident_params_string(ty, name)?;
             let inter_rust_type = get_cdrs_type(&vec_type, name)?;
@@ -268,8 +281,14 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
             }
         }
         "Option" => {
-            let opt_type = get_ident_params_string(ty, name)?;
-            as_rust(&opt_type, val, name)?
+            return Err(Error::new(
+                ty.span(),
+                format!(
+                    "Unsupported type of field `{}`: Option is only supported as the outermost \
+                     type of a field",
+                    name
+                ),
+            ))
         }
         _ => {
             quote! {
@@ -281,6 +300,52 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
 
 pub fn get_ident_string(ty: &Type, name: &str) -> Result<String> {
     get_ident(ty, name).map(|ident| ident.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_struct_fields;
+    use syn::{parse_quote, DeriveInput};
+
+    fn field_error(ast: DeriveInput) -> String {
+        match get_struct_fields(&ast) {
+            Ok(fields) => panic!("expected an error, got {}", quote::quote! { #(#fields),* }),
+            Err(error) => error.to_string(),
+        }
+    }
+
+    #[test]
+    fn rejects_option_nested_in_collection_or_option() {
+        let inputs: Vec<DeriveInput> = vec![
+            parse_quote! { struct S { field: Option<Option<i32>> } },
+            parse_quote! { struct S { field: Vec<Option<i32>> } },
+            parse_quote! { struct S { field: HashMap<String, Option<i32>> } },
+            parse_quote! { struct S { field: Option<Vec<Option<i32>>> } },
+        ];
+
+        for input in inputs {
+            let error = field_error(input);
+            assert!(error.contains("Option"), "{}", error);
+            assert!(error.contains("`field`"), "{}", error);
+        }
+    }
+
+    #[test]
+    fn rejects_non_path_types() {
+        let inputs: Vec<DeriveInput> = vec![
+            parse_quote! { struct S { field: &'static str } },
+            parse_quote! { struct S { field: (i32, String) } },
+            parse_quote! { struct S { field: [u8; 4] } },
+            parse_quote! { struct S { field: Vec<&'static str> } },
+            parse_quote! { struct S { field: Option<(i32, i32)> } },
+        ];
+
+        for input in inputs {
+            let error = field_error(input);
+            assert!(error.contains("Unsupported type"), "{}", error);
+            assert!(error.contains("`field`"), "{}", error);
+        }
+    }
 }
 
 pub fn get_ident_params_string(ty: &Type, name: &str) -> Result<Type> {
