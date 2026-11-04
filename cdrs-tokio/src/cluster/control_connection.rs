@@ -143,6 +143,12 @@ impl<
                     }
 
                     // all nodes failed
+                    if init_complete_sender.is_some() {
+                        // dropping the sender makes session initialization fail
+                        error!("Cannot establish control connection to any contact point!");
+                        return;
+                    }
+
                     Self::wait_for_reconnection(&mut schedule).await;
                 }
             }
@@ -168,5 +174,136 @@ impl<
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::connection_pool::ConnectionPoolFactory;
+    use crate::cluster::topology::{NodeDistance, NodeState};
+    use crate::load_balancing::node_distance_evaluator::MockNodeDistanceEvaluator;
+    use crate::load_balancing::{
+        InitializingWrapperLoadBalancingStrategy, RoundRobinLoadBalancingStrategy,
+    };
+    use crate::retry::ConstantReconnectionPolicy;
+    use crate::transport::MockCdrsTransport;
+    use cassandra_protocol::error::Error;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use tokio::sync::{broadcast, oneshot, watch};
+    use tokio::time::timeout;
+
+    type TestConnectionManager = MockConnectionManager<MockCdrsTransport>;
+    type TestLoadBalancing = InitializingWrapperLoadBalancingStrategy<
+        MockCdrsTransport,
+        TestConnectionManager,
+        RoundRobinLoadBalancingStrategy<MockCdrsTransport, TestConnectionManager>,
+    >;
+
+    // upper bound for awaiting outcomes which are expected to happen right away
+    const TEST_GUARD_TIMEOUT: Duration = Duration::from_secs(5);
+
+    fn create_control_connection(
+        contact_points: Vec<SocketAddr>,
+        connection_manager: TestConnectionManager,
+    ) -> ControlConnection<MockCdrsTransport, TestConnectionManager, TestLoadBalancing> {
+        let (_, keyspace_receiver) = watch::channel(None);
+        let reconnection_policy =
+            Arc::new(ConstantReconnectionPolicy::new(Duration::from_millis(1)));
+
+        let connection_pool_factory = Arc::new(ConnectionPoolFactory::new(
+            Default::default(),
+            Version::V4,
+            connection_manager,
+            keyspace_receiver,
+            reconnection_policy.clone(),
+        ));
+
+        let contact_points: Vec<_> = contact_points
+            .into_iter()
+            .map(|contact_point| {
+                Arc::new(Node::new_with_state(
+                    connection_pool_factory.clone(),
+                    contact_point,
+                    None,
+                    None,
+                    Some(NodeDistance::Local),
+                    NodeState::Up,
+                    Default::default(),
+                    "".into(),
+                    "".into(),
+                ))
+            })
+            .collect();
+
+        let session_context = Arc::new(SessionContext::default());
+        let cluster_metadata_manager = Arc::new(ClusterMetadataManager::new(
+            contact_points.clone(),
+            connection_pool_factory,
+            session_context.clone(),
+            Box::new(MockNodeDistanceEvaluator::new()),
+            Version::V4,
+            false,
+        ));
+
+        let (event_sender, _) = broadcast::channel(1);
+
+        ControlConnection::new(
+            Arc::new(InitializingWrapperLoadBalancingStrategy::new(
+                RoundRobinLoadBalancingStrategy::new(),
+                contact_points.clone(),
+            )),
+            contact_points,
+            reconnection_policy,
+            cluster_metadata_manager,
+            event_sender,
+            session_context,
+            Version::V4,
+        )
+    }
+
+    async fn assert_initialization_fails(
+        control_connection: ControlConnection<
+            MockCdrsTransport,
+            TestConnectionManager,
+            TestLoadBalancing,
+        >,
+    ) {
+        let (init_complete_sender, init_complete_receiver) = oneshot::channel();
+        let handle = tokio::spawn(control_connection.run(init_complete_sender));
+
+        let result = timeout(TEST_GUARD_TIMEOUT, init_complete_receiver)
+            .await
+            .expect("initialization did not finish");
+        handle.abort();
+
+        assert!(result.is_err(), "initialization reported success");
+    }
+
+    #[tokio::test]
+    async fn run_fails_initialization_when_no_contact_point_is_reachable() {
+        let mut connection_manager = TestConnectionManager::new();
+        connection_manager
+            .expect_connection()
+            .returning(|_, _, _| Box::pin(async { Err(Error::General("refused".into())) }));
+
+        assert_initialization_fails(create_control_connection(
+            vec![
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9042),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9043),
+            ],
+            connection_manager,
+        ))
+        .await;
+    }
+
+    #[tokio::test]
+    async fn run_fails_initialization_without_contact_points() {
+        assert_initialization_fails(create_control_connection(
+            vec![],
+            TestConnectionManager::new(),
+        ))
+        .await;
     }
 }
