@@ -70,6 +70,18 @@ pub const MAX_FRAME_SIZE: usize = PAYLOAD_SIZE_LIMIT
     )
     + FRAME_TRAILER_LENGTH;
 
+/// Maximum size of an envelope body accepted from the wire.
+pub const MAX_ENVELOPE_BODY_SIZE: usize = 256 * 1024 * 1024;
+
+/// Converts a body length read from an envelope header, rejecting negative values and values above
+/// [`MAX_ENVELOPE_BODY_SIZE`].
+#[inline]
+pub(crate) fn checked_body_len(body_len: i32) -> Option<usize> {
+    usize::try_from(body_len)
+        .ok()
+        .filter(|body_len| *body_len <= MAX_ENVELOPE_BODY_SIZE)
+}
+
 /// Cassandra stream identifier.
 pub type StreamId = i16;
 
@@ -154,7 +166,9 @@ impl Envelope {
             return Err(ParseEnvelopeError::NotEnoughBytes);
         }
 
-        let body_len = try_i32_from_bytes(&data[5..9]).unwrap() as usize;
+        let raw_body_len = try_i32_from_bytes(&data[5..9]).unwrap();
+        let body_len = checked_body_len(raw_body_len)
+            .ok_or(ParseEnvelopeError::InvalidBodyLength(raw_body_len))?;
         let envelope_len = ENVELOPE_HEADER_LEN + body_len;
         if data.len() < envelope_len {
             return Err(ParseEnvelopeError::NotEnoughBytes);
@@ -223,7 +237,9 @@ impl Envelope {
             return Err(CheckEnvelopeSizeError::NotEnoughBytes);
         }
 
-        let body_len = try_i32_from_bytes(&data[5..9]).unwrap() as usize;
+        let raw_body_len = try_i32_from_bytes(&data[5..9]).unwrap();
+        let body_len = checked_body_len(raw_body_len)
+            .ok_or(CheckEnvelopeSizeError::InvalidBodyLength(raw_body_len))?;
         let envelope_len = ENVELOPE_HEADER_LEN + body_len;
         if data.len() < envelope_len {
             return Err(CheckEnvelopeSizeError::NotEnoughBytes);
@@ -321,6 +337,9 @@ pub enum CheckEnvelopeSizeError {
     UnsupportedVersion(u8),
     #[error("Unsupported opcode: {0}")]
     UnsupportedOpcode(u8),
+    /// The body length is negative or exceeds [`MAX_ENVELOPE_BODY_SIZE`].
+    #[error("Invalid envelope body length: {0}")]
+    InvalidBodyLength(i32),
 }
 
 #[derive(Debug, Error)]
@@ -340,6 +359,9 @@ pub enum ParseEnvelopeError {
     InvalidUuid(uuid::Error),
     #[error("Invalid warnings: {0}")]
     InvalidWarnings(error::Error),
+    /// The body length is negative or exceeds [`MAX_ENVELOPE_BODY_SIZE`].
+    #[error("Invalid envelope body length: {0}")]
+    InvalidBodyLength(i32),
 }
 
 /// Protocol version.
@@ -612,6 +634,55 @@ mod tests {
             MAX_FRAME_SIZE,
             PAYLOAD_SIZE_LIMIT + COMPRESSED_FRAME_HEADER_LENGTH + FRAME_TRAILER_LENGTH
         );
+    }
+
+    fn header_with_body_len(body_len: i32) -> Vec<u8> {
+        let mut data = vec![
+            u8::from(Version::V4) | u8::from(Direction::Response),
+            0,
+            0,
+            0,
+            u8::from(Opcode::Result),
+        ];
+        data.extend_from_slice(&body_len.to_be_bytes());
+        data
+    }
+
+    #[test]
+    fn from_buffer_rejects_invalid_body_length() {
+        for body_len in [-1, -9, -10, i32::MIN, MAX_ENVELOPE_BODY_SIZE as i32 + 1] {
+            let data = header_with_body_len(body_len);
+
+            let result = Envelope::from_buffer(&data, Compression::None);
+            assert!(
+                matches!(result, Err(ParseEnvelopeError::InvalidBodyLength(len)) if len == body_len),
+                "body length {}: {:?}",
+                body_len,
+                result
+            );
+
+            let result = Envelope::check_envelope_size(&data);
+            assert!(
+                matches!(result, Err(CheckEnvelopeSizeError::InvalidBodyLength(len)) if len == body_len),
+                "body length {}: {:?}",
+                body_len,
+                result
+            );
+        }
+    }
+
+    #[test]
+    fn from_buffer_accepts_body_length_up_to_limit() {
+        let data = header_with_body_len(MAX_ENVELOPE_BODY_SIZE as i32);
+
+        assert!(matches!(
+            Envelope::from_buffer(&data, Compression::None),
+            Err(ParseEnvelopeError::NotEnoughBytes)
+        ));
+        assert!(matches!(
+            Envelope::check_envelope_size(&data),
+            Err(CheckEnvelopeSizeError::NotEnoughBytes)
+        ));
     }
 
     #[test]

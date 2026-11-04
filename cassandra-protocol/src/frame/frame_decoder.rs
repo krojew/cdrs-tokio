@@ -2,8 +2,9 @@ use crate::compression::{Compression, CompressionError};
 use crate::crc::{crc24, crc32};
 use crate::error::{Error, Result};
 use crate::frame::{
-    Envelope, ParseEnvelopeError, COMPRESSED_FRAME_HEADER_LENGTH, ENVELOPE_HEADER_LEN,
-    FRAME_TRAILER_LENGTH, MAX_FRAME_SIZE, PAYLOAD_SIZE_LIMIT, UNCOMPRESSED_FRAME_HEADER_LENGTH,
+    checked_body_len, Envelope, ParseEnvelopeError, COMPRESSED_FRAME_HEADER_LENGTH,
+    ENVELOPE_HEADER_LEN, FRAME_TRAILER_LENGTH, MAX_FRAME_SIZE, PAYLOAD_SIZE_LIMIT,
+    UNCOMPRESSED_FRAME_HEADER_LENGTH,
 };
 use lz4_flex::decompress;
 use std::convert::TryInto;
@@ -299,7 +300,7 @@ impl GenericFrameDecoder {
             return Ok(envelopes);
         }
 
-        if let Some(expected_payload_len) = self.extract_expected_payload_len() {
+        if let Some(expected_payload_len) = self.extract_expected_payload_len()? {
             self.expected_payload_len = Some(expected_payload_len);
             self.extract_non_self_contained_envelopes()
         } else {
@@ -307,12 +308,17 @@ impl GenericFrameDecoder {
         }
     }
 
-    fn extract_expected_payload_len(&self) -> Option<usize> {
+    fn extract_expected_payload_len(&self) -> Result<Option<usize>> {
         if self.payload_buffer.len() < ENVELOPE_HEADER_LEN {
-            return None;
+            return Ok(None);
         }
 
-        Some(i32::from_be_bytes(self.payload_buffer[5..9].try_into().unwrap()) as usize)
+        let body_len = i32::from_be_bytes(self.payload_buffer[5..9].try_into().unwrap());
+        checked_body_len(body_len).map(Some).ok_or_else(|| {
+            ParseEnvelopeError::InvalidBodyLength(body_len)
+                .to_string()
+                .into()
+        })
     }
 
     fn handle_frame(
@@ -374,7 +380,7 @@ impl GenericFrameDecoder {
 mod tests {
     use super::*;
     use crate::frame::frame_encoder::{FrameEncoder, UncompressedFrameEncoder};
-    use crate::frame::{Direction, Envelope, Flags, Opcode, Version};
+    use crate::frame::{Direction, Envelope, Flags, Opcode, Version, MAX_ENVELOPE_BODY_SIZE};
 
     // Build a body of `size` bytes filled with the supplied byte. We pick the
     // body size to be larger than PAYLOAD_SIZE_LIMIT so the encoder is forced
@@ -486,5 +492,24 @@ mod tests {
         assert_eq!(envelopes[0].body, vec![0xAA; 100]);
         assert_eq!(envelopes[1].stream_id, 2);
         assert_eq!(envelopes[1].body, vec![0xBB; 200]);
+    }
+
+    #[test]
+    fn decoders_reject_invalid_envelope_body_length() {
+        for body_len in [-1, -10, MAX_ENVELOPE_BODY_SIZE as i32 + 1] {
+            let mut envelope_header = vec![u8::from(Version::V5), 0, 0, 1, u8::from(Opcode::Query)];
+            envelope_header.extend_from_slice(&body_len.to_be_bytes());
+
+            let mut encoder = UncompressedFrameEncoder::default();
+            let (_, frame) = encoder.finalize_non_self_contained(&envelope_header);
+            let mut wire = frame.to_vec();
+
+            let result = UncompressedFrameDecoder::default().consume(&mut wire, Compression::None);
+            assert!(result.is_err(), "body length {}: {:?}", body_len, result);
+
+            let mut wire = envelope_header.clone();
+            let result = LegacyFrameDecoder::default().consume(&mut wire, Compression::None);
+            assert!(result.is_err(), "body length {}: {:?}", body_len, result);
+        }
     }
 }

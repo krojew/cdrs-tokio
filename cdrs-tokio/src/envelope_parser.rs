@@ -8,18 +8,12 @@ use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error;
 use cassandra_protocol::frame::message_response::ResponseBody;
 use cassandra_protocol::frame::{
-    Direction, Envelope, Flags, Opcode, Version, LENGTH_LEN, STREAM_LEN,
+    Direction, Envelope, Flags, Opcode, Version, LENGTH_LEN, MAX_ENVELOPE_BODY_SIZE, STREAM_LEN,
 };
 use cassandra_protocol::types::data_serialization_types::decode_timeuuid;
 use cassandra_protocol::types::{
     from_cursor_string_list, try_i16_from_bytes, try_i32_from_bytes, UUID_LEN,
 };
-
-// Cassandra's documented hard cap for an envelope body. Pre-V5 (unframed)
-// connections can in principle send anything up to 256 MiB. Using this as the
-// upper bound prevents a hostile or malfunctioning server from making us
-// allocate gigabytes from a single 4-byte length field.
-const MAX_ENVELOPE_BODY_SIZE: usize = 256 * 1024 * 1024;
 
 async fn parse_raw_envelope<T: AsyncReadExt + Unpin>(
     cursor: &mut T,
