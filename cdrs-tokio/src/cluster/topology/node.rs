@@ -47,6 +47,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Debug for Node<T, CM> {
 }
 
 impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
+    #[cfg(test)]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         connection_pool_factory: Arc<ConnectionPoolFactory<T, CM>>,

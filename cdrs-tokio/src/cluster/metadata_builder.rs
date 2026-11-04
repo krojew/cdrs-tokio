@@ -85,12 +85,15 @@ pub(crate) fn refresh_metadata<T: CdrsTransport, CM: ConnectionManager<T>>(
             } else {
                 debug!(?node_info, "Adding new node.");
 
-                let node = Arc::new(Node::new(
+                // Present in the peers table, so assume it's up, as in the initial metadata. An UP
+                // event, which would otherwise promote it, isn't sent for a node that is already up.
+                let node = Arc::new(Node::new_with_state(
                     connection_pool_factory.clone(),
                     node_info.broadcast_rpc_address,
                     node_info.broadcast_address,
                     Some(node_info.host_id),
                     node_distance_evaluator.compute_distance(node_info),
+                    NodeState::Up,
                     node_info.tokens.clone(),
                     node_info.rack.clone(),
                     node_info.datacenter.clone(),
@@ -314,6 +317,42 @@ mod tests {
                 .broadcast_rpc_address(),
             node_infos[0].broadcast_rpc_address
         );
+    }
+
+    #[test]
+    fn should_add_new_nodes_as_up_on_refresh() {
+        let connection_pool_factory = create_connection_pool_factory();
+
+        let mut node_distance_evaluator = MockNodeDistanceEvaluator::new();
+        node_distance_evaluator
+            .expect_compute_distance()
+            .return_const(Some(NodeDistance::Local));
+
+        let node_infos = [NodeInfo::new(
+            Uuid::new_v4(),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9042),
+            None,
+            "".into(),
+            Default::default(),
+            "".into(),
+        )];
+
+        let old_metadata = ClusterMetadata::new(Default::default(), Default::default());
+
+        let metadata = refresh_metadata(
+            &node_infos,
+            &old_metadata,
+            &connection_pool_factory,
+            &node_distance_evaluator,
+        );
+
+        let node = metadata
+            .nodes()
+            .get(&node_infos[0].host_id)
+            .unwrap()
+            .clone();
+        assert_eq!(node.state(), NodeState::Up);
+        assert!(!node.is_ignored());
     }
 
     #[test]
