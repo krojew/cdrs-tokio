@@ -30,7 +30,7 @@ use tokio::io::{
     split, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader, BufWriter, ReadHalf,
     WriteHalf,
 };
-use tokio::net::TcpStream;
+use tokio::net::{TcpSocket, TcpStream};
 use tokio::sync::{mpsc, oneshot, Semaphore};
 use tokio::task::JoinHandle;
 #[cfg(feature = "rust-tls")]
@@ -104,6 +104,21 @@ mock! {
     }
 }
 
+async fn connect_tcp(addr: SocketAddr, tcp_nodelay: bool) -> io::Result<TcpStream> {
+    let socket = if addr.is_ipv4() {
+        TcpSocket::new_v4()?
+    } else {
+        TcpSocket::new_v6()?
+    };
+
+    // lets the OS detect dead peers on mostly idle connections, such as the control connection
+    socket.set_keepalive(true)?;
+
+    let stream = socket.connect(addr).await?;
+    stream.set_nodelay(tcp_nodelay)?;
+    Ok(stream)
+}
+
 /// Default Tcp transport.
 #[derive(Debug)]
 pub struct TransportTcp {
@@ -123,20 +138,21 @@ impl TransportTcp {
         buffer_size: usize,
         tcp_nodelay: bool,
     ) -> io::Result<TransportTcp> {
-        TcpStream::connect(addr).await.and_then(move |socket| {
-            socket.set_nodelay(tcp_nodelay)?;
-            Self::with_stream(
-                socket,
-                addr,
-                keyspace_holder,
-                event_handler,
-                error_handler,
-                compression,
-                frame_encoder,
-                frame_decoder,
-                buffer_size,
-            )
-        })
+        connect_tcp(addr, tcp_nodelay)
+            .await
+            .and_then(move |socket| {
+                Self::with_stream(
+                    socket,
+                    addr,
+                    keyspace_holder,
+                    event_handler,
+                    error_handler,
+                    compression,
+                    frame_encoder,
+                    frame_decoder,
+                    buffer_size,
+                )
+            })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -224,8 +240,7 @@ impl TransportRustls {
         buffer_size: usize,
         tcp_nodelay: bool,
     ) -> io::Result<Self> {
-        let stream = TcpStream::connect(addr).await?;
-        stream.set_nodelay(tcp_nodelay)?;
+        let stream = connect_tcp(addr, tcp_nodelay).await?;
 
         Self::with_stream(
             stream,
@@ -1074,6 +1089,19 @@ mod transport_tests {
         );
 
         assert_eq!(response.unwrap().opcode, Opcode::Ready);
+    }
+
+    #[tokio::test]
+    async fn tcp_connections_enable_keepalive() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+
+        let stream = connect_tcp(listener.local_addr().unwrap(), true)
+            .await
+            .unwrap();
+        assert!(stream.nodelay().unwrap());
+
+        let socket = TcpSocket::from_std_stream(stream.into_std().unwrap());
+        assert!(socket.keepalive().unwrap());
     }
 
     #[tokio::test]
