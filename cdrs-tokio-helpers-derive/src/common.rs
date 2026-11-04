@@ -116,7 +116,7 @@ fn into_rust_with_args(
         | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
         | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => {
             quote! {
-              #field_type_ident::from_cdrs_r(#arguments)?
+              <#field_type_ident as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_r(#arguments)?
             }
         }
         // Cassandra stores an empty non-frozen collection as null.
@@ -150,12 +150,12 @@ fn into_rust_with_args(
 
             if is_non_zero_primitive(&opt_type_rustified, name)? {
                 quote! {
-                  #opt_type_rustified::from_cdrs_by_name(#arguments)?
+                  <#opt_type_rustified as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)?
                 }
             } else {
                 quote! {
                   {
-                    match #opt_type_rustified::from_cdrs_by_name(#arguments)? {
+                    match <#opt_type_rustified as cdrs_tokio::types::from_cdrs::FromCdrsByName>::from_cdrs_by_name(#arguments)? {
                       Some(opt_value) => {
                         let decoded = #opt_value_as_rust;
                         Some(decoded)
@@ -195,29 +195,13 @@ fn get_cdrs_type(ty: &Type, name: &str) -> Result<Type> {
 
     let type_string = get_ident_string(ty, name)?;
     Ok(match type_string.as_str() {
-        "Blob" => parse_str("Blob").unwrap(),
-        "String" => parse_str("String").unwrap(),
-        "bool" => parse_str("bool").unwrap(),
-        "i64" => parse_str("i64").unwrap(),
-        "i32" => parse_str("i32").unwrap(),
-        "i16" => parse_str("i16").unwrap(),
-        "i8" => parse_str("i8").unwrap(),
-        "f64" => parse_str("f64").unwrap(),
-        "f32" => parse_str("f32").unwrap(),
-        "Decimal" => parse_str("Decimal").unwrap(),
-        "IpAddr" => parse_str("IpAddr").unwrap(),
-        "Uuid" => parse_str("Uuid").unwrap(),
-        "Timespec" => parse_str("Timespec").unwrap(),
-        "PrimitiveDateTime" => parse_str("PrimitiveDateTime").unwrap(),
+        // the original type keeps any path and generic arguments needed to resolve it
+        "Blob" | "String" | "bool" | "i64" | "i32" | "i16" | "i8" | "f64" | "f32" | "Decimal"
+        | "IpAddr" | "Uuid" | "Timespec" | "PrimitiveDateTime" | "NaiveDateTime" | "DateTime"
+        | "NonZeroI8" | "NonZeroI16" | "NonZeroI32" | "NonZeroI64" => ty.clone(),
         "Vec" => parse_str("cdrs_tokio::types::list::List").unwrap(),
         "HashMap" => parse_str("cdrs_tokio::types::map::Map").unwrap(),
         "Option" => parse_str("Option").unwrap(),
-        "NonZeroI8" => parse_str("NonZeroI8").unwrap(),
-        "NonZeroI16" => parse_str("NonZeroI16").unwrap(),
-        "NonZeroI32" => parse_str("NonZeroI32").unwrap(),
-        "NonZeroI64" => parse_str("NonZeroI64").unwrap(),
-        "NaiveDateTime" => parse_str("NaiveDateTime").unwrap(),
-        "DateTime" => parse_str("DateTime").unwrap(),
         _ => parse_str("cdrs_tokio::types::udt::Udt").unwrap(),
     })
 }

@@ -366,3 +366,88 @@ fn generic_struct_mirrors_db() {
         other => panic!("unexpected query values: {:?}", other),
     }
 }
+
+/// Field types are only reachable through their paths here, since nothing is imported.
+mod qualified_paths {
+    pub mod udts {
+        #[derive(Debug, PartialEq, cdrs_tokio::TryFromUdt)]
+        pub struct Inner {
+            pub text: String,
+        }
+    }
+
+    #[derive(Debug, PartialEq, cdrs_tokio::TryFromRow)]
+    pub struct QualifiedRow {
+        pub id: uuid::Uuid,
+        pub address: std::net::IpAddr,
+        pub ids: Vec<uuid::Uuid>,
+        pub optional_address: Option<std::net::IpAddr>,
+        pub map: std::collections::HashMap<String, uuid::Uuid>,
+        pub when: chrono::NaiveDateTime,
+        pub optional_when: Option<chrono::DateTime<chrono::Utc>>,
+        pub non_zero: std::num::NonZeroI16,
+        pub inner: udts::Inner,
+        pub inners: Vec<self::udts::Inner>,
+    }
+}
+
+#[test]
+fn qualified_field_types_decode() {
+    use qualified_paths::{udts::Inner, QualifiedRow};
+    use std::net::{IpAddr, Ipv4Addr};
+    use std::num::NonZeroI16;
+    use uuid::Uuid;
+
+    let id = Uuid::from_u128(1);
+    let address = IpAddr::V4(Ipv4Addr::LOCALHOST);
+    let when = DateTime::from_timestamp(1_700_000_000, 0).unwrap();
+    let mut map = HashMap::new();
+    map.insert("a".to_string(), id);
+    let inner_type = udt_of(vec![("text", native(ColType::Varchar))]);
+    let row = row(vec![
+        ("id", native(ColType::Uuid), value(id)),
+        ("address", native(ColType::Inet), value(address)),
+        ("ids", list_of(native(ColType::Uuid)), value(vec![id])),
+        ("optional_address", native(ColType::Inet), value(address)),
+        (
+            "map",
+            map_of(native(ColType::Varchar), native(ColType::Uuid)),
+            value(map.clone()),
+        ),
+        ("when", native(ColType::Timestamp), value(when.naive_utc())),
+        ("optional_when", native(ColType::Timestamp), value(when)),
+        ("non_zero", native(ColType::Smallint), value(3i16)),
+        (
+            "inner",
+            inner_type.clone(),
+            value(udt(vec![Value::new("in")])),
+        ),
+        (
+            "inners",
+            list_of(inner_type),
+            value(vec![udt(vec![Value::new("list")])]),
+        ),
+    ]);
+
+    let decoded = QualifiedRow::try_from_row(row).unwrap();
+
+    assert_eq!(
+        decoded,
+        QualifiedRow {
+            id,
+            address,
+            ids: vec![id],
+            optional_address: Some(address),
+            map,
+            when: when.naive_utc(),
+            optional_when: Some(when),
+            non_zero: NonZeroI16::new(3).unwrap(),
+            inner: Inner {
+                text: "in".to_string(),
+            },
+            inners: vec![Inner {
+                text: "list".to_string(),
+            }],
+        }
+    );
+}
