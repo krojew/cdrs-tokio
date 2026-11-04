@@ -1,27 +1,21 @@
-#[cfg(feature = "http-proxy")]
-use crate::cluster::config_proxy::connect_host;
 use crate::cluster::connection_manager::{startup, ConnectionManager};
+#[cfg(feature = "http-proxy")]
+use crate::cluster::tcp_connection_manager::connect_through_http_proxy;
 #[cfg(feature = "http-proxy")]
 use crate::cluster::HttpProxyConfig;
 use crate::cluster::KeyspaceHolder;
 use crate::frame_encoding::FrameEncodingFactory;
 use crate::future::BoxFuture;
 use crate::transport::TransportRustls;
-#[cfg(feature = "http-proxy")]
-use async_http_proxy::{http_connect_tokio, http_connect_tokio_with_basic_auth};
 use cassandra_protocol::authenticators::SaslAuthenticatorProvider;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::error::{Error, Result};
 use cassandra_protocol::frame::{Envelope, Version};
 use futures::FutureExt;
 use std::io;
-#[cfg(feature = "http-proxy")]
-use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::ops::Deref;
 use std::sync::Arc;
-#[cfg(feature = "http-proxy")]
-use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio_rustls::rustls::{pki_types::ServerName, ClientConfig};
 
@@ -131,25 +125,7 @@ impl RustlsConnectionManager {
         addr: SocketAddr,
     ) -> io::Result<TransportRustls> {
         if let Some(http_proxy) = &self.http_proxy {
-            let mut stream = TcpStream::connect(&http_proxy.address).await?;
-
-            if let Some(auth) = &http_proxy.basic_auth {
-                http_connect_tokio_with_basic_auth(
-                    &mut stream,
-                    &connect_host(addr),
-                    addr.port(),
-                    &auth.username,
-                    &auth.password,
-                )
-                .await
-                .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
-            } else {
-                http_connect_tokio(&mut stream, &connect_host(addr), addr.port())
-                    .await
-                    .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
-            }
-
-            stream.set_nodelay(self.tcp_nodelay)?;
+            let stream = connect_through_http_proxy(http_proxy, addr, self.tcp_nodelay).await?;
             TransportRustls::with_stream(
                 stream,
                 addr,

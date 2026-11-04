@@ -118,6 +118,25 @@ async fn connect_tcp(addr: SocketAddr, tcp_nodelay: bool) -> io::Result<TcpStrea
     Ok(stream)
 }
 
+/// Connects like [`connect_tcp`] to the first reachable address `host` resolves to.
+#[cfg(feature = "http-proxy")]
+pub(crate) async fn connect_tcp_host(host: &str, tcp_nodelay: bool) -> io::Result<TcpStream> {
+    let mut last_error = None;
+    for addr in tokio::net::lookup_host(host).await? {
+        match connect_tcp(addr, tcp_nodelay).await {
+            Ok(stream) => return Ok(stream),
+            Err(error) => last_error = Some(error),
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("Address {host} does not resolve to any address!"),
+        )
+    }))
+}
+
 /// Default Tcp transport.
 #[derive(Debug)]
 pub struct TransportTcp {

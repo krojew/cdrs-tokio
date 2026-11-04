@@ -6,6 +6,8 @@ use crate::cluster::HttpProxyConfig;
 use crate::cluster::KeyspaceHolder;
 use crate::frame_encoding::FrameEncodingFactory;
 use crate::future::BoxFuture;
+#[cfg(feature = "http-proxy")]
+use crate::transport::connect_tcp_host;
 use crate::transport::TransportTcp;
 #[cfg(feature = "http-proxy")]
 use async_http_proxy::{http_connect_tokio, http_connect_tokio_with_basic_auth};
@@ -23,6 +25,34 @@ use std::sync::Arc;
 #[cfg(feature = "http-proxy")]
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
+
+/// Opens a tunnel to `addr` through given HTTP proxy.
+#[cfg(feature = "http-proxy")]
+pub(crate) async fn connect_through_http_proxy(
+    http_proxy: &HttpProxyConfig,
+    addr: SocketAddr,
+    tcp_nodelay: bool,
+) -> io::Result<TcpStream> {
+    let mut stream = connect_tcp_host(&http_proxy.address, tcp_nodelay).await?;
+
+    if let Some(auth) = &http_proxy.basic_auth {
+        http_connect_tokio_with_basic_auth(
+            &mut stream,
+            &connect_host(addr),
+            addr.port(),
+            &auth.username,
+            &auth.password,
+        )
+        .await
+        .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
+    } else {
+        http_connect_tokio(&mut stream, &connect_host(addr), addr.port())
+            .await
+            .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
+    }
+
+    Ok(stream)
+}
 
 pub struct TcpConnectionManager {
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
@@ -93,25 +123,7 @@ impl TcpConnectionManager {
         addr: SocketAddr,
     ) -> io::Result<TransportTcp> {
         if let Some(http_proxy) = &self.http_proxy {
-            let mut stream = TcpStream::connect(&http_proxy.address).await?;
-
-            if let Some(auth) = &http_proxy.basic_auth {
-                http_connect_tokio_with_basic_auth(
-                    &mut stream,
-                    &connect_host(addr),
-                    addr.port(),
-                    &auth.username,
-                    &auth.password,
-                )
-                .await
-                .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
-            } else {
-                http_connect_tokio(&mut stream, &connect_host(addr), addr.port())
-                    .await
-                    .map_err(|error| io::Error::new(ErrorKind::Other, error.to_string()))?;
-            }
-
-            stream.set_nodelay(self.tcp_nodelay)?;
+            let stream = connect_through_http_proxy(http_proxy, addr, self.tcp_nodelay).await?;
             TransportTcp::with_stream(
                 stream,
                 addr,
@@ -199,11 +211,12 @@ mod tests {
     use cassandra_protocol::authenticators::NoneAuthenticatorProvider;
     use std::net::Ipv6Addr;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-    use tokio::net::TcpListener;
+    use tokio::net::{TcpListener, TcpSocket};
     use tokio::sync::watch;
+    use tokio::task::JoinHandle;
 
-    #[tokio::test]
-    async fn http_proxy_connect_request_brackets_ipv6_host() {
+    // Accepts a single CONNECT request and returns its request line.
+    async fn spawn_proxy() -> (SocketAddr, JoinHandle<String>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let proxy_address = listener.local_addr().unwrap();
 
@@ -229,6 +242,32 @@ mod tests {
 
             request_line
         });
+
+        (proxy_address, proxy)
+    }
+
+    #[tokio::test]
+    async fn http_proxy_connections_enable_keepalive() {
+        let (proxy_address, proxy) = spawn_proxy().await;
+
+        let stream = connect_through_http_proxy(
+            &HttpProxyConfigBuilder::new(proxy_address.to_string()).build(),
+            SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 9042),
+            true,
+        )
+        .await
+        .unwrap();
+        proxy.await.unwrap();
+
+        assert!(stream.nodelay().unwrap());
+
+        let socket = TcpSocket::from_std_stream(stream.into_std().unwrap());
+        assert!(socket.keepalive().unwrap());
+    }
+
+    #[tokio::test]
+    async fn http_proxy_connect_request_brackets_ipv6_host() {
+        let (proxy_address, proxy) = spawn_proxy().await;
 
         let (keyspace_sender, _) = watch::channel(None);
         let manager = TcpConnectionManager::new(
