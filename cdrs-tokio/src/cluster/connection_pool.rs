@@ -686,6 +686,8 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T>> ConnectionPool<T, CM>
                     warn!(broadcast_rpc_address = ?self.broadcast_rpc_address, "Timeout waiting for heartbeat response - marking the connection as broken.");
 
                     connection.unresponsive.store(true, Ordering::Relaxed);
+                    // requests in flight would otherwise wait until the OS drops the connection
+                    connection.transport.mark_broken();
 
                     match self.error_sender.try_send(Error::Timeout(format!(
                         "Timeout waiting for heartbeat response from: {}",
@@ -782,11 +784,16 @@ mod heartbeat_interval_tests {
 mod tests {
     use super::*;
     use crate::cluster::connection_manager::MockConnectionManager;
+    use crate::cluster::KeyspaceHolder;
     use crate::retry::{ConstantReconnectionPolicy, MockReconnectionPolicy};
-    use crate::transport::MockCdrsTransport;
+    use crate::transport::{MockCdrsTransport, TransportTcp};
+    use cassandra_protocol::compression::Compression;
+    use cassandra_protocol::frame::frame_decoder::LegacyFrameDecoder;
+    use cassandra_protocol::frame::frame_encoder::LegacyFrameEncoder;
     use futures::future::pending;
     use futures::FutureExt;
     use std::net::{IpAddr, Ipv4Addr};
+    use tokio::io::{duplex, AsyncReadExt};
     use tokio::sync::{watch, Notify};
     use tokio::time::timeout;
 
@@ -799,10 +806,10 @@ mod tests {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 9042)
     }
 
-    fn create_factory(
+    fn create_factory<T: CdrsTransport + 'static>(
         config: ConnectionPoolConfig,
-        connection_manager: TestConnectionManager,
-    ) -> Arc<ConnectionPoolFactory<MockCdrsTransport, TestConnectionManager>> {
+        connection_manager: MockConnectionManager<T>,
+    ) -> Arc<ConnectionPoolFactory<T, MockConnectionManager<T>>> {
         let (_, keyspace_receiver) = watch::channel(None);
         Arc::new(ConnectionPoolFactory::new(
             config,
@@ -813,9 +820,9 @@ mod tests {
         ))
     }
 
-    fn create_node(
-        factory: Arc<ConnectionPoolFactory<MockCdrsTransport, TestConnectionManager>>,
-    ) -> Arc<Node<MockCdrsTransport, TestConnectionManager>> {
+    fn create_node<T: CdrsTransport + 'static>(
+        factory: Arc<ConnectionPoolFactory<T, MockConnectionManager<T>>>,
+    ) -> Arc<Node<T, MockConnectionManager<T>>> {
         Arc::new(Node::new_with_state(
             factory,
             test_address(),
@@ -855,12 +862,12 @@ mod tests {
         transport
     }
 
-    async fn create_pool(
-        connection_manager: TestConnectionManager,
+    async fn create_pool<T: CdrsTransport + 'static>(
+        connection_manager: MockConnectionManager<T>,
         config: ConnectionPoolConfig,
     ) -> (
-        Arc<ConnectionPool<MockCdrsTransport, TestConnectionManager>>,
-        Arc<TestConnectionManager>,
+        Arc<ConnectionPool<T, MockConnectionManager<T>>>,
+        Arc<MockConnectionManager<T>>,
         mpsc::Receiver<Error>,
     ) {
         let connection_manager = Arc::new(connection_manager);
@@ -959,6 +966,7 @@ mod tests {
                     let _ = heartbeat_sender.try_send(());
                     Box::pin(pending())
                 });
+                transport.expect_mark_broken().return_const(());
 
                 Box::pin(async move { Ok(transport) })
             });
@@ -1015,6 +1023,94 @@ mod tests {
 
         assert!(pool.connection().await.is_err());
         assert!(matches!(error_receiver.try_recv(), Ok(Error::Timeout(_))));
+    }
+
+    #[tokio::test]
+    async fn heartbeat_timeout_fails_requests_in_flight_and_reconnects() {
+        let (server_sender, mut server_receiver) = mpsc::channel(2);
+
+        // connections over in-memory streams, which the server keeps open, but never answers
+        let mut connection_manager = MockConnectionManager::<TransportTcp>::new();
+        connection_manager
+            .expect_connection()
+            .returning(move |_, error_handler, addr| {
+                let (client_stream, server_stream) = duplex(1 << 16);
+                let _ = server_sender.try_send(server_stream);
+
+                let (keyspace_sender, _) = watch::channel(None);
+                let transport = TransportTcp::with_stream(
+                    client_stream,
+                    addr,
+                    Arc::new(KeyspaceHolder::new(keyspace_sender)),
+                    None,
+                    error_handler,
+                    Compression::None,
+                    Box::<LegacyFrameEncoder>::default(),
+                    Box::<LegacyFrameDecoder>::default(),
+                    64,
+                );
+
+                Box::pin(async move { transport.map_err(Error::from) })
+            });
+
+        let (pool, _connection_manager, error_receiver) = create_pool(
+            connection_manager,
+            ConnectionPoolConfigBuilder::new()
+                .with_heartbeat_timeout(Duration::from_millis(10))
+                .build(),
+        )
+        .await;
+        let mut server = server_receiver.recv().await.unwrap();
+
+        let node = create_node(create_factory(
+            Default::default(),
+            MockConnectionManager::<TransportTcp>::new(),
+        ));
+        ConnectionPoolFactory::<TransportTcp, MockConnectionManager<TransportTcp>>::monitor_connections(
+            error_receiver,
+            Arc::downgrade(&pool),
+            Arc::downgrade(&node),
+            Arc::new(ConstantReconnectionPolicy::new(Duration::from_millis(1))),
+        );
+
+        let transport = pool.connection().await.unwrap();
+        let request = tokio::spawn(async move {
+            transport
+                .write_envelope(&Envelope::new_req_options(Version::V4), false)
+                .await
+        });
+
+        // the request is in flight once it reaches the server
+        let mut buffer = vec![];
+        assert_ne!(server.read_buf(&mut buffer).await.unwrap(), 0);
+
+        timeout(
+            TEST_GUARD_TIMEOUT,
+            pool.heartbeat(&Envelope::new_req_options(Version::V4)),
+        )
+        .await
+        .expect("heartbeat response was awaited without a timeout");
+
+        let response = timeout(TEST_GUARD_TIMEOUT, request)
+            .await
+            .expect("request in flight was not failed")
+            .unwrap();
+        assert!(response.is_err());
+
+        let _reconnected_server = timeout(TEST_GUARD_TIMEOUT, server_receiver.recv())
+            .await
+            .expect("broken connection was not reconnected");
+
+        // the monitor marks the node down before reconnecting and up once done
+        timeout(TEST_GUARD_TIMEOUT, async {
+            while node.state() != NodeState::Up {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("reconnection did not finish");
+
+        assert!(!pool.connection().await.unwrap().is_broken());
     }
 
     #[tokio::test]

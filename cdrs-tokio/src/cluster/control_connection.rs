@@ -192,6 +192,10 @@ impl<
                         Ok(Ok(_)) => {}
                         Ok(Err(error)) => return Some(error),
                         Err(_) => {
+                            // metadata queries in flight would otherwise wait until the OS drops
+                            // the connection
+                            connection.mark_broken();
+
                             return Some(Error::Timeout(
                                 "Timeout waiting for control connection heartbeat response!"
                                     .into(),
@@ -355,6 +359,8 @@ mod tests {
         connection
             .expect_write_envelope()
             .returning(|_, _| Box::pin(futures::future::pending()));
+        // fails other requests waiting on the unresponsive connection
+        connection.expect_mark_broken().times(1).return_const(());
 
         let (_error_sender, mut error_receiver) = channel(1);
 

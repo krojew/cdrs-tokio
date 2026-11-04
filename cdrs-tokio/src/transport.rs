@@ -75,6 +75,12 @@ pub trait CdrsTransport: Send + Sync {
     /// Checks if the connection is broken (e.g. after read or write errors).
     fn is_broken(&self) -> bool;
 
+    /// Marks the connection as broken, e.g. when it stops answering heartbeats, and fails all
+    /// requests waiting for a response on it. Afterwards, [`is_broken`](Self::is_broken) should
+    /// return `true`. The caller handles the failure itself, so the error handler of the
+    /// connection does not need to be notified. The default implementation does nothing.
+    fn mark_broken(&self) {}
+
     /// Returns associated node address.
     fn address(&self) -> SocketAddr;
 }
@@ -98,6 +104,8 @@ mock! {
         ) -> BoxFuture<'static, Result<Envelope>>;
 
         fn is_broken(&self) -> bool;
+
+        fn mark_broken(&self);
 
         fn address(&self) -> SocketAddr;
     }
@@ -239,6 +247,11 @@ impl CdrsTransport for TransportTcp {
     }
 
     #[inline]
+    fn mark_broken(&self) {
+        self.inner.mark_broken()
+    }
+
+    #[inline]
     fn address(&self) -> SocketAddr {
         self.inner.addr()
     }
@@ -356,6 +369,11 @@ impl CdrsTransport for TransportRustls {
     }
 
     #[inline]
+    fn mark_broken(&self) {
+        self.inner.mark_broken()
+    }
+
+    #[inline]
     fn address(&self) -> SocketAddr {
         self.inner.addr()
     }
@@ -421,6 +439,14 @@ impl AsyncTransport {
     #[inline]
     fn is_broken(&self) -> bool {
         self.is_broken.load(Ordering::Relaxed)
+    }
+
+    fn mark_broken(&self) {
+        self.is_broken.store(true, Ordering::Relaxed);
+
+        // Dropping the processing task fails all requests in flight or still queued for writing
+        // by dropping their response handlers, and closes the connection.
+        self.processing_handle.abort();
     }
 
     #[inline]
@@ -1388,6 +1414,49 @@ mod transport_tests {
 
         let held_response = held_response.await.unwrap().unwrap();
         assert_eq!(held_response.body, 0u32.to_be_bytes());
+    }
+
+    #[tokio::test]
+    async fn mark_broken_fails_requests_in_flight() {
+        let mut connection = connect();
+        handshake(&mut connection).await;
+
+        let TestConnection {
+            transport,
+            mut server,
+            mut error_receiver,
+            ..
+        } = connection;
+        let transport = Arc::new(transport);
+
+        let response = tokio::spawn({
+            let transport = transport.clone();
+            async move { transport.write_envelope(&numbered_request(0), false).await }
+        });
+        server.read_request().await;
+
+        transport.mark_broken();
+
+        let response = timeout(TEST_GUARD_TIMEOUT, response)
+            .await
+            .expect("request in flight was not failed")
+            .unwrap();
+        assert!(response.is_err());
+        assert!(transport.is_broken());
+
+        let response = timeout(
+            TEST_GUARD_TIMEOUT,
+            transport.write_envelope(&numbered_request(1), false),
+        )
+        .await
+        .expect("request on a broken connection was not failed");
+        assert!(response.is_err());
+
+        // the caller of mark_broken handles the failure
+        let error = timeout(TEST_GUARD_TIMEOUT, error_receiver.recv())
+            .await
+            .expect("error handler was not released");
+        assert!(error.is_none(), "{:?}", error);
     }
 
     #[tokio::test]
