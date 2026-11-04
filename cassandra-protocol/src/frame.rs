@@ -127,6 +127,10 @@ pub struct Envelope {
     pub body: Vec<u8>,
     pub tracing_id: Option<Uuid>,
     pub warnings: Vec<String>,
+    /// Encoded custom payload of a decoded envelope, kept so that encoding the envelope again
+    /// reproduces it.
+    #[derivative(Debug = "ignore")]
+    custom_payload: Option<Vec<u8>>,
 }
 
 impl Envelope {
@@ -151,29 +155,18 @@ impl Envelope {
             body,
             tracing_id,
             warnings,
+            custom_payload: None,
         }
     }
 
     #[inline]
     pub fn request_body(&self) -> error::Result<RequestBody> {
-        RequestBody::try_from(self.message_body()?, self.opcode, self.version)
-    }
-
-    /// Returns the part of the body holding the message. When the custom payload flag is set, the
-    /// body starts with the custom payload, which is skipped.
-    pub fn message_body(&self) -> error::Result<&[u8]> {
-        if !self.flags.contains(Flags::CUSTOM_PAYLOAD) {
-            return Ok(&self.body);
-        }
-
-        let mut cursor = Cursor::new(self.body.as_slice());
-        skip_bytes_map(&mut cursor)?;
-        Ok(&self.body[cursor.position() as usize..])
+        RequestBody::try_from(self.body.as_slice(), self.opcode, self.version)
     }
 
     #[inline]
     pub fn response_body(&self) -> error::Result<ResponseBody> {
-        ResponseBody::try_from(self.message_body()?, self.opcode, self.version)
+        ResponseBody::try_from(self.body.as_slice(), self.opcode, self.version)
     }
 
     #[inline]
@@ -247,6 +240,14 @@ impl Envelope {
             vec![]
         };
 
+        let custom_payload = if flags.contains(Flags::CUSTOM_PAYLOAD) {
+            let start = body_cursor.position() as usize;
+            skip_bytes_map(&mut body_cursor).map_err(ParseEnvelopeError::InvalidCustomPayload)?;
+            Some(full_body[start..body_cursor.position() as usize].to_vec())
+        } else {
+            None
+        };
+
         let mut body = Vec::with_capacity(body_len - body_cursor.position() as usize);
 
         std::io::Read::read_to_end(&mut body_cursor, &mut body)
@@ -263,6 +264,7 @@ impl Envelope {
                 body,
                 tracing_id,
                 warnings,
+                custom_payload,
             },
         ))
     }
@@ -290,10 +292,15 @@ impl Envelope {
         let is_compressed = self.version < Version::V5 && compressor.is_compressed();
 
         let combined_version_byte = u8::from(self.version) | u8::from(self.direction);
+
+        // only payloads of decoded envelopes are kept, so the flag follows their presence
+        let mut flags = self.flags;
+        flags.set(Flags::CUSTOM_PAYLOAD, self.custom_payload.is_some());
+
         let flag_byte = (if is_compressed {
-            self.flags | Flags::COMPRESSION
+            flags | Flags::COMPRESSION
         } else {
-            self.flags.difference(Flags::COMPRESSION)
+            flags.difference(Flags::COMPRESSION)
         })
         .bits();
 
@@ -331,6 +338,10 @@ impl Envelope {
                 flags_buffer.extend_from_slice(&warning_len.to_be_bytes());
                 flags_buffer.append(&mut warning.as_bytes().to_vec());
             }
+        }
+
+        if let Some(custom_payload) = &self.custom_payload {
+            flags_buffer.extend_from_slice(custom_payload);
         }
 
         if is_compressed {
@@ -399,6 +410,8 @@ pub enum ParseEnvelopeError {
     InvalidBodyLength(i32),
     #[error("Invalid tracing id: {0}")]
     InvalidTracingId(error::Error),
+    #[error("Invalid custom payload: {0}")]
+    InvalidCustomPayload(error::Error),
 }
 
 /// Protocol version.
@@ -801,6 +814,7 @@ mod tests {
             body: vec![],
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
         let body = ResponseBody::Ready;
         helpers::test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
@@ -821,6 +835,7 @@ mod tests {
             body: vec![0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 0],
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
         let body = RequestBody::Query(BodyReqQuery {
             query: "blah".into(),
@@ -858,6 +873,7 @@ mod tests {
             ],
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
         let body = RequestBody::Query(BodyReqQuery {
             query: "some query".into(),
@@ -891,6 +907,7 @@ mod tests {
             body: vec![],
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
         let body = RequestBody::Query(BodyReqQuery {
             query: "another query".into(),
@@ -976,6 +993,7 @@ mod tests {
             ],
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
         let body = ResponseBody::Result(ResResultBody::Prepared(BodyResResultPrepared {
             id: CBytesShort::new(vec![
@@ -1045,6 +1063,7 @@ mod tests {
             ],
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
 
         (envelope, raw_envelope)
@@ -1065,6 +1084,7 @@ mod tests {
             body,
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
 
         (envelope, raw_envelope)
@@ -1250,6 +1270,7 @@ mod flags {
             body: vec![0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 0],
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
 
         let body = RequestBody::Query(BodyReqQuery {
@@ -1291,6 +1312,7 @@ mod flags {
                 4, 54, 67, 12, 43, 2, 98, 76, 32, 50, 87, 5, 1, 33, 43, 87,
             ])),
             warnings: vec![],
+            custom_payload: None,
         };
 
         let body = ResponseBody::Result(ResResultBody::Void);
@@ -1341,6 +1363,7 @@ mod flags {
             tracing_id: None,
             body: vec![0, 0, 0, 1],
             warnings: vec!["Hello World".into()],
+            custom_payload: None,
         };
 
         helpers::test_encode_decode_roundtrip_response(&raw_envelope, envelope, body);
@@ -1370,8 +1393,7 @@ mod flags {
             .unwrap()
             .envelope;
 
-        assert_eq!(envelope.body, body);
-        assert_eq!(envelope.message_body().unwrap(), &[0, 0, 0, 1]);
+        assert_eq!(envelope.body, vec![0, 0, 0, 1]);
         assert_eq!(
             envelope.response_body().unwrap(),
             ResponseBody::Result(ResResultBody::Void)
@@ -1411,13 +1433,13 @@ mod flags {
             .unwrap()
             .envelope;
 
-        let mut expected_body = CUSTOM_PAYLOAD.to_vec();
-        expected_body.extend_from_slice(&[0, 0, 0, 1]);
-
         assert_eq!(envelope.tracing_id, Some(Uuid::from_bytes(tracing_id)));
         assert_eq!(envelope.warnings, vec!["hi".to_string()]);
-        assert_eq!(envelope.body, expected_body);
-        assert_eq!(envelope.message_body().unwrap(), &[0, 0, 0, 1]);
+        assert_eq!(envelope.body, vec![0, 0, 0, 1]);
+        assert_eq!(
+            envelope.encode_with(Compression::None).unwrap(),
+            raw_envelope
+        );
     }
 
     #[test]
@@ -1435,23 +1457,48 @@ mod flags {
             .unwrap()
             .envelope;
 
-        assert_eq!(envelope.body, body);
-        assert_eq!(envelope.message_body().unwrap(), &query_body);
+        assert_eq!(envelope.body, query_body.to_vec());
         assert!(matches!(
             envelope.request_body().unwrap(),
             RequestBody::Query(BodyReqQuery { query, .. }) if query == "blah"
         ));
+        assert_eq!(
+            envelope.encode_with(Compression::None).unwrap(),
+            raw_envelope
+        );
     }
 
     #[test]
     fn test_truncated_custom_payload_response() {
         let raw_envelope = response_with_body(Flags::CUSTOM_PAYLOAD, &CUSTOM_PAYLOAD[..15]);
 
-        let envelope = Envelope::from_buffer(&raw_envelope, Compression::None)
+        let result = Envelope::from_buffer(&raw_envelope, Compression::None);
+        assert!(
+            matches!(result, Err(ParseEnvelopeError::InvalidCustomPayload(_))),
+            "{:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn test_custom_payload_flag_without_payload_is_not_encoded() {
+        let envelope = Envelope::new(
+            Version::V4,
+            Direction::Response,
+            Flags::CUSTOM_PAYLOAD,
+            Opcode::Result,
+            0,
+            vec![0, 0, 0, 1],
+            None,
+            vec![],
+        );
+
+        let encoded = envelope.encode_with(Compression::None).unwrap();
+        let decoded = Envelope::from_buffer(&encoded, Compression::None)
             .unwrap()
             .envelope;
 
-        assert!(envelope.message_body().is_err());
-        assert!(envelope.response_body().is_err());
+        assert!(!decoded.flags.contains(Flags::CUSTOM_PAYLOAD));
+        assert_eq!(decoded.body, vec![0, 0, 0, 1]);
     }
 }

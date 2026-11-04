@@ -413,6 +413,7 @@ mod tests {
             body: vec![fill; body_size],
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         }
         .encode_with(Compression::None)
         .unwrap()
@@ -541,6 +542,7 @@ mod tests {
             body: incompressible_bytes(body_size),
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         }
         .encode_with(Compression::None)
         .unwrap()

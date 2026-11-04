@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn parse_envelope_keeps_custom_payload_in_body() {
+    async fn parse_envelope_separates_custom_payload_from_body() {
         let custom_payload = [0, 1, 0, 1, 107, 0, 0, 0, 1, 42]; // {"k": [42]}
 
         let mut body = vec![0, 1, 0, 2, 104, 105]; // warnings ["hi"]
@@ -216,12 +216,9 @@ mod tests {
             .await
             .unwrap();
 
-        let mut expected_body = custom_payload.to_vec();
-        expected_body.extend_from_slice(&[0, 0, 0, 1]);
-
         assert_eq!(envelope.warnings, vec!["hi".to_string()]);
-        assert_eq!(envelope.body, expected_body);
-        assert_eq!(envelope.message_body().unwrap(), &[0, 0, 0, 1]);
+        assert_eq!(envelope.body, vec![0, 0, 0, 1]);
+        assert_eq!(envelope.encode_with(Compression::None).unwrap(), wire);
         assert!(reader.is_empty());
     }
 }

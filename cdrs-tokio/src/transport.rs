@@ -608,7 +608,7 @@ impl AsyncTransport {
                     // to one must not override a newer keyspace set by the user
                     if envelope.opcode == Opcode::Result {
                         let result_kind = envelope
-                            .message_body()?
+                            .body
                             .get(..INT_LEN)
                             .ok_or_else(|| {
                                 Error::General("Result body without result kind!".into())
@@ -1313,22 +1313,17 @@ mod transport_tests {
 
             let mut body = vec![0, 1, 0, 1, b'k', 0, 0, 0, 1, 42]; // custom payload {"k": [42]}
             body.extend_from_slice(&set_keyspace_result("b"));
-            let envelope = Envelope::new(
-                Version::V4,
-                Direction::Response,
-                Flags::CUSTOM_PAYLOAD,
-                Opcode::Result,
-                request.stream_id,
-                body,
-                None,
-                vec![],
-            );
 
-            server
-                .stream
-                .write_all(&envelope.encode_with(Compression::None).unwrap())
-                .await
-                .unwrap();
+            let mut raw_envelope = vec![
+                u8::from(Version::V4) | u8::from(Direction::Response),
+                Flags::CUSTOM_PAYLOAD.bits(),
+            ];
+            raw_envelope.extend_from_slice(&request.stream_id.to_be_bytes());
+            raw_envelope.push(u8::from(Opcode::Result));
+            raw_envelope.extend_from_slice(&(body.len() as i32).to_be_bytes());
+            raw_envelope.extend_from_slice(&body);
+
+            server.stream.write_all(&raw_envelope).await.unwrap();
         });
         response.unwrap();
 

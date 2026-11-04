@@ -305,6 +305,7 @@ mod tests {
             body,
             tracing_id: None,
             warnings: vec![],
+            custom_payload: None,
         };
         let encoded = envelope.encode_with(Compression::None).unwrap();
 

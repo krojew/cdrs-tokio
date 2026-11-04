@@ -105,7 +105,7 @@ fn peek_new_metadata_id(envelope: &Envelope) -> Option<CBytesShort> {
     }
 
     let version = envelope.version;
-    let mut cursor = Cursor::new(envelope.message_body().ok()?);
+    let mut cursor = Cursor::new(envelope.body.as_slice());
 
     if ResultKind::from_cursor(&mut cursor, version).ok()? != ResultKind::Rows {
         return None;
@@ -2129,17 +2129,32 @@ mod tests {
 
     #[test]
     fn should_peek_new_metadata_id_after_custom_payload() {
+        use cassandra_protocol::compression::Compression;
+        use cassandra_protocol::frame::{Direction, Envelope};
+
         let new_metadata_id = CBytesShort::new(vec![9, 9]);
         let body = changed_metadata_rows_body(&new_metadata_id, false, Version::V5);
-        let mut response = result_response(ResResultBody::Rows(body), Version::V5);
+        let response = result_response(ResResultBody::Rows(body), Version::V5);
 
         let mut body_with_payload = vec![0, 1, 0, 1, b'k', 0, 0, 0, 1, 42]; // {"k": [42]}
         body_with_payload.extend_from_slice(&response.body);
-        response.body = body_with_payload;
-        response.flags.insert(Flags::CUSTOM_PAYLOAD);
+
+        let mut raw_envelope = vec![
+            u8::from(Version::V5) | u8::from(Direction::Response),
+            Flags::CUSTOM_PAYLOAD.bits(),
+            0,
+            0,
+            u8::from(Opcode::Result),
+        ];
+        raw_envelope.extend_from_slice(&(body_with_payload.len() as i32).to_be_bytes());
+        raw_envelope.extend_from_slice(&body_with_payload);
+
+        let decoded = Envelope::from_buffer(&raw_envelope, Compression::None)
+            .unwrap()
+            .envelope;
 
         assert_eq!(
-            peek_new_metadata_id(&response).as_ref(),
+            peek_new_metadata_id(&decoded).as_ref(),
             Some(&new_metadata_id)
         );
     }
