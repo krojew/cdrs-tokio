@@ -2026,6 +2026,44 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn should_send_tracing_and_warning_flags() {
+        let flags = Arc::new(Mutex::new(vec![]));
+        let session = create_session(
+            &[node_address(1)],
+            TestConnectionManager::new({
+                let flags = flags.clone();
+                move |_, envelope| {
+                    flags.lock().unwrap().push(envelope.flags);
+                    ready(Ok(void_response(Version::V4))).boxed()
+                }
+            }),
+            TestRoundRobin::new(),
+            None,
+            Version::V4,
+        );
+
+        let params = StatementParamsBuilder::new()
+            .with_tracing(true)
+            .with_warnings(true)
+            .build();
+
+        session
+            .query_with_params("SELECT 1", params.clone())
+            .await
+            .unwrap();
+        session
+            .exec_with_params(&prepared_query(CBytesShort::new(vec![1])), &params)
+            .await
+            .unwrap();
+
+        let flags = flags.lock().unwrap();
+        assert_eq!(flags.len(), 2);
+        assert!(flags
+            .iter()
+            .all(|flags| flags.contains(Flags::TRACING | Flags::WARNING)));
+    }
+
     #[test]
     fn prepare_flags_test() {
         assert!(prepare_flags(true, false, false).contains(Flags::TRACING));
