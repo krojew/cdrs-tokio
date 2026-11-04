@@ -43,7 +43,8 @@ fn extract_type(arg: &GenericArgument) -> Result<Type> {
     }
 }
 
-pub fn get_map_params_string(ty: &Type, name: &str) -> Result<(Type, Type)> {
+/// Returns the key, value and optional hasher types of a `HashMap<K, V, S>`.
+pub fn get_map_params_string(ty: &Type, name: &str) -> Result<(Type, Type, Option<Type>)> {
     match ty {
         Type::Path(TypePath {
             path: Path { segments, .. },
@@ -54,13 +55,15 @@ pub fn get_map_params_string(ty: &Type, name: &str) -> Result<(Type, Type)> {
                     arguments: PathArguments::AngleBracketed(ref angle_bracketed_data),
                     ..
                 }) => {
+                    let mut args = angle_bracketed_data.args.iter();
                     Ok((
-                        extract_type(angle_bracketed_data.args.first().ok_or_else(|| {
+                        extract_type(args.next().ok_or_else(|| {
                             Error::new(ty.span(), "Cannot extract map key type")
                         })?)?,
-                        extract_type(angle_bracketed_data.args.last().ok_or_else(|| {
+                        extract_type(args.next().ok_or_else(|| {
                             Error::new(ty.span(), "Cannot extract map value type")
                         })?)?,
+                        args.next().map(extract_type).transpose()?,
                     ))
                 }
                 _ => Err(Error::new(ty.span(), "Cannot infer field type")),
@@ -249,13 +252,14 @@ fn as_rust(ty: &Type, val: TokenStream, name: &str) -> Result<TokenStream> {
             }
         }
         "Map" => {
-            let (map_key_type, map_value_type) = get_map_params_string(ty, name)?;
+            let (map_key_type, map_value_type, map_hasher_type) = get_map_params_string(ty, name)?;
             let inter_rust_type = get_cdrs_type(&map_value_type, name)?;
             let decoded_item = as_rust(&map_value_type, quote! {val}, name)?;
+            let map_hasher_type = map_hasher_type.map(|hasher| quote! {, #hasher});
             quote! {
               {
                 let inner: std::collections::HashMap<#map_key_type, #inter_rust_type> = #val.as_r_type()?;
-                let mut decoded: std::collections::HashMap<#map_key_type, #map_value_type> = std::collections::HashMap::with_capacity(inner.len());
+                let mut decoded: std::collections::HashMap<#map_key_type, #map_value_type #map_hasher_type> = std::collections::HashMap::with_capacity_and_hasher(inner.len(), Default::default());
                 for (key, val) in inner {
                   decoded.insert(key, #decoded_item);
                 }

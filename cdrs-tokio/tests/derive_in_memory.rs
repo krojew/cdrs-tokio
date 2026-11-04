@@ -14,7 +14,9 @@ use cdrs_tokio::types::rows::Row;
 use cdrs_tokio::types::value::Bytes;
 use cdrs_tokio::types::CBytes;
 use cdrs_tokio::TryFromRow;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
 
 fn native(id: ColType) -> ColTypeOption {
     ColTypeOption { id, value: None }
@@ -143,4 +145,29 @@ fn missing_collection_column_error_is_propagated() {
     let error = CollectionRow::try_from_row(row).unwrap_err();
 
     assert_eq!(error.to_string(), expected.to_string());
+}
+
+type FixedState = BuildHasherDefault<DefaultHasher>;
+
+#[derive(Debug, PartialEq, TryFromRow)]
+struct CustomHasherRow {
+    map: HashMap<String, i32, FixedState>,
+}
+
+#[test]
+fn map_with_custom_hasher_decodes() {
+    let mut map = HashMap::new();
+    map.insert("a".to_string(), 1);
+    map.insert("b".to_string(), 2);
+    let row = row(vec![(
+        "map",
+        map_of(native(ColType::Varchar), native(ColType::Int)),
+        value(map.clone()),
+    )]);
+
+    let decoded = CustomHasherRow::try_from_row(row).unwrap();
+
+    assert_eq!(decoded.map.len(), 2);
+    assert_eq!(decoded.map["a"], 1);
+    assert_eq!(decoded.map["b"], 2);
 }
