@@ -147,8 +147,17 @@ impl ConnectionPoolConfigBuilder {
     }
 
     /// Sets new heartbeat interval.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `heartbeat_interval` is zero.
     #[must_use]
     pub fn with_heartbeat_interval(mut self, heartbeat_interval: Duration) -> Self {
+        assert!(
+            !heartbeat_interval.is_zero(),
+            "Heartbeat interval must be greater than zero!"
+        );
+
         self.config.heartbeat_interval = heartbeat_interval;
         self
     }
@@ -869,6 +878,12 @@ mod tests {
     #[should_panic(expected = "Heartbeat timeout must be greater than zero")]
     fn config_rejects_zero_heartbeat_timeout() {
         let _ = ConnectionPoolConfigBuilder::new().with_heartbeat_timeout(Duration::ZERO);
+    }
+
+    #[test]
+    #[should_panic(expected = "Heartbeat interval must be greater than zero")]
+    fn config_rejects_zero_heartbeat_interval() {
+        let _ = ConnectionPoolConfigBuilder::new().with_heartbeat_interval(Duration::ZERO);
     }
 
     fn transport_with_broken_flag(broken: Arc<AtomicBool>) -> MockCdrsTransport {
