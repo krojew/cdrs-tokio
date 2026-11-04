@@ -206,8 +206,8 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> ClusterMetadata<T, CM> {
 
         let mut rng = rng();
         nodes_by_dc
-            .into_iter()
-            .flat_map(|(_, mut nodes)| {
+            .into_values()
+            .flat_map(|mut nodes| {
                 nodes.shuffle(&mut rng);
                 nodes.truncate(max_count);
                 nodes
