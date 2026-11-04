@@ -1550,47 +1550,32 @@ impl Drop for AbortOnDropHandle {
 }
 
 #[cfg(test)]
-mod tests {
-    use crate::cluster::session::{
-        prepare_flags, serialize_routing_key, AbortOnDropHandle, Session, MAX_REPREPARE_ATTEMPTS,
-    };
+pub(crate) mod test_session {
+    use crate::cluster::session::Session;
     use crate::cluster::test_support::*;
-    use crate::cluster::{
-        ClusterMetadata, ClusterMetadataManager, KeyspaceHolder, Murmur3Token, SessionContext,
-    };
+    use crate::cluster::{ClusterMetadataManager, KeyspaceHolder, SessionContext};
     use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
     use crate::load_balancing::{
-        InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy, QueryPlan, Request,
+        InitializingWrapperLoadBalancingStrategy, LoadBalancingStrategy,
         RoundRobinLoadBalancingStrategy,
     };
-    use crate::retry::{DefaultRetryPolicy, FallthroughRetryPolicy};
-    use crate::speculative_execution::{
-        ConstantSpeculativeExecutionPolicy, SpeculativeExecutionPolicy,
-    };
-    use crate::statement::StatementParamsBuilder;
-    use arc_swap::ArcSwapOption;
-    use cassandra_protocol::error::Error;
-    use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType, UnpreparedError};
-    use cassandra_protocol::frame::{Flags, Opcode, Version};
-    use cassandra_protocol::query::{BatchQueryBuilder, PreparedQuery, QueryValues};
-    use cassandra_protocol::types::value::Value;
-    use cassandra_protocol::types::CBytesShort;
+    use crate::retry::DefaultRetryPolicy;
+    use crate::speculative_execution::SpeculativeExecutionPolicy;
+    use cassandra_protocol::frame::Version;
     use futures::future::ready;
     use futures::FutureExt;
     use itertools::Itertools;
-    use std::collections::{HashMap, HashSet};
     use std::net::SocketAddr;
-    use std::sync::{Arc, Mutex};
-    use std::time::Duration;
-    use tokio::sync::{broadcast, watch, Notify};
-    use tokio::task::JoinHandle;
+    use std::sync::Arc;
+    use tokio::sync::{broadcast, watch};
 
-    type TestRoundRobin = RoundRobinLoadBalancingStrategy<TestTransport, TestConnectionManager>;
+    pub(crate) type TestRoundRobin =
+        RoundRobinLoadBalancingStrategy<TestTransport, TestConnectionManager>;
 
     // Builds a session over given nodes without running a control connection. Until
     // `refresh_metadata` is called on its metadata manager, every query plan consists of all the
     // nodes in the given order.
-    fn create_session<LB: LoadBalancingStrategy<TestTransport, TestConnectionManager>>(
+    pub(crate) fn create_session<LB: LoadBalancingStrategy<TestTransport, TestConnectionManager>>(
         addresses: &[SocketAddr],
         connection_manager: TestConnectionManager,
         load_balancing: LB,
@@ -1643,6 +1628,38 @@ mod tests {
             version,
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cluster::session::test_session::*;
+    use crate::cluster::session::{
+        prepare_flags, serialize_routing_key, AbortOnDropHandle, Session, MAX_REPREPARE_ATTEMPTS,
+    };
+    use crate::cluster::test_support::*;
+    use crate::cluster::{ClusterMetadata, Murmur3Token};
+    use crate::load_balancing::{LoadBalancingStrategy, QueryPlan, Request};
+    use crate::retry::FallthroughRetryPolicy;
+    use crate::speculative_execution::{
+        ConstantSpeculativeExecutionPolicy, SpeculativeExecutionPolicy,
+    };
+    use crate::statement::StatementParamsBuilder;
+    use arc_swap::ArcSwapOption;
+    use cassandra_protocol::error::Error;
+    use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType, UnpreparedError};
+    use cassandra_protocol::frame::{Flags, Opcode, Version};
+    use cassandra_protocol::query::{BatchQueryBuilder, PreparedQuery, QueryValues};
+    use cassandra_protocol::types::value::Value;
+    use cassandra_protocol::types::CBytesShort;
+    use futures::future::ready;
+    use futures::FutureExt;
+    use itertools::Itertools;
+    use std::collections::{HashMap, HashSet};
+    use std::net::SocketAddr;
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+    use tokio::sync::Notify;
+    use tokio::task::JoinHandle;
 
     #[tokio::test]
     async fn should_return_last_server_error_when_all_nodes_ask_for_next_node() {
