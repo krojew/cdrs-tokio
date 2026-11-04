@@ -42,6 +42,8 @@ What kind of values can be used as `query_values!` arguments? All types that hav
 
 For Rust structs represented by [Cassandra User Defined types](http://cassandra.apache.org/doc/4.0/cql/types.html#grammar-token-user_defined_type) `#[derive(IntoCdrsValue)]` can be used for recursive implementation. See [CRUD example](../examples/crud_operations.rs).
 
+A serialized UDT value carries no field names, so `#[derive(IntoCdrsValue)]` writes the fields in the order they are declared in the struct, and Cassandra assigns them in the order of the type's `CREATE TYPE` statement (followed by any fields added with `ALTER TYPE ... ADD`). Declare the struct fields in exactly that order: a different order is not detected and values end up in the wrong fields or are rejected by the server. Trailing fields of the type can be left out of the struct and are then null. `#[derive(TryFromUdt)]` reads fields by name, so the order does not matter when reading.
+
 ### Reference
 
 1. Cassandra official docs - User Defined Types http://cassandra.apache.org/doc/4.0/cql/types.html#grammar-token-user_defined_type.

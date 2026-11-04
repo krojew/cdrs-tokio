@@ -25,6 +25,21 @@ pub fn db_mirror(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// Implements `From<Struct> for Bytes`, which serializes the struct as a user defined type (UDT)
+/// value, so it can be bound as a query value.
+///
+/// # Field order
+///
+/// A UDT value carries no field names: fields are written in the struct's declaration order, and
+/// Cassandra assigns them to the fields of the type in the order of its `CREATE TYPE` statement
+/// (including fields added later with `ALTER TYPE ... ADD`). The struct must therefore declare its
+/// fields in exactly that order. A different order is not detected; values end up in the wrong
+/// fields or are rejected by the server. Trailing fields of the type may be left out of the
+/// struct, in which case they are null.
+///
+/// `TryFromUdt` reads fields by name, so the order does not matter when decoding.
+///
+/// `None` fields are written as null.
 #[proc_macro_derive(IntoCdrsValue)]
 pub fn into_cdrs_value(input: TokenStream) -> TokenStream {
     // Parse the string representation
