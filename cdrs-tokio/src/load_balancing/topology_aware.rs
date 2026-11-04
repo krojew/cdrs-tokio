@@ -774,6 +774,64 @@ mod tests {
         }
     }
 
+    // Ring (token: node dc/rack):
+    //    0: 1 dc1/r1   10: 2 dc1/r1   20: 3 dc2/r1   25: 2 dc1/r1   30: 1 dc1/r1
+    //   40: 4 dc1/r1   50: 5 dc2/r1   60: 6 dc1/r2   70: 7 dc1/r2   80: 8 dc2/r1
+    //
+    // RF is dc1=3 over 2 racks and dc2=2 over 1 rack, so each dc accepts RF - rack count = 1 node
+    // from an already used rack, and skips further such nodes. This picks the same replicas as
+    // skipping every used-rack node until all racks are seen and then filling from the skipped
+    // nodes in ring order. Replicas are listed in ring order.
+    //
+    // Token 5, walking from token 10:
+    //   10: 2 - dc1/r1 is new -> replica
+    //   20: 3 - dc2/r1 is new -> replica
+    //   25: 2 - already a replica, hosts are distinct
+    //   30: 1 - dc1/r1 is used, the dc1 repeat is available -> replica
+    //   40: 4 - dc1/r1 is used, no dc1 repeat left -> skipped
+    //   50: 5 - dc2/r1 is used, the dc2 repeat is available -> replica, dc2 done
+    //   60: 6 - dc1/r2 is new -> replica, dc1 done
+    //
+    // Token 65, walking from token 70 and wrapping around:
+    //   70: 7 - dc1/r2 is new -> replica
+    //   80: 8 - dc2/r1 is new -> replica
+    //    0: 1 - dc1/r1 is new -> replica
+    //   10: 2 - dc1/r1 is used, the dc1 repeat is available -> replica, dc1 done
+    //   20: 3 - dc2/r1 is used, the dc2 repeat is available -> replica, dc2 done
+    #[test]
+    fn should_place_nts_replicas_on_hand_computed_ring_with_repeated_racks() {
+        let nodes = [
+            create_node(1, NodeState::Up, &[0, 30], "r1", "dc1"),
+            create_node(2, NodeState::Up, &[10, 25], "r1", "dc1"),
+            create_node(3, NodeState::Up, &[20], "r1", "dc2"),
+            create_node(4, NodeState::Up, &[40], "r1", "dc1"),
+            create_node(5, NodeState::Up, &[50], "r1", "dc2"),
+            create_node(6, NodeState::Up, &[60], "r2", "dc1"),
+            create_node(7, NodeState::Up, &[70], "r2", "dc1"),
+            create_node(8, NodeState::Up, &[80], "r1", "dc2"),
+        ];
+        let datacenter_replication_factor = [("dc1", 3), ("dc2", 2)];
+        let cluster = create_nts_cluster(&nodes, &datacenter_replication_factor);
+        let replication_factor_map = datacenter_replication_factor
+            .iter()
+            .map(|(dc, replication_factor)| (dc.to_string(), *replication_factor))
+            .collect();
+
+        let replica_ports = |token| {
+            network_topology_strategy_replica_nodes(
+                Murmur3Token::new(token),
+                &replication_factor_map,
+                &cluster,
+            )
+            .iter()
+            .map(|node| node.broadcast_rpc_address().port())
+            .collect_vec()
+        };
+
+        assert_eq!(replica_ports(5), vec![2, 3, 1, 5, 6]);
+        assert_eq!(replica_ports(65), vec![7, 8, 1, 2, 3]);
+    }
+
     // nodes 2 and 3 are the remaining replicas, node 4 is not a replica
     fn create_cluster_with_down_replica(
         replication_strategy: ReplicationStrategy,
