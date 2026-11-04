@@ -25,8 +25,22 @@ use tokio::net::TcpStream;
 use tokio::sync::mpsc::Sender;
 use tokio_rustls::rustls::{pki_types::ServerName, ClientConfig};
 
+type ServerNameResolver = dyn Fn(SocketAddr) -> ServerName<'static> + Send + Sync;
+
+fn resolve_server_name(
+    dns_name: &ServerName<'static>,
+    resolver: Option<&ServerNameResolver>,
+    addr: SocketAddr,
+) -> ServerName<'static> {
+    match resolver {
+        Some(resolver) => resolver(addr),
+        None => dns_name.clone(),
+    }
+}
+
 pub struct RustlsConnectionManager {
     dns_name: ServerName<'static>,
+    server_name_resolver: Option<Box<ServerNameResolver>>,
     authenticator_provider: Arc<dyn SaslAuthenticatorProvider + Send + Sync>,
     config: Arc<ClientConfig>,
     keyspace_holder: Arc<KeyspaceHolder>,
@@ -68,6 +82,7 @@ impl RustlsConnectionManager {
     ) -> Self {
         RustlsConnectionManager {
             dns_name,
+            server_name_resolver: None,
             authenticator_provider,
             config,
             keyspace_holder,
@@ -79,6 +94,22 @@ impl RustlsConnectionManager {
             #[cfg(feature = "http-proxy")]
             http_proxy,
         }
+    }
+
+    /// Resolves the server name used for SNI and certificate verification separately for each
+    /// node address, e.g. when nodes present certificates with distinct names. By default, the
+    /// name given at construction is used for all nodes.
+    #[must_use]
+    pub fn with_server_name_resolver<F>(mut self, resolver: F) -> Self
+    where
+        F: Fn(SocketAddr) -> ServerName<'static> + Send + Sync + 'static,
+    {
+        self.server_name_resolver = Some(Box::new(resolver));
+        self
+    }
+
+    fn server_name(&self, addr: SocketAddr) -> ServerName<'static> {
+        resolve_server_name(&self.dns_name, self.server_name_resolver.as_deref(), addr)
     }
 
     //noinspection DuplicatedCode
@@ -112,7 +143,7 @@ impl RustlsConnectionManager {
             TransportRustls::with_stream(
                 stream,
                 addr,
-                self.dns_name.clone(),
+                self.server_name(addr),
                 self.config.clone(),
                 self.keyspace_holder.clone(),
                 event_handler,
@@ -128,7 +159,7 @@ impl RustlsConnectionManager {
         } else {
             TransportRustls::new(
                 addr,
-                self.dns_name.clone(),
+                self.server_name(addr),
                 self.config.clone(),
                 self.keyspace_holder.clone(),
                 event_handler,
@@ -155,7 +186,7 @@ impl RustlsConnectionManager {
     ) -> io::Result<TransportRustls> {
         TransportRustls::new(
             addr,
-            self.dns_name.clone(),
+            self.server_name(addr),
             self.config.clone(),
             self.keyspace_holder.clone(),
             event_handler,
@@ -191,5 +222,44 @@ impl RustlsConnectionManager {
         .await?;
 
         Ok(transport)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::convert::TryFrom;
+    use std::net::{IpAddr, Ipv4Addr};
+
+    fn node_address(last_octet: u8) -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, last_octet)), 9042)
+    }
+
+    #[test]
+    fn server_name_defaults_to_dns_name_for_every_node() {
+        let dns_name = ServerName::try_from("cluster.example").unwrap();
+
+        for last_octet in 1..3 {
+            assert_eq!(
+                resolve_server_name(&dns_name, None, node_address(last_octet)),
+                dns_name
+            );
+        }
+    }
+
+    #[test]
+    fn server_name_is_resolved_per_node_address() {
+        let dns_name = ServerName::try_from("cluster.example").unwrap();
+        let resolver: Box<ServerNameResolver> =
+            Box::new(|addr| ServerName::try_from(format!("node-{}.example", addr.ip())).unwrap());
+
+        assert_eq!(
+            resolve_server_name(&dns_name, Some(resolver.as_ref()), node_address(1)),
+            ServerName::try_from("node-10.0.0.1.example").unwrap()
+        );
+        assert_eq!(
+            resolve_server_name(&dns_name, Some(resolver.as_ref()), node_address(2)),
+            ServerName::try_from("node-10.0.0.2.example").unwrap()
+        );
     }
 }
