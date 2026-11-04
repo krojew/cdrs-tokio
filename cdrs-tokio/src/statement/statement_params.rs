@@ -8,8 +8,13 @@ use crate::retry::RetryPolicy;
 use crate::speculative_execution::SpeculativeExecutionPolicy;
 
 /// Parameters of Query for query operation.
+///
+/// New fields may be added in future releases. Build it with
+/// [`StatementParamsBuilder`](crate::statement::StatementParamsBuilder), or start from
+/// [`StatementParams::default`] and assign the fields of interest.
 #[derive(Default, Clone, Derivative)]
 #[derivative(Debug)]
+#[non_exhaustive]
 pub struct StatementParams {
     /// Protocol-level parameters.
     pub query_params: QueryParams,

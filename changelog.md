@@ -11,6 +11,14 @@
   metadata, a node marked up by an event or a refresh makes its pool
   reconnect right away, and contact points no longer share their pools
   with metadata nodes.
+* `load_balancing::Request`, `retry::QueryInfo`,
+  `speculative_execution::Context`, `StatementParams`, `KeyspaceMetadata`,
+  `DatacenterMetadata` and `NodeInfo` are `#[non_exhaustive]`, so they can
+  no longer be built with a struct literal outside the crate. Build
+  `Request` from `Request::default()` (`Request::new` is removed) and
+  `StatementParams` with `StatementParamsBuilder` or from
+  `StatementParams::default()`; the others have `new` constructors, which
+  give default values to fields added later.
 
 ### Fixed
 

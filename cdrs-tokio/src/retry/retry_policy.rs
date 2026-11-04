@@ -13,9 +13,24 @@ pub enum RetryDecision {
 }
 
 /// Information about a failed query.
+///
+/// New fields may be added in future releases. To build it, e.g. for testing a custom
+/// [`RetrySession`], use [`QueryInfo::new`].
+#[non_exhaustive]
 pub struct QueryInfo<'a> {
     pub error: &'a Error,
     pub is_idempotent: bool,
+}
+
+impl<'a> QueryInfo<'a> {
+    /// Creates information about a failed query. Fields added in future releases get their
+    /// default values.
+    pub fn new(error: &'a Error, is_idempotent: bool) -> Self {
+        QueryInfo {
+            error,
+            is_idempotent,
+        }
+    }
 }
 
 /// Query-specific information about current state of retrying.
@@ -186,10 +201,7 @@ mod tests {
     }
 
     fn decide_once(error: &Error) -> RetryDecision {
-        DefaultRetrySession::default().decide(QueryInfo {
-            error,
-            is_idempotent: true,
-        })
+        DefaultRetrySession::default().decide(QueryInfo::new(error, true))
     }
 
     #[test]
@@ -229,10 +241,7 @@ mod tests {
         let error = read_timeout_error(2, 2, false);
         let mut session = DefaultRetrySession::default();
 
-        let query_info = || QueryInfo {
-            error: &error,
-            is_idempotent: true,
-        };
+        let query_info = || QueryInfo::new(&error, true);
 
         assert_eq!(session.decide(query_info()), RetryDecision::RetrySameNode);
         assert_eq!(session.decide(query_info()), RetryDecision::DontRetry);

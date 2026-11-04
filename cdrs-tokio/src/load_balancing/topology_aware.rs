@@ -607,12 +607,12 @@ mod tests {
         consistency: Option<Consistency>,
     ) -> Vec<u16> {
         lb.query_plan(
-            Some(Request::new(
-                Some("ks"),
-                Some(Murmur3Token::new(token)),
-                None,
+            Some(Request {
+                keyspace: Some("ks"),
+                token: Some(Murmur3Token::new(token)),
                 consistency,
-            )),
+                ..Default::default()
+            }),
             cluster,
         )
         .nodes
@@ -973,12 +973,12 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(Some(5), false);
 
         let query_plan = lb.query_plan(
-            Some(Request::new(
-                Some("k4"),
-                Some(Murmur3Token::new(2)),
-                None,
-                Some(Consistency::LocalQuorum),
-            )),
+            Some(Request {
+                keyspace: Some("k4"),
+                token: Some(Murmur3Token::new(2)),
+                consistency: Some(Consistency::LocalQuorum),
+                ..Default::default()
+            }),
             &cluster,
         );
 
@@ -1046,7 +1046,7 @@ mod tests {
         let cluster = create_cluster();
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
-        let query_plan = lb.query_plan(Some(Request::new(None, None, None, None)), &cluster);
+        let query_plan = lb.query_plan(Some(Request::default()), &cluster);
         assert_eq!(query_plan.nodes.len(), 3);
 
         for node in &query_plan.nodes {
@@ -1060,7 +1060,10 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
         let query_plan = lb.query_plan(
-            Some(Request::new(None, Some(Murmur3Token::new(4)), None, None)),
+            Some(Request {
+                token: Some(Murmur3Token::new(4)),
+                ..Default::default()
+            }),
             &cluster,
         );
         assert_eq!(query_plan.nodes.len(), 3);
@@ -1076,12 +1079,11 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
         let query_plan = lb.query_plan(
-            Some(Request::new(
-                Some("k3"),
-                Some(Murmur3Token::new(4)),
-                None,
-                None,
-            )),
+            Some(Request {
+                keyspace: Some("k3"),
+                token: Some(Murmur3Token::new(4)),
+                ..Default::default()
+            }),
             &cluster,
         );
         assert_eq!(query_plan.nodes.len(), 5); // 1 replica + 4 unignored
@@ -1094,12 +1096,11 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
         let query_plan = lb.query_plan(
-            Some(Request::new(
-                Some("k1"),
-                Some(Murmur3Token::new(4)),
-                None,
-                None,
-            )),
+            Some(Request {
+                keyspace: Some("k1"),
+                token: Some(Murmur3Token::new(4)),
+                ..Default::default()
+            }),
             &cluster,
         );
 
@@ -1133,12 +1134,11 @@ mod tests {
 
         for offset in 0..unignored_nodes.len() {
             let query_plan = lb.query_plan(
-                Some(Request::new(
-                    Some("k1"), // SimpleStrategy with replication_factor: 2
-                    Some(Murmur3Token::new(8)),
-                    None,
-                    None,
-                )),
+                Some(Request {
+                    keyspace: Some("k1"), // SimpleStrategy with replication_factor: 2
+                    token: Some(Murmur3Token::new(8)),
+                    ..Default::default()
+                }),
                 &cluster,
             );
 
@@ -1161,12 +1161,11 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
         let query_plan = lb.query_plan(
-            Some(Request::new(
-                Some("k2"),
-                Some(Murmur3Token::new(2)),
-                None,
-                None,
-            )),
+            Some(Request {
+                keyspace: Some("k2"),
+                token: Some(Murmur3Token::new(2)),
+                ..Default::default()
+            }),
             &cluster,
         );
         assert_eq!(query_plan.nodes.len(), 4);
@@ -1194,12 +1193,11 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(None, false);
 
         let query_plan = lb.query_plan(
-            Some(Request::new(
-                Some("k4"),
-                Some(Murmur3Token::new(2)),
-                None,
-                None,
-            )),
+            Some(Request {
+                keyspace: Some("k4"),
+                token: Some(Murmur3Token::new(2)),
+                ..Default::default()
+            }),
             &cluster,
         );
 
@@ -1222,12 +1220,11 @@ mod tests {
         let lb = TopologyAwareLoadBalancingStrategy::new(Some(5), false);
 
         let query_plan = lb.query_plan(
-            Some(Request::new(
-                Some("k4"),
-                Some(Murmur3Token::new(2)),
-                None,
-                None,
-            )),
+            Some(Request {
+                keyspace: Some("k4"),
+                token: Some(Murmur3Token::new(2)),
+                ..Default::default()
+            }),
             &cluster,
         );
 

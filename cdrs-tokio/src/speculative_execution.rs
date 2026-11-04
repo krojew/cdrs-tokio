@@ -14,9 +14,21 @@ use derive_more::Constructor;
 use std::time::Duration;
 
 /// Current speculative execution context.
-#[derive(Constructor, Debug)]
+///
+/// New fields may be added in future releases. To build it, e.g. for testing a custom
+/// [`SpeculativeExecutionPolicy`], use [`Context::new`].
+#[derive(Debug)]
+#[non_exhaustive]
 pub struct Context {
     pub running_executions: usize,
+}
+
+impl Context {
+    /// Creates a context with the given number of running executions. Fields added in future
+    /// releases get their default values.
+    pub fn new(running_executions: usize) -> Self {
+        Context { running_executions }
+    }
 }
 
 /// The policy that decides if the driver will send speculative queries to the next nodes when the

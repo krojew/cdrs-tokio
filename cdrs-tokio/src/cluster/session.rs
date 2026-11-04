@@ -780,12 +780,12 @@ impl<
         first_node: Option<Arc<Node<T, CM>>>,
     ) -> error::Result<Envelope> {
         let current_keyspace = self.current_keyspace();
-        let request = Request::new(
-            keyspace.or_else(|| current_keyspace.as_ref().map(|keyspace| &***keyspace)),
+        let request = Request {
+            keyspace: keyspace.or_else(|| current_keyspace.as_ref().map(|keyspace| &***keyspace)),
             token,
             routing_key,
             consistency,
-        );
+        };
 
         let mut query_plan = self.query_plan(Some(request));
         if let Some(first_node) = first_node {
