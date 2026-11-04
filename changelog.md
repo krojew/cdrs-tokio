@@ -55,11 +55,27 @@
   are `#[non_exhaustive]`. Build `QueryParams` with `QueryParamsBuilder`
   or from its default value, and the others with their `new`
   constructors.
+* `BodyReqExecute`, `BodyReqExecuteOwned`, `BodyReqBatch`, `BatchQuery`,
+  `BodyReqPrepare`, `BodyReqStartup`, `BodyResResultRows`,
+  `BodyResResultPrepared`, `RowsMetadata`, `PreparedMetadata`, `ColSpec`,
+  `TableSpec`, `SchemaChange`, `StatusChange` and `TopologyChange` are
+  `#[non_exhaustive]`. Build them with their `new` constructors, or from
+  their default value where they have one.
+* `CompressionError::Snappy` holds the opaque `SnappyError` instead of
+  `snap::Error`.
+* `PreparedQuery::result_metadata_id` is private. Read and replace it with
+  the `result_metadata_id` and `set_result_metadata_id` methods.
 
 ### Added
 
 * `PreparedQuery::new`, `ErrorBody::new` and `new` constructors for the
   error detail structs.
+* `new` constructors for `BodyResResultRows`, `BodyResResultPrepared`,
+  `RowsMetadata`, `ColSpec`, `TableSpec`, `SchemaChange`, `StatusChange`
+  and `TopologyChange`, and `Default` for `PreparedMetadata`.
+* `compression::SnappyError`.
+* `PreparedQuery::result_metadata_id` and
+  `PreparedQuery::set_result_metadata_id`.
 * `ParseEnvelopeError::InvalidCustomPayload`.
 * `types::decimal::NonFiniteFloatError`.
 
