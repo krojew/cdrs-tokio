@@ -20,10 +20,13 @@ pub fn impl_into_cdrs_value(ast: &DeriveInput) -> Result<TokenStream> {
                     if ident == "Option" {
                         // We are assuming here primitive value serialization will not change across protocol
                         // versions, which gives us simpler user API.
+                        // The value is cloned rather than moved out, so a struct implementing Drop
+                        // compiles when all of its fields are optional. Method-call syntax also
+                        // accepts a type that is not Clone but converts into Bytes by reference.
                         quote! {
                           match value.#field_ident {
-                            ::core::option::Option::Some(val) => {
-                              let field_bytes: Self = ::core::convert::Into::into(val);
+                            ::core::option::Option::Some(ref val) => {
+                              let field_bytes: Self = ::core::convert::Into::into(val.clone());
                               cdrs_tokio::frame::Serialize::serialize(
                                 &cdrs_tokio::types::value::Value::new(field_bytes),
                                 &mut cursor,

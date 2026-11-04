@@ -388,27 +388,26 @@ fn missing_optional_udt_field_serializes_as_null() {
 }
 
 #[derive(IntoCdrsValue)]
-struct NotCloneable {
-    text: String,
+struct DroppableOptionalFields {
+    present: Option<String>,
+    missing: Option<String>,
 }
 
-#[derive(IntoCdrsValue)]
-struct OptionalNotCloneable {
-    inner: Option<NotCloneable>,
+impl Drop for DroppableOptionalFields {
+    fn drop(&mut self) {}
 }
 
 #[test]
-fn optional_udt_field_does_not_require_clone() {
-    let bytes: Bytes = OptionalNotCloneable {
-        inner: Some(NotCloneable {
-            text: "a".to_string(),
-        }),
+fn optional_fields_of_struct_implementing_drop_convert_into_bytes() {
+    let bytes: Bytes = DroppableOptionalFields {
+        present: Some("a".to_string()),
+        missing: None,
     }
     .into();
 
     assert_eq!(
         bytes.into_inner(),
-        udt(vec![Value::new(udt(vec![Value::new("a")]))]).into_inner()
+        udt(vec![Value::new("a"), Value::Null]).into_inner()
     );
 }
 
