@@ -1,3 +1,63 @@
+## cdrs-tokio 10.0.0
+
+### Changed
+
+* Uses `cassandra-protocol` 5.0.0 and `cdrs-tokio-helpers-derive` 6.0.0.
+  Their breaking changes apply to the re-exported modules as well.
+
+### Removed
+
+* `StatementParamsBuilder::with_flags` and `StatementParamsBuilder::with_names`.
+
+## cassandra-protocol 5.0.0
+
+### Changed
+
+* `FailureInfo::ReasonMap` is keyed by `IpAddr`, since the protocol sends
+  no port for the endpoints.
+* The body of a decoded envelope holds only the message. A custom payload
+  is kept in a private field, so encoding the envelope reproduces it, and
+  the custom payload flag is encoded only together with such a payload.
+  `Envelope` can no longer be built with a struct literal outside the
+  crate; use `Envelope::new`.
+* `Vec<u8>` and `&[u8]` bind as blobs, and `u8` no longer converts into
+  `Bytes`.
+* `Decimal` implements `TryFrom<f32>` and `TryFrom<f64>` instead of
+  `From`, returning `NonFiniteFloatError` for NaN and infinities.
+* `CompressionError` is `#[non_exhaustive]`, and decompressed size and
+  length checks report `DecompressedSizeExceedsLimit` and
+  `DecompressedLengthMismatch`.
+* `QueryParams`, `PreparedQuery`, `ErrorBody` and the error detail structs
+  are `#[non_exhaustive]`. Build `QueryParams` with `QueryParamsBuilder`
+  or from its default value, and the others with their `new`
+  constructors.
+
+### Added
+
+* `PreparedQuery::new`, `ErrorBody::new` and `new` constructors for the
+  error detail structs.
+* `ParseEnvelopeError::InvalidCustomPayload`.
+* `types::decimal::NonFiniteFloatError`.
+
+### Removed
+
+* `Envelope::message_body`.
+* `QueryParams::with_names`, `QueryParamsBuilder::with_flags`,
+  `QueryParamsBuilder::with_names` and the ignored `with_names` parameter
+  of `Envelope::new_req_query`.
+* `Error::UnexpectedErrorCode`.
+* `From<u8>` for `Bytes`.
+
+## cdrs-tokio-helpers-derive 6.0.0
+
+### Changed
+
+* Generated code refers to `::cdrs_tokio` by an absolute path, so
+  `cdrs-tokio` has to be a direct dependency.
+* `IntoCdrsValue` moves `Option` field values instead of cloning them, so
+  field types no longer need to implement `Clone`, but a struct
+  implementing `Drop` can no longer derive it.
+
 ## cdrs-tokio 9.1.0
 
 ### Added
