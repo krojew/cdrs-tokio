@@ -18,9 +18,31 @@ use cdrs_tokio::query_values;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::retry::NeverReconnectionPolicy;
 #[cfg(feature = "e2e-tests")]
-use cdrs_tokio::speculative_execution::ConstantSpeculativeExecutionPolicy;
+use cdrs_tokio::speculative_execution::{
+    ConstantSpeculativeExecutionPolicy, Context, SpeculativeExecutionPolicy,
+};
+#[cfg(feature = "e2e-tests")]
+use cdrs_tokio::statement::StatementParamsBuilder;
 #[cfg(feature = "e2e-tests")]
 use cdrs_tokio::types::IntoRustByName;
+#[cfg(feature = "e2e-tests")]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+// Remembers the highest number of running executions the session reported.
+#[cfg(feature = "e2e-tests")]
+struct RecordingSpeculativeExecutionPolicy {
+    inner: ConstantSpeculativeExecutionPolicy,
+    max_running_executions: Arc<AtomicUsize>,
+}
+
+#[cfg(feature = "e2e-tests")]
+impl SpeculativeExecutionPolicy for RecordingSpeculativeExecutionPolicy {
+    fn execution_interval(&self, context: &Context) -> Option<Duration> {
+        self.max_running_executions
+            .fetch_max(context.running_executions, Ordering::Relaxed);
+        self.inner.execution_interval(context)
+    }
+}
 
 #[tokio::test]
 #[cfg(feature = "e2e-tests")]
@@ -31,12 +53,16 @@ async fn single_node_speculative_execution() {
         .await
         .unwrap();
 
+    let max_running_executions = Arc::new(AtomicUsize::new(0));
+
+    // Speculative executions start right away. With a single node, they find no node to send the
+    // request to, which must not fail the request still running on that node.
     let session = TcpSessionBuilder::new(RoundRobinLoadBalancingStrategy::new(), cluster_config)
         .with_reconnection_policy(Arc::new(NeverReconnectionPolicy))
-        .with_speculative_execution_policy(Box::new(ConstantSpeculativeExecutionPolicy::new(
-            5,
-            Duration::from_secs(1),
-        )))
+        .with_speculative_execution_policy(Box::new(RecordingSpeculativeExecutionPolicy {
+            inner: ConstantSpeculativeExecutionPolicy::new(5, Duration::ZERO),
+            max_running_executions: max_running_executions.clone(),
+        }))
         .build()
         .await
         .unwrap();
@@ -59,10 +85,17 @@ async fn single_node_speculative_execution() {
 
     let items = vec!["1".to_string(), "2".to_string(), "3".to_string()];
 
+    // speculative executions are only started for idempotent statements
     for item in items {
         let values = query_values!(item);
         session
-            .query_with_values(query_insert, values)
+            .query_with_params(
+                query_insert,
+                StatementParamsBuilder::new()
+                    .with_values(values)
+                    .idempotent(true)
+                    .build(),
+            )
             .await
             .expect("insert item error");
     }
@@ -71,7 +104,13 @@ async fn single_node_speculative_execution() {
     let criteria = vec!["1".to_string(), "3".to_string()];
 
     let rows = session
-        .query_with_values(cql, query_values!(criteria.clone()))
+        .query_with_params(
+            cql,
+            StatementParamsBuilder::new()
+                .with_values(query_values!(criteria.clone()))
+                .idempotent(true)
+                .build(),
+        )
         .await
         .expect("select values query error")
         .response_body()
@@ -80,6 +119,10 @@ async fn single_node_speculative_execution() {
         .expect("converting into rows error");
 
     assert_eq!(rows.len(), criteria.len());
+    assert!(
+        max_running_executions.load(Ordering::Relaxed) > 1,
+        "no speculative execution was started"
+    );
 
     let found_all_matching_criteria = criteria.iter().all(|criteria_item: &String| {
         rows.iter().any(|row| {
