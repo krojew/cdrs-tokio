@@ -1212,7 +1212,6 @@ mod transport_tests {
             format!("USE {keyspace}"),
             Default::default(),
             None,
-            false,
             None,
             None,
             None,

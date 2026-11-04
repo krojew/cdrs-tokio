@@ -1,4 +1,4 @@
-use super::{QueryFlags, QueryParams, QueryValues};
+use super::{QueryParams, QueryValues};
 use crate::consistency::Consistency;
 use crate::types::{CBytes, CInt, CLong};
 
@@ -27,24 +27,10 @@ impl QueryParamsBuilder {
         self
     }
 
-    /// Has no effect - query flags are derived from the other parameters.
-    #[deprecated(note = "has no effect - query flags are derived from the other parameters")]
-    #[must_use]
-    pub fn with_flags(self, _flags: QueryFlags) -> Self {
-        self
-    }
-
     /// Sets new query values.
     #[must_use]
     pub fn with_values(mut self, values: QueryValues) -> Self {
         self.values = Some(values);
-        self
-    }
-
-    /// Has no effect - the "with names for values" flag is derived from the values.
-    #[deprecated(note = "has no effect - the flag is derived from the values")]
-    #[must_use]
-    pub fn with_names(self, _with_names: bool) -> Self {
         self
     }
 
@@ -95,13 +81,9 @@ impl QueryParamsBuilder {
     /// Finalizes query building process and returns query itself
     #[must_use]
     pub fn build(self) -> QueryParams {
-        let with_names = self.values.as_ref().is_some_and(QueryValues::has_names);
-
-        #[allow(deprecated)]
         QueryParams {
             consistency: self.consistency,
             values: self.values,
-            with_names,
             page_size: self.page_size,
             paging_state: self.paging_state,
             serial_consistency: self.serial_consistency,

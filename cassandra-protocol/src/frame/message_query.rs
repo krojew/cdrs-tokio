@@ -28,14 +28,10 @@ impl BodyReqQuery {
         keyspace: Option<String>,
         now_in_seconds: Option<CInt>,
     ) -> BodyReqQuery {
-        let with_names = values.as_ref().is_some_and(QueryValues::has_names);
-
-        #[allow(deprecated)]
         BodyReqQuery {
             query,
             query_params: QueryParams {
                 consistency,
-                with_names,
                 values,
                 page_size,
                 paging_state,
@@ -77,14 +73,12 @@ impl Serialize for BodyReqQuery {
 }
 
 impl Envelope {
-    /// Creates a QUERY request. The "with names for values" flag is derived from `values`, so
-    /// `_with_names` is ignored.
+    /// Creates a QUERY request. The "with names for values" flag is derived from `values`.
     #[allow(clippy::too_many_arguments)]
     pub fn new_req_query(
         query: String,
         consistency: Consistency,
         values: Option<QueryValues>,
-        _with_names: bool,
         page_size: Option<CInt>,
         paging_state: Option<CBytes>,
         serial_consistency: Option<Consistency>,

@@ -821,7 +821,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn test_query_minimal() {
         let raw_envelope = [
             4, 0, 0, 0, 7, 0, 0, 0, 11, 0, 0, 0, 4, 98, 108, 97, 104, 0, 0, 0,
@@ -841,7 +840,6 @@ mod tests {
             query: "blah".into(),
             query_params: QueryParams {
                 consistency: Consistency::Any,
-                with_names: false,
                 values: None,
                 page_size: None,
                 paging_state: None,
@@ -855,7 +853,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn test_query_simple_values() {
         let raw_envelope = [
             4, 0, 0, 0, 7, 0, 0, 0, 30, 0, 0, 0, 10, 115, 111, 109, 101, 32, 113, 117, 101, 114,
@@ -879,7 +876,6 @@ mod tests {
             query: "some query".into(),
             query_params: QueryParams {
                 consistency: Consistency::Serial,
-                with_names: false,
                 values: Some(QueryValues::SimpleValues(vec![
                     Value::Some(vec![1, 2, 3]),
                     Value::Null,
@@ -896,7 +892,6 @@ mod tests {
     }
 
     #[test]
-    #[allow(deprecated)]
     fn test_query_named_values() {
         let envelope = Envelope {
             version: Version::V4,
@@ -913,7 +908,6 @@ mod tests {
             query: "another query".into(),
             query_params: QueryParams {
                 consistency: Consistency::Three,
-                with_names: true,
                 values: Some(QueryValues::NamedValues(
                     vec![
                         ("foo".to_string(), Value::Some(vec![11, 12, 13])),
@@ -1251,7 +1245,6 @@ mod flags {
     use crate::query::query_params::QueryParams;
 
     #[test]
-    #[allow(deprecated)]
     fn test_tracing_id_request() {
         let raw_envelope = [
             4, // version
@@ -1277,7 +1270,6 @@ mod flags {
             query: "blah".into(),
             query_params: QueryParams {
                 consistency: Consistency::Any,
-                with_names: false,
                 values: None,
                 page_size: None,
                 paging_state: None,

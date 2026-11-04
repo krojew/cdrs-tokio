@@ -306,7 +306,6 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ConnectionP
                         format!("USE {}", quote(&keyspace)),
                         Default::default(),
                         None,
-                        false,
                         None,
                         None,
                         None,
