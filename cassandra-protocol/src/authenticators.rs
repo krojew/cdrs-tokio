@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::error::Result;
 use crate::types::CBytes;
 
@@ -27,10 +29,21 @@ pub trait SaslAuthenticatorProvider {
     fn create_authenticator(&self) -> Box<dyn SaslAuthenticator + Send>;
 }
 
-#[derive(Debug, Clone)]
+const REDACTED: &str = "<redacted>";
+
+#[derive(Clone)]
 pub struct StaticPasswordAuthenticator {
     username: String,
     password: String,
+}
+
+impl fmt::Debug for StaticPasswordAuthenticator {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StaticPasswordAuthenticator")
+            .field("username", &self.username)
+            .field("password", &REDACTED)
+            .finish()
+    }
 }
 
 impl StaticPasswordAuthenticator {
@@ -62,10 +75,19 @@ impl SaslAuthenticator for StaticPasswordAuthenticator {
 }
 
 /// Authentication provider with a username and password.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct StaticPasswordAuthenticatorProvider {
     username: String,
     password: String,
+}
+
+impl fmt::Debug for StaticPasswordAuthenticatorProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StaticPasswordAuthenticatorProvider")
+            .field("username", &self.username)
+            .field("password", &REDACTED)
+            .finish()
+    }
 }
 
 impl SaslAuthenticatorProvider for StaticPasswordAuthenticatorProvider {
@@ -137,6 +159,27 @@ mod tests {
             auth.name(),
             Some("org.apache.cassandra.auth.PasswordAuthenticator")
         );
+    }
+
+    #[test]
+    fn test_static_password_debug_redacts_password() {
+        let authenticator = format!(
+            "{:?}",
+            StaticPasswordAuthenticator::new("cassandra-user", "s3cr3t-pa55")
+        );
+        assert!(
+            authenticator.contains("cassandra-user"),
+            "{}",
+            authenticator
+        );
+        assert!(!authenticator.contains("s3cr3t-pa55"), "{}", authenticator);
+
+        let provider = format!(
+            "{:?}",
+            StaticPasswordAuthenticatorProvider::new("cassandra-user", "s3cr3t-pa55")
+        );
+        assert!(provider.contains("cassandra-user"), "{}", provider);
+        assert!(!provider.contains("s3cr3t-pa55"), "{}", provider);
     }
 
     #[test]
