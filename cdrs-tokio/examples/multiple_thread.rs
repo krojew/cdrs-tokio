@@ -41,7 +41,9 @@ async fn main() {
         })
         .collect();
 
-    let _responses = futures::future::join_all(futures);
+    for result in futures::future::join_all(futures).await {
+        result.expect("insert task");
+    }
 
     select_struct(session).await;
 }
