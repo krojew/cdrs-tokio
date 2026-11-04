@@ -11,8 +11,11 @@ use crate::types::{from_cursor_str, serialize_str, value::Value, CInt, CIntShort
 use crate::types::{CBytes, CLong, INT_LEN, SHORT_LEN};
 use crate::Error;
 
-/// Parameters of Query for query operation.
+/// Parameters of Query for query operation. Created with
+/// [`QueryParamsBuilder`](crate::query::QueryParamsBuilder), or by setting fields on
+/// [`QueryParams::default`].
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct QueryParams {
     /// Cassandra consistency level.
     pub consistency: Consistency,

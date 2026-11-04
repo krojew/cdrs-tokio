@@ -827,6 +827,7 @@ impl<T: CdrsTransport + 'static, CM: ConnectionManager<T> + 'static> ClusterMeta
                     ErrorBody {
                         ty: ErrorType::Server,
                         ref message,
+                        ..
                     },
                 ..
             }) if message.contains("Unknown keyspace/cf pair (system.peers_v2)") => {

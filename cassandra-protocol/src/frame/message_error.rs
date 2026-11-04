@@ -17,6 +17,7 @@ use std::net::IpAddr;
 /// it contains an error code and an error message. Apart of those depending of type of error,
 /// it could contain additional information represented by `additional_info` property.
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[non_exhaustive]
 pub struct ErrorBody {
     /// Error message.
     pub message: String,
@@ -43,6 +44,14 @@ impl FromCursor for ErrorBody {
 }
 
 impl ErrorBody {
+    /// Creates an error body. Fields added to the struct later are initialized to their defaults.
+    pub fn new(message: impl Into<String>, ty: ErrorType) -> Self {
+        ErrorBody {
+            message: message.into(),
+            ty,
+        }
+    }
+
     /// Is the error related to bad protocol used. This is a special case which is used in some
     /// situations to detect when a node should not be contacted.
     pub fn is_bad_protocol(&self) -> bool {
@@ -253,6 +262,7 @@ impl ErrorType {
 /// Additional info about
 /// [unavailable exception](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Copy, Clone, Hash)]
+#[non_exhaustive]
 pub struct UnavailableError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -260,6 +270,17 @@ pub struct UnavailableError {
     pub required: CInt,
     /// Number of replicas that we were know to be alive.
     pub alive: CInt,
+}
+
+impl UnavailableError {
+    /// Creates the error. Fields added to the struct later are initialized to their defaults.
+    pub fn new(cl: Consistency, required: CInt, alive: CInt) -> Self {
+        UnavailableError {
+            cl,
+            required,
+            alive,
+        }
+    }
 }
 
 impl Serialize for UnavailableError {
@@ -289,6 +310,7 @@ impl FromCursor for UnavailableError {
 
 /// Timeout exception during a write request.
 #[derive(Debug, PartialEq, Clone, Ord, PartialOrd, Eq, Hash)]
+#[non_exhaustive]
 pub struct WriteTimeoutError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -301,6 +323,25 @@ pub struct WriteTimeoutError {
     /// The number of contentions occurred during the CAS operation. The field is only present when
     /// the `write_type` is `Cas` and the protocol version is V5 or later.
     pub contentions: Option<CIntShort>,
+}
+
+impl WriteTimeoutError {
+    /// Creates the error. Fields added to the struct later are initialized to their defaults.
+    pub fn new(
+        cl: Consistency,
+        received: CInt,
+        block_for: CInt,
+        write_type: WriteType,
+        contentions: Option<CIntShort>,
+    ) -> Self {
+        WriteTimeoutError {
+            cl,
+            received,
+            block_for,
+            write_type,
+            contentions,
+        }
+    }
 }
 
 impl Serialize for WriteTimeoutError {
@@ -345,6 +386,7 @@ impl FromCursor for WriteTimeoutError {
 
 /// Timeout exception during a read request.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Copy, Clone, Hash)]
+#[non_exhaustive]
 pub struct ReadTimeoutError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -365,6 +407,17 @@ impl Serialize for ReadTimeoutError {
 }
 
 impl ReadTimeoutError {
+    /// Creates the error. `data_present` tells if the replica that was asked for data responded.
+    /// Fields added to the struct later are initialized to their defaults.
+    pub fn new(cl: Consistency, received: CInt, block_for: CInt, data_present: bool) -> Self {
+        ReadTimeoutError {
+            cl,
+            received,
+            block_for,
+            data_present: data_present.into(),
+        }
+    }
+
     /// Shows if a replica has responded to a query.
     #[inline]
     pub fn replica_has_responded(&self) -> bool {
@@ -397,6 +450,7 @@ impl FromCursor for ReadTimeoutError {
 
 /// A non-timeout exception during a read request.
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[non_exhaustive]
 pub struct ReadFailureError {
     /// Consistency level of query.
     pub cl: Consistency,
@@ -420,6 +474,24 @@ impl Serialize for ReadFailureError {
 }
 
 impl ReadFailureError {
+    /// Creates the error. `data_present` tells if the replica that was asked for data responded.
+    /// Fields added to the struct later are initialized to their defaults.
+    pub fn new(
+        cl: Consistency,
+        received: CInt,
+        block_for: CInt,
+        failure_info: FailureInfo,
+        data_present: bool,
+    ) -> Self {
+        ReadFailureError {
+            cl,
+            received,
+            block_for,
+            failure_info,
+            data_present: data_present.into(),
+        }
+    }
+
     /// Shows if replica has responded to a query.
     #[inline]
     pub fn replica_has_responded(&self) -> bool {
@@ -454,6 +526,7 @@ impl FromCursor for ReadFailureError {
 
 /// A (user defined) function failed during execution.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
+#[non_exhaustive]
 pub struct FunctionFailureError {
     /// The keyspace of the failed function.
     pub keyspace: String,
@@ -461,6 +534,21 @@ pub struct FunctionFailureError {
     pub function: String,
     /// One string for each argument type (as CQL type) of the failed function.
     pub arg_types: Vec<String>,
+}
+
+impl FunctionFailureError {
+    /// Creates the error. Fields added to the struct later are initialized to their defaults.
+    pub fn new(
+        keyspace: impl Into<String>,
+        function: impl Into<String>,
+        arg_types: Vec<String>,
+    ) -> Self {
+        FunctionFailureError {
+            keyspace: keyspace.into(),
+            function: function.into(),
+            arg_types,
+        }
+    }
 }
 
 impl Serialize for FunctionFailureError {
@@ -490,6 +578,7 @@ impl FromCursor for FunctionFailureError {
 
 /// A non-timeout exception during a write request.
 #[derive(Debug, PartialEq, Eq, Clone)]
+#[non_exhaustive]
 pub struct WriteFailureError {
     /// Consistency of the query having triggered the exception.
     pub cl: Consistency,
@@ -501,6 +590,25 @@ pub struct WriteFailureError {
     pub failure_info: FailureInfo,
     /// describes the type of the write that failed.
     pub write_type: WriteType,
+}
+
+impl WriteFailureError {
+    /// Creates the error. Fields added to the struct later are initialized to their defaults.
+    pub fn new(
+        cl: Consistency,
+        received: CInt,
+        block_for: CInt,
+        failure_info: FailureInfo,
+        write_type: WriteType,
+    ) -> Self {
+        WriteFailureError {
+            cl,
+            received,
+            block_for,
+            failure_info,
+            write_type,
+        }
+    }
 }
 
 impl Serialize for WriteFailureError {
@@ -537,6 +645,7 @@ impl FromCursor for WriteFailureError {
 /// A contended Compare And Set write/update was only partially completed. The operation may or may
 /// not get completed by the contending CAS write or SERIAL/LOCAL_SERIAL read.
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Copy, Clone, Hash)]
+#[non_exhaustive]
 pub struct CasWriteUnknownError {
     /// Consistency level of the query having triggered the exception.
     pub cl: Consistency,
@@ -544,6 +653,17 @@ pub struct CasWriteUnknownError {
     pub received: CInt,
     /// The number of replicas whose acknowledgement is required to achieve `cl`.
     pub block_for: CInt,
+}
+
+impl CasWriteUnknownError {
+    /// Creates the error. Fields added to the struct later are initialized to their defaults.
+    pub fn new(cl: Consistency, received: CInt, block_for: CInt) -> Self {
+        CasWriteUnknownError {
+            cl,
+            received,
+            block_for,
+        }
+    }
 }
 
 impl Serialize for CasWriteUnknownError {
@@ -635,12 +755,23 @@ impl FromCursor for WriteType {
 /// The query attempted to create a keyspace or a table that was already existing.
 /// [Read more...](https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec#L1140)
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
+#[non_exhaustive]
 pub struct AlreadyExistsError {
     /// Represents either the keyspace that already exists,
     /// or the keyspace in which the table that already exists is.
     pub ks: String,
     /// Represents the name of the table that already exists.
     pub table: String,
+}
+
+impl AlreadyExistsError {
+    /// Creates the error. Fields added to the struct later are initialized to their defaults.
+    pub fn new(ks: impl Into<String>, table: impl Into<String>) -> Self {
+        AlreadyExistsError {
+            ks: ks.into(),
+            table: table.into(),
+        }
+    }
 }
 
 impl Serialize for AlreadyExistsError {
@@ -666,9 +797,17 @@ impl FromCursor for AlreadyExistsError {
 /// executed if the provided prepared statement ID is not known by
 /// this host. [Read more...](<https://github.com/apache/cassandra/blob/trunk/doc/native_protocol_v4.spec>)
 #[derive(Debug, PartialEq, Ord, PartialOrd, Eq, Hash, Clone)]
+#[non_exhaustive]
 pub struct UnpreparedError {
     /// Unknown ID.
     pub id: CBytesShort,
+}
+
+impl UnpreparedError {
+    /// Creates the error. Fields added to the struct later are initialized to their defaults.
+    pub fn new(id: CBytesShort) -> Self {
+        UnpreparedError { id }
+    }
 }
 
 impl Serialize for UnpreparedError {
@@ -958,6 +1097,40 @@ mod error_tests {
             }),
         };
         test_encode_decode(bytes, expected);
+    }
+
+    #[test]
+    fn read_errors_from_constructors() {
+        let read_timeout = ReadTimeoutError::new(Consistency::Any, 1, 2, true);
+        assert_eq!(
+            read_timeout,
+            ReadTimeoutError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 2,
+                data_present: 1,
+            }
+        );
+        assert!(read_timeout.replica_has_responded());
+        assert!(!ReadTimeoutError::new(Consistency::Any, 1, 2, false).replica_has_responded());
+
+        let read_failure =
+            ReadFailureError::new(Consistency::Any, 1, 2, FailureInfo::NumFailures(1), true);
+        assert_eq!(
+            read_failure,
+            ReadFailureError {
+                cl: Consistency::Any,
+                received: 1,
+                block_for: 2,
+                failure_info: FailureInfo::NumFailures(1),
+                data_present: 1,
+            }
+        );
+        assert!(read_failure.replica_has_responded());
+        assert!(
+            !ReadFailureError::new(Consistency::Any, 1, 2, FailureInfo::NumFailures(1), false)
+                .replica_has_responded()
+        );
     }
 
     fn decode_and_reencode(bytes: &[u8], version: Version) -> ErrorBody {

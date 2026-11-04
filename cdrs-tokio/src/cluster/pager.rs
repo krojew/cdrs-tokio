@@ -290,7 +290,6 @@ impl PagerState {
 
 #[cfg(test)]
 mod tests {
-    use arc_swap::ArcSwapOption;
     use cassandra_protocol::consistency::Consistency;
     use cassandra_protocol::frame::message_request::RequestBody;
     use cassandra_protocol::frame::message_result::{ColType, ResResultBody, RowsMetadataFlags};
@@ -360,14 +359,10 @@ mod tests {
                 }
             );
 
-            assert_eq!(
-                &QueryParams {
-                    page_size: None,
-                    paging_state: None,
-                    ..page_params.clone()
-                },
-                expected
-            );
+            let mut page_params = page_params.clone();
+            page_params.page_size = None;
+            page_params.paging_state = None;
+            assert_eq!(&page_params, expected);
         }
     }
 
@@ -416,13 +411,13 @@ mod tests {
             version,
         );
 
-        let prepared = PreparedQuery {
-            id: CBytesShort::new(vec![1]),
-            query: "SELECT * FROM ks.table WHERE id = ?".into(),
-            keyspace: None,
-            pk_indexes: vec![0],
-            result_metadata_id: ArcSwapOption::empty(),
-        };
+        let prepared = PreparedQuery::new(
+            CBytesShort::new(vec![1]),
+            "SELECT * FROM ks.table WHERE id = ?",
+            None,
+            vec![0],
+            None,
+        );
 
         let statement_params = StatementParamsBuilder::new()
             .with_consistency(Consistency::Quorum)

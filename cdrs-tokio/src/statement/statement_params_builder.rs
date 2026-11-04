@@ -1,7 +1,7 @@
 use cassandra_protocol::consistency::Consistency;
-use cassandra_protocol::query::{QueryParams, QueryValues};
+use cassandra_protocol::query::{QueryParamsBuilder, QueryValues};
 use cassandra_protocol::types::value::Value;
-use cassandra_protocol::types::{CBytes, CInt, CLong};
+use cassandra_protocol::types::{CBytes, CInt};
 use derivative::Derivative;
 use std::sync::Arc;
 
@@ -13,15 +13,9 @@ use crate::statement::StatementParams;
 #[derive(Default, Derivative)]
 #[derivative(Debug)]
 pub struct StatementParamsBuilder {
-    consistency: Consistency,
-    values: Option<QueryValues>,
-    page_size: Option<CInt>,
-    paging_state: Option<CBytes>,
-    serial_consistency: Option<Consistency>,
-    timestamp: Option<CLong>,
+    query_params: QueryParamsBuilder,
     is_idempotent: bool,
     keyspace: Option<String>,
-    now_in_seconds: Option<CInt>,
     token: Option<Murmur3Token>,
     routing_key: Option<Vec<Value>>,
     tracing: bool,
@@ -41,48 +35,51 @@ impl StatementParamsBuilder {
     /// Sets new statement consistency
     #[must_use]
     pub fn with_consistency(mut self, consistency: Consistency) -> Self {
-        self.consistency = consistency;
+        self.query_params = self.query_params.with_consistency(consistency);
         self
     }
 
     /// Sets new statement values.
     #[must_use]
     pub fn with_values(mut self, values: QueryValues) -> Self {
-        self.values = Some(values);
+        self.query_params = self.query_params.with_values(values);
         self
     }
 
     /// Sets new statement consistency.
     #[must_use]
     pub fn with_page_size(mut self, size: i32) -> Self {
-        self.page_size = Some(size);
+        self.query_params = self.query_params.with_page_size(size);
         self
     }
 
     /// Sets new paging state.
     #[must_use]
     pub fn with_paging_state(mut self, state: CBytes) -> Self {
-        self.paging_state = Some(state);
+        self.query_params = self.query_params.with_paging_state(state);
         self
     }
 
     /// Sets new serial consistency.
     #[must_use]
     pub fn with_serial_consistency(mut self, serial_consistency: Consistency) -> Self {
-        self.serial_consistency = Some(serial_consistency);
+        self.query_params = self
+            .query_params
+            .with_serial_consistency(serial_consistency);
         self
     }
 
     /// Sets new timestamp.
     #[must_use]
     pub fn with_timestamp(mut self, timestamp: i64) -> Self {
-        self.timestamp = Some(timestamp);
+        self.query_params = self.query_params.with_timestamp(timestamp);
         self
     }
 
     /// Sets new keyspace.
     #[must_use]
     pub fn with_keyspace(mut self, keyspace: String) -> Self {
+        self.query_params = self.query_params.with_keyspace(keyspace.clone());
         self.keyspace = Some(keyspace);
         self
     }
@@ -150,23 +147,14 @@ impl StatementParamsBuilder {
     /// Sets "now" in seconds.
     #[must_use]
     pub fn with_now_in_seconds(mut self, now_in_seconds: CInt) -> Self {
-        self.now_in_seconds = Some(now_in_seconds);
+        self.query_params = self.query_params.with_now_in_seconds(now_in_seconds);
         self
     }
 
     #[must_use]
     pub fn build(self) -> StatementParams {
         StatementParams {
-            query_params: QueryParams {
-                consistency: self.consistency,
-                values: self.values,
-                page_size: self.page_size,
-                paging_state: self.paging_state,
-                serial_consistency: self.serial_consistency,
-                timestamp: self.timestamp,
-                keyspace: self.keyspace.clone(),
-                now_in_seconds: self.now_in_seconds,
-            },
+            query_params: self.query_params.build(),
             is_idempotent: self.is_idempotent,
             keyspace: self.keyspace,
             token: self.token,
@@ -182,7 +170,41 @@ impl StatementParamsBuilder {
 
 #[cfg(test)]
 mod tests {
+    use cassandra_protocol::consistency::Consistency;
+    use cassandra_protocol::query::QueryValues;
+    use cassandra_protocol::types::value::Value;
+    use cassandra_protocol::types::CBytes;
+
     use crate::statement::StatementParamsBuilder;
+
+    #[test]
+    fn should_set_query_params() {
+        let values = QueryValues::SimpleValues(vec![Value::Null]);
+        let params = StatementParamsBuilder::new()
+            .with_consistency(Consistency::Quorum)
+            .with_values(values.clone())
+            .with_page_size(10)
+            .with_paging_state(CBytes::new(vec![1]))
+            .with_serial_consistency(Consistency::LocalSerial)
+            .with_timestamp(123)
+            .with_keyspace("ks".into())
+            .with_now_in_seconds(456)
+            .build();
+
+        let query_params = &params.query_params;
+        assert_eq!(query_params.consistency, Consistency::Quorum);
+        assert_eq!(query_params.values, Some(values));
+        assert_eq!(query_params.page_size, Some(10));
+        assert_eq!(query_params.paging_state, Some(CBytes::new(vec![1])));
+        assert_eq!(
+            query_params.serial_consistency,
+            Some(Consistency::LocalSerial)
+        );
+        assert_eq!(query_params.timestamp, Some(123));
+        assert_eq!(query_params.keyspace.as_deref(), Some("ks"));
+        assert_eq!(query_params.now_in_seconds, Some(456));
+        assert_eq!(params.keyspace.as_deref(), Some("ks"));
+    }
 
     #[test]
     fn should_disable_tracing_and_warnings_by_default() {

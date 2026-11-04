@@ -1,4 +1,3 @@
-use arc_swap::ArcSwapOption;
 use cassandra_protocol::compression::Compression;
 use cassandra_protocol::consistency::Consistency;
 use cassandra_protocol::error;
@@ -499,15 +498,17 @@ impl<
         let s = query.to_string();
         self.prepare_raw_tw(query, keyspace, with_tracing, with_warnings, beta_protocol)
             .await
-            .map(|result| PreparedQuery {
-                id: result.id,
-                query: s,
-                keyspace: result
-                    .metadata
-                    .global_table_spec
-                    .map(|TableSpec { ks_name, .. }| ks_name),
-                pk_indexes: result.metadata.pk_indexes,
-                result_metadata_id: ArcSwapOption::new(result.result_metadata_id.map(Arc::new)),
+            .map(|result| {
+                PreparedQuery::new(
+                    result.id,
+                    s,
+                    result
+                        .metadata
+                        .global_table_spec
+                        .map(|TableSpec { ks_name, .. }| ks_name),
+                    result.metadata.pk_indexes,
+                    result.result_metadata_id,
+                )
             })
     }
 
@@ -568,7 +569,7 @@ impl<
                     .await;
 
                 if let Err(error::Error::Server { body: error, addr }) = &result {
-                    if let ErrorType::Unprepared(UnpreparedError { id }) = &error.ty {
+                    if let ErrorType::Unprepared(UnpreparedError { id, .. }) = &error.ty {
                         if attempts_remaining == 0 {
                             // out of retries - return the most recent error
                             return result;
@@ -1677,7 +1678,6 @@ mod tests {
         ConstantSpeculativeExecutionPolicy, SpeculativeExecutionPolicy,
     };
     use crate::statement::StatementParamsBuilder;
-    use arc_swap::ArcSwapOption;
     use cassandra_protocol::error::Error;
     use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType, UnpreparedError};
     use cassandra_protocol::frame::message_result::{
@@ -1857,7 +1857,7 @@ mod tests {
                 Opcode::Execute | Opcode::Batch if !prepared_nodes.contains(&addr) => {
                     Err(server_error(
                         addr,
-                        ErrorType::Unprepared(UnpreparedError { id: id.clone() }),
+                        ErrorType::Unprepared(UnpreparedError::new(id.clone())),
                     ))
                 }
                 _ => Ok(void_response(Version::V4)),
@@ -1868,13 +1868,7 @@ mod tests {
     }
 
     fn prepared_query(id: CBytesShort) -> PreparedQuery {
-        PreparedQuery {
-            id,
-            query: "SELECT * FROM ks.table".into(),
-            keyspace: None,
-            pk_indexes: vec![],
-            result_metadata_id: ArcSwapOption::empty(),
-        }
+        PreparedQuery::new(id, "SELECT * FROM ks.table", None, vec![], None)
     }
 
     async fn create_unprepared_statement_session(

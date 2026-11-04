@@ -161,10 +161,7 @@ pub(crate) fn create_node(
 
 pub(crate) fn server_error(addr: SocketAddr, ty: ErrorType) -> Error {
     Error::Server {
-        body: ErrorBody {
-            message: "test error".into(),
-            ty,
-        },
+        body: ErrorBody::new("test error", ty),
         addr,
     }
 }

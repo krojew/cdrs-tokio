@@ -168,30 +168,19 @@ impl RetrySession for DefaultRetrySession {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
     use std::net::SocketAddr;
 
     use cassandra_protocol::consistency::Consistency;
     use cassandra_protocol::error::Error;
     use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType, ReadTimeoutError};
-    use cassandra_protocol::frame::traits::FromCursor;
-    use cassandra_protocol::frame::{Serialize, Version};
 
     use super::*;
 
     fn read_timeout_error(received: i32, block_for: i32, data_present: bool) -> Error {
-        let mut bytes = Consistency::Quorum.serialize_to_vec(Version::V4);
-        bytes.extend_from_slice(&received.to_be_bytes());
-        bytes.extend_from_slice(&block_for.to_be_bytes());
-        bytes.push(data_present as u8);
-
-        let error = ReadTimeoutError::from_cursor(&mut Cursor::new(&bytes), Version::V4).unwrap();
+        let error = ReadTimeoutError::new(Consistency::Quorum, received, block_for, data_present);
 
         Error::Server {
-            body: ErrorBody {
-                message: "read timeout".into(),
-                ty: ErrorType::ReadTimeout(error),
-            },
+            body: ErrorBody::new("read timeout", ErrorType::ReadTimeout(error)),
             addr: SocketAddr::from(([127, 0, 0, 1], 9042)),
         }
     }
