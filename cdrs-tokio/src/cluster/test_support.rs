@@ -4,11 +4,11 @@ use cassandra_protocol::error::{Error, Result};
 use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType};
 use cassandra_protocol::frame::message_request::RequestBody;
 use cassandra_protocol::frame::message_result::{
-    BodyResResultRows, ColSpec, ColType, ColTypeOption, ColTypeOptionValue, ResResultBody,
-    RowsMetadata, RowsMetadataFlags, TableSpec,
+    BodyResResultPrepared, BodyResResultRows, ColSpec, ColType, ColTypeOption, ColTypeOptionValue,
+    PreparedMetadata, ResResultBody, RowsMetadata, RowsMetadataFlags, TableSpec,
 };
 use cassandra_protocol::frame::{Direction, Envelope, Flags, Opcode, Serialize, Version};
-use cassandra_protocol::types::CBytes;
+use cassandra_protocol::types::{CBytes, CBytesShort};
 use futures::future::ready;
 use futures::FutureExt;
 use std::io;
@@ -184,6 +184,33 @@ pub(crate) fn result_response(body: ResResultBody, version: Version) -> Envelope
 
 pub(crate) fn void_response(version: Version) -> Envelope {
     result_response(ResResultBody::Void, version)
+}
+
+pub(crate) fn prepared_response(id: &CBytesShort, version: Version) -> Envelope {
+    result_response(
+        ResResultBody::Prepared(BodyResResultPrepared {
+            id: id.clone(),
+            result_metadata_id: if version >= Version::V5 {
+                Some(CBytesShort::new(vec![0]))
+            } else {
+                None
+            },
+            metadata: PreparedMetadata {
+                pk_indexes: vec![],
+                global_table_spec: None,
+                col_specs: vec![],
+            },
+            result_metadata: RowsMetadata {
+                flags: RowsMetadataFlags::NO_METADATA,
+                columns_count: 0,
+                paging_state: None,
+                new_metadata_id: None,
+                global_table_spec: None,
+                col_specs: vec![],
+            },
+        }),
+        version,
+    )
 }
 
 pub(crate) fn rows_body(

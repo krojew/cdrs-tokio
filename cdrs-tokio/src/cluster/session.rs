@@ -16,6 +16,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use itertools::Itertools;
 use std::io::{Cursor, Write};
+use std::iter;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -300,6 +301,7 @@ impl<
             // MAX_REPREPARE_ATTEMPTS gives the cluster a few chances to settle
             // and then surfaces the original error to the caller.
             let mut attempts_remaining = MAX_REPREPARE_ATTEMPTS;
+            let mut reprepared_node = None;
             let result = loop {
                 let result = self
                     .send_envelope(
@@ -315,18 +317,19 @@ impl<
                         Some(consistency),
                         parameters.speculative_execution_policy.as_ref(),
                         parameters.retry_policy.as_ref(),
+                        reprepared_node.take(),
                     )
                     .await;
 
                 // Try to identify an Unprepared error and the address of the
                 // node that reported it. If we have budget left, reprepare on
-                // that node and retry. Otherwise fall through with the result
-                // we have - good or bad.
+                // that node and retry there. Otherwise fall through with the
+                // result we have - good or bad.
                 if let Err(error::Error::Server { body: error, addr }) = &result {
                     if let ErrorType::Unprepared(_) = error.ty {
                         if attempts_remaining > 0 {
                             attempts_remaining -= 1;
-                            if self
+                            if let Ok(node) = self
                                 .reprepare(
                                     &prepared.id,
                                     prepared.query.clone(),
@@ -335,8 +338,8 @@ impl<
                                     *addr,
                                 )
                                 .await
-                                .is_ok()
                             {
+                                reprepared_node = Some(node);
                                 continue;
                             }
                         }
@@ -432,7 +435,7 @@ impl<
 
         let response = match query_plan {
             None => {
-                self.send_envelope(&envelope, true, None, None, None, None, None, None)
+                self.send_envelope(&envelope, true, None, None, None, None, None, None, None)
                     .await
             }
             Some(query_plan) => send_envelope(
@@ -519,6 +522,7 @@ impl<
             // cluster keeps reporting Unprepared we want to give up cleanly
             // rather than recurse without bound.
             let mut attempts_remaining = MAX_REPREPARE_ATTEMPTS;
+            let mut reprepared_node = None;
             loop {
                 let result = self
                     .send_envelope(
@@ -531,6 +535,7 @@ impl<
                         Some(consistency),
                         parameters.speculative_execution_policy.as_ref(),
                         parameters.retry_policy.as_ref(),
+                        reprepared_node.take(),
                     )
                     .await;
 
@@ -563,8 +568,10 @@ impl<
                             )
                             .await;
 
-                        if prepare_result.is_ok() {
-                            // try the batch again with the freshly prepared statement
+                        if let Ok(node) = prepare_result {
+                            // try the batch again with the freshly prepared statement, on the
+                            // node which now knows it
+                            reprepared_node = Some(node);
                             continue;
                         }
                     }
@@ -583,7 +590,7 @@ impl<
         keyspace: Option<String>,
         parameters: &StatementParams,
         node_broadcast_rpc_address: SocketAddr,
-    ) -> error::Result<()> {
+    ) -> error::Result<Arc<Node<T, CM>>> {
         debug!("Re-preparing statement.");
 
         let flags = prepare_flags(
@@ -606,7 +613,7 @@ impl<
 
         let retry_policy = self.effective_retry_policy(parameters.retry_policy.as_ref());
         let prepare_result = send_envelope(
-            [node].iter().cloned(),
+            iter::once(node.clone()),
             &prepare_envelope,
             true,
             retry_policy.new_session(),
@@ -625,7 +632,7 @@ impl<
             return Err("Re-preparing an unprepared statement resulted in a different id - probably schema changed on the server.".into());
         }
 
-        Ok(())
+        Ok(node)
     }
 
     /// Executes a query.
@@ -688,6 +695,7 @@ impl<
             Some(consistency),
             parameters.speculative_execution_policy.as_ref(),
             parameters.retry_policy.as_ref(),
+            None,
         )
         .await
     }
@@ -740,6 +748,7 @@ impl<
         consistency: Option<Consistency>,
         speculative_execution_policy: Option<&Arc<dyn SpeculativeExecutionPolicy + Send + Sync>>,
         retry_policy: Option<&Arc<dyn RetryPolicy + Send + Sync>>,
+        first_node: Option<Arc<Node<T, CM>>>,
     ) -> error::Result<Envelope> {
         let current_keyspace = self.current_keyspace();
         let request = Request::new(
@@ -749,7 +758,13 @@ impl<
             consistency,
         );
 
-        let query_plan = self.query_plan(Some(request));
+        let mut query_plan = self.query_plan(Some(request));
+        if let Some(first_node) = first_node {
+            query_plan
+                .nodes
+                .retain(|node| node.broadcast_rpc_address() != first_node.broadcast_rpc_address());
+            query_plan.nodes.insert(0, first_node);
+        }
 
         struct SharedQueryPlan<
             T: CdrsTransport + 'static,
@@ -1533,7 +1548,9 @@ impl Drop for AbortOnDropHandle {
 
 #[cfg(test)]
 mod tests {
-    use crate::cluster::session::{prepare_flags, AbortOnDropHandle, Session};
+    use crate::cluster::session::{
+        prepare_flags, AbortOnDropHandle, Session, MAX_REPREPARE_ATTEMPTS,
+    };
     use crate::cluster::test_support::*;
     use crate::cluster::{ClusterMetadataManager, KeyspaceHolder, SessionContext};
     use crate::load_balancing::node_distance_evaluator::AllLocalNodeDistanceEvaluator;
@@ -1546,14 +1563,18 @@ mod tests {
         ConstantSpeculativeExecutionPolicy, SpeculativeExecutionPolicy,
     };
     use crate::statement::StatementParamsBuilder;
+    use arc_swap::ArcSwapOption;
     use cassandra_protocol::error::Error;
-    use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType};
-    use cassandra_protocol::frame::{Flags, Version};
+    use cassandra_protocol::frame::message_error::{ErrorBody, ErrorType, UnpreparedError};
+    use cassandra_protocol::frame::{Flags, Opcode, Version};
+    use cassandra_protocol::query::{BatchQueryBuilder, PreparedQuery, QueryValues};
+    use cassandra_protocol::types::CBytesShort;
     use futures::future::ready;
     use futures::FutureExt;
     use itertools::Itertools;
+    use std::collections::HashSet;
     use std::net::SocketAddr;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
     use tokio::sync::{broadcast, watch, Notify};
     use tokio::task::JoinHandle;
@@ -1747,6 +1768,113 @@ mod tests {
             .await;
 
         assert!(matches!(result, Err(Error::General(_))), "{:?}", result);
+    }
+
+    type RequestLog = Arc<Mutex<Vec<(SocketAddr, Opcode)>>>;
+
+    // Every node reports the statement as unprepared until it receives a PREPARE request.
+    fn unprepared_statement_connection_manager(
+        id: CBytesShort,
+        requests: RequestLog,
+    ) -> TestConnectionManager {
+        let prepared_nodes = Arc::new(Mutex::new(HashSet::new()));
+
+        TestConnectionManager::new(move |addr, envelope| {
+            requests.lock().unwrap().push((addr, envelope.opcode));
+
+            let mut prepared_nodes = prepared_nodes.lock().unwrap();
+            let response = match envelope.opcode {
+                Opcode::Prepare => {
+                    prepared_nodes.insert(addr);
+                    Ok(prepared_response(&id, Version::V4))
+                }
+                Opcode::Execute | Opcode::Batch if !prepared_nodes.contains(&addr) => {
+                    Err(server_error(
+                        addr,
+                        ErrorType::Unprepared(UnpreparedError { id: id.clone() }),
+                    ))
+                }
+                _ => Ok(void_response(Version::V4)),
+            };
+
+            ready(response).boxed()
+        })
+    }
+
+    fn prepared_query(id: CBytesShort) -> PreparedQuery {
+        PreparedQuery {
+            id,
+            query: "SELECT * FROM ks.table".into(),
+            keyspace: None,
+            pk_indexes: vec![],
+            result_metadata_id: ArcSwapOption::empty(),
+        }
+    }
+
+    async fn create_unprepared_statement_session(
+        id: &CBytesShort,
+        requests: &RequestLog,
+    ) -> Session<TestTransport, TestConnectionManager, TestRoundRobin> {
+        // more nodes than reprepare attempts, so a fresh query plan per attempt never comes back
+        // to an already prepared node
+        let addresses = (1..=MAX_REPREPARE_ATTEMPTS as u8 + 2)
+            .map(node_address)
+            .collect_vec();
+
+        let session = create_session(
+            &addresses,
+            unprepared_statement_connection_manager(id.clone(), requests.clone()),
+            TestRoundRobin::new(),
+            None,
+            Version::V4,
+        );
+
+        session
+            .cluster_metadata_manager
+            .refresh_metadata(true)
+            .await
+            .unwrap();
+
+        session
+    }
+
+    fn assert_reprepared_on_single_node(requests: &RequestLog, opcode: Opcode) {
+        let requests = requests.lock().unwrap();
+        let addr = requests[0].0;
+
+        assert_eq!(
+            *requests,
+            vec![(addr, opcode), (addr, Opcode::Prepare), (addr, opcode)]
+        );
+    }
+
+    #[tokio::test]
+    async fn should_resend_reprepared_statement_to_node_which_reported_it_unprepared() {
+        let id = CBytesShort::new(vec![1, 2, 3]);
+        let requests = RequestLog::default();
+        let session = create_unprepared_statement_session(&id, &requests).await;
+
+        let result = session.exec(&prepared_query(id)).await;
+
+        assert!(result.is_ok(), "{:?}", result);
+        assert_reprepared_on_single_node(&requests, Opcode::Execute);
+    }
+
+    #[tokio::test]
+    async fn should_resend_batch_to_node_which_reported_statement_unprepared() {
+        let id = CBytesShort::new(vec![1, 2, 3]);
+        let requests = RequestLog::default();
+        let session = create_unprepared_statement_session(&id, &requests).await;
+
+        let batch = BatchQueryBuilder::new()
+            .add_query_prepared(&prepared_query(id), QueryValues::SimpleValues(vec![]))
+            .build()
+            .unwrap();
+
+        let result = session.batch(batch).await;
+
+        assert!(result.is_ok(), "{:?}", result);
+        assert_reprepared_on_single_node(&requests, Opcode::Batch);
     }
 
     #[test]
