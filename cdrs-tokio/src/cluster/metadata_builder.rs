@@ -360,6 +360,111 @@ mod tests {
     }
 
     #[test]
+    fn should_keep_node_state_when_rpc_address_is_unchanged() {
+        let connection_pool_factory = create_connection_pool_factory();
+
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+
+        let node_infos = [NodeInfo::new(
+            Uuid::new_v4(),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9042),
+            Some(SocketAddr::new(
+                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                7000,
+            )),
+            "".into(),
+            Default::default(),
+            "".into(),
+        )];
+
+        let mut old_nodes = NodeMap::default();
+        old_nodes.insert(
+            node_infos[0].host_id,
+            Arc::new(Node::new_with_state(
+                connection_pool_factory.clone(),
+                node_infos[0].broadcast_rpc_address,
+                node_infos[0].broadcast_address,
+                Some(node_infos[0].host_id),
+                Some(NodeDistance::Local),
+                NodeState::Up,
+                Default::default(),
+                "".into(),
+                "".into(),
+            )),
+        );
+
+        let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
+
+        let metadata = refresh_metadata(
+            &node_infos,
+            &old_metadata,
+            &connection_pool_factory,
+            &node_distance_evaluator,
+        );
+
+        let node = metadata
+            .nodes()
+            .get(&node_infos[0].host_id)
+            .unwrap()
+            .clone();
+        assert_eq!(node.state(), NodeState::Up);
+        assert_eq!(node.distance(), Some(NodeDistance::Local));
+    }
+
+    #[test]
+    fn should_reset_node_state_when_rpc_address_changes() {
+        let connection_pool_factory = create_connection_pool_factory();
+
+        let node_distance_evaluator = MockNodeDistanceEvaluator::new();
+
+        let node_infos = [NodeInfo::new(
+            Uuid::new_v4(),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 9042),
+            None,
+            "".into(),
+            Default::default(),
+            "".into(),
+        )];
+
+        let mut old_nodes = NodeMap::default();
+        old_nodes.insert(
+            node_infos[0].host_id,
+            Arc::new(Node::new_with_state(
+                connection_pool_factory.clone(),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)), 9042),
+                None,
+                Some(node_infos[0].host_id),
+                Some(NodeDistance::Local),
+                NodeState::Up,
+                Default::default(),
+                "".into(),
+                "".into(),
+            )),
+        );
+
+        let old_metadata = ClusterMetadata::new(old_nodes, Default::default());
+
+        let metadata = refresh_metadata(
+            &node_infos,
+            &old_metadata,
+            &connection_pool_factory,
+            &node_distance_evaluator,
+        );
+
+        let node = metadata
+            .nodes()
+            .get(&node_infos[0].host_id)
+            .unwrap()
+            .clone();
+        assert_eq!(
+            node.broadcast_rpc_address(),
+            node_infos[0].broadcast_rpc_address
+        );
+        assert_eq!(node.state(), NodeState::Unknown);
+        assert!(node.distance().is_none());
+    }
+
+    #[test]
     fn should_not_add_already_existing_node() {
         let connection_pool_factory = create_connection_pool_factory();
 

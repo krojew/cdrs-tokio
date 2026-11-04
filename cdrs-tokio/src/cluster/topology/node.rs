@@ -277,12 +277,7 @@ impl<T: CdrsTransport, CM: ConnectionManager<T>> Node<T, CM> {
 
     #[inline]
     pub(crate) fn clone_with_node_info(&self, node_info: NodeInfo) -> Self {
-        let address_changed = self
-            .broadcast_address
-            .map(|address| address != node_info.broadcast_rpc_address)
-            // if we don't know the previous address, we'll trust whoever inserted the node to
-            // know its state
-            .unwrap_or(false);
+        let address_changed = self.broadcast_rpc_address != node_info.broadcast_rpc_address;
 
         let mut new_node_state = self.state.load(Ordering::Relaxed);
         if address_changed {
